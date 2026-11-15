@@ -3231,3 +3231,23 @@ Two findings from Stage 1 that bear on the spec:
   3.1.2, and a doc comment in `Einzel.Render` said a zero normal behaves one way "in either
   window". History is kept where it explains a decision - the Helix section, the globalization
   reversal, the camera defects - and marked as history rather than read as the current state.
+
+- **The thin-grid memory test failed on a slope, and the builds it was a slope of were both
+  right.** `ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays` read 1.028 of its statement
+  once on the Linux CI runner: 45.11 bytes a node from builds printed at 42.64 and 43.88 against
+  43.87. The larger build read its statement; the smaller read low by 1.24, which is one double
+  for each node of the first coarse level - the sampler missed the millisecond in which the
+  restricted residual is alive beside the fine one, the only such window a two-cycle solve has
+  after its masks are memoised. **A slope takes the smaller build's miss at the smaller build
+  over the difference in nodes**: a seventh between two cubes at a halved cell, and one here,
+  where one axis is doubled. Reproduced on an idle workstation by delaying the sampler 4 ms a
+  sample: readings fall on 42.64, 43.63 and 43.88, each the statement's arithmetic at an earlier
+  instant, and the failing pair came up in eight runs of thirty-two. The test now holds each build to its own statement, where a miss can only pass,
+  and prints the slope (both builds read 43.88 after a warm-up, so there was no fixed cost for
+  a slope to cancel); it runs six cycles so a reading has five windows. Delayed, twelve of
+  twelve pass; with an extra grid-sized array held at the fine restriction, eleven of eleven
+  fail. No engine code and no stated figure changed. Three figures in the test's remarks were
+  wrong and are corrected: the second coarse level is 0.028 of the fine grid, its mask 0.25
+  bytes a node, and the statement without it 43.62. Not reproduced on Linux - WSL here has no
+  SDK - so that the runner descheduled the sampler is an inference from the readings.
+  `docs/lessons.md`, "A slope between two builds takes the smaller one's missed peak".

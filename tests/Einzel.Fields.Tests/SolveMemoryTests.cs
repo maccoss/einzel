@@ -99,11 +99,11 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     [Fact]
     public void ARediscretizedSolveWithNoCoarseLevelIsChargedItsBottomScratch()
     {
-        var (predicted, measured, levels, _, _) = DirectSlope(
+        var reading = DirectSlope(
             length => Ball(length, radius: 0.0016, cell: 0.001), 0.016, 0.032, cycles: 1, source: false);
 
-        Assert.Equal(0, levels);
-        Assert.InRange(measured / predicted, 0.90, 1.02);
+        Assert.Equal(0, reading.Levels);
+        Assert.InRange(reading.Measured / reading.Predicted, 0.90, 1.02);
     }
 
     /// <summary>A rediscretized solve one coarse level deep, against its statement.</summary>
@@ -115,11 +115,11 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     [Fact]
     public void ARediscretizedSolveOneLevelDeepHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, levels, _, _) = DirectSlope(
+        var reading = DirectSlope(
             length => Ball(length, radius: 0.0015, cell: 0.0005), 0.016, 0.032, cycles: 2, source: false);
 
-        Assert.Equal(1, levels);
-        Assert.InRange(measured / predicted, 0.90, 1.02);
+        Assert.Equal(1, reading.Levels);
+        Assert.InRange(reading.Measured / reading.Predicted, 0.90, 1.02);
     }
 
     /// <summary>
@@ -127,36 +127,66 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// eighth, holds every memoised coarse mask from its second cycle on.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// With no interior electrode the descent goes as far as the grid allows: 8193 by 9 by 9,
-    /// then 4097 by 5 by 5 (0.154 of the fine grid) and 2049 by 3 by 3 (0.034). The coarsener
-    /// keeps both masks for the whole solve, so the fine restriction in the second cycle holds
-    /// the second level's mask as well - 0.30 bytes a node that charging only the masks down to
-    /// the level being restricted onto left out, and which this measures: 43.87 bytes a node
-    /// against 43.87 stated with the real cut arms, and 43.57 without the second mask.
+    /// then 4097 by 5 by 5 (0.154 of the fine grid) and 2049 by 3 by 3 (0.028). The coarsener
+    /// keeps both masks for the whole solve, so the fine restriction from the second cycle on
+    /// holds the second level's mask as well - 0.25 bytes a node that charging only the masks
+    /// down to the level being restricted onto left out, and which this measures: 43.88 bytes a
+    /// node against 43.87 stated with the real cut arms, and 43.62 without the second mask.
     /// A Poisson problem with a uniform source, since with no electrode a Laplace problem is
     /// solved before it starts.
+    /// </para>
+    /// <para>
+    /// <b>Each build against its own statement, and no slope.</b> The peak here is the fine
+    /// restriction: the fine residual and the first level's restricted residual alive together,
+    /// for as long as <c>Restrict</c> takes - about a millisecond on these grids, against a
+    /// sample every millisecond or so. A sampler that is descheduled across it reads the fine
+    /// residual alone, 8 x 0.154 = 1.24 bytes a node low, and one that catches it only in the
+    /// first cycle reads 0.25 low: readings fall on 42.64, 43.63 and 43.88, each the
+    /// statement's arithmetic at an earlier instant. This test doubles one axis, so the difference in nodes between its two
+    /// builds is the smaller build itself, and a slope takes the smaller build's miss at full
+    /// weight and the wrong sign: 42.64 and 43.88 make 45.11, 1.028 of the statement, which is
+    /// how it failed on a Linux CI runner whose every step was sound. (Between two cubes at a
+    /// halved cell the same miss enters at a seventh.) Delaying the sampler by 4 ms a sample
+    /// reproduced that reading, to the hundredth, in eight runs of thirty-two on an idle
+    /// workstation.
+    /// </para>
+    /// <para>
+    /// A slope exists to cancel what a build holds whatever its size, and here there is nothing
+    /// to cancel: after the warm-up solves both builds read 43.88 bytes a node, at 332 and 664
+    /// thousand nodes. So the upper edge is asked of each build alone, where a miss can only
+    /// pass, and the slope is printed as the control it is.
+    /// </para>
+    /// <para>
+    /// <b>Six cycles, where two reach the peak.</b> Every cycle from the second holds the same
+    /// peak, so six give a reading five chances at it where two gave one. That changes what a
+    /// reading is worth and not what can fail it: with one chance a loaded runner passes on a
+    /// low reading that could not have seen an uncharged array either.
+    /// </para>
     /// </remarks>
     [Fact]
     public void ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, levels, largePredicted, largeMeasured) = DirectSlope(
+        var reading = DirectSlope(
             length => new Geometry3D(0.0, -0.004, -0.004, length, 0.004, 0.004, 0.001, []),
-            4.096, 8.192, cycles: 2, source: true);
+            4.096, 8.192, cycles: 6, source: true);
 
-        Assert.Equal(2, levels);
-        Assert.InRange(measured / predicted, 0.90, 1.02);
+        Assert.Equal(2, reading.Levels);
+
+        // The band, of each build: a missed peak reads 0.972 of the statement and a peak caught
+        // in the first cycle alone 0.994, both inside it, and neither can read over.
+        Assert.InRange(reading.SmallMeasured / reading.SmallPredicted, 0.90, 1.02);
+        Assert.InRange(reading.LargeMeasured / reading.LargePredicted, 0.90, 1.02);
 
         // And to a tenth of a byte, which this geometry can be held to: a grid with no conductor
-        // has no cut arms to bill, and idle both builds read the same bytes a node to the
-        // hundredth. Charging the masks only down to the level being restricted onto read 0.30
-        // over. Asked of the larger build alone rather than of the slope, because a reading can
-        // only miss a peak and read low, and a slope turns a low reading of the smaller build
-        // into a high one: under load the smaller read 43.63 once and the slope 44.12 against a
-        // build that held 43.88. At 663 thousand nodes the build's fixed allocations are under a
-        // hundredth of a byte a node.
+        // has no cut arms to bill, and both builds read the same bytes a node to the hundredth.
+        // Charging the masks only down to the level being restricted onto read 0.25 over. Of
+        // the larger build, where something else in the process allocating during a reading -
+        // seen once a process, 100 to 300 kB - is half the size per node.
         Assert.True(
-            largeMeasured <= largePredicted + 0.15,
-            $"the larger build read {largeMeasured:F2} B/node against a prediction of {largePredicted:F2}: something the cycle holds is not charged");
+            reading.LargeMeasured <= reading.LargePredicted + 0.15,
+            $"the larger build read {reading.LargeMeasured:F2} B/node against a prediction of {reading.LargePredicted:F2}: something the cycle holds is not charged");
     }
 
     /// <summary>
@@ -471,7 +501,14 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// A rediscretized solve, forced, at two sizes of one geometry, against the statement for
     /// the levels the solver says it descends through.
     /// </summary>
-    private (double Predicted, double Measured, int Levels, double LargePredicted, double LargeMeasured) DirectSlope(
+    /// <remarks>
+    /// The slope between the two builds, and each build's own bytes a node beside it. Which to
+    /// assert on is the caller's: a slope cancels what a build holds whatever its size, and
+    /// takes a missed peak in the smaller build as an excess, weighted by the smaller build
+    /// over the difference - a seventh between two cubes at a halved cell, the whole of it
+    /// where one axis is doubled.
+    /// </remarks>
+    private DirectReading DirectSlope(
         Func<double, Geometry3D> geometry, double small, double large, int cycles, bool source)
     {
         (double Stated, double Real, long Nodes, int Levels) Plan(Geometry3D g)
@@ -537,13 +574,31 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         output.WriteLine(
             $"{planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes, {planLarge.Levels} coarse level(s): "
             + $"billed {billed:F2} B/node, predicted with the real cut arms {predicted:F2}, measured {measured:F2} "
-            + $"(peaks {peakSmall / planSmall.Nodes:F2} and {peakLarge / planLarge.Nodes:F2} B/node of each build)");
+            + $"(peaks {peakSmall / planSmall.Nodes:F2} and {peakLarge / planLarge.Nodes:F2} B/node of each build, "
+            + $"against {planSmall.Real / planSmall.Nodes:F2} and {planLarge.Real / planLarge.Nodes:F2})");
 
         Assert.Equal(planLarge.Levels, solvedLevels);
         Assert.Equal(planSmall.Levels, planLarge.Levels);
 
-        return (predicted, measured, planLarge.Levels, planLarge.Real / planLarge.Nodes, peakLarge / planLarge.Nodes);
+        return new DirectReading(
+            predicted,
+            measured,
+            planLarge.Levels,
+            planSmall.Real / planSmall.Nodes,
+            peakSmall / planSmall.Nodes,
+            planLarge.Real / planLarge.Nodes,
+            peakLarge / planLarge.Nodes);
     }
+
+    /// <summary>What <see cref="DirectSlope"/> read: the slope, and each build in bytes a node.</summary>
+    private sealed record DirectReading(
+        double Predicted,
+        double Measured,
+        int Levels,
+        double SmallPredicted,
+        double SmallMeasured,
+        double LargePredicted,
+        double LargeMeasured);
 
     /// <summary>A sphere at the centre of a cube, at one cell size.</summary>
     private static Geometry3D Ball(double length, double radius, double cell) => new(

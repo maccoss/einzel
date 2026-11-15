@@ -5685,3 +5685,58 @@ that replaced it are, by construction, the runs in which first-tier code execute
 `DOTNET_TC_CallCounting=0`, so nothing is promoted and the hold shows on every machine: putting
 the residual back inline reads 1.06 of the statement there (143.57 and 47.94 bytes a node)
 while every in-process memory test still passes.
+
+## A slope between two builds takes the smaller one's missed peak at the smaller build over the difference
+
+`ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays` failed once on the Linux CI runner
+reading 1.028 of its statement, 45.11 bytes a node against 43.87, with the two builds printed
+at 42.64 and 43.88. Nothing was held that should not have been. The larger build read its
+statement to the hundredth, and the smaller read low by 1.24 - which is 8 x 0.154, one double
+for each node of the first coarse level: the restricted residual, alive beside the fine
+residual only while `Restrict` runs, about a millisecond on that grid. The sampler takes a
+sample about every millisecond, and on Linux its raised priority is not honored, so a loaded
+runner deschedules it across the one such window a two-cycle solve had.
+
+**The readings are quantized, which is what identifies a miss.** A sample lands on one of the
+instants a solve passes through, so a reading is the statement's own arithmetic at some earlier
+instant: 43.88 (the peak), 43.63 (the first cycle's restriction, before the second coarse mask
+is memoised, 0.25 less), 42.64 (the fine residual alone) or 42.39 (that, in the first cycle).
+Delaying the sampler by 2, 4 and 5 ms a sample on an idle workstation produced those values
+in all but two of some two hundred readings - the two, 43.09 and 43.10 of the larger build,
+are low and not identified - and at 4 ms the failing pair itself, 42.65 and 43.88 giving
+45.11, in eight runs of thirty-two; at 20 ms every reading is 35.88, a solve with no cycle seen
+at all. An allocation the statement omits would read above the statement in both builds, and
+a fixed cost would not come out as a multiple of a coarse level's node count.
+
+**Why this test and not the others.** A slope is (large - small) over the difference in nodes,
+so a reading of the smaller build that is low by d bytes a node raises the slope by d times
+the smaller build over the difference. Between two cubes at a halved cell that weight is a
+seventh, and a miss is lost in the band. This test doubles one axis: the difference is the
+smaller build, the weight is one, and the miss arrives whole and with the wrong sign, on the
+edge that is supposed to mean "something is held that is not charged". The comment beside the
+assertion already recorded the mechanism ("under load the smaller read 43.63 once and the slope
+44.12") and moved one assertion off the slope for it, and left the band on.
+
+**The rule.** A sampled peak can miss and read low, so an upper bound belongs on a single
+build's reading, where a miss can only pass; a slope is for cancelling a fixed cost, and is
+worth its sign problem only where there is a fixed cost to cancel - here both builds read the
+same bytes a node after a warm-up solve, so there was none. Before trusting a slope, work out
+the weight it gives the smaller build. And when a flaky reading is off by an amount, divide
+that amount by the node counts of the levels before looking for a cause: a multiple of a
+level is an instant, not an allocation.
+
+The test now holds each build to its own statement and prints the slope; with the sampler
+delayed 4 ms it passes twelve runs of twelve, the slope reading 45.11 in one of them, and with
+one extra grid-sized array held at the fine restriction it fails eleven of eleven, three idle
+and eight delayed. Six cycles where it ran two give each reading five windows instead of one, so that a
+loaded runner sees the peak it is asserting on more often than it did; that raises what a pass
+is worth and is not what makes the test unable to fail falsely. **Not reproduced on Linux**:
+the WSL install on this machine has no .NET SDK, so the Linux half of the account - the
+priority - is an inference from the readings, which the delayed sampler reproduces on Windows.
+
+Also seen while measuring, and not a cause of this failure: once in a process, at no fixed
+point, one reading of nine came out 100 to 300 kB **high** (44.33 against 43.88 at 664
+thousand nodes, 44.18 at 332 thousand), with tiering on, off, and with call counting off. It
+is something else in the test process allocating during a reading. It is the "first reading
+in a process" outlier the self-field test recorded, and it is not always the first. The
+middle of three discards one; two in one test have not been seen.
