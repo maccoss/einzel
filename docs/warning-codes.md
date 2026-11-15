@@ -4,6 +4,8 @@
 
 Two families exist. **Upper-case** codes (`UNITS_INCOMPATIBLE`) are error codes, mostly from `Einzel.Core.Errors.ErrorCodes`, plus a few written as literals; two (`TILT_NOT_AVAILABLE`, `NOTHING_TO_EXPORT`) are errors, and nine (`PEAK_*`, `ENSEMBLE_*`, `DRAWS_*`, `TRAJECTORY_INCOMPLETE`, `CONVERGENCE_ORDER_BELOW_NOMINAL`, `ENERGY_DRIFT_EXCEEDS_BUDGET`) are warnings. **Dotted lower-case** codes (`mesh.node-on-shared-face`) are warnings written as string literals where the warning is built. Both families go through the same surface: a code, a message and a severity.
 
+> **The list of codes is held to the source by a test.** `DocumentationWarningCodeTests` (in `tests/Einzel.Cli.Tests`) fails when a code in `src/` has no entry here, when an entry names a code no longer in `src/`, and when the index and the entries disagree. What an entry says about a code is not checked.
+
 ## Exit codes
 
 Defined in `src/Einzel.Core/Errors/ExitCode.cs`; the mapping from an error code to an exit code is in `src/Einzel.Cli/Program.cs` (around line 50).

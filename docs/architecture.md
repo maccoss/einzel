@@ -22,7 +22,7 @@ Engine outward. Each references only what is above it in this list.
 | `Einzel.Shell` | The windowed shell: §16's views on Avalonia, plain `net10.0`, referencing `Einzel.Commands` and nothing else. The one that survives |
 | `Einzel.Wpf` | The first shell, Windows-only WPF. Still builds; scheduled for deletion, since nothing is left that only it has |
 
-Not yet built: `Einzel.Compute`, `Einzel.Update`. The shell has a model tree edited through
+Not yet built: `Einzel.Compute` (`Einzel.Update`, the shell's update check, exists). The shell has a model tree edited through
 the journal, a viewport with orbit, pan and zoom, and journal, results, regime, sequence,
 project and extension panels, plus the tests that keep invariant 1 and UI-1 true. See
 [The shell](shell.md).
