@@ -29,6 +29,10 @@ public sealed record ExportOutcome
     /// each file carries in its header (GRD-2). Empty for a mesh export, which solves nothing.
     /// </remarks>
     public IReadOnlyList<ValidityWarning> Warnings { get; init; } = [];
+
+    /// <summary>The sampled grid a composite export writes, or would write under <c>--dry-run</c>.</summary>
+    /// <remarks>Absent for every other export, which writes the solves' own grids.</remarks>
+    public string? Grid { get; init; }
 }
 
 /// <summary>
@@ -92,18 +96,25 @@ public static class ExportCommand
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentNullException.ThrowIfNull(project);
 
+        ProbeCommand.CheckInstant(atUs);
+
+        // Read once: the hash in the header and the field in the body are of the same text, however
+        // the file is edited while this runs (PRJ-3).
         var absolute = Path.GetFullPath(modelPath);
         var text = File.ReadAllText(absolute);
-        var probe = FieldProbe.Open(absolute);
+        var probe = FieldProbe.Open(absolute, text);
 
+        // The grid is carried in metres. A box taken from the model comes from the SI bounds
+        // themselves, so its last node IS the domain's face rather than a millimetre round trip of
+        // it; a box typed in millimetres is converted the way the model's own lengths are.
         Core.Geometry.Vec3 min;
         Core.Geometry.Vec3 max;
 
         if (boxMinMm is { } given0 && boxMaxMm is { } given1)
         {
-            (min, max) = (given0, given1);
+            (min, max) = (FieldProbe.MillimetresToMetres(given0), FieldProbe.MillimetresToMetres(given1));
         }
-        else if (probe.DomainMm() is { } domain)
+        else if (probe.DomainSi() is { } domain)
         {
             (min, max) = domain;
         }
@@ -111,7 +122,7 @@ public static class ExportCommand
         {
             throw Refuse(
                 "/box",
-                "this model has no solved domain to take a box from",
+                "this model has no bounded element (a solve or a declared region) to take a box from",
                 "give --box-mm x0,y0,z0,x1,y1,z1, the two corners of the region to sample, in millimetres");
         }
 
@@ -124,13 +135,14 @@ public static class ExportCommand
             throw Refuse("/box", "the box has no extent", "give two corners that differ along at least one axis");
         }
 
-        var step = stepMm ?? (longest / 64.0);
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        var step = stepMm is { } s ? s * 1e-3 : longest / 64.0;
 
         if (!double.IsFinite(step) || step <= 0.0)
         {
             throw Refuse(
                 "/step",
-                string.Create(System.Globalization.CultureInfo.InvariantCulture, $"the step must be a positive number of millimetres; got {step}"),
+                string.Create(invariant, $"the step must be a positive number of millimetres; got {stepMm}"),
                 "give --step-mm greater than zero");
         }
 
@@ -139,10 +151,16 @@ public static class ExportCommand
 
         for (var axis = 0; axis < 3; axis++)
         {
-            // Both ends are nodes, and the spacing is then exact rather than the step asked for: a
-            // grid whose far face is not the box's far face would silently sample a smaller box.
-            var intervals = (long)Math.Min(
-                Math.Max(1.0, Math.Round((high[axis] - low[axis]) / step)), MaximumSampledNodes);
+            var extent = high[axis] - low[axis];
+
+            // A flat axis is one layer, not two coincident ones: a box flat in z is a cross-section,
+            // and two layers at spacing zero is a degenerate image with every sample written twice.
+            // Otherwise both ends are nodes, and the spacing is then exact rather than the step
+            // asked for: a grid whose far face is not the box's far face would silently sample a
+            // smaller box.
+            var intervals = extent > 0.0
+                ? (long)Math.Min(Math.Max(1.0, Math.Round(extent / step)), MaximumSampledNodes)
+                : 0L;
             counts[axis] = (int)(intervals + 1);
             nodes *= counts[axis];
 
@@ -150,16 +168,49 @@ public static class ExportCommand
             {
                 throw Refuse(
                     "/step",
-                    string.Create(System.Globalization.CultureInfo.InvariantCulture, $"this box and step need more than {MaximumSampledNodes:N0} nodes"),
-                    string.Create(System.Globalization.CultureInfo.InvariantCulture, $"raise --step-mm; {longest / 64.0:G3} mm gives at most 65 nodes along the longest side"));
+                    string.Create(invariant, $"this box and step need more than {MaximumSampledNodes:N0} nodes"),
+                    string.Create(invariant, $"raise --step-mm; {longest / 64.0 * 1e3:G3} mm gives at most 65 nodes along the longest side"));
             }
         }
 
+        // A flat axis gets the nominal spacing the per-channel cross-section export writes for its
+        // own flat axis (one metre): with one layer it places nothing, and VTK wants it non-zero.
         var spacing = new double[3];
 
         for (var axis = 0; axis < 3; axis++)
         {
-            spacing[axis] = counts[axis] > 1 ? (high[axis] - low[axis]) / (counts[axis] - 1) : 0.0;
+            spacing[axis] = counts[axis] > 1 ? (high[axis] - low[axis]) / (counts[axis] - 1) : FlatAxisSpacingMetres;
+        }
+
+        var stem = Path.GetFileNameWithoutExtension(absolute);
+        var target = Path.Combine(project.Scratch, $"{stem}.composite.vti");
+
+        string Spacing(int axis) =>
+            counts[axis] > 1 ? string.Create(invariant, $"{spacing[axis] * 1e3:G6}") : "flat";
+
+        var grid = string.Create(
+            invariant,
+            $"box ({low[0] * 1e3:G8}, {low[1] * 1e3:G8}, {low[2] * 1e3:G8}) to "
+            + $"({high[0] * 1e3:G8}, {high[1] * 1e3:G8}, {high[2] * 1e3:G8}) mm; "
+            + $"{counts[0]} x {counts[1]} x {counts[2]} = {nodes:N0} nodes at "
+            + $"({Spacing(0)}, {Spacing(1)}, {Spacing(2)}) mm");
+
+        var warnings = new List<ValidityWarning>(probe.Warnings);
+        warnings.AddRange(probe.InstantWarnings(atUs));
+
+        if (dryRun)
+        {
+            // Nothing is sampled: the grid and its size are the whole answer to "what would this
+            // write", and sampling eight million nodes to then discard them is not a dry run.
+            return new ExportOutcome
+            {
+                What = "composite field",
+                Format = "vti",
+                Artifacts = [target],
+                Written = false,
+                Warnings = warnings,
+                Grid = grid,
+            };
         }
 
         var potential = new double[nodes];
@@ -178,37 +229,25 @@ public static class ExportCommand
                 {
                     // The last node is the box's own face exactly, not low + (count-1) * spacing,
                     // which can land an ulp short.
-                    var sample = probe.At(
-                        0,
-                        new Core.Geometry.Vec3(
-                            i == counts[0] - 1 ? high[0] : low[0] + (i * spacing[0]),
-                            j == counts[1] - 1 ? high[1] : low[1] + (j * spacing[1]),
-                            k == counts[2] - 1 ? high[2] : low[2] + (k * spacing[2])),
-                        at);
+                    var point = new Core.Geometry.Vec3(
+                        i == counts[0] - 1 ? high[0] : low[0] + (i * spacing[0]),
+                        j == counts[1] - 1 ? high[1] : low[1] + (j * spacing[1]),
+                        k == counts[2] - 1 ? high[2] : low[2] + (k * spacing[2]));
 
-                    if (sample.PotentialV is { } phi && sample.FieldVPerM is { } e)
-                    {
-                        potential[n] = phi;
-                        field[3 * n] = e[0];
-                        field[(3 * n) + 1] = e[1];
-                        field[(3 * n) + 2] = e[2];
-                    }
-                    else
-                    {
-                        potential[n] = double.NaN;
-                        field[3 * n] = field[(3 * n) + 1] = field[(3 * n) + 2] = double.NaN;
-                        refused++;
-                    }
+                    var status = probe.Sample(in point, at, out var phi, out var e);
 
-                    outside += sample.Status == ProbeStatus.OutsideDomain ? 1 : 0;
-                    inside += sample.Status == ProbeStatus.InsideConductor ? 1 : 0;
+                    potential[n] = phi;
+                    field[3 * n] = e.X;
+                    field[(3 * n) + 1] = e.Y;
+                    field[(3 * n) + 2] = e.Z;
+
+                    refused += ReferenceEquals(status, ProbeStatus.Refused) ? 1 : 0;
+                    outside += ReferenceEquals(status, ProbeStatus.OutsideDomain) ? 1 : 0;
+                    inside += ReferenceEquals(status, ProbeStatus.InsideConductor) ? 1 : 0;
                     n++;
                 }
             }
         }
-
-        var warnings = new List<ValidityWarning>(probe.Warnings);
-        warnings.AddRange(probe.InstantWarnings(atUs));
 
         void Count(long count, string code, string message)
         {
@@ -216,55 +255,67 @@ public static class ExportCommand
             {
                 warnings.Add(new ValidityWarning(
                     code,
-                    string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{count:N0} of {nodes:N0} node(s) {message}"),
+                    string.Create(invariant, $"{count:N0} of {nodes:N0} node(s) {message}"),
                     WarningSeverity.Qualified));
             }
         }
 
         Count(inside, "probe.inside-conductor", "are inside a conductor, where the field is the interpolant's and not a physical one");
-        Count(outside, "probe.outside-domain", "lie outside every element's declared domain, where zero is the model's answer and not a measurement");
-        Count(refused, "probe.refused", "were refused by the field and are written as NaN");
+        Count(outside, "probe.outside-domain", "lie outside every element's domain, where the value is what the field returns outside what was solved or declared (not necessarily zero), not a solved value");
+        Count(refused, "probe.refused", "were refused by the field; they are written as nan and marked 0 in the valid array");
 
-        var invariant = System.Globalization.CultureInfo.InvariantCulture;
-        var stem = Path.GetFileNameWithoutExtension(absolute);
-        var target = Path.Combine(project.Scratch, $"{stem}.composite.vti");
+        var elements = string.Join(
+            ", ",
+            probe.Elements.Select(e => string.Create(
+                invariant,
+                $"element {e.Index} {e.Kind} ({e.Basis}{(e.CellMm is { } c ? $", cell {c:G4} mm" : string.Empty)})")));
 
-        if (!dryRun)
+        var provenance = new List<string>
         {
-            var elements = string.Join(
-                ", ",
-                probe.Elements.Select(e => string.Create(
-                    invariant,
-                    $"element {e.Index} {e.Kind} ({e.Basis}{(e.CellMm is { } c ? $", cell {c:G4} mm" : string.Empty)})")));
+            $"engine: {EngineBuild.Version}",
+            $"model: {probe.ModelHash}",
+            "the composite field a run flies through (every element summed), sampled on a regular grid",
+            grid,
+            probe.TimeVarying
+                ? string.Create(invariant, $"instant: t = {atUs ?? 0.0:G8} us (the field varies with time; this file is one frame of it)")
+                : "instant: none - the field does not vary with time",
+            "units: potential_V in volts, E_V_per_m in volts per metre (E = -grad phi); the grid itself is in metres",
+            "valid: 1 where the field answered, 0 where it refused the point; a refused node's values are "
+            + "written as nan (the lower-case spelling VTK itself writes), so read valid rather than relying on nan parsing",
+            "resampled: nodes are where this box puts them, not where the solves put theirs; " + elements,
+        };
 
-            var provenance = new List<string>
+        provenance.AddRange(warnings.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
+
+        // Streamed to a temporary file beside the target and moved into place, so an export the
+        // size of the cap never exists as one string, and an interrupted write leaves either the
+        // previous file or none rather than a truncated one. A plain write-then-move: this build
+        // has no shared atomic-write helper.
+        Directory.CreateDirectory(project.Scratch);
+        var temporary = $"{target}.{Guid.NewGuid():N}.tmp";
+
+        try
+        {
+            using (var writer = new StreamWriter(temporary, append: false, new System.Text.UTF8Encoding(false), 1 << 16))
             {
-                $"engine: {EngineBuild.Version}",
-                $"model: {ContentHash.OfText(text)}",
-                "the composite field a run flies through (every element summed), sampled on a regular grid",
-                string.Create(
-                    invariant,
-                    $"box: ({low[0]:G8}, {low[1]:G8}, {low[2]:G8}) to ({high[0]:G8}, {high[1]:G8}, {high[2]:G8}) mm; "
-                    + $"{counts[0]} x {counts[1]} x {counts[2]} nodes at ({spacing[0]:G6}, {spacing[1]:G6}, {spacing[2]:G6}) mm"),
-                probe.TimeVarying
-                    ? string.Create(invariant, $"instant: t = {atUs ?? 0.0:G8} us (the field varies with time; this file is one frame of it)")
-                    : "instant: none - the field does not vary with time",
-                "units: potential_V in volts, E_V_per_m in volts per metre (E = -grad phi); the grid itself is in metres",
-                "resampled: nodes are where this box puts them, not where the solves put theirs; " + elements,
-            };
-
-            provenance.AddRange(warnings.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
-
-            Directory.CreateDirectory(project.Scratch);
-            File.WriteAllText(
-                target,
                 Io.VtuWriter.WriteSampledField(
+                    writer,
                     counts,
-                    [low[0] * 1e-3, low[1] * 1e-3, low[2] * 1e-3],
-                    [spacing[0] * 1e-3, spacing[1] * 1e-3, spacing[2] * 1e-3],
+                    low,
+                    spacing,
                     potential,
                     field,
-                    provenance));
+                    provenance);
+            }
+
+            File.Move(temporary, target, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
         }
 
         return new ExportOutcome
@@ -272,10 +323,17 @@ public static class ExportCommand
             What = "composite field",
             Format = "vti",
             Artifacts = [target],
-            Written = !dryRun,
+            Written = true,
             Warnings = warnings,
+            Grid = grid,
         };
     }
+
+    /// <summary>
+    /// The spacing written for an axis with one layer of nodes, in metres: the value the
+    /// per-channel cross-section export writes for its flat axis.
+    /// </summary>
+    private const double FlatAxisSpacingMetres = 1.0;
 
     private static EinzelException Refuse(string path, string constraint, string suggestion) =>
         new(new EinzelError

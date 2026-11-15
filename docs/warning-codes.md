@@ -1407,7 +1407,7 @@ A driven or sequenced field was probed with no instant given.
 - **Raised by:** `probe`, `export --composite`
 - **When:** The field varies with time and no `--at-us` was given, so every value is the field at t = 0 us.
 - **What to do:** Give `--at-us` to choose the instant.
-- **Source:** `Einzel.Commands/ProbeCommand.cs:406` (used by `Einzel.Commands/ExportCommand.cs:211`)
+- **Source:** `Einzel.Commands/ProbeCommand.cs:442` (used by `Einzel.Commands/ExportCommand.cs`)
 
 ### probe.inside-conductor
 
@@ -1417,17 +1417,17 @@ Some probed points lie inside a conductor.
 - **Raised by:** `probe`
 - **When:** At least one sample has status `inside-conductor`; the message gives the count. The potential there is the electrode's and the field is the interpolant's, which is not a physical field inside metal.
 - **What to do:** Read those rows as the electrode's potential only; move the point or line into the vacuum if a field is wanted.
-- **Source:** `Einzel.Commands/ProbeCommand.cs:555`
+- **Source:** `Einzel.Commands/ProbeCommand.cs:704`
 
 ### probe.outside-domain
 
-Some probed points lie outside every element's declared domain.
+Some probed points lie outside every element's domain.
 
 - **Severity:** Qualified
-- **Raised by:** `probe`
-- **When:** At least one sample has status `outside-domain`. The zero potential and field reported there are the model's answer (nothing was solved or declared at that place), not a measurement of vacuum.
+- **Raised by:** `probe`, `export --composite`
+- **When:** At least one sample has status `outside-domain`: outside every solve (a reflected solve's mirror image and a tilted cross-section's rotated extent included) and every bounded analytic element's region. The value reported there is what the field returns outside what was solved or declared - not a solved value, not a measurement of vacuum, and not necessarily zero. It wins over `inside-conductor`, since a declared electrode can run on past its solve.
 - **What to do:** Probe inside a solve domain or an analytic element's region, or enlarge the domain.
-- **Source:** `Einzel.Commands/ProbeCommand.cs:565`
+- **Source:** `Einzel.Commands/ProbeCommand.cs:714`
 
 ### probe.refused
 
@@ -1437,7 +1437,7 @@ The field refused some probed points.
 - **Raised by:** `probe`
 - **When:** At least one sample has status `refused` (the field declined to answer, for example on a singular axis); the row's note says why.
 - **What to do:** Read the row's note; move the point off the singular place.
-- **Source:** `Einzel.Commands/ProbeCommand.cs:575`
+- **Source:** `Einzel.Commands/ProbeCommand.cs:724`
 
 
 ## Internal
