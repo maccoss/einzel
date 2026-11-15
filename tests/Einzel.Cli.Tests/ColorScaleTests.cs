@@ -189,6 +189,70 @@ public sealed class ColorScaleTests(ITestOutputHelper output)
         Assert.Empty(ViewportPicture.Scales(Outcome()));
     }
 
+    /// <summary>Metal that is not drawn does not widen the scale stated for what is.</summary>
+    /// <remarks>
+    /// The legend must describe exactly what is painted. A conductor with no triangles is
+    /// skipped by the composition, so a 900 V one beside a drawn 500 V one leaves the scale
+    /// at 500 - and the paint's own span agrees, which is asserted through the colors.
+    /// </remarks>
+    [Fact]
+    public void UndrawnMetalDoesNotWidenTheScale()
+    {
+        var outcome = Outcome(conductors: [Rod("drawn", 500.0, 0.0), Undrawn("hidden", 900.0, 0.0)]);
+
+        var scale = Assert.Single(ViewportPicture.Scales(outcome));
+
+        Assert.Equal("electrodes", scale.Quantity);
+        Assert.Equal(500.0, scale.High);
+
+        var mesh = Assert.Single(ViewportPicture.Compose(outcome).Single(l => l.Name == "conductors").Meshes);
+        var (r, g, b) = ColorRamp.Diverging(1.0);
+
+        Assert.Equal((r, g, b), (mesh.R, mesh.G, mesh.B));
+
+        Assert.Empty(ViewportPicture.Scales(Outcome(conductors: [Undrawn("hidden", 900.0, 0.0)])));
+    }
+
+    /// <summary>A monoenergetic bundle is one value, said as one value.</summary>
+    [Fact]
+    public void AMonoenergeticBundleIsASingleValue()
+    {
+        var outcome = Outcome(trajectories: [Path(4000.0, 4000.0)], lowEv: 4000.0, highEv: 4000.0);
+
+        var energy = Assert.Single(ViewportPicture.Scales(outcome));
+
+        Assert.True(energy.IsSingleValue);
+        Assert.False(new ColorScale("energy", "eV", 1.0, 2.0, false).IsSingleValue);
+    }
+
+    /// <summary>No picture has no scales.</summary>
+    [Fact]
+    public void NoPictureHasNoScales() => Assert.Empty(ViewportPicture.Scales(null));
+
+    /// <summary>The legend's ends are written so they differ whenever they do.</summary>
+    [Theory]
+    [InlineData(4000.0, 4000.05, "4000", "4000.05")]
+    [InlineData(-12.5, 12.5, "-12.5", "12.5")]
+    [InlineData(0.0, 0.001, "0", "0.001")]
+    [InlineData(1000000.0, 1000100.0, "1000000", "1000100")]
+    [InlineData(-900.0, -100.0, "-900", "-100")]
+    [InlineData(900.0, 2000.0, "900", "2000")]
+    [InlineData(5.0, 5.0, "5.00", "5.00")]
+    public void ScaleEndsAreWrittenToBeToldApart(double low, double high, string lowText, string highText)
+    {
+        var (l, h) = ScaleText.Ends(low, high);
+
+        output.WriteLine($"{low} .. {high} -> {l} .. {h}");
+
+        Assert.Equal(lowText, l);
+        Assert.Equal(highText, h);
+
+        if (low != high)
+        {
+            Assert.NotEqual(l, h);
+        }
+    }
+
     private static ViewportOutcome Outcome(
         IReadOnlyList<TrajectoryPath>? trajectories = null,
         IReadOnlyList<ConductorSurface>? conductors = null,
@@ -216,7 +280,13 @@ public sealed class ColorScaleTests(ITestOutputHelper output)
     private static TrajectoryPath Path(double fromEv, double toEv) =>
         new([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], [fromEv, toEv], "arrived");
 
+    /// <summary>A conductor that is drawn: it has a triangle.</summary>
     private static ConductorSurface Rod(string name, double dc, double drive) =>
+        new(name, dc, drive, VerticesMm: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            Normals: [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0], Triangles: [0, 1, 2]);
+
+    /// <summary>A conductor the viewport skips, because it has nothing to draw.</summary>
+    private static ConductorSurface Undrawn(string name, double dc, double drive) =>
         new(name, dc, drive, VerticesMm: [], Normals: [], Triangles: []);
 
     private static Equipotential Level(double volts) => new(volts, []);

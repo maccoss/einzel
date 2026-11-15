@@ -43,10 +43,11 @@ public sealed class LegendRowTests(ITestOutputHelper output)
     {
         var row = new LegendRow(new ColorScale("energy", "eV", value, value, Diverging: false));
 
-        output.WriteLine($"{value} -> {row.Low}");
+        output.WriteLine($"{value} -> {row.High}");
 
-        Assert.Equal(shown, row.Low);
-        Assert.DoesNotContain("E", row.Low, StringComparison.OrdinalIgnoreCase);
+        // Equal ends are one value, stated once, on the right.
+        Assert.Equal(shown + " eV", row.High);
+        Assert.DoesNotContain("E", row.High.Replace("eV", string.Empty), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>A value too small for a fixed format still carries its magnitude.</summary>
@@ -63,7 +64,37 @@ public sealed class LegendRowTests(ITestOutputHelper output)
 
         Assert.NotEqual("0", row.Low);
         Assert.NotEqual("0.00", row.Low);
+        Assert.NotEqual(row.Low, row.High.Replace(" V", string.Empty));
     }
+
+    /// <summary>A single-value scale is one value on one swatch color, not a gradient.</summary>
+    [Fact]
+    public void ASingleValueIsOneSolidSwatch()
+    {
+        var row = new LegendRow(new ColorScale("energy", "eV", 4000.0, 4000.0, Diverging: false));
+
+        Assert.Equal(string.Empty, row.Low);
+        Assert.Equal("4000 eV", row.High);
+
+        var solid = Assert.IsType<SolidColorBrush>(row.Swatch);
+        var (r, g, b) = ColorRamp.At(0.5);
+
+        Assert.Equal(Color.FromRgb((byte)Math.Round(r * 255.0), (byte)Math.Round(g * 255.0), (byte)Math.Round(b * 255.0)), solid.Color);
+    }
+
+    /// <summary>Ends that differ by less than a unit still print differently.</summary>
+    [Fact]
+    public void NearlyEqualEndsStayDistinguishable()
+    {
+        var row = new LegendRow(new ColorScale("energy", "eV", 4000.0, 4000.05, Diverging: false));
+
+        Assert.Equal("4000", row.Low);
+        Assert.Equal("4000.05 eV", row.High);
+    }
+
+    /// <summary>The legend is empty for no picture, so it cannot outlive one.</summary>
+    [Fact]
+    public void NoPictureHasNoLegendRows() => Assert.Empty(LegendRow.RowsFor(null));
 
     /// <summary>The unit travels with the row, on the end a reader finishes at.</summary>
     /// <remarks>

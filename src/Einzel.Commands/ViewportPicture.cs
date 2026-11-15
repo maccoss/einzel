@@ -67,7 +67,15 @@ public sealed record ColorScale(
     string Unit,
     double Low,
     double High,
-    bool Diverging);
+    bool Diverging)
+{
+    /// <summary>True where the two ends are one value, as for a monoenergetic bundle.</summary>
+    /// <remarks>
+    /// Every path of such a bundle is painted at the ramp's midpoint, so the scale it states
+    /// is one value on one color and not a gradient across a range nothing is drawn over.
+    /// </remarks>
+    public bool IsSingleValue => Low == High;
+}
 
 /// <summary>
 /// What the viewport draws, decided once, for everything that draws it.
@@ -233,8 +241,10 @@ public static class ViewportPicture
     /// Energy where there are trajectories, then the potential scales, in drawing order;
     /// empty for a picture whose layers carry no quantity, such as bare geometry at earth.
     /// </returns>
-    /// <exception cref="ArgumentNullException"><paramref name="outcome"/> is null.</exception>
     /// <remarks>
+    /// <para>
+    /// <b>A null outcome, meaning no picture, has no scales.</b>
+    /// </para>
     /// <para>
     /// <b>Shown only where it means something</b>, which is the rule the viewport draws by: a
     /// diffusive model has no trajectories, so an energy scale under it would state a range
@@ -251,9 +261,14 @@ public static class ViewportPicture
     /// question about the picture and is recorded in <c>docs/shell.md</c>.
     /// </para>
     /// </remarks>
-    public static IReadOnlyList<ColorScale> Scales(ViewportOutcome outcome)
+    public static IReadOnlyList<ColorScale> Scales(ViewportOutcome? outcome)
     {
-        ArgumentNullException.ThrowIfNull(outcome);
+        // No picture, no scales: what a window shows when it has cleared its viewport or has
+        // not drawn one yet. Decided here so it is not a second rule in code-behind.
+        if (outcome is null)
+        {
+            return [];
+        }
 
         var scales = new List<ColorScale>(3);
 
@@ -268,13 +283,10 @@ public static class ViewportPicture
 
         // The TRUE widest rather than Shading.Span, whose fallback of one volt exists so the
         // fraction it feeds cannot divide by zero. A geometry entirely at earth has no
-        // potential scale to state, and stating a one-volt one would invent a range.
-        var metal = 0.0;
-
-        foreach (var conductor in outcome.Conductors)
-        {
-            metal = Math.Max(metal, Math.Abs(Shading.Peak(conductor)));
-        }
+        // potential scale to state, and stating a one-volt one would invent a range. Over the
+        // conductors that are DRAWN, as the paint's span is: metal with no triangles is not
+        // on the screen and must not widen a scale stated for what is.
+        var metal = Shading.Widest(Drawn(outcome));
 
         // ONE ROW WHERE THE TWO ARE THE SAME RAMP TO LOOK AT, which is what a legend is
         // read against. The tolerance is relative and perceptual rather than a rounding: on
@@ -385,18 +397,18 @@ public static class ViewportPicture
         return lines;
     }
 
+    /// <summary>The conductors that have anything to draw: what both the paint and the legend span.</summary>
+    private static List<ConductorSurface> Drawn(ViewportOutcome outcome) =>
+        outcome.Conductors.Where(c => c.Triangles.Count > 0).ToList();
+
     private static List<PictureMesh> Conductors(ViewportOutcome outcome)
     {
-        var span = Shading.Span(outcome.Conductors);
+        var drawn = Drawn(outcome);
+        var span = Shading.Span(drawn);
         var meshes = new List<PictureMesh>();
 
-        foreach (var conductor in outcome.Conductors)
+        foreach (var conductor in drawn)
         {
-            if (conductor.Triangles.Count == 0)
-            {
-                continue;
-            }
-
             var (r, g, b) = ColorRamp.Diverging(Shading.Fraction(conductor, span));
 
             meshes.Add(new PictureMesh(conductor.VerticesMm, conductor.Normals, conductor.Triangles, r, g, b));

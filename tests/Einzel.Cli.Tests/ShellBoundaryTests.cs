@@ -158,11 +158,13 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
     /// here rather than slipping in beside the second.
     /// </para>
     /// </remarks>
-    [Theory]
-    [InlineData("Einzel.Shell", "einzel-shell", "Einzel.Commands,Einzel.Update")]
-    public void TheShellReachesThePlatformThroughTheCommandLayer(
-        string project, string assembly, string allowed)
+    [Fact]
+    public void TheShellReachesThePlatformThroughTheCommandLayer()
     {
+        const string project = "Einzel.Shell";
+        const string assembly = "einzel-shell";
+        const string allowed = "Einzel.Commands,Einzel.Update";
+
         // Found by path rather than by name: this test project deliberately does not
         // reference the shell - that is the invariant above - so there is no assembly
         // identity to resolve and nothing copies it here.
