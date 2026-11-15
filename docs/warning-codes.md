@@ -1407,7 +1407,7 @@ A driven or sequenced field was probed with no instant given.
 - **Raised by:** `probe`, `export --composite`
 - **When:** The field varies with time and no `--at-us` was given, so every value is the field at t = 0 us.
 - **What to do:** Give `--at-us` to choose the instant.
-- **Source:** `Einzel.Commands/ProbeCommand.cs:442` (used by `Einzel.Commands/ExportCommand.cs`)
+- **Source:** `Einzel.Commands/ProbeCommand.cs:442` (used by `Einzel.Commands/ExportCommand.cs:199`)
 
 ### probe.inside-conductor
 
