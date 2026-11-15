@@ -325,11 +325,19 @@ public static class PoissonSolver2D
 
     /// <summary>The coarse-grid correction for one level of a V-cycle, in a frame of its own.</summary>
     /// <remarks>
-    /// Split out of <see cref="VCycle"/> for the reason <see cref="RestrictedResidual"/> is: so
-    /// that what a coarse level allocates cannot outlive it in whichever tier of the JIT is
-    /// running. A plane build with cut links read 143.4 bytes a node with call counting off -
-    /// first-tier code throughout - against 135.4 fully optimised; with the descent in these
-    /// two frames it reads 135.4 in both, as <c>SolveMemoryTests</c> measures.
+    /// <para>
+    /// Split out of <see cref="VCycle"/> so that the coarse level's right-hand side is a local of
+    /// a frame that has returned by the time this level prolongs and smooths, whichever tier of
+    /// the JIT is running.
+    /// </para>
+    /// <para>
+    /// <b>It is not what fixed the peak, and that was measured.</b> With this frame inlined
+    /// back and <see cref="RestrictedResidual"/> kept, a first-tier plane build reads 135.57
+    /// bytes a node, the same as with both frames; with <see cref="RestrictedResidual"/> inlined
+    /// and this frame kept it reads 143.57. The coarse arrays this holds are alive through the
+    /// recursion either way, because the recursion works on them; the fine residual was the one
+    /// array that had no business there. <c>FirstTierMemoryTests</c> is the guard.
+    /// </para>
     /// </remarks>
     private static ScalarField2D Correction(
         ScalarField2D potential,
@@ -370,6 +378,8 @@ public static class PoissonSolver2D
     /// <c>SelfFieldMemoryTests</c> as 67 bytes a node against 62 on a slow runner, and
     /// reproduced every time with call counting switched off. Here the array is a local of a
     /// frame that has returned before the recursion starts, so no tier can keep it.
+    /// <c>FirstTierMemoryTests</c> measures a solve in a child process with promotion switched
+    /// off, so putting this back inline fails on every machine rather than on a slow one.
     /// </remarks>
     private static ScalarField2D RestrictedResidual(
         ScalarField2D potential, ScalarField2D rightHandSide, DirichletMask mask, DirichletMask coarseMask)

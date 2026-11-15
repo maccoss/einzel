@@ -524,10 +524,12 @@ public static class PoissonSolver3D
     /// The coarse-grid correction for one level of <see cref="Cycle"/>, in a frame of its own.
     /// </summary>
     /// <remarks>
-    /// A frame of its own so the coarse level's arrays cannot outlive it, whichever tier of the
-    /// JIT is running: see <see cref="PoissonSolver2D"/>'s <c>Correction</c> for the measurement.
-    /// The fine residual has its own frame for the same reason, so it is dead before the
-    /// recursion starts.
+    /// A frame of its own so the coarse level's arrays are gone by the time this level
+    /// prolongs and smooths, whichever tier of the JIT is running; see
+    /// <see cref="PoissonSolver2D"/>'s <c>Correction</c>. The frame that matters for the peak is
+    /// <see cref="RestrictedResidual"/>'s, which makes the fine residual dead before the
+    /// recursion starts: inlined back, a first-tier sphere reads 47.94 bytes a node against
+    /// 45.25, while inlining this one back changes nothing. <c>FirstTierMemoryTests</c> guards it.
     /// </remarks>
     private static ScalarField3D Correction(
         ScalarField3D potential,
