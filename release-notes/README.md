@@ -221,9 +221,11 @@ GitHub Release once.
    ```bash
    dotnet build --configuration Release
    dotnet test --configuration Release
-   dotnet publish src/Einzel.Cli -c Release -r win-x64 --self-contained false -o /tmp/ship   # your own RID
-   dotnet publish src/Einzel.Mcp   -c Release -r win-x64 --self-contained false -o /tmp/ship
-   dotnet publish src/Einzel.Shell -c Release -r win-x64 --self-contained false -o /tmp/ship
+   dotnet publish src/Einzel.Cli -c Release -r win-x64 --self-contained false -o /tmp/pub/einzel   # your own RID
+   dotnet publish src/Einzel.Mcp   -c Release -r win-x64 --self-contained false -o /tmp/pub/einzel-mcp
+   dotnet publish src/Einzel.Shell -c Release -r win-x64 --self-contained false -o /tmp/pub/einzel-shell
+   pwsh tools/release/merge-publish.ps1 -Destination /tmp/ship \
+     einzel=/tmp/pub/einzel einzel-mcp=/tmp/pub/einzel-mcp einzel-shell=/tmp/pub/einzel-shell
    /tmp/ship/einzel --version        # must start with <version>; the +sha suffix is the commit
    /tmp/ship/einzel doctor
    ```
@@ -241,5 +243,5 @@ GitHub Release once.
 To prove the workflow without publishing, run it by hand from the Actions tab (`Release`,
 *Run workflow*): it builds and checks every archive and packs the installer (against
 `RELEASE_NOTES_next.md`) exactly as a tag does, and publishes nothing.
-The workflow marks a tag containing `alpha`, `beta` or `rc` as a prerelease, but it also refuses
-any tag that is not digits and dots, so a prerelease tag needs that rule relaxed first.
+Prerelease tags are not supported: the workflow refuses any tag that is not digits and dots, and
+publishes every release with `prerelease: false`. Relax the tag rule first if they are ever wanted.

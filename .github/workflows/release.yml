@@ -134,23 +134,34 @@ jobs:
         with:
           global-json-file: global.json
 
-      # Three apps into one directory per platform. They share the engine assemblies (identical
-      # files, written identically) and each keeps its own .deps.json and .runtimeconfig.json,
-      # named after its assembly, so they do not collide. One archive rather than a CLI one and a
+      # Three apps, one directory per platform. Each keeps its own .deps.json and
+      # .runtimeconfig.json, named after its assembly. One archive rather than a CLI one and a
       # shell one: framework-dependent, the window adds only the Avalonia and Skia files, so a
       # second download buys little, and one archive means nobody has to work out which of two to
       # fetch.
+      #
+      # Each app is published to its OWN directory and then merged, never published on top of
+      # another: a dependency two apps resolved at different versions would otherwise be
+      # overwritten by the last publish while an earlier app's .deps.json still named the other
+      # version. tools/release/merge-publish.ps1 fails, naming the file and the apps, if two
+      # publishes produced a same-named file with different content.
       #
       # No -p:Version: the version is whatever the tree carries, and the `version` job has
       # already proved the tag equals it.
       - name: Publish einzel, einzel-mcp and einzel-shell (${{ matrix.rid }})
         shell: bash
         run: |
-          for proj in Einzel.Cli Einzel.Mcp Einzel.Shell; do
-            dotnet publish src/$proj -c Release -r ${{ matrix.rid }} \
+          for app in einzel:Einzel.Cli einzel-mcp:Einzel.Mcp einzel-shell:Einzel.Shell; do
+            dotnet publish "src/${app#*:}" -c Release -r ${{ matrix.rid }} \
               --self-contained false -p:PublishSingleFile=false \
-              -o "dist/$ASSET"
+              -o "dist/pub/${app%%:*}"
           done
+
+      - name: Merge the three publishes, refusing any file they disagree about
+        shell: pwsh
+        run: |
+          ./tools/release/merge-publish.ps1 -Destination "dist/$env:ASSET" `
+            einzel=dist/pub/einzel einzel-mcp=dist/pub/einzel-mcp einzel-shell=dist/pub/einzel-shell
 
       - name: Add the documents
         shell: bash
@@ -259,6 +270,13 @@ jobs:
           echo "contents of $ASSET:"; find . -type f | sort | head -300
           exit $fail
 
+      # The window cannot be started here (no headless mode, and four legs cannot execute their
+      # RID at all), so the next best thing: every assembly and native library each app's
+      # .deps.json names must be in the directory, where the host will look for it.
+      - name: Check every dependency manifest resolves
+        shell: pwsh
+        run: ./tools/release/check-deps.ps1 -Directory "dist/$env:ASSET" einzel einzel-mcp einzel-shell
+
       # THE ONE DELIBERATE ADDITION to the prism pattern, which asserts contents and never runs
       # what it built. Einzel promises a cold start under 500 ms and a model that runs straight
       # from `init`, and a missing runtime asset in the CLI shows only when it is executed. A
@@ -278,7 +296,12 @@ jobs:
           "$exe" run smoke/models/reflectron.json
           "$exe" test smoke
           "$exe" schema > /dev/null
-          rm -rf smoke
+          # The live-session server: started on the model just made, it serves stdio and must
+          # exit cleanly when its input closes, which is what a client hanging up looks like.
+          ./einzel-mcp${{ matrix.exe }} --help
+          timeout 120 ./einzel-mcp${{ matrix.exe }} smoke/models/reflectron.json < /dev/null > mcp.out
+          if [ -s mcp.out ]; then echo "::error::einzel-mcp wrote to stdout with no client"; exit 1; fi
+          rm -rf smoke mcp.out
 
       - name: Archive (zip)
         if: matrix.archive == 'zip'
@@ -335,16 +358,25 @@ jobs:
       # Three apps into ONE directory, which Velopack packs as the install. Each keeps its own
       # <app>.deps.json and <app>.runtimeconfig.json, named after its assembly; LabOps shipped two
       # releases whose app carried another program's dependency manifest and did not start, so
-      # the next step asserts it rather than trusting it.
+      # the next step asserts it rather than trusting it. Published separately and merged, as the
+      # archives are, so a dependency the apps resolved differently fails here instead of being
+      # overwritten by whichever publish ran last.
       - name: Publish einzel, einzel-mcp and einzel-shell (win-x64, self-contained)
         shell: bash
         run: |
-          for proj in Einzel.Cli Einzel.Mcp Einzel.Shell; do
-            dotnet publish src/$proj -c Release -r win-x64 \
+          for app in einzel:Einzel.Cli einzel-mcp:Einzel.Mcp einzel-shell:Einzel.Shell; do
+            dotnet publish "src/${app#*:}" -c Release -r win-x64 \
               --self-contained true -p:PublishSingleFile=false \
-              -o dist/installer
+              -o "dist/installer-pub/${app%%:*}"
           done
-          cp LICENSE README.md dist/installer/
+
+      - name: Merge the three publishes, refusing any file they disagree about
+        shell: pwsh
+        run: |
+          ./tools/release/merge-publish.ps1 -Destination dist/installer `
+            einzel=dist/installer-pub/einzel einzel-mcp=dist/installer-pub/einzel-mcp einzel-shell=dist/installer-pub/einzel-shell
+          Copy-Item LICENSE, README.md dist/installer/
+          ./tools/release/check-deps.ps1 -Directory dist/installer einzel einzel-mcp einzel-shell
 
       - name: Check the installed directory
         shell: pwsh
@@ -375,8 +407,8 @@ jobs:
           if (Test-Path "$dir/einzel-shell-wpf.exe") { Fail "the retired WPF shell is not shipped" }
           if ($fail) { exit 1 }
 
-      # The CLI as it will be installed, run before it is packed. The window is not started: it
-      # has no headless mode.
+      # The CLI and the MCP server as they will be installed, run before they are packed. The
+      # window is not started: it has no headless mode; its manifest was checked above.
       - name: Smoke test the installed CLI
         shell: bash
         run: |
@@ -385,7 +417,10 @@ jobs:
           ./einzel.exe doctor
           ./einzel.exe init smoke
           ./einzel.exe run smoke/models/reflectron.json
-          rm -rf smoke
+          ./einzel-mcp.exe --help
+          timeout 120 ./einzel-mcp.exe smoke/models/reflectron.json < /dev/null > mcp.out
+          if [ -s mcp.out ]; then echo "::error::einzel-mcp wrote to stdout with no client"; exit 1; fi
+          rm -rf smoke mcp.out
 
       # A tag uses its own notes, exactly as the `release` job does. A dispatch run is a dry run
       # and packs against the draft, so the whole path is exercised before the first tag.
@@ -537,4 +572,6 @@ jobs:
             artifacts/einzel-installer/*
             artifacts/SHA256SUMS.txt
           body_path: ${{ steps.notes.outputs.notes }}
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          # Prerelease tags are not supported: the `version` job refuses any tag that is not
+          # digits and dots, so an alpha/beta/rc tag never reaches this job.
+          prerelease: false
