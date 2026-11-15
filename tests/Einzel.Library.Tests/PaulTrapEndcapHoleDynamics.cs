@@ -320,9 +320,17 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
             // The effective radius describes the motion to a part in a thousand, holes or not.
             Assert.Equal(1.0, betaZ / predicted, 2);
 
-            // And the edge, in the q the field implies, is at the Mathieu boundary to a
-            // percent - the holes and the stretch move the volts, not the boundary.
-            Assert.InRange(perVolt * held, 0.90, 0.92);
+            // And the edge, in the q the field implies, is at the Mathieu boundary of 0.908 to
+            // two percent - the holes and the stretch move the volts far more than the boundary.
+            // Two percent and not one, for two reasons the first band ignored. The holes really
+            // do push the edge outward by about one and a half percent, which is this study's
+            // own finding (docs/device-templates.md), so a band ending at 0.92 was asserting
+            // less than the measurement it sat beside. And an ejection edge found by bisection
+            // is where growth is slowest, so its last digits belong to the platform's
+            // arithmetic as much as to the trap: with both holes it is 759.4-760.2 V
+            // (q 0.9191-0.9200) on Windows and 762.5-763.3 V (0.9229-0.9238) on Linux, 0.4
+            // percent apart. The first band passed on Windows by 0.0009 and failed on Linux.
+            Assert.InRange(perVolt * held, 0.89, 0.93);
         }
 
         output.WriteLine("");

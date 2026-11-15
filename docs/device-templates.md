@@ -2062,7 +2062,7 @@ effective radius from the field's curvature; `q_nom` the declared 4 mm.
 - **The effective radius describes the small-amplitude motion in every geometry**, to three
   parts in ten thousand: the holes and the stretch change the scale, and Mathieu at the
   rescaled q is still right.
-- **The holes push the ejection edge outward in q_eff** by 1.5 percent, to 0.919. An octupole of
+- **The holes push the ejection edge outward in q_eff** by 1.5 percent, to 0.919. (That is the Windows figure; on Linux the same bisection gives 762.5-763.3 V, q_eff 0.9229-0.9238 - an ejection edge is where growth is slowest, so its last digits depend on the platform's arithmetic, here by 0.4 percent. The test holds the edge to two percent of 0.908 for that reason.) An octupole of
   the opposite sign to the quadrupole makes the axial field grow faster than linearly, which
   shifts the large-amplitude motion and so where an ion reaches the endcap; the direction is
   consistent with the octupole above, but the edge was not decomposed into its causes. The stretch, reducing the
