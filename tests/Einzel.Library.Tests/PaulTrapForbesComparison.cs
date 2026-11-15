@@ -318,6 +318,15 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
         Assert.Equal(fzEff, matched.AxialKHz, 0.5);
         Assert.Equal(frEff, matched.RadialKHz, 0.5);
 
+        // And against the three programs' own published lines (Forbes 1999, table 2), which is
+        // the cross-code check: SIMION and ITSIM give 161.1 kHz axially and ISIS 161.0; radially
+        // SIMION gives 78.7 and the other two 78.4. The paper quotes four figures, so the band is
+        // the spread of the three plus one unit in their last place either side. Asserted on the
+        // published values rather than on Mathieu, because agreeing with a formula this engine
+        // also evaluates is not agreeing with another code.
+        Assert.InRange(matched.AxialKHz, 161.0 - 0.1, 161.1 + 0.1);
+        Assert.InRange(matched.RadialKHz, 78.4 - 0.1, 78.7 + 0.1);
+
         // The excursions: the ideal field, to a few per cent.
         Assert.Equal(reference.ZMax, matched.ZMax, 0.03);
         Assert.Equal(reference.ZMin, matched.ZMin, 0.03);
