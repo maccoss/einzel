@@ -153,6 +153,17 @@ internal static class DormandPrince54
             ? driven.ElectricFieldAt(in position, timeSeconds)
             : field.ElectricFieldAt(in position);
 
+        // The velocity-dependent half of the Lorentz force, F = q (E + v x B). A second
+        // type test, failed the same way by every model without a magnet, and nothing else
+        // on that path: the arithmetic below is untouched for them, which is what keeps
+        // every validated number bit-identical. v x B has the dimension of an electric field
+        // (m/s times tesla is V/m), so it is added before the one multiplication by q/m.
+        // Non-relativistic, as the rest of transport is: no gamma, here or anywhere.
+        if (field is Einzel.Fields.Magnetic.IMagneticField magnetic)
+        {
+            acceleration += Vec3.Cross(state.Velocity, magnetic.MagneticFieldAt(in position));
+        }
+
         return new PhaseDerivative(state.Velocity, acceleration * chargeToMass);
     }
 

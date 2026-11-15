@@ -204,6 +204,22 @@ public static class TrajectoryIntegrator
             ? driven.ShortestPeriodSeconds / StepsPerRfPeriod
             : double.PositiveInfinity;
 
+        // The same argument for a magnet, with the cyclotron period in place of the RF
+        // one. An ion in B is on a circle of period 2 pi m / (|q| B) whatever its energy, and
+        // a step that spanned a large part of a turn would have its embedded estimate compare
+        // two solutions that both cut the chord. Folded into periodStep so every place that
+        // caps by the drive also caps by the gyration. Infinite without a magnet, so a model
+        // without one takes min(x, +inf) = x and is unchanged to the bit.
+        var magnetic = field as Einzel.Fields.Magnetic.IMagneticField;
+
+        if (magnetic is not null && magnetic.MaximumFluxDensity > 0.0 && species.ChargeSi != 0.0)
+        {
+            var cyclotronPeriod = 2.0 * Math.PI * species.MassSi
+                / (Math.Abs(species.ChargeSi) * magnetic.MaximumFluxDensity);
+
+            periodStep = Math.Min(periodStep, cyclotronPeriod / StepsPerCyclotronPeriod);
+        }
+
         // Computed once, since neither of these changes mid-flight.
         //
         // The turning-point cap is off for a driven field because an oscillating
@@ -219,7 +235,12 @@ public static class TrajectoryIntegrator
         // for ordinary physics. The measured evidence in section 11's own findings
         // is that the cap does not help and slightly hurts even where it does fire
         // harmlessly.
-        var stepSettings = driven is null && collisions is null
+        //
+        // A magnet is the third case. The magnetic force is perpendicular to the velocity,
+        // so v . a is zero to rounding and the cap's "decelerating" test fires on the sign of
+        // a round-off - and in crossed E and B an ion on a cycloid is at a velocity minimum
+        // once per gyration, which is the RF argument exactly.
+        var stepSettings = driven is null && collisions is null && magnetic is null
             ? settings
             : settings with { TurningPointStepFactor = 0.0 };
 
@@ -505,6 +526,20 @@ public static class TrajectoryIntegrator
     /// repairs.
     /// </remarks>
     private const double StepsPerRfPeriod = 20.0;
+
+    /// <summary>
+    /// The largest fraction of a cyclotron turn a step may span: one twentieth, 18 degrees.
+    /// </summary>
+    /// <remarks>
+    /// The same twenty steps a cycle the RF cap uses, for the same reason: it is a guard
+    /// against an error estimate fooled by a step comparable to the period, not the thing
+    /// that sets accuracy. At 18 degrees a turn the fifth-order local error of a circle is
+    /// of order (pi/10)^6 / 720, about 1e-6 of the radius per step, so at the tolerances
+    /// this engine runs (1e-8 and tighter) the error controller is what binds and the cap
+    /// only bites when a tolerance is loose or when an ion enters a magnet from a long
+    /// field-free step that the controller has grown.
+    /// </remarks>
+    private const double StepsPerCyclotronPeriod = 20.0;
 
     private static double BoundaryLandingStep(
         in PhaseState state,
