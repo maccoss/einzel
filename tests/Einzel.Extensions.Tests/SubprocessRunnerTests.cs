@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Einzel.Core.Errors;
 using Einzel.Extensions;
@@ -73,21 +74,45 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
         var manifest = ExtensionCatalogue.Read(
             Path.Combine(folder, ExtensionCatalogue.ManifestName));
 
-        // A manifest that leaves the timeout at its default is not a test of the timeout, so it
-        // is given room. The default is thirty seconds, which is generous for a script that
-        // doubles a number - and was still not enough on a windows-latest runner sharing four
-        // cores with a dozen test hosts, where starting CPython took longer than that and
-        // AnObjectiveExtensionRoundTrips failed as COST_GATE_REFUSED. The same starvation took
-        // the live-session tests past their client's limit. The runaway test declares its own
-        // 1200 ms and keeps it, which is what makes this a statement about the tests that are
-        // not timing anything rather than a looser bound on the one that is.
-        if (manifest.Resources.TimeoutMs == new ExtensionResources().TimeoutMs)
-        {
-            manifest = manifest with { Resources = manifest.Resources with { TimeoutMs = 180_000 } };
-        }
-
         return new SubprocessRunner(Interpreter!)
             .Run(manifest, folder, input, Path.Combine(_root, "scratch"));
+    }
+
+    /// <summary>What an extension gets when its manifest says nothing about time: thirty seconds.</summary>
+    /// <remarks>
+    /// <para>
+    /// The number, not a run against it. Every manifest in this class that is not timing
+    /// anything declares <c>"resources": { "timeoutMs": 180000 }</c> - three minutes - because
+    /// thirty seconds, generous for a script that doubles a number, was still not enough on a
+    /// windows-latest runner sharing four cores with a dozen test hosts: starting CPython took
+    /// longer than that, and a round trip failed as a timeout that was the machine's. The
+    /// runaway test declares its own 1200 ms and keeps it.
+    /// </para>
+    /// <para>
+    /// <b>Declared in the manifest, which is data the test writes</b>, rather than by stretching
+    /// whatever the parsed manifest held when it equalled the default: that also stretched a
+    /// manifest declaring thirty seconds on purpose, and reached only the runs this class makes,
+    /// where a CLI test's extension is read from disk by <c>einzel ext test</c> or a study.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheDefaultTimeoutIsThirtySeconds()
+    {
+        Assert.Equal(30_000, new ExtensionResources().TimeoutMs);
+
+        var manifest = JsonSerializer.Deserialize<ExtensionManifest>(
+            """
+            {
+              "manifestVersion": "0.1",
+              "name": "silent",
+              "version": "0.1.0",
+              "kind": "analysis",
+              "entry": "extension.py"
+            }
+            """,
+            ExtensionCatalogue.Options)!;
+
+        Assert.Equal(30_000, manifest.Resources.TimeoutMs);
     }
 
     [Fact]
@@ -104,6 +129,7 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
               "version": "1.0.0",
               "description": "A objective that prefers a short instrument.",
               "kind": "objective",
+              "resources": { "timeoutMs": 180000 },
               "trust": "sandboxed",
               "entry": "extension.py",
               "function": "run",
@@ -157,6 +183,7 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
               "name": "wrong-shape",
               "version": "0.1.0",
               "kind": "objective",
+              "resources": { "timeoutMs": 180000 },
               "entry": "extension.py",
               "outputSchema": {
                 "type": "object",
@@ -194,6 +221,7 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
               "name": "throws",
               "version": "0.1.0",
               "kind": "analysis",
+              "resources": { "timeoutMs": 180000 },
               "entry": "extension.py"
             }
             """,
@@ -343,6 +371,7 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
                   "name": "peeks",
                   "version": "0.1.0",
                   "kind": "analysis",
+                  "resources": { "timeoutMs": 180000 },
                   "entry": "extension.py"
                 }
                 """,
@@ -470,6 +499,7 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
               "name": "trivial",
               "version": "0.1.0",
               "kind": "objective",
+              "resources": { "timeoutMs": 180000 },
               "entry": "extension.py"
             }
             """,
