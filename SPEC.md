@@ -2893,9 +2893,9 @@ test had: all reported, none re-checked unless marked.
 `review/installable-and-usable`. The release workflow published `Einzel.Wpf` as the only shell
 and had no macOS asset (confirmed), so deleting WPF as item 5 plans would have shipped no
 window at all — **settled**: the workflow now carries the Avalonia shell in every archive,
-macOS included, and `Einzel.Wpf` is deleted (item 5.4); the Avalonia window cannot cancel a
-run, though `ShellSession.WatchAsync` takes a token
-(confirmed), and cannot open a model or start one from a template; README, `docs/README.md`,
+macOS included, and `Einzel.Wpf` is deleted (item 5.4); the Avalonia window now has a Stop for a
+watched run (`ShellSession.WatchAsync` takes the token), opens a model and starts one from a
+template - what it still cannot do is stop results or regime; README, `docs/README.md`,
 `docs/shell.md`, `docs/architecture.md` and `docs/model-format.md` say 19 templates, schema 0.9
 and a Windows shell against 23, 0.14 and Avalonia; and there is no first-lens tutorial, no
 page mapping SIMION's terms onto these, and no index of warning and error codes.
