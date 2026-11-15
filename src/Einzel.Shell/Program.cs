@@ -24,6 +24,14 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Must be first. On an installer hook (install, update, uninstall) Velopack runs the
+        // hook and ends the process here, before a window or a culture exists; with an update
+        // staged it applies it and restarts. In a copy Velopack does not manage it returns at
+        // once. Nothing in this call touches the network - the update check is the window's,
+        // once, after it opens. Spelled out here rather than inside Einzel.Update because
+        // `vpk pack` checks that the main executable's own assembly calls Build() and Run().
+        Einzel.Update.InstallHooks.Configure(Velopack.VelopackApp.Build().SetArgs(args)).Run();
+
         UseInvariantNumbers();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
