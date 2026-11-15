@@ -614,14 +614,29 @@ public sealed class SelfFieldMemoryTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// The readings agree from above: the largest is within the tolerance of the middle one.
+    /// </summary>
+    /// <remarks>
+    /// One-sided, because the two ways a reading can be wrong are not symmetric. A reading is
+    /// the largest live set a sampler thread SAW while the run was going, so a sampler that is
+    /// descheduled across the peak reads low - on an ubuntu-latest runner one of five read
+    /// 1821.7 KiB beside four at 5061 to 5094, and a two-sided spread failed a run that held
+    /// exactly what it should. Nothing makes a reading high except memory that was really
+    /// live. So a run that holds an extra array in some repetitions and not others shows as
+    /// readings ABOVE the middle one, which is what this refuses; a missed peak shows below
+    /// it and is the sampler's, not the run's. The middle of five tolerates two misses, and a
+    /// third would put the miss in the middle and fail the size assertion that follows.
+    /// </remarks>
     private static void AssertAgree(double[] readings, double tolerance, string which)
     {
-        var spread = readings.Max() - readings.Min();
+        var sorted = readings.Order().ToArray();
+        var above = sorted[^1] - sorted[sorted.Length / 2];
 
         Assert.True(
-            spread <= tolerance,
-            $"the {which} run's readings spread {spread / 1024.0:F1} KiB, more than the {tolerance / 1024.0:F1} "
-            + "allowed: repetitions of one run held different arrays");
+            above <= tolerance,
+            $"the {which} run's largest reading is {above / 1024.0:F1} KiB above its middle one, more than the "
+            + $"{tolerance / 1024.0:F1} allowed: repetitions of one run held different arrays");
     }
 
     /// <summary>A diffusive run's live peak above its baseline, its readings, its self-field solves, and its grid's nodes.</summary>
