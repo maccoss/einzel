@@ -173,7 +173,13 @@ public sealed partial class MainWindow : Window, IDisposable
         };
 
         _watch.Click += (_, _) => _ = WatchAsync();
-        _stop.Click += (_, _) => _gate.Stop();
+        _stop.Click += (_, _) =>
+        {
+            if (_gate.Stop())
+            {
+                _status.Text = _gate.StoppingStatus;
+            }
+        };
         _undo.Click += (_, _) => Undo();
 
         _openModel.Click += (_, _) => _ = OpenFromPickerAsync();
@@ -368,7 +374,15 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
-        Adopt(() => ShellSession.New(destination, source, name, Person()), destination);
+        // Built once inside New so that a model which fails to open is removed again rather than
+        // left to block the retry with "already exists"; Adopt then builds the tree it shows.
+        Adopt(
+            () => ShellSession.New(destination, source, name, Person(), s =>
+            {
+                _ = new ModelTreeViewModel(s);
+                return s;
+            }),
+            destination);
     }
 
     /// <summary>Makes a session the one the window is looking at, or says why it could not be.</summary>

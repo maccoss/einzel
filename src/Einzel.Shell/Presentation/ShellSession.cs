@@ -115,7 +115,43 @@ public sealed class ShellSession
     public static ShellSession New(
         string destination, ModelSource source, string name, JournalAuthor person)
     {
+        return New(destination, source, name, person, static s => s);
+    }
+
+    /// <summary>
+    /// Writes a new model as <see cref="New(string, ModelSource, string, JournalAuthor)"/> does,
+    /// opens it, and hands it to <paramref name="adopt"/> - and if anything after the write
+    /// fails, removes exactly the files this call wrote.
+    /// </summary>
+    /// <typeparam name="T">What adopting produces.</typeparam>
+    /// <param name="destination">Where the model is to be written. Must not exist.</param>
+    /// <param name="source">Whether <paramref name="name"/> is a device template or an example.</param>
+    /// <param name="name">The template or example.</param>
+    /// <param name="person">Who is at the keyboard.</param>
+    /// <param name="adopt">
+    /// What the window does with the new session - for instance, building its model tree. A
+    /// throw here is treated as the new model failing to open.
+    /// </param>
+    /// <returns>What <paramref name="adopt"/> returned.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A model that failed to open must not be left behind.</b> The command writes the model,
+    /// an example's data files and its test before the session exists, so a failure afterwards
+    /// left an orphan that blocked the obvious retry with "already exists" - a refusal about a
+    /// file the person never got to see.
+    /// </para>
+    /// <para>
+    /// <b>Only what this call created.</b> The model is refused by the command if it exists, so
+    /// it is always new; the test path the command reports is one it found absent; an example's
+    /// data file is removed only if it was not there before the call. Nothing that was already
+    /// on disk is ever deleted.
+    /// </para>
+    /// </remarks>
+    public static T New<T>(
+        string destination, ModelSource source, string name, JournalAuthor person, Func<ShellSession, T> adopt)
+    {
         ArgumentNullException.ThrowIfNull(person);
+        ArgumentNullException.ThrowIfNull(adopt);
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -126,10 +162,54 @@ public sealed class ShellSession
             _ => throw new ArgumentOutOfRangeException(nameof(source), source, "not a model source"),
         };
 
-        var outcome = ProjectCommands.New(destination, kind, name);
+        var absolute = System.IO.Path.GetFullPath(destination);
 
-        return new ShellSession(
-            outcome.Path, person, $"einzel new {Quoted(outcome.Path)} {flag} {Quoted(name)}");
+        // Data files that did not exist before this call, and so are this call's to remove.
+        var directory = System.IO.Path.GetDirectoryName(absolute) ?? absolute;
+        var assets = source == ModelSource.Example
+            ? ExampleModels.Assets(name).Select(a => System.IO.Path.Combine(directory, a)).Where(p => !System.IO.File.Exists(p)).ToList()
+            : [];
+
+        // The command refuses an existing model; that refusal must leave everything as it was.
+        var modelExisted = System.IO.File.Exists(absolute);
+        NewOutcome? outcome = null;
+
+        try
+        {
+            outcome = ProjectCommands.New(destination, kind, name);
+
+            return adopt(new ShellSession(
+                outcome.Path, person, $"einzel new {Quoted(outcome.Path)} {flag} {Quoted(name)}"));
+        }
+        catch
+        {
+            if (!modelExisted)
+            {
+                RemoveCreated([absolute, .. assets, .. outcome?.TestPath is { } test ? [test] : Array.Empty<string>()]);
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>Deletes files this session's creation wrote, best effort.</summary>
+    /// <param name="paths">Files created by this call.</param>
+    /// <remarks>
+    /// A file that cannot be removed is left: the original failure is the one to report, and a
+    /// second exception from tidying up would hide it.
+    /// </remarks>
+    private static void RemoveCreated(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            try
+            {
+                System.IO.File.Delete(path);
+            }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+            {
+            }
+        }
     }
 
     /// <summary>The shared, attributed, linear journal (MCP-1).</summary>

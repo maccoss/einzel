@@ -55,6 +55,22 @@ public sealed class RunGate : IDisposable
     /// <summary>Whether the run in flight can be stopped and has not already been asked to.</summary>
     public bool CanStop => Running == HeavyRun.Watch && _stopping is { IsCancellationRequested: false };
 
+    /// <summary>Whether the run in flight has been asked to stop and has not yet ended.</summary>
+    public bool StopRequested => Running is not null && _stopping is { IsCancellationRequested: true };
+
+    /// <summary>What the status line should say between Stop and the run ending, or null.</summary>
+    /// <remarks>
+    /// <b>Stop is only heard between steps.</b> The watch's transport asks once a step whether
+    /// to go on, and the field solve before the first step takes no token at all, so pressing
+    /// Stop during the solve changes nothing visible until the solve has finished. Leaving the
+    /// line at "solving, then stepping" beside a greyed-out button reads as a Stop that did
+    /// nothing; this says what will happen and when, and stays true until the run ends.
+    /// </remarks>
+    public string? StoppingStatus => StopRequested
+        ? "stopping - the run ends when the field solve or the step in progress finishes; "
+            + "a solve cannot be interrupted part way, so this can take as long as the solve does"
+        : null;
+
     /// <summary>Starts a run, unless one is already going.</summary>
     /// <param name="run">Which run.</param>
     /// <returns>
