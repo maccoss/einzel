@@ -73,6 +73,19 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
         var manifest = ExtensionCatalogue.Read(
             Path.Combine(folder, ExtensionCatalogue.ManifestName));
 
+        // A manifest that leaves the timeout at its default is not a test of the timeout, so it
+        // is given room. The default is thirty seconds, which is generous for a script that
+        // doubles a number - and was still not enough on a windows-latest runner sharing four
+        // cores with a dozen test hosts, where starting CPython took longer than that and
+        // AnObjectiveExtensionRoundTrips failed as COST_GATE_REFUSED. The same starvation took
+        // the live-session tests past their client's limit. The runaway test declares its own
+        // 1200 ms and keeps it, which is what makes this a statement about the tests that are
+        // not timing anything rather than a looser bound on the one that is.
+        if (manifest.Resources.TimeoutMs == new ExtensionResources().TimeoutMs)
+        {
+            manifest = manifest with { Resources = manifest.Resources with { TimeoutMs = 180_000 } };
+        }
+
         return new SubprocessRunner(Interpreter!)
             .Run(manifest, folder, input, Path.Combine(_root, "scratch"));
     }
