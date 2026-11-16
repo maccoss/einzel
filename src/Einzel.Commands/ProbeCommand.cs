@@ -159,16 +159,19 @@ public sealed class FieldProbe
     private readonly CompiledModel _model;
     private readonly RotatedField?[] _tilts;
     private readonly bool _allBounded;
-    private readonly double? _cycleMeanWindow;
-    private readonly int[] _electricElements;
+    private readonly IElectrostaticField _electric;
+    private readonly IReadOnlyList<int> _memberElements;
 
     private FieldProbe(
         CompiledModel model,
         IElectrostaticField field,
         IReadOnlyList<ValidityWarning> warnings,
+        IReadOnlyList<int> memberElements,
         string modelPath,
         string modelHash)
     {
+        _memberElements = memberElements;
+        _electric = field is Einzel.Fields.Magnetic.MagnetizedField magnetized ? magnetized.Electric : field;
         _model = model;
         _field = field;
         _driven = field as ITimeVaryingField;
@@ -199,19 +202,6 @@ public sealed class FieldProbe
         ];
 
         _allBounded = Elements.Count > 0 && Elements.All(e => e.HasDomain);
-
-        // Once, here: asking a composite for its shortest period walks every member, and a
-        // surface asks for the window at every sample point.
-        _cycleMeanWindow = _driven is not null && double.IsFinite(_driven.ShortestPeriodSeconds)
-            ? _driven.ShortestPeriodSeconds
-            : null;
-
-        // The assembly sums one electric member per element that is not a magnet, in order.
-        _electricElements =
-        [
-            .. Enumerable.Range(0, model.Fields.Count)
-                .Where(i => model.Fields[i].Kind != CompiledFieldKind.UniformMagnetic),
-        ];
     }
 
     /// <summary>
@@ -224,17 +214,40 @@ public sealed class FieldProbe
     public int? ConductorElementAt(Vec3 positionMm)
     {
         var point = MillimetresToMetres(positionMm);
-        var electric = _field is Einzel.Fields.Magnetic.MagnetizedField magnetized ? magnetized.Electric : _field;
+        ConductorOf(in point, out _, out var element);
 
-        var member = electric switch
+        return element;
+    }
+
+    // The conductor a point is in or nearest to, and the model element it belongs to, from one
+    // walk of the sum: the composite picks the member, and the member is asked for the name.
+    // The member-to-element map is the assembly's own (FieldAssembly.BuildMapped), since a
+    // magnet and a field-free element are elements and not members.
+    private void ConductorOf(in Vec3 point, out string? name, out int? element)
+    {
+        int member;
+        IElectrostaticField? holder;
+
+        switch (_electric)
         {
-            SuperposedField sum => sum.ConductorElementAt(in point),
-            DrivenSuperposedField sum => sum.ConductorElementAt(in point),
-            IConductorBounded => 0,
-            _ => -1,
-        };
+            case SuperposedField sum:
+                member = sum.ConductorElementAt(in point);
+                holder = member >= 0 ? sum.Elements[member] : null;
+                break;
 
-        return member >= 0 && member < _electricElements.Length ? _electricElements[member] : null;
+            case DrivenSuperposedField sum:
+                member = sum.ConductorElementAt(in point);
+                holder = member >= 0 ? sum.Elements[member] : null;
+                break;
+
+            default:
+                member = _electric is IConductorBounded ? 0 : -1;
+                holder = _electric;
+                break;
+        }
+
+        name = (holder as IConductorBounded)?.ConductorAt(in point);
+        element = member >= 0 && member < _memberElements.Count ? _memberElements[member] : null;
     }
 
     /// <summary>The model, as an absolute path.</summary>
@@ -301,9 +314,9 @@ public sealed class FieldProbe
         }
 
         var model = validation.Model!;
-        var (field, warnings) = FieldAssembly.BuildReported(model);
+        var (field, warnings, memberElements) = FieldAssembly.BuildMapped(model);
 
-        return new FieldProbe(model, field, warnings, absolute, ContentHash.OfText(modelText));
+        return new FieldProbe(model, field, warnings, memberElements, absolute, ContentHash.OfText(modelText));
     }
 
     /// <summary>The box the model's bounded elements occupy, in millimetres, when there is one.</summary>
@@ -373,17 +386,31 @@ public sealed class FieldProbe
             || double.IsFinite(driven.NextSwitchAfter(0.0)));
 
     /// <summary>
-    /// The window a cycle mean is taken over, in seconds: one period of the fastest drive; absent
-    /// for a field with no drive - a static one, or a sequence whose every state is static -
-    /// which has no cycle to average over.
+    /// The window a cycle mean is taken over at an operating point, in seconds: the drive's
+    /// period where the field held there oscillates at one frequency, one period of the fastest
+    /// drive where it carries several; absent where nothing oscillates there - a static field,
+    /// or a sequence whose state at that instant is static - which has no cycle to average over.
     /// </summary>
-    public double? CycleMeanWindowSeconds => _cycleMeanWindow;
+    /// <param name="atSeconds">The operating point: the instant the sequence and ramps are held at.</param>
+    /// <returns>The window, or null where there is no drive at that operating point.</returns>
+    /// <remarks>
+    /// Asked of the field HELD at the operating point, which is the field the mean is taken on.
+    /// A sequence that is not held has no one state to take a period from: it reports the
+    /// shortest period of any of its states, and no single frequency at all, so reading it
+    /// unheld gave a single-frequency sequenced model a window from another phase and a
+    /// warning that it carried more than one frequency.
+    /// </remarks>
+    public double? CycleMeanWindowSecondsAt(double atSeconds) =>
+        _driven is null ? null : HeldAt(atSeconds).Window;
 
-    /// <summary>Whether the field oscillates at one frequency, so one period is its whole cycle.</summary>
-    public bool Monochromatic =>
-        _field is ITimeVaryingField driven
-        && (double.IsFinite(driven.MonochromaticPeriodSeconds)
-            || double.IsPositiveInfinity(driven.MonochromaticPeriodSeconds));
+    /// <summary>
+    /// Whether the field held at an operating point oscillates at one frequency (or not at all),
+    /// so one period is its whole cycle.
+    /// </summary>
+    /// <param name="atSeconds">The operating point.</param>
+    /// <returns>True for a static field and for a single frequency.</returns>
+    public bool MonochromaticAt(double atSeconds) =>
+        _driven is null || !double.IsNaN(HeldAt(atSeconds).Field.MonochromaticPeriodSeconds);
 
     /// <summary>How many instants a cycle mean samples where it cannot be taken in closed form.</summary>
     public const int CycleMeanSamples = 64;
@@ -403,17 +430,13 @@ public sealed class FieldProbe
     /// </param>
     /// <returns>The sample; a refused point is a row with status refused, never an exception.</returns>
     /// <exception cref="InvalidOperationException">
-    /// A cycle mean was asked of a field with no drive period
-    /// (<see cref="CycleMeanWindowSeconds"/> is absent). It is not answered with the instant: a
+    /// A cycle mean was asked of a field with no drive period at that operating point
+    /// (<see cref="CycleMeanWindowSecondsAt"/> is absent). It is not answered with the instant: a
     /// caller that asked for a mean and was handed an instantaneous value could not tell.
     /// </exception>
     public ProbeSample At(int index, Vec3 positionMm, double atSeconds, bool cycleMean)
     {
-        if (cycleMean && _cycleMeanWindow is null)
-        {
-            throw new InvalidOperationException(
-                "a cycle mean was asked of a field with no drive period; check CycleMeanWindowSeconds first");
-        }
+        RefuseMeanWithoutCycle(atSeconds, cycleMean);
 
         var point = new Vec3(positionMm.X * MetresPerMm, positionMm.Y * MetresPerMm, positionMm.Z * MetresPerMm);
         var position = new[] { positionMm.X, positionMm.Y, positionMm.Z };
@@ -437,7 +460,12 @@ public sealed class FieldProbe
             return new ProbeSample(index, position, null, null, null, status, null, null, outside, note);
         }
 
-        string? conductor = distance is not null ? _bounded!.ConductorAt(in point) : null;
+        string? conductor = null;
+
+        if (distance is not null)
+        {
+            ConductorOf(in point, out conductor, out _);
+        }
 
         if (averaged)
         {
@@ -542,10 +570,9 @@ public sealed class FieldProbe
 
         try
         {
-            if (cycleMean && _driven is not null && _cycleMeanWindow is { } window)
+            if (cycleMean && _driven is not null && HeldAt(atSeconds) is { Window: { } window } at)
             {
-                var held = Held(_driven, atSeconds);
-                potential = held.CycleMeanPotentialAt(in point, atSeconds, window, CycleMeanSamples);
+                potential = at.Field.CycleMeanPotentialAt(in point, atSeconds, window, CycleMeanSamples);
                 field = default;
                 averaged = true;
             }
@@ -603,21 +630,102 @@ public sealed class FieldProbe
         return status;
     }
 
-    private ITimeVaryingField Held(ITimeVaryingField driven, double atSeconds)
+    private (double At, ITimeVaryingField Field, double? Window) HeldAt(double atSeconds)
     {
-        // One held field per instant, not per point: a sequenced geometry allocates a held copy.
+        // One held field per instant, not per point: a sequenced geometry allocates a held copy,
+        // and asking a composite for its period walks every member.
         if (_held is { } cached && cached.At == atSeconds)
         {
-            return cached.Field;
+            return cached;
         }
 
-        var held = driven.AtOperatingPoint(atSeconds);
-        _held = (atSeconds, held);
+        var held = _driven!.AtOperatingPoint(atSeconds);
+        var single = held.MonochromaticPeriodSeconds;
+        var shortest = held.ShortestPeriodSeconds;
 
-        return held;
+        // One frequency: its period. Several (NaN): the fastest. Nothing oscillating at this
+        // operating point (infinity): no cycle - unless the field has no operating points at
+        // all, where a drive declared at zero amplitude still names a period to average over.
+        double? window = double.IsFinite(single)
+            ? single
+            : double.IsPositiveInfinity(single) && HasOperatingPoints
+                ? null
+                : double.IsFinite(shortest) ? shortest : null;
+
+        _held = (atSeconds, held, window);
+
+        return _held.Value;
     }
 
-    private (double At, ITimeVaryingField Field)? _held;
+    private (double At, ITimeVaryingField Field, double? Window)? _held;
+
+    private void RefuseMeanWithoutCycle(double atSeconds, bool cycleMean)
+    {
+        if (cycleMean && CycleMeanWindowSecondsAt(atSeconds) is null)
+        {
+            throw new InvalidOperationException(
+                "a cycle mean was asked of a field with no drive period at that operating point; "
+                + "check CycleMeanWindowSecondsAt first");
+        }
+    }
+
+    /// <summary>
+    /// The potential at a point given in metres, with the conductor the point is inside and the
+    /// element that conductor belongs to, and no allocation: the path for a surface, which asks
+    /// at every node of a grid and wants neither the field vector nor a row.
+    /// </summary>
+    /// <param name="pointMetres">Where, in metres.</param>
+    /// <param name="atSeconds">The instant; for a cycle mean, the operating point.</param>
+    /// <param name="cycleMean">Whether to report the mean over one drive cycle, as <see cref="At(int, Vec3, double, bool)"/> does.</param>
+    /// <param name="potential">The potential in volts; NaN where the point was refused.</param>
+    /// <param name="conductorDistance">
+    /// Signed distance to the nearest conductor surface in metres, negative inside; null where
+    /// the field declares no conductors or the point was refused.
+    /// </param>
+    /// <param name="conductor">The conductor the point is inside; null unless the status is inside-conductor.</param>
+    /// <param name="element">The model element that conductor belongs to; null unless the status is inside-conductor.</param>
+    /// <returns>One of the <see cref="ProbeStatus"/> values, the same one <see cref="At(int, Vec3, double)"/> gives.</returns>
+    /// <exception cref="InvalidOperationException">A cycle mean was asked where there is no drive period.</exception>
+    public string SamplePotential(
+        in Vec3 pointMetres,
+        double atSeconds,
+        bool cycleMean,
+        out double potential,
+        out double? conductorDistance,
+        out string? conductor,
+        out int? element)
+    {
+        RefuseMeanWithoutCycle(atSeconds, cycleMean);
+
+        conductor = null;
+        element = null;
+
+        var outsideCount = 0;
+
+        for (var i = 0; i < _model.Fields.Count; i++)
+        {
+            if (Elements[i].HasDomain && !InsideDomain(i, in pointMetres))
+            {
+                outsideCount++;
+            }
+        }
+
+        var status = SampleCore(
+            in pointMetres, atSeconds, cycleMean, outsideCount,
+            out potential, out _, out conductorDistance, out _, out _);
+
+        if (status == ProbeStatus.Refused)
+        {
+            potential = double.NaN;
+            conductorDistance = null;
+        }
+        else if (status == ProbeStatus.InsideConductor)
+        {
+            ConductorOf(in pointMetres, out conductor, out element);
+        }
+
+        return status;
+    }
 
     /// <summary>The warning a time-varying field earns when no instant was asked for.</summary>
     /// <param name="requested">The instant asked for, in microseconds, or absent.</param>

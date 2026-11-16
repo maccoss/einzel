@@ -3425,5 +3425,34 @@ Two findings from Stage 1 that bear on the spec:
   private elementary charge; one of each now. Nine regression tests, each failing under the
   mutation that restores its defect and no other.
 
+  **A second review found the picture was the model's mirror image.** The frame mapped (across,
+  height, deep) onto the camera's (x, y, z), left-handed for `xy`: from the top y ran down the
+  screen, and every view showed an asymmetric instrument with the opposite chirality. Depth now
+  runs along or against the deep axis, whichever makes the frame right-handed with the plane's
+  normal up (`PotentialSurface.DeepSign`); the test finds three conductors by their plateaus'
+  colors and asks which way round they go, sharing no arithmetic with the camera. **Nothing had
+  caught it because every earlier pixel test used a model with a mirror symmetry** - a quadrupole,
+  a lens - which is its own mirror image. The einzel lens and quadrupole gallery figures were
+  redrawn; the linear ion trap's plane was already the right way round.
+
+  Nine more from the same review. A conductor's name was a PNG keyword, so `électrode` or a long
+  name was an internal error with no picture (numbered keywords now, the name in the text).
+  **A plateau's element was counted from the members of the assembled sum**, and a field-free
+  element is an element and not a member, so `[fieldFree, A, B]` labelled A and B as 0 and 1; the
+  assembly now reports each member's element (`FieldAssembly.BuildMapped`) and nothing recounts.
+  The cycle-mean window and "one frequency" were read from the unheld field while the mean was
+  taken on the held one, so every sequenced model driven at one frequency was told it carried
+  several. A value-taking flag given no value was read as absent - `--at-us --cycle-mean` exited
+  0 having ignored `--at-us` - in the shared readers, so `still`, `probe` and `export` had it too;
+  refused by name everywhere. The CSV was written and reported nowhere. The mesh's depth bias was
+  a fixed fraction of the scene's depth, six pixels in iso and hundreds along a long box; it is
+  two pixels' worth. Several strings were formatted in the current culture beside invariant ones
+  (tested under de-DE in `Einzel.Shell.Tests`, the one project with globalization on). The
+  surface's sampler allocated a row per node and resolved each conductor twice
+  (`FieldProbe.SamplePotential`, held to `At` by a test). And **a plane whose range is rounding
+  was stretched to the relief** - 7.9e-15 V at 1.3e15 mm per volt on the mirror pair's drift -
+  where it is now drawn flat below 1e-9 of the model's own potentials, with
+  `render.surface-flat`.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

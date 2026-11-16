@@ -104,8 +104,26 @@ public sealed record PotentialSurface
     /// <summary>The model axis running across the picture: the box's longer side.</summary>
     public required string AcrossAxis { get; init; }
 
-    /// <summary>The other in-plane axis, running into the picture.</summary>
+    /// <summary>The other in-plane axis, the picture's depth.</summary>
     public required string DeepAxis { get; init; }
+
+    /// <summary>
+    /// Which way <see cref="DeepAxis"/> runs in the picture's frame: the picture's z is this
+    /// times the deep coordinate. Plus or minus one, chosen so that (across, height, picture z)
+    /// is a right-handed frame with the plane's own normal as the height - a rotation of the
+    /// model, never its mirror image. Seen from above, with across to the right, the plane is
+    /// then the way round it is in the model looked at from its positive normal: for xy, x
+    /// right and y up the screen, as <c>render section</c> draws it.
+    /// </summary>
+    public double DeepSign { get; init; } = 1.0;
+
+    /// <summary>
+    /// The size of the potentials this model deals in, in <see cref="Unit"/>: the largest of
+    /// what any electrode holds, the ion's acceleration potential, and the largest value on
+    /// the plane. A range far below it is the solve's rounding, not a feature (see
+    /// <see cref="SurfaceCommand.NoiseFloor"/>). Zero where nothing gives a scale.
+    /// </summary>
+    public double ReferenceScale { get; init; }
 
     /// <summary>Sample positions along <see cref="AcrossAxis"/>, in millimetres.</summary>
     public required IReadOnlyList<double> Across { get; init; }
@@ -183,7 +201,7 @@ public sealed record SurfaceOutcome
     /// <summary>The model axis across the picture.</summary>
     public required string AcrossAxis { get; init; }
 
-    /// <summary>The model axis into the picture.</summary>
+    /// <summary>The model axis that is the picture's depth.</summary>
     public required string DeepAxis { get; init; }
 
     /// <summary>The sampled extent along the across axis, in millimetres.</summary>
@@ -239,6 +257,12 @@ public sealed record SurfaceOutcome
 
     /// <summary>Whether a validity violation marked the picture with a hatched band.</summary>
     public required bool Tainted { get; init; }
+
+    /// <summary>
+    /// The CSV of the sampled values that was written beside the picture, or that would be
+    /// under <c>--dry-run</c>, as an absolute path; absent when none was asked for.
+    /// </summary>
+    public string? Csv { get; init; }
 
     /// <summary>
     /// Whether the vertical scale was drawn on the picture. False when it was not asked for, when
@@ -345,6 +369,44 @@ public static class SurfaceCommand
     private const int LabelFitPasses = 12;
 
     /// <summary>
+    /// The smallest range, as a fraction of <see cref="PotentialSurface.ReferenceScale"/>, that
+    /// is drawn at the full relief. Below it the automatic scale is the one this fraction of
+    /// the reference would get, so a plane through a field-free drift - whose "range" is the
+    /// last bits of a solve, 8e-15 V beside electrodes at kilovolts - is drawn flat instead of
+    /// having its rounding stretched into hills at 1e15 mm per volt.
+    /// </summary>
+    public const double NoiseFloor = 1e-9;
+
+    /// <summary>
+    /// How far the wire mesh is brought toward the viewer before it is tested against the
+    /// surface it lies on, as a distance along the view direction worth this many pixels on
+    /// screen.
+    /// </summary>
+    public const double MeshDepthBiasPx = 2.0;
+
+    /// <summary>The depth bias of the wire mesh for a picture, in the units the depth test compares.</summary>
+    /// <param name="matrix">The picture's projection, column-major.</param>
+    /// <param name="widthPx">The picture's width in pixels.</param>
+    /// <returns>The bias, in clip-space depth.</returns>
+    /// <remarks>
+    /// <see cref="MeshDepthBiasPx"/> pixels' worth of millimetres, converted to depth. A line
+    /// lies exactly on the surface's own triangle edges, so what the bias has to cover is the
+    /// line's own width on a sloping surface: a couple of pixels. A fixed number in clip space
+    /// is instead a fixed fraction of the scene's depth, which is two millimetres on a 600 mm
+    /// box and hundreds of pixels looking along a long one - enough for the mesh on the far
+    /// side of a thin ridge to be drawn through it.
+    /// </remarks>
+    public static double MeshDepthBias(IReadOnlyList<double> matrix, int widthPx)
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+
+        var pxPerMm = Math.Sqrt((matrix[0] * matrix[0]) + (matrix[4] * matrix[4]) + (matrix[8] * matrix[8])) * widthPx / 2.0;
+        var depthPerMm = Math.Sqrt((matrix[2] * matrix[2]) + (matrix[6] * matrix[6]) + (matrix[10] * matrix[10]));
+
+        return pxPerMm > 0.0 ? MeshDepthBiasPx / pxPerMm * depthPerMm : 0.0;
+    }
+
+    /// <summary>
     /// How much of its unlabelled size the surface must keep once room is made for the scale's
     /// labels. Below this the labels are taking most of a small picture and the surface is a
     /// smudge beside them, so the scale is left off and the surface drawn at full size.
@@ -390,18 +452,22 @@ public static class SurfaceCommand
 
         // A mean over a cycle that does not exist is not a number this can draw, and drawing the
         // instant under that name would be a picture captioned with something it is not.
-        if (request.CycleMean && probe.CycleMeanWindowSeconds is null)
+        // Asked of the field held at the chosen instant, which is the field the mean is taken on:
+        // a sequence may be driven in one phase and static in the next.
+        var at = (request.AtUs ?? 0.0) * 1e-6;
+
+        if (request.CycleMean && probe.CycleMeanWindowSecondsAt(at) is null)
         {
             throw Refusal(
                 "/surface/cycle-mean",
                 probe.TimeVarying
-                    ? "--cycle-mean averages the potential over one drive period, and this field has "
-                      + "no drive: it changes with time only by switching between static states (a "
-                      + "sequence), so there is no cycle to average over"
+                    ? string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"--cycle-mean averages the potential over one drive period, and at t = {at * 1e6:G6} us this field has no drive: it is a sequence whose state there is static, so there is no cycle to average over")
                     : "--cycle-mean averages the potential over one drive period, and this field is "
                       + "static: it has no drive and no cycle to average over",
                 probe.TimeVarying
-                    ? "drop --cycle-mean and give --at-us <t> to choose which state of the sequence to draw"
+                    ? "drop --cycle-mean to draw that state as it is, with --at-us <t> to choose it; or give --at-us <t> inside a phase that is driven"
                     : "drop --cycle-mean; a static field is already the part that does not oscillate");
         }
 
@@ -444,6 +510,13 @@ public static class SurfaceCommand
         // The longer side runs across the picture, which is how an instrument is drawn.
         var swap = (b1 - b0) > (a1 - a0);
         var (across, deep) = swap ? (b, a) : (a, b);
+
+        // (across, deep, normal) is an even or an odd permutation of (x, y, z). The picture's
+        // frame is (across, height, depth) with the normal as the height, which is right-handed
+        // when depth runs against the deep axis for an even permutation and along it for an odd
+        // one. Without this the picture was the model's mirror image in every view.
+        var even = (across, deep, n) is (0, 1, 2) or (1, 2, 0) or (2, 0, 1);
+        var deepSign = even ? -1.0 : 1.0;
         var (u0, u1, v0, v1) = swap ? (b0, b1, a0, a1) : (a0, a1, b0, b1);
 
         var nu = request.Samples;
@@ -457,7 +530,6 @@ public static class SurfaceCommand
         var charge = model.ChargeSi / Einzel.Transport.IonSpecies.ElementaryChargeSi;
         var factor = energy ? charge : 1.0;
 
-        var at = (request.AtUs ?? 0.0) * 1e-6;
         var cycleMean = request.CycleMean;
 
         var raw = new double[nu * nv];
@@ -472,24 +544,23 @@ public static class SurfaceCommand
             for (var j = 0; j < nv; j++)
             {
                 var k = (i * nv) + j;
-                var point = Point(across, deep, n, us[i], vs[j], offset);
-                var sample = probe.At(k, point, at, cycleMean);
+                var point = FieldProbe.MillimetresToMetres(Point(across, deep, n, us[i], vs[j], offset));
+                var status = probe.SamplePotential(
+                    in point, at, cycleMean, out raw[k], out var distance, out var conductor, out var element);
 
-                raw[k] = sample.PotentialV ?? double.NaN;
-
-                if (sample.Status == ProbeStatus.Refused)
+                if (status == ProbeStatus.Refused)
                 {
                     refused++;
                 }
-                else if (sample.Status == ProbeStatus.OutsideDomain)
+                else if (status == ProbeStatus.OutsideDomain)
                 {
                     outside++;
                 }
-                else if (sample.Status == ProbeStatus.InsideConductor)
+                else if (status == ProbeStatus.InsideConductor)
                 {
-                    names[k] = sample.Conductor ?? "conductor";
-                    elements[k] = probe.ConductorElementAt(point);
-                    depth[k] = sample.ConductorDistanceMm ?? 0.0;
+                    names[k] = conductor ?? "conductor";
+                    elements[k] = element;
+                    depth[k] = distance ?? 0.0;
                 }
             }
         }
@@ -556,6 +627,48 @@ public static class SurfaceCommand
 
         var warnings = new List<ValidityWarning>(probe.Warnings);
 
+        // What "small" is measured against: the potentials the model's own electrodes hold, the
+        // ion's acceleration potential, and the largest value on the plane, in the drawn unit.
+        var reference = Math.Abs(model.AccelerationPotentialSi);
+
+        foreach (var element in model.Fields)
+        {
+            foreach (var electrode in element.Solve?.Electrodes ?? [])
+            {
+                reference = Math.Max(reference, Math.Abs(electrode.Potential));
+            }
+
+            foreach (var electrode in element.Solve3D?.Electrodes ?? [])
+            {
+                reference = Math.Max(reference, Math.Abs(electrode.Potential));
+            }
+        }
+
+        foreach (var v in raw)
+        {
+            if (double.IsFinite(v))
+            {
+                reference = Math.Max(reference, Math.Abs(v));
+            }
+        }
+
+        reference *= Math.Abs(factor);
+
+        var (lowest, highest) = Range(values);
+        var span = Math.Max(highest, 0.0) - Math.Min(lowest, 0.0);
+
+        if (request.HeightMmPerUnit is null && span > 0.0 && span < NoiseFloor * reference)
+        {
+            var unit = energy ? "eV" : "V";
+
+            warnings.Add(new ValidityWarning(
+                "render.surface-flat",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"the values on this plane span {span:G3} {unit}, less than {NoiseFloor:G1} of the {reference:G4} {unit} this model deals in: that is the solve's rounding and not a feature of the field, so the surface is drawn flat - at the height scale a range of {NoiseFloor * reference:G3} {unit} would get - and not stretched to fill the relief; give --height-mm-per-{(energy ? "ev" : "v")} to draw it at a scale of your own"),
+                WarningSeverity.Provenance));
+        }
+
         if (probe.TimeVarying && request.AtUs is null && !(cycleMean && !probe.HasOperatingPoints))
         {
             warnings.Add(new ValidityWarning(
@@ -583,9 +696,9 @@ public static class SurfaceCommand
 
         if (cycleMean)
         {
-            var window = probe.CycleMeanWindowSeconds!.Value * 1e6;
+            var window = probe.CycleMeanWindowSecondsAt(at)!.Value * 1e6;
 
-            warnings.Add(probe.Monochromatic
+            warnings.Add(probe.MonochromaticAt(at)
                 ? new ValidityWarning(
                     "render.cycle-mean",
                     string.Create(
@@ -604,8 +717,9 @@ public static class SurfaceCommand
         {
             warnings.Add(new ValidityWarning(
                 "render.first-species",
-                $"this model carries {model.Species.Count} populations; the potential energy is drawn "
-                + $"for the first, charge {charge:G4} e",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"this model carries {model.Species.Count} populations; the potential energy is drawn for the first, charge {charge:G4} e"),
                 WarningSeverity.Provenance));
         }
 
@@ -613,7 +727,7 @@ public static class SurfaceCommand
         {
             warnings.Add(new ValidityWarning(
                 "probe.outside-domain",
-                $"{outside} of {raw.Length} surface point(s) lie outside every element's domain: "
+                string.Create(CultureInfo.InvariantCulture, $"{outside} of {raw.Length} surface point(s) lie outside every element's domain: ")
                 + "the height there is what the field returns outside what was solved or declared "
                 + "(not necessarily zero), not a solved value and not a measurement of vacuum",
                 WarningSeverity.Qualified));
@@ -623,7 +737,7 @@ public static class SurfaceCommand
         {
             warnings.Add(new ValidityWarning(
                 "probe.refused",
-                $"{refused} of {raw.Length} surface point(s) were refused by the field (a singular "
+                string.Create(CultureInfo.InvariantCulture, $"{refused} of {raw.Length} surface point(s) were refused by the field (a singular ")
                 + "axis, say) and are left as holes in the surface",
                 WarningSeverity.Qualified));
         }
@@ -634,6 +748,8 @@ public static class SurfaceCommand
             OffsetMm = offset,
             AcrossAxis = Name(across),
             DeepAxis = Name(deep),
+            DeepSign = deepSign,
+            ReferenceScale = reference,
             Across = us,
             Deep = vs,
             Values = values,
@@ -674,7 +790,9 @@ public static class SurfaceCommand
             surface.Across[^1] - surface.Across[0], surface.Deep[^1] - surface.Deep[0]);
 
         // Flat everywhere: nothing to scale, so one millimetre per unit and the bar says so.
-        return span > 0.0 ? request.Relief * longer / span : 1.0;
+        // And a range that is rounding noise beside the model's own potentials is not stretched
+        // to the relief: it is drawn at the scale the noise floor would get, which is flat.
+        return span > 0.0 ? request.Relief * longer / Math.Max(span, NoiseFloor * surface.ReferenceScale) : 1.0;
     }
 
     /// <summary>Composes the surface as layers, in model millimetres with height up.</summary>
@@ -685,11 +803,17 @@ public static class SurfaceCommand
     /// <remarks>
     /// <para>
     /// The picture's own frame: x runs along the across axis, y is the drawn height (volts times
-    /// the scale), z runs along the deep axis. Earth is at y = 0, the plane itself.
+    /// the scale), z runs along or against the deep axis. Earth is at y = 0, the plane itself.
     /// </para>
     /// <para>
     /// <b>The surface writes depth and the mesh is tested against it with a bias</b>, so lines on
     /// the far side of a hill are hidden and lines on the near side are not lost to rounding.
+    /// The bias depends on the projection (<see cref="MeshDepthBias"/>), so the layer here
+    /// carries none and whoever frames the picture sets it.
+    /// </para>
+    /// <para>
+    /// The picture's z is <see cref="PotentialSurface.DeepSign"/> times the deep coordinate, so
+    /// the picture is a rotation of the model and not its mirror image.
     /// </para>
     /// </remarks>
     public static IReadOnlyList<PictureLayer> Compose(PotentialSurface surface, double mmPerUnit, int meshLines)
@@ -698,6 +822,7 @@ public static class SurfaceCommand
 
         var nu = surface.Across.Count;
         var nv = surface.Deep.Count;
+        var zs = PictureDeep(surface);
         var (low, high) = Range(surface);
         var span = Math.Max(Math.Abs(low), Math.Abs(high));
 
@@ -720,7 +845,7 @@ public static class SurfaceCommand
 
                 vertices[3 * k] = surface.Across[i];
                 vertices[(3 * k) + 1] = double.IsFinite(y) ? y : 0.0;
-                vertices[(3 * k) + 2] = surface.Deep[j];
+                vertices[(3 * k) + 2] = zs[j];
 
                 // Central differences, one-sided at the edges; a NaN neighbour contributes nothing.
                 var il = Math.Max(0, i - 1);
@@ -736,7 +861,7 @@ public static class SurfaceCommand
 
                 normals[3 * k] = -dydu;
                 normals[(3 * k) + 1] = 1.0;
-                normals[(3 * k) + 2] = -dydv;
+                normals[(3 * k) + 2] = -dydv * surface.DeepSign;
 
                 var (r, g, b) = Ramp(surface.At(i, j));
                 colors[3 * k] = r + ((1.0 - r) * SurfaceTint);
@@ -804,14 +929,14 @@ public static class SurfaceCommand
 
         // The plane itself at earth, so a reader can see where zero is drawn.
         var (fr, fg, fb) = (0.55, 0.55, 0.58);
-        var (a0, a1, d0, d1) = (surface.Across[0], surface.Across[^1], surface.Deep[0], surface.Deep[^1]);
+        var (a0, a1, d0, d1) = (surface.Across[0], surface.Across[^1], zs[0], zs[^1]);
         lines.Add(new PictureLine([a0, 0, d0, a1, 0, d0, a1, 0, d1, a0, 0, d1, a0, 0, d0], fr, fg, fb));
 
         return
         [
             new PictureLayer("surface", meshes, [], 1.0, WritesDepth: true),
             new PictureLayer("plateaus", plateaus, [], 1.0, WritesDepth: true),
-            new PictureLayer("mesh", [], lines, 1.0, WritesDepth: false, DepthBias: 4e-3),
+            new PictureLayer("mesh", [], lines, 1.0, WritesDepth: false),
         ];
     }
 
@@ -943,6 +1068,11 @@ public static class SurfaceCommand
             }
         }
 
+        // Now that the frame is settled: the mesh's bias is a number of pixels, and what a pixel
+        // is worth in depth is the projection's to say.
+        var bias = MeshDepthBias(matrix, width);
+        layers = [.. layers.Select(layer => layer.Name == "mesh" ? layer with { DepthBias = bias } : layer)];
+
         var rgb = Rasterizer.Draw(
             [.. layers.Select(StillCommand.Raster)],
             matrix,
@@ -962,7 +1092,8 @@ public static class SurfaceCommand
             ? Path.GetFullPath(named)
             : Path.Combine(project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".surface.png");
 
-        var windowUs = cycleMean ? probe.CycleMeanWindowSeconds * 1e6 : null;
+        var windowUs = cycleMean ? probe.CycleMeanWindowSecondsAt((request.AtUs ?? 0.0) * 1e-6) * 1e6 : null;
+        var csv = csvPath is null ? null : Path.GetFullPath(csvPath);
 
         var warningJson = warnings.Select(w => new WarningJson
         {
@@ -1004,6 +1135,7 @@ public static class SurfaceCommand
             Plateaus = surface.Plateaus,
             Tainted = tainted,
             ScaleDrawn = overlay is not null,
+            Csv = csv,
             Warnings = warningJson,
         };
 
@@ -1012,9 +1144,8 @@ public static class SurfaceCommand
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllBytes(path, PngWriter.Write(rgb, width, height, Provenance(outcome, warnings)));
 
-            if (csvPath is not null)
+            if (csv is not null)
             {
-                var csv = Path.GetFullPath(csvPath);
                 Directory.CreateDirectory(Path.GetDirectoryName(csv)!);
                 File.WriteAllText(csv, ToCsv(surface, warnings));
             }
@@ -1093,11 +1224,37 @@ public static class SurfaceCommand
     }
 
     /// <summary>The lowest and highest finite values on a surface.</summary>
-    private static (double Low, double High) Range(PotentialSurface surface)
-    {
-        var finite = surface.Values.Where(double.IsFinite).ToList();
+    private static (double Low, double High) Range(PotentialSurface surface) => Range(surface.Values);
 
-        return finite.Count == 0 ? (0.0, 0.0) : (finite.Min(), finite.Max());
+    private static (double Low, double High) Range(IReadOnlyList<double> values)
+    {
+        var (low, high) = (double.PositiveInfinity, double.NegativeInfinity);
+
+        for (var k = 0; k < values.Count; k++)
+        {
+            var v = values[k];
+
+            if (double.IsFinite(v))
+            {
+                low = Math.Min(low, v);
+                high = Math.Max(high, v);
+            }
+        }
+
+        return low <= high ? (low, high) : (0.0, 0.0);
+    }
+
+    /// <summary>The deep samples in the picture's own z: see <see cref="PotentialSurface.DeepSign"/>.</summary>
+    private static double[] PictureDeep(PotentialSurface surface)
+    {
+        var zs = new double[surface.Deep.Count];
+
+        for (var j = 0; j < zs.Length; j++)
+        {
+            zs[j] = surface.DeepSign * surface.Deep[j];
+        }
+
+        return zs;
     }
 
     private static int Stride(PotentialSurface surface, int meshLines) =>
@@ -1158,7 +1315,7 @@ public static class SurfaceCommand
             var (r, g, b) = ramp(0.5 * (va + vb));
 
             lines.Add(new PictureLine(
-                [surface.Across[i0], va * mmPerUnit, surface.Deep[j0], surface.Across[i1], vb * mmPerUnit, surface.Deep[j1]],
+                [surface.Across[i0], va * mmPerUnit, surface.DeepSign * surface.Deep[j0], surface.Across[i1], vb * mmPerUnit, surface.DeepSign * surface.Deep[j1]],
                 r * 0.8,
                 g * 0.8,
                 b * 0.8));
@@ -1227,8 +1384,8 @@ public static class SurfaceCommand
 
                 foreach (var (i, j, top) in new[] { (i0, j0, true), (i1, j1, true), (i1, j1, false), (i0, j0, false) })
                 {
-                    vertices.AddRange([surface.Across[i], top ? surface.At(i, j) * mmPerUnit : 0.0, surface.Deep[j]]);
-                    normals.AddRange([nx, 0.0, nz]);
+                    vertices.AddRange([surface.Across[i], top ? surface.At(i, j) * mmPerUnit : 0.0, surface.DeepSign * surface.Deep[j]]);
+                    normals.AddRange([nx, 0.0, nz * surface.DeepSign]);
                     colors.AddRange([r, g, b]);
                 }
 
@@ -1248,7 +1405,8 @@ public static class SurfaceCommand
     private static (double X, double Z, List<(double X, double Y, double Z)> Points) Bar(
         PotentialSurface surface, double mmPerUnit, (double Azimuth, double Elevation) angles, double low, double high)
     {
-        var (a0, a1, d0, d1) = (surface.Across[0], surface.Across[^1], surface.Deep[0], surface.Deep[^1]);
+        var (a0, a1, d0, d1) = (
+            surface.Across[0], surface.Across[^1], surface.DeepSign * surface.Deep[0], surface.DeepSign * surface.Deep[^1]);
         var corners = new[] { (a0, d0), (a0, d1), (a1, d0), (a1, d1) };
 
         // Leftmost on screen, measured with a framing at the picture's own angles.
@@ -1258,7 +1416,7 @@ public static class SurfaceCommand
         var (x, z) = corners.MinBy(c => (probe[0] * c.Item1) + (probe[8] * c.Item2));
 
         // Set out from the corner, so the bar does not stand on the surface's own edge.
-        var gap = 0.06 * Math.Max(a1 - a0, d1 - d0);
+        var gap = 0.06 * Math.Max(a1 - a0, Math.Abs(d1 - d0));
         x += x == a0 ? -gap : gap;
 
         var bottom = Math.Min(low, 0.0) * mmPerUnit;
@@ -1419,8 +1577,8 @@ public static class SurfaceCommand
         var invariant = CultureInfo.InvariantCulture;
         var model = Path.GetFileName(outcome.ModelPath);
         var when = outcome.CycleMean
-            ? $"the mean over one drive cycle ({outcome.CycleMeanWindowUs:G6} us window, operating point t = {outcome.InstantUs:G6} us)"
-            : outcome.InstantUs is { } t ? $"the instant t = {t:G6} us" : "a static field";
+            ? string.Create(invariant, $"the mean over one drive cycle ({outcome.CycleMeanWindowUs:G6} us window, operating point t = {outcome.InstantUs:G6} us)")
+            : outcome.InstantUs is { } t ? string.Create(invariant, $"the instant t = {t:G6} us") : "a static field";
 
         var text = new List<(string, string)>
         {
@@ -1435,16 +1593,21 @@ public static class SurfaceCommand
                 $"height {outcome.HeightMmPerUnit:G6} mm per {outcome.Unit} ({outcome.UnitsPerMm:G6} {outcome.Unit} per drawn mm), earth at the plane; drawn values from {outcome.Lowest:G6} to {outcome.Highest:G6} {outcome.Unit}")),
         };
 
-        foreach (var plateau in outcome.Plateaus)
+        // Numbered keywords, with the conductor's name in the text: a PNG keyword is at most 79
+        // characters of printable Latin-1 and a name is whatever the model's author wrote -
+        // "électrode", "plate µ1", a sentence - while the text of an iTXt chunk is UTF-8 of any
+        // length. A name used as the keyword made a valid model an internal error with no picture.
+        for (var i = 0; i < outcome.Plateaus.Count; i++)
         {
-            text.Add(($"Plateau {plateau.Conductor}", string.Create(
-                invariant, $"{plateau.PotentialV:G6} V over {plateau.Samples} samples")));
+            var plateau = outcome.Plateaus[i];
+            text.Add((string.Create(invariant, $"Plateau {i + 1}"), string.Create(
+                invariant, $"{plateau.Conductor}: {plateau.PotentialV:G6} V over {plateau.Samples} samples")));
         }
 
         for (var i = 0; i < warnings.Count; i++)
         {
             var w = warnings[i];
-            text.Add(($"Warning {i + 1}", $"[{w.Severity}] {w.Code}: {w.Message}"));
+            text.Add((string.Create(invariant, $"Warning {i + 1}"), $"[{w.Severity}] {w.Code}: {w.Message}"));
         }
 
         return text;

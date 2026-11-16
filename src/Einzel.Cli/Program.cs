@@ -1099,8 +1099,35 @@ public static class Program
     }
 
     /// <summary>
+    /// Whether any of these value-taking flags was given with no value, saying which on stderr.
+    /// </summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="what">What the flags take, as the message says it: "a file", "a number".</param>
+    /// <param name="flags">The flags, without their dashes.</param>
+    /// <remarks>
+    /// The command line records a flag followed by another flag, or by nothing, as present with
+    /// no value - which is what <c>--json</c> is. Read with <c>Value</c> alone, a value-taking
+    /// flag in that state is indistinguishable from one never typed, so
+    /// <c>--at-us --cycle-mean</c> or <c>--csv --json</c> dropped the flag and exited 0 having
+    /// done something other than what was asked.
+    /// </remarks>
+    private static bool MissingValue(CommandLine options, string what, params string[] flags)
+    {
+        foreach (var flag in flags)
+        {
+            if (options.Has(flag) && options.Value(flag) is null)
+            {
+                Console.Error.WriteLine($"--{flag} takes {what}, and none was given.");
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Reads an optional numeric flag. False, with the reason on stderr, when it was given and
-    /// is not a number; true with a null value when it was not given.
+    /// is not a number, or given with no value; true with a null value when it was not given.
     /// </summary>
     /// <param name="options">The command line.</param>
     /// <param name="flag">The flag, without its dashes.</param>
@@ -1109,6 +1136,11 @@ public static class Program
     private static bool TryNumberFlag(CommandLine options, string flag, string what, out double? value)
     {
         value = null;
+
+        if (MissingValue(options, what, flag))
+        {
+            return false;
+        }
 
         if (options.Value(flag) is not { } text)
         {
@@ -1133,6 +1165,11 @@ public static class Program
     private static bool TryWholeFlag(CommandLine options, string flag, int otherwise, out int value, string what = "a whole number")
     {
         value = otherwise;
+
+        if (MissingValue(options, what, flag))
+        {
+            return false;
+        }
 
         if (options.Value(flag) is not { } text)
         {
@@ -1186,6 +1223,11 @@ public static class Program
                     $"--{bare} has no unit. Say it in the flag's name: --{bare}-mm x,y,z (millimetres).");
                 return (int)ExitCode.ValidationFailure;
             }
+        }
+
+        if (MissingValue(options, "a file", "csv"))
+        {
+            return (int)ExitCode.ValidationFailure;
         }
 
         var invariant = CultureInfo.InvariantCulture;
@@ -1700,6 +1742,13 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
+        if (MissingValue(options, "six numbers, x0,y0,z0,x1,y1,z1", "box-mm")
+            || MissingValue(options, "a file", "out")
+            || MissingValue(options, "a directory", "project"))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var modelPath = Path.GetFullPath(options.Positional[0]);
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
         var layout = new ProjectLayout(root);
@@ -1912,6 +1961,13 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
+        if (MissingValue(options, "a view's name", "view")
+            || MissingValue(options, "a file", "out")
+            || MissingValue(options, "a directory", "project"))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var modelPath = positional[0];
         var view = options.Value("view") ?? "iso";
 
@@ -2020,6 +2076,16 @@ public static class Program
 
         var invariant = CultureInfo.InvariantCulture;
 
+        if (MissingValue(options, "a plane, xy, xz or yz", "plane")
+            || MissingValue(options, "four numbers, a0,b0,a1,b1", "box-mm")
+            || MissingValue(options, "potential or energy", "height")
+            || MissingValue(options, "a view's name", "view")
+            || MissingValue(options, "a file", "out", "csv")
+            || MissingValue(options, "a directory", "project"))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         if (!TryNumberFlag(options, "offset-mm", "a number of millimetres", out var offset)
             || !TryNumberFlag(options, "relief", "a number", out var relief)
             || !TryNumberFlag(options, "height-mm-per-v", "a number of millimetres per volt", out var perVolt)
@@ -2113,6 +2179,12 @@ public static class Program
         }
 
         Console.Out.WriteLine(outcome.Written ? $"wrote {outcome.Artifact}" : $"would write {outcome.Artifact}");
+
+        if (outcome.Csv is { } csvWritten)
+        {
+            Console.Out.WriteLine(outcome.Written ? $"wrote {csvWritten}" : $"would write {csvWritten}");
+        }
+
         Console.Out.WriteLine(string.Create(
             invariant,
             $"{outcome.Height} on the {outcome.Plane} plane at {outcome.OffsetMm:G6} mm: {outcome.AcrossAxis} {outcome.AcrossMm[0]:G6} to {outcome.AcrossMm[1]:G6} mm across, {outcome.DeepAxis} {outcome.DeepMm[0]:G6} to {outcome.DeepMm[1]:G6} mm deep, {outcome.Samples[0]} by {outcome.Samples[1]} samples"));

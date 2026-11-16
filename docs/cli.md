@@ -860,7 +860,16 @@ the middle of the domain along its normal (z = 0 for a 2-D model's own `xy` plan
 that each have a conductor of one name are two plateaus, labelled `name (element N)`.
 `scaleDrawn` is false, and the bar absent, in `--view top` (the height points at the viewer) and
 in a picture too small for the bar's labels. The model is read once: `modelHash` is the hash of
-the text the field was built from.
+the text the field was built from. The picture is a rotation of the model (from the top, `xy` has
+x right and y up, as `render section` does). A range on the plane below 1e-9 of the model's own
+potentials is rounding and is drawn flat (`render.surface-flat`). `--csv`'s file is reported as
+`csv` in `--json` and on the terminal, and by `--dry-run`.
+
+**A flag that takes a value and is given none is a validation failure naming the flag** - `--at-us
+--cycle-mean`, `--csv --json`. This is in the shared flag readers, so it also holds for `render
+still` (`--width-px`, `--height-px`, `--view`, `--out`), `probe` (`--at-us`, `--samples`, `--csv`)
+and `export` (`--step-mm`, `--at-us`, `--box-mm`, `--out`); all of these used to drop the flag and
+exit 0.
 `--csv` writes the sampled grid, quoted per RFC 4180. Units are in the flag names, as for the probe; a bare `--offset`,
 `--box` or `--at` is refused. See [Rendering](rendering.md) for the figures and what they show.
 

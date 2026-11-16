@@ -134,8 +134,13 @@ become a feature release without being renamed twice.
   ion, and `--csv` writes the numbers. `--cycle-mean` is refused for a field with no drive to
   average over, the vertical scale is left off (and reported absent) in the top view and in a
   picture too small for its labels, and conductors of one name in two field elements are separate
-  plateaus. Coordinate planes at an offset only, and not yet a view in the window. See
-  `docs/rendering.md`.
+  plateaus. The picture is a rotation of the model (the top view of `xy` has x right and y up, as
+  a section does), a plane whose range is rounding noise is drawn flat and says so, and the CSV is
+  reported beside the picture. Coordinate planes at an offset only, and not yet a view in the
+  window. See `docs/rendering.md`.
+- **A flag that takes a value and is given none is refused**, naming the flag, by `render
+  surface`, `render still`, `probe` and `export`. `--at-us --cycle-mean` or `--csv --json` used to
+  drop the flag and exit 0.
 - **A gallery page** reproducing an einzel lens's published voltage and pressure series
   (`docs/gallery-einzel-lens.md`), with every choice the source leaves open listed.
 - **The `paul-trap` template has endcap holes and a stretch.** Three new parameters, all zero by

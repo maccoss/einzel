@@ -878,6 +878,18 @@ interesting, since a cross-section does not vary along z. The box
 defaults to the solve domain's extent in the plane; `--box-mm` takes four numbers in the plane's
 own axis order (for `yz`: y0, z0, y1, z1). The longer side runs across the picture.
 
+**The picture is a rotation of the model, never its mirror image.** The frame the surface is drawn
+in is (across, height, depth) with the plane's own positive normal as the height, and depth runs
+along or against the other in-plane axis, whichever makes that frame right-handed
+(`PotentialSurface.DeepSign`). So `--view top` on the `xy` plane has x to the right and y up the
+screen, as `render section` draws the same plane, and every other view is that turned. It was
+first built with depth always along the deep axis, which for `xy` is a left-handed frame: the top
+view had y running down the screen and an asymmetric instrument was drawn with the opposite
+chirality in every view. The test finds three conductors that no reflection maps onto themselves
+by their plateaus' colors and asks which way round they go, with no projection of its own. A plane
+whose axes are an odd permutation - `xz`, or `xy` with y the longer side - was already the right
+way round and is unchanged.
+
 **Where to put the plane is a modelling decision and can matter.** The linear ion trap's rods are
 written as halves meeting on the rod's own symmetry line, and its centre x rods carry a 0.25 mm
 slot with a relief behind it. A plane exactly through the axis lies on those seams: a point on a
@@ -931,8 +943,13 @@ linear ion trap's resonance-excitation drive is declared at zero amplitude, so i
 
 **A field with no drive has no cycle mean, and `--cycle-mean` is refused for it** - located at
 `/surface/cycle-mean`, exit 1, with what to do instead. That is a static model, and also a
-sequenced one whose states are all static (`sequenced-extraction`, `sequenced-uniform`): it varies
-with time and has no period to average over. The second used to dereference the absent window and
+sequenced one whose state at the chosen instant is static (`sequenced-extraction`,
+`sequenced-uniform`): it varies with time and has no period to average over there. **The window
+and whether there is one frequency are asked of the field held at the operating point**
+(`FieldProbe.CycleMeanWindowSecondsAt`, `MonochromaticAt`), which is the field the mean is taken
+on. A sequence that is not held has no one state to take a spectrum of and says so, and read
+unheld that put "this field carries more than one frequency" on every sequenced model driven at
+one. The second used to dereference the absent window and
 exit 6, after sampling the instantaneous field under the mean's name; the first accepted the flag
 and ignored it. Refused rather than drawn as the instant with a warning, because the caption and
 the outcome would otherwise say "cycle mean" over a picture that is not one. **`--at-us` on a static
@@ -942,7 +959,23 @@ command line be used across static and driven models.
 
 **The CSV is RFC 4180.** A conductor's label is whatever the model's author wrote, so one holding a
 comma, a quote or a line break is quoted, and a warning that runs over several lines stays inside
-`#` comment lines above the table.
+`#` comment lines above the table. The file is in the outcome (`csv`), on the terminal beside the
+picture, and announced by `--dry-run`; it used to be written and mentioned nowhere.
+
+**A conductor's name is text, not a keyword.** The PNG lists each plateau as `Plateau 1`,
+`Plateau 2`, ... with the label and its potential in the chunk's text, which is UTF-8 of any
+length. The label used to be the keyword, and a PNG keyword is at most 79 characters of printable
+Latin-1 - so a conductor called `électrode` or `plate µ1`, or given a long name, made a valid model
+an internal error with no picture.
+
+**A range that is rounding is drawn flat.** The automatic scale stretches the range on the plane to
+`--relief` of the longer side, and a plane through a field-free drift has a "range" that is the
+last bits of the solve: the planar mirror pair's `yz` plane spans 7.9e-15 V and was drawn at
+1.3e15 mm per volt. Below `SurfaceCommand.NoiseFloor`, 1e-9 of the potentials the model deals in -
+the largest of what any electrode holds, the ion's acceleration potential and the largest value on
+the plane - the scale is the one that floor would get, the surface is flat, and
+`render.surface-flat` says so with both numbers. An explicit `--height-mm-per-v` is honoured as
+given.
 
 **One read of the model (PRJ-3).** `Execute` reads the document once and builds the field from that
 text; the hash in the outcome and in the PNG is `FieldProbe.ModelHash`, of the same text. It used to
@@ -955,7 +988,11 @@ the mesh, its colors, the plateaus, the edge curtains, the camera and the scale 
 small capabilities were added to the rasterizer for it, both general: a mesh may carry a color per
 vertex, interpolated across each triangle, and a layer may carry a depth bias, so a wire mesh lying
 on its own surface survives the depth test against it while lines on the far side of a hill are
-hidden. The surface has its own camera (`SurfaceCommand.Views`) and its own softer light: the
+hidden. **The bias is two pixels' worth of depth** (`SurfaceCommand.MeshDepthBias`, set once the
+frame is settled): a line lies on the surface's own triangle edges, so all the bias has to cover is
+the line's width on a slope. It was a fixed 4e-3 of clip depth, which is a fraction of the scene's
+depth - about six pixels in the iso view, two millimetres on a 600 mm box, and hundreds of pixels
+looking along a long one - enough to draw the mesh on the far side of a thin ridge through it. The surface has its own camera (`SurfaceCommand.Views`) and its own softer light: the
 viewport's quarter of ambient light painted dark bands across every slope that faced sideways to
 the lamp, which read as a feature of the potential. The stroke font gained the letters the scale
 needs (`V`, `eV`, signs, `t=`, `s`, `cycle mean`). `--csv` writes the sampled grid, one row per node

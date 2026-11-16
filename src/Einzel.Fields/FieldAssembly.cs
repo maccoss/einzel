@@ -273,9 +273,38 @@ public static class FieldAssembly
     public static (IElectrostaticField Field, IReadOnlyList<Core.Results.ValidityWarning> Warnings)
         BuildReported(CompiledModel model)
     {
+        var (field, warnings, _) = BuildMapped(model);
+
+        return (field, warnings);
+    }
+
+    /// <summary>
+    /// Builds the field as <see cref="BuildReported"/> does, and says which of the model's
+    /// field elements each member of the sum came from.
+    /// </summary>
+    /// <param name="model">The validated model.</param>
+    /// <returns>
+    /// The assembled field, its warnings, and for each member of the electric sum - in the
+    /// order a <see cref="SuperposedField"/> or <see cref="DrivenSuperposedField"/> holds them,
+    /// or the one member where the sum is a single field - the index in
+    /// <see cref="CompiledModel.Fields"/> of the element it was built from.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <remarks>
+    /// Not every element becomes a member: a magnet joins a list of its own and a field-free
+    /// element adds nothing to the sum. So a member's position is not its element's index, and
+    /// only the loop that decides what to add knows the correspondence. A caller that
+    /// reconstructed it by counting elements of the kinds it believed were skipped was wrong
+    /// for a model beginning with a field-free element - every conductor was attributed to
+    /// the element before its own.
+    /// </remarks>
+    public static (IElectrostaticField Field, IReadOnlyList<Core.Results.ValidityWarning> Warnings, IReadOnlyList<int> MemberElements)
+        BuildMapped(CompiledModel model)
+    {
         ArgumentNullException.ThrowIfNull(model);
 
         var elements = new List<IElectrostaticField>(model.Fields.Count);
+        var memberElements = new List<int>(model.Fields.Count);
         var magnets = new List<Magnetic.IMagneticField>();
         var warnings = new List<Core.Results.ValidityWarning>();
 
@@ -399,6 +428,12 @@ public static class FieldAssembly
                     throw new ArgumentOutOfRangeException(
                         nameof(model), element.Kind, "unhandled field element kind");
             }
+
+            // Whatever this element added to the sum came from this element.
+            while (memberElements.Count < elements.Count)
+            {
+                memberElements.Add(index);
+            }
         }
 
         // Chosen by what the sum contains, not by what the caller asks for. A
@@ -428,7 +463,7 @@ public static class FieldAssembly
                 magnets.Count == 1 ? magnets[0] : new Magnetic.SuperposedMagneticField(magnets));
         }
 
-        return (field, warnings);
+        return (field, warnings, memberElements);
     }
 
     /// <summary>Records a solve that missed its tolerance, per GRD-2.</summary>

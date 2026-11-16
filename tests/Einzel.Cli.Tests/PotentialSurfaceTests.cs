@@ -389,7 +389,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         // The probe itself does not hand back an instant under a mean's name either.
         var probe = FieldProbe.Open(model);
-        Assert.Null(probe.CycleMeanWindowSeconds);
+        Assert.Null(probe.CycleMeanWindowSecondsAt(0.0));
         Assert.Throws<InvalidOperationException>(
             () => probe.At(0, new Einzel.Core.Geometry.Vec3(0, 0, 0), 0.0, cycleMean: true));
     }
@@ -682,6 +682,412 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal("1,0,3,plain", lines[7]);
         Assert.Equal("1,1,4,\"two", lines[8]);
         Assert.Equal("lines\"", lines[9]);
+    }
+
+    /// <summary>
+    /// A conductor may be named anything, and its name goes in a PNG text chunk's text, never in
+    /// its keyword.
+    /// </summary>
+    /// <remarks>
+    /// A PNG keyword is at most 79 characters of printable Latin-1. The name used to be the
+    /// keyword ("Plateau " + name), so "électrode", "plate µ1" or a long name made a valid model
+    /// an internal error, exit 6, with no picture and no CSV.
+    /// </remarks>
+    [Fact]
+    public void AConductorNamedAnythingStillDraws()
+    {
+        var accented = "électrode µ1, \"upper\"";
+        var lengthy = "a name much longer than the seventy-nine characters a PNG keyword is allowed to be, as a sentence is";
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var electrodes = node["fields"]![0]!["solve"]!["electrodes"]!;
+        electrodes[0]!["name"] = accented;
+        electrodes[1]!["name"] = lengthy;
+
+        var path = Path.Combine(_root, "names.json");
+        var png = Path.Combine(_root, "names.png");
+        var csv = Path.Combine(_root, "names.csv");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var (code, stdout, stderr) = Cli("render", "surface", path, "--samples", "81", "--out", png, "--csv", csv);
+        output.WriteLine(stderr);
+
+        Assert.Equal(0, code);
+        Assert.True(File.Exists(png) && File.Exists(csv), stdout);
+
+        var text = Text(File.ReadAllBytes(png));
+
+        Assert.All(text, t => Assert.True(t.Keyword.Length <= 79 && t.Keyword.All(c => c is >= ' ' and <= '~'), t.Keyword));
+        Assert.Contains(text, t => t.Keyword.StartsWith("Plateau ", StringComparison.Ordinal) && t.Text.StartsWith(accented + ":", StringComparison.Ordinal));
+        Assert.Contains(text, t => t.Keyword.StartsWith("Plateau ", StringComparison.Ordinal) && t.Text.StartsWith(lengthy + ":", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A plateau's element is its index in the model, whatever the model's other elements are.
+    /// </summary>
+    /// <remarks>
+    /// A field-free element adds nothing to the assembled sum, and neither does a magnet, so a
+    /// member's position in the sum is not its element's index: with a field-free element first,
+    /// every conductor was attributed to the element before its own.
+    /// </remarks>
+    [Fact]
+    public void APlateausElementCountsTheElementsThatAddNothing()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+
+        var second = fields[0]!.DeepClone();
+        second["solve"]!["minX"]!["value"] = 20;
+        second["solve"]!["maxX"]!["value"] = 60;
+
+        foreach (var electrode in second["solve"]!["electrodes"]!.AsArray())
+        {
+            electrode!["minX"]!["value"] = 40;
+            electrode["maxX"]!["value"] = 41;
+        }
+
+        fields.Add(second);
+        fields.Insert(0, System.Text.Json.Nodes.JsonNode.Parse("{ \"type\": \"fieldFree\" }"));
+
+        var path = Path.Combine(_root, "field-free-first.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var (surface, probe, _) = SurfaceCommand.Sample(
+            path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 60, 10], Samples: 161));
+
+        Assert.Equal(
+            ["slitLower (element 1)", "slitLower (element 2)", "slitUpper (element 1)", "slitUpper (element 2)"],
+            surface.Plateaus.Select(p => p.Conductor));
+
+        // The probe's own lookup, at a point inside each slit's upper jaw.
+        Assert.Equal(1, probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(0.5, 5.0, 0.0)));
+        Assert.Equal(2, probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(40.5, 5.0, 0.0)));
+        Assert.Null(FieldProbe.Open(Model("example", "accelerating-gap")).ConductorElementAt(new Einzel.Core.Geometry.Vec3(0, 0, 0)));
+    }
+
+    /// <summary>
+    /// A sequenced model driven at one frequency has a cycle mean with that drive's period as
+    /// its window and no claim of a second frequency.
+    /// </summary>
+    /// <remarks>
+    /// A sequence that is not held at an operating point has no one state to take a spectrum
+    /// of, and says so by reporting no single period. Read unheld, that became "this field
+    /// carries more than one frequency" (Qualified) on every sequenced single-frequency model,
+    /// while the mean itself was taken on the held field, which has exactly one.
+    /// </remarks>
+    [Fact]
+    public void ASequencedSingleFrequencyModelIsNotCalledMultiFrequency()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("template", "quadrupole-rf")))!;
+        node["schemaVersion"] = "0.14";
+        node["sequence"] = System.Text.Json.Nodes.JsonNode.Parse(
+            """
+            [
+              { "name": "hold", "duration": { "value": 5.0, "unit": "us" } },
+              { "name": "raise", "duration": { "value": 5.0, "unit": "us" },
+                "set": { "rfAmplitude": { "value": 1000.0, "unit": "V" } } }
+            ]
+            """);
+
+        var path = Path.Combine(_root, "sequenced-quadrupole.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        using var json = Json("render", "surface", path, "--cycle-mean", "--at-us", "7", "--samples", "21", "--dry-run");
+
+        var warning = json.RootElement.GetProperty("warnings").EnumerateArray()
+            .Single(w => w.GetProperty("code").GetString() == "render.cycle-mean");
+
+        output.WriteLine(warning.GetProperty("message").GetString());
+
+        Assert.Equal("Provenance", warning.GetProperty("severity").GetString());
+        Assert.DoesNotContain("more than one frequency", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Equal(1.0, Number(json, "cycleMeanWindowUs"), 9);
+
+        var probe = FieldProbe.Open(path);
+        Assert.True(probe.MonochromaticAt(7e-6));
+        Assert.Equal(1e-6, probe.CycleMeanWindowSecondsAt(7e-6)!.Value, 12);
+    }
+
+    /// <summary>
+    /// The picture is a rotation of the model and never its mirror image: seen from above, the
+    /// xy plane has x to the right and y up the screen, as <c>render section</c> draws it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three conductors that no reflection maps onto themselves: +50 V in the upper right of the
+    /// plane (x and y positive), -50 V in the lower left, and an earthed one in the lower right.
+    /// Each is found in the picture by its plateau's color - warm, cool, neutral - with no
+    /// projection of the test's own, so nothing here shares arithmetic with the camera.
+    /// </para>
+    /// <para>
+    /// The frame used to map (across, height, deep) onto the camera's (x, y, z), which is
+    /// left-handed for this plane: the top view had y running down the screen and every other
+    /// view showed an instrument of the opposite chirality.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ThePictureIsARotationOfTheModelNotItsMirrorImage()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var electrodes = node["fields"]![0]!["solve"]!["electrodes"]!.AsArray();
+        electrodes.Add(electrodes[0]!.DeepClone());
+
+        void Place(int index, string name, double x0, double x1, double y0, double y1, double volts)
+        {
+            var e = electrodes[index]!;
+            e["name"] = name;
+            e["minX"]!["value"] = x0;
+            e["maxX"]!["value"] = x1;
+            e["minY"]!["value"] = y0;
+            e["maxY"]!["value"] = y1;
+            e["potential"]!["value"] = volts;
+        }
+
+        Place(0, "plus", 8, 14, 3, 8, 50.0);
+        Place(1, "minus", -16, -10, -8, -3, -50.0);
+        Place(2, "earth", 8, 14, -8, -3, 0.0);
+
+        var path = Path.Combine(_root, "asymmetric.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        // Where each plateau is in a picture, in pixels with y UP: the centroid of its color.
+        ((double X, double Y) Plus, (double X, double Y) Minus, (double X, double Y) Earth) Find(string view)
+        {
+            var png = Path.Combine(_root, $"asymmetric-{view}.png");
+            Assert.Equal(0, Cli("render", "surface", path, "--view", view, "--no-scale", "--width-px", "600", "--height-px", "400", "--out", png).ExitCode);
+
+            var (w, h, rgb) = Decode(File.ReadAllBytes(png));
+            var sums = new (double X, double Y, int N)[3];
+
+            for (var y = 0; y < h; y++)
+            {
+                for (var x = 0; x < w; x++)
+                {
+                    var i = 3 * ((y * w) + x);
+                    int r = rgb[i], g = rgb[i + 1], b = rgb[i + 2];
+
+                    if (r + g + b > 260)
+                    {
+                        continue;
+                    }
+
+                    var which = r > b + 20 ? 0 : b > r + 20 ? 1 : Math.Abs(r - b) < 12 && r + g + b > 150 ? 2 : -1;
+
+                    if (which >= 0)
+                    {
+                        sums[which] = (sums[which].X + x, sums[which].Y + (h - 1 - y), sums[which].N + 1);
+                    }
+                }
+            }
+
+            output.WriteLine($"{view}: plus {sums[0].N} px, minus {sums[1].N} px, earth {sums[2].N} px");
+            Assert.All(sums, s => Assert.True(s.N > 150, $"a plateau was not found in the {view} view"));
+
+            return ((sums[0].X / sums[0].N, sums[0].Y / sums[0].N),
+                (sums[1].X / sums[1].N, sums[1].Y / sums[1].N),
+                (sums[2].X / sums[2].N, sums[2].Y / sums[2].N));
+        }
+
+        // Which way round plus, minus, earth go: positive is counter-clockwise, y up.
+        static double Turn(((double X, double Y) P, (double X, double Y) M, (double X, double Y) E) at) =>
+            ((at.M.X - at.P.X) * (at.E.Y - at.P.Y)) - ((at.M.Y - at.P.Y) * (at.E.X - at.P.X));
+
+        // In the model, looked at from +z with x right and y up: plus (11, 5.5), minus (-13, -5.5),
+        // earth (11, -5.5) go round counter-clockwise.
+        Assert.True(Turn(((11, 5.5), (-13, -5.5), (11, -5.5))) > 0.0);
+
+        var top = Find("top");
+
+        Assert.True(top.Plus.X > 300 && top.Plus.Y > 200, $"plus is upper right in the section; here ({top.Plus.X:F0}, {top.Plus.Y:F0})");
+        Assert.True(top.Minus.X < 300 && top.Minus.Y < 200, $"minus is lower left; here ({top.Minus.X:F0}, {top.Minus.Y:F0})");
+        Assert.True(top.Earth.X > 300 && top.Earth.Y < 200, $"earth is lower right; here ({top.Earth.X:F0}, {top.Earth.Y:F0})");
+        Assert.True(Turn(top) > 0.0);
+
+        // Any view from above the plane is a rotation of that, so the three go round the same way.
+        Assert.True(Turn(Find("iso")) > 0.0, "the iso view shows the model's mirror image");
+    }
+
+    /// <summary>A flag that takes a value and is given none is refused by name, for every verb.</summary>
+    /// <param name="args">The command line.</param>
+    /// <param name="flag">The flag left without its value.</param>
+    /// <remarks>
+    /// The command line records such a flag as present with no value, which is what
+    /// <c>--json</c> is; read as "absent", <c>--at-us --cycle-mean</c> and <c>--csv --json</c>
+    /// dropped the flag and exited 0.
+    /// </remarks>
+    [Theory]
+    [InlineData("render surface --at-us --cycle-mean --dry-run", "--at-us")]
+    [InlineData("render surface --height-mm-per-v --json --dry-run", "--height-mm-per-v")]
+    [InlineData("render surface --dry-run --csv --json", "--csv")]
+    [InlineData("render surface --dry-run --out", "--out")]
+    [InlineData("render surface --dry-run --plane --json", "--plane")]
+    [InlineData("render surface --dry-run --samples", "--samples")]
+    [InlineData("render still --dry-run --width-px", "--width-px")]
+    [InlineData("render still --dry-run --view --json", "--view")]
+    [InlineData("probe --at-mm 0,0,0 --at-us --json", "--at-us")]
+    [InlineData("probe --at-mm 0,0,0 --csv --json", "--csv")]
+    [InlineData("export --composite --dry-run --step-mm", "--step-mm")]
+    [InlineData("export --composite --dry-run --box-mm --json", "--box-mm")]
+    public void AFlagGivenNoValueIsRefusedByName(string args, string flag)
+    {
+        var words = args.Split(' ');
+        var verb = words[0] == "render" ? 2 : 1;
+        var model = Model("example", "slit-transmission");
+
+        var (code, stdout, stderr) = Cli([.. words[..verb], model, .. words[verb..]]);
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+        Assert.Contains(flag + " takes", stderr, StringComparison.Ordinal);
+        Assert.Contains("none was given", stderr, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, stdout);
+    }
+
+    /// <summary>The CSV is in the outcome, on the terminal, and announced by a dry run.</summary>
+    [Fact]
+    public void TheCsvIsReportedWhereverThePictureIs()
+    {
+        var model = Model("example", "slit-transmission");
+        var csv = Path.Combine(_root, "reported.csv");
+        var png = Path.Combine(_root, "reported.png");
+
+        using (var json = Json("render", "surface", model, "--samples", "21", "--csv", csv, "--out", png, "--dry-run"))
+        {
+            Assert.Equal(Path.GetFullPath(csv), json.RootElement.GetProperty("csv").GetString());
+            Assert.False(File.Exists(csv));
+        }
+
+        using (var none = Json("render", "surface", model, "--samples", "21", "--out", png, "--dry-run"))
+        {
+            Assert.False(none.RootElement.TryGetProperty("csv", out var absent) && absent.ValueKind == JsonValueKind.String);
+        }
+
+        var dry = Cli("render", "surface", model, "--samples", "21", "--csv", csv, "--out", png, "--dry-run");
+        Assert.Contains($"would write {Path.GetFullPath(csv)}", dry.Stdout, StringComparison.Ordinal);
+
+        var wet = Cli("render", "surface", model, "--samples", "21", "--csv", csv, "--out", png);
+        Assert.Contains($"wrote {Path.GetFullPath(csv)}", wet.Stdout, StringComparison.Ordinal);
+        Assert.True(File.Exists(csv));
+    }
+
+    /// <summary>The wire mesh's depth bias is two pixels' worth, whatever the scene's size or shape.</summary>
+    /// <param name="across">The scene's extent across, in millimetres.</param>
+    /// <param name="deep">Its extent in depth.</param>
+    /// <param name="view">The named view.</param>
+    /// <remarks>
+    /// Worked out here from what a framing is - so many pixels per millimetre across the screen,
+    /// so much depth per millimetre along the view - as a distance on screen. The fixed 4e-3 of
+    /// clip depth it replaces was a fraction of the scene's depth: about six pixels in the iso
+    /// view and hundreds looking along a long box, which draws the mesh on the far side of a
+    /// thin ridge through it.
+    /// </remarks>
+    [Theory]
+    [InlineData(30.0, 20.0, "iso")]
+    [InlineData(600.0, 80.0, "iso")]
+    [InlineData(600.0, 20.0, "front")]
+    [InlineData(20.0, 600.0, "side")]
+    public void TheMeshBiasIsAFewPixelsWhateverTheScene(double across, double deep, string view)
+    {
+        var (azimuth, elevation) = SurfaceCommand.Views[view];
+        var corners = new[] { (0.0, 0.0, 0.0), (across, 0.0, 0.0), (0.0, 0.0, deep), (across, 0.35 * across, deep) };
+        var matrix = Framing.Around(corners, azimuth, elevation).Matrix(1.6);
+        const int Width = 1600;
+
+        // Two points a millimetre apart along the screen's horizontal, and two a millimetre apart
+        // along the line of sight: the first pair says what a pixel is, the second what depth is.
+        double Clip(int row, (double X, double Y, double Z) p) =>
+            (matrix[row] * p.X) + (matrix[4 + row] * p.Y) + (matrix[8 + row] * p.Z) + matrix[12 + row];
+
+        (double X, double Y, double Z) Unit(int row)
+        {
+            var n = Math.Sqrt((matrix[row] * matrix[row]) + (matrix[4 + row] * matrix[4 + row]) + (matrix[8 + row] * matrix[8 + row]));
+            return (matrix[row] / n, matrix[4 + row] / n, matrix[8 + row] / n);
+        }
+
+        var pixelsPerMm = (Clip(0, Unit(0)) - Clip(0, (0, 0, 0))) * Width / 2.0;
+        var depthPerMm = Math.Abs(Clip(2, Unit(2)) - Clip(2, (0, 0, 0)));
+
+        var biasPx = SurfaceCommand.MeshDepthBias(matrix, Width) / depthPerMm * pixelsPerMm;
+        var oldPx = 4e-3 / depthPerMm * pixelsPerMm;
+
+        output.WriteLine($"{across} x {deep} mm, {view}: bias {biasPx:F2} px; the fixed 4e-3 was {oldPx:F1} px");
+
+        Assert.Equal(SurfaceCommand.MeshDepthBiasPx, biasPx, 9);
+        Assert.InRange(SurfaceCommand.MeshDepthBiasPx, 1.0, 3.0);
+        Assert.True(oldPx > 2.5 * biasPx, "the control: the fixed bias was several times this in every one of these scenes");
+    }
+
+    /// <summary>The surface's own sampler agrees with the probe's row at every kind of point.</summary>
+    /// <remarks>
+    /// The surface asks the probe through a path that allocates nothing and resolves a conductor
+    /// once. It is a second spelling of <see cref="FieldProbe.At(int, Einzel.Core.Geometry.Vec3, double)"/>,
+    /// so it is held to it: free space, inside a conductor, and outside the domain.
+    /// </remarks>
+    [Fact]
+    public void TheSurfacesSamplerAgreesWithTheProbesRow()
+    {
+        var probe = FieldProbe.Open(Model("template", "quadrupole"));
+
+        foreach (var mm in new[] { new Einzel.Core.Geometry.Vec3(1.0, 0.5, 0.0), new Einzel.Core.Geometry.Vec3(8.5, 0.0, 0.0), new Einzel.Core.Geometry.Vec3(500.0, 0.0, 0.0) })
+        {
+            var row = probe.At(0, mm, 0.0);
+            var metres = FieldProbe.MillimetresToMetres(mm);
+            var status = probe.SamplePotential(in metres, 0.0, cycleMean: false, out var potential, out var distance, out var conductor, out var element);
+
+            output.WriteLine($"({mm.X}, {mm.Y}) mm: {status}, {potential} V, {conductor}");
+
+            Assert.Equal(row.Status, status);
+            Assert.Equal(row.PotentialV, potential);
+            Assert.Equal(row.ConductorDistanceMm, distance * 1e3);
+
+            if (status == ProbeStatus.InsideConductor)
+            {
+                Assert.Equal(row.Conductor, conductor);
+                Assert.Equal(0, element);
+            }
+            else
+            {
+                Assert.Null(conductor);
+                Assert.Null(element);
+            }
+        }
+
+        Assert.Contains(ProbeStatus.InsideConductor, new[] { probe.At(0, new Einzel.Core.Geometry.Vec3(8.5, 0.0, 0.0), 0.0).Status });
+    }
+
+    /// <summary>
+    /// A range that is rounding noise beside the model's own potentials is drawn flat, and the
+    /// picture says so.
+    /// </summary>
+    /// <remarks>
+    /// The mirror pair's yz plane through its field-free drift spans 8e-15 V beside a 4.8 kV
+    /// cap. Scaled to fill the relief that was 1.3e15 mm per volt: the last bits of a solve
+    /// drawn as hills. The control is a plane with a real range, which keeps its scale.
+    /// </remarks>
+    [Fact]
+    public void RoundingNoiseIsDrawnFlatAndSaidToBe()
+    {
+        var model = Model("template", "planar-mirror-pair");
+
+        using var noise = Json("render", "surface", model, "--plane", "yz", "--samples", "21", "--dry-run");
+        using var real = Json("render", "surface", model, "--samples", "41", "--dry-run");
+        using var asked = Json("render", "surface", model, "--plane", "yz", "--samples", "21", "--height-mm-per-v", "2", "--dry-run");
+
+        var span = Number(noise, "highest") - Math.Min(Number(noise, "lowest"), 0.0);
+        var drawnMm = span * Number(noise, "heightMmPerUnit");
+
+        output.WriteLine($"span {span:G3} V at {Number(noise, "heightMmPerUnit"):G4} mm per V: {drawnMm:G3} mm of drawn height");
+
+        Assert.True(span < 1e-9, "the control: this plane's range is rounding");
+        Assert.Contains("render.surface-flat", Codes(noise));
+        Assert.True(drawnMm < 1e-3, $"{drawnMm} mm of height drawn from rounding noise");
+        Assert.Equal(0.35 * 30.0 / (SurfaceCommand.NoiseFloor * 4800.0), Number(noise, "heightMmPerUnit"), 6);
+
+        Assert.DoesNotContain("render.surface-flat", Codes(real));
+        Assert.Equal(0.35 * 947.0 / 4800.0, Number(real, "heightMmPerUnit"), 6);
+
+        Assert.DoesNotContain("render.surface-flat", Codes(asked));
+        Assert.Equal(2.0, Number(asked, "heightMmPerUnit"));
     }
 
     private static IEnumerable<(double X, double Y, double Z)> Triples(IReadOnlyList<double> flat)
