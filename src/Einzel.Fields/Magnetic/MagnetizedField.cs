@@ -145,6 +145,9 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
     /// <inheritdoc/>
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
         HeldConductors.ForwardMean(_electric, conductor, fromSeconds, periodSeconds, samples);
+
+    /// <inheritdoc/>
+    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(_electric, conductor);
 }
 
 /// <summary>A magnetized field whose electric part is driven.</summary>

@@ -134,6 +134,9 @@ public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded, 
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
         HeldConductors.ForwardMean(_halfPlane, conductor, fromSeconds, periodSeconds, samples);
 
+    /// <inheritdoc/>
+    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(_halfPlane, conductor);
+
     private static Vec3 Sample(in Vec3 position) =>
         new(position.X, Math.Sqrt((position.Y * position.Y) + (position.Z * position.Z)), 0.0);
 }

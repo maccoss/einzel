@@ -109,7 +109,7 @@ public static class Program
 
         var options = CommandLine.Parse(args);
 
-        if (Malformed(args[0], options))
+        if (Malformed(args, options))
         {
             return (int)ExitCode.ValidationFailure;
         }
@@ -148,50 +148,82 @@ public static class Program
     }
 
     /// <summary>
-    /// How many positional arguments each verb takes at most, its sub-verb included: a verb
-    /// that is not listed is not checked.
+    /// Refuses, before a known verb does anything, a flag it does not read, a value-taking flag
+    /// given no value, and more positional arguments than it takes - naming each.
     /// </summary>
-    /// <remarks>
-    /// One table, so every verb refuses a stray argument the same way. A word after a switch -
-    /// <c>--no-scale out.png</c>, <c>--no-trajectory out.svg</c> - is not the switch's value,
-    /// and a verb that read only its first positional dropped it silently and wrote somewhere
-    /// other than the file named.
-    /// </remarks>
-    private static readonly Dictionary<string, int> MaximumPositionals = new(StringComparer.Ordinal)
-    {
-        ["init"] = 1, ["new"] = 1, ["validate"] = 1, ["outline"] = 1, ["project"] = 1, ["estimate"] = 1,
-        ["solve"] = 1, ["probe"] = 1, ["run"] = 1, ["sweep"] = 1, ["optimise"] = 1, ["optimize"] = 1,
-        ["scan"] = 1, ["boundary"] = 1, ["preview"] = 1, ["test"] = 1, ["verify"] = 1, ["report"] = 1,
-        ["export"] = 1, ["compare"] = 1, ["schema"] = 0, ["templates"] = 1, ["examples"] = 1,
-        ["agents-md"] = 1, ["doctor"] = 1,
-        ["render"] = 2, ["ext"] = 2, ["agents"] = 3,
-    };
-
-    /// <summary>
-    /// Refuses, for every verb and before it does anything, a flag that takes a value and was
-    /// given none, and more positional arguments than the verb takes - naming each.
-    /// </summary>
-    /// <param name="verb">The verb.</param>
+    /// <param name="args">The raw arguments, verb first.</param>
     /// <param name="options">The parsed command line.</param>
-    /// <returns>True when the command line was refused; the reason is on stderr.</returns>
-    private static bool Malformed(string verb, CommandLine options)
+    /// <returns>True when the command line was refused; the reason is on stderr, and on stdout as JSON under --json.</returns>
+    /// <remarks>
+    /// Asked of the verb's own flags (<see cref="VerbFlags.ByVerb"/>), so a flag is called
+    /// "unknown" only where that verb does not read it and "takes a value" only where it is one
+    /// that verb reads as a value. A verb this does not know - an unknown command, <c>render</c>
+    /// with no sub-verb - and any command line asking for <c>--help</c> are left to the verb, as
+    /// they always were.
+    /// </remarks>
+    private static bool Malformed(string[] args, CommandLine options)
     {
-        foreach (var flag in options.MissingValues)
+        if (options.Has("help") || VerbFlags.For(args) is not var (key, flags))
         {
-            Console.Error.WriteLine(
-                $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none).");
-            return true;
+            return false;
         }
 
-        if (MaximumPositionals.TryGetValue(verb, out var most) && options.Positional.Count > most)
+        EinzelError? refusal = null;
+
+        foreach (var flag in options.Flags)
         {
-            Console.Error.WriteLine(
-                $"{verb} was given {string.Join(", ", options.Positional.Skip(most).Select(p => $"'{p}'"))}, which it does not take; "
-                + "a file to write is --out <file>, and a switch such as --json or --no-scale takes no value.");
-            return true;
+            if (!flags.Knows(flag))
+            {
+                refusal = new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"/args/--{flag}",
+                    Constraint = $"unknown flag --{flag} for {key}",
+                    Suggestion = $"the flags {key} reads are "
+                        + string.Join(", ", flags.Switches.Concat(flags.Values).Concat(VerbFlags.Global).Order(StringComparer.Ordinal).Select(f => "--" + f)),
+                };
+                break;
+            }
+
+            if (flags.Values.Contains(flag) && options.Value(flag) is null)
+            {
+                refusal = new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"/args/--{flag}",
+                    Constraint = $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
+                    Suggestion = $"give --{flag} its value, as --{flag} <value>",
+                };
+                break;
+            }
         }
 
-        return false;
+        if (refusal is null && options.Positional.Count > flags.Positionals)
+        {
+            refusal = new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"/args/{flags.Positionals}",
+                Constraint = $"{key} was given {string.Join(", ", options.Positional.Skip(flags.Positionals).Select(p => $"'{p}'"))}, which it does not take",
+                Suggestion = "a file to write is --out <file>, and a switch such as --json or --no-scale takes no value",
+            };
+        }
+
+        if (refusal is null)
+        {
+            return false;
+        }
+
+        // CLI-2's split, and AGT-3's: the reason on stderr, and under --json the same error as
+        // JSON on stdout, so an agent gets a machine-readable refusal and not an empty stream.
+        Console.Error.WriteLine(refusal.ToString());
+
+        if (options.Has("json"))
+        {
+            Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [refusal] }));
+        }
+
+        return true;
     }
 
     private static int Unknown(string verb)
@@ -1935,6 +1967,7 @@ public static class Program
             // factor of a million, and this is the same rule that makes {"energy": 4000}
             // a validation error in a model document.
             AtSeconds = sectionAt is { } at ? at * 1e-6 : spec.AtSeconds,
+            InstantFromFlag = sectionAt is not null,
         };
 
         var root = options.Value("project") ?? InferProjectRoot(modelPath);

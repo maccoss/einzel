@@ -940,7 +940,25 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal(1, code);
         Assert.Contains(flag + " takes", stderr, StringComparison.Ordinal);
         Assert.Contains("none was given", stderr, StringComparison.Ordinal);
-        Assert.Equal(string.Empty, stdout);
+        AssertRefusal(stdout, words.Contains("--json"), "/args/" + flag);
+    }
+
+    // Under --json a refused command line is the error as JSON on stdout (AGT-3); otherwise
+    // stdout is empty and the reason is on stderr alone (CLI-2).
+    private static void AssertRefusal(string stdout, bool json, string path)
+    {
+        if (!json)
+        {
+            Assert.Equal(string.Empty, stdout);
+            return;
+        }
+
+        using var document = JsonDocument.Parse(stdout);
+        var error = document.RootElement.GetProperty("errors")[0];
+        Assert.False(document.RootElement.GetProperty("ran").GetBoolean());
+        Assert.Equal("SCHEMA_INVALID", error.GetProperty("code").GetString());
+        Assert.Equal(path, error.GetProperty("path").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("suggestion").GetString()));
     }
 
     /// <summary>The CSV is in the outcome, on the terminal, and announced by a dry run.</summary>
@@ -1763,19 +1781,23 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
             return path;
         }
 
-        foreach (var args in new[]
+        // Each refusal names and locates where the instant came from: the spec's own atSeconds,
+        // or the --at-us flag that overrode it.
+        foreach (var (args, path, words) in new (string[], string, string)[]
         {
-            new[] { "render", "section", Spec("before-zero", -1e-6), "--dry-run" },
-            new[] { "render", "section", Spec("too-late", 1e294), "--dry-run" },
-            new[] { "render", "section", model, "--at-us", "1e300", "--dry-run" },
-            new[] { "render", "section", model, "--at-us", "-1", "--dry-run" },
+            (["render", "section", Spec("before-zero", -1e-6), "--dry-run"], "/atSeconds", "atSeconds"),
+            (["render", "section", Spec("too-late", 1e294), "--dry-run"], "/atSeconds", "too late"),
+            (["render", "section", model, "--at-us", "1e300", "--dry-run"], "/render/at-us", "too late"),
+            (["render", "section", model, "--at-us", "-1", "--dry-run"], "/render/at-us", "--at-us"),
+            (["render", "section", Spec("overridden", -1e-6), "--at-us", "-2", "--dry-run"], "/render/at-us", "--at-us"),
         })
         {
             var (code, stdout, stderr) = Cli(args);
             output.WriteLine($"{Path.GetFileName(args[2])} {string.Join(' ', args[3..])}: exit {code}: {stderr.Trim()}");
 
             Assert.Equal(1, code);
-            Assert.Contains("/render/at-us", stdout + stderr, StringComparison.Ordinal);
+            Assert.Contains("at " + path + ":", stdout + stderr, StringComparison.Ordinal);
+            Assert.Contains(words, stdout + stderr, StringComparison.Ordinal);
         }
 
         Assert.Equal(0, Cli("render", "section", Spec("placeable", 2.5e-6), "--dry-run").ExitCode);
@@ -2012,6 +2034,78 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         Assert.Equal(drawn, outcome.MeshLines);
         Assert.True(drawn[1] > 1, "the shorter side has mesh lines of its own");
+    }
+
+    /// <summary>Each plateau is drawn over its own vertices, not every vertex of the surface.</summary>
+    /// <remarks>
+    /// Handed the whole grid, a plateau's mesh was walked whole by the framing and the
+    /// rasterizer once per conductor. The pictures are the same either way, which a byte
+    /// comparison of three templates against the previous build confirmed.
+    /// </remarks>
+    [Fact]
+    public void APlateauIsDrawnOverItsOwnVertices()
+    {
+        var (surface, _, _) = SurfaceCommand.Sample(Model("template", "quadrupole"), new SurfaceRequest(Samples: 121));
+        var plateaus = SurfaceCommand.Compose(surface, 0.05, 40).Single(l => l.Name == "plateaus").Meshes;
+
+        Assert.Equal(4, plateaus.Count);
+
+        foreach (var mesh in plateaus)
+        {
+            var used = mesh.Triangles.Distinct().Count();
+
+            Assert.Equal(used, mesh.VerticesMm.Count / 3);
+            Assert.Equal(mesh.VerticesMm.Count, mesh.Normals.Count);
+            Assert.True(used < surface.Values.Count / 4);
+        }
+    }
+
+    /// <summary>
+    /// A node beside a hole in the surface is lit by the slope on its finite side, not as flat.
+    /// </summary>
+    [Fact]
+    public void ANodeBesideAHoleKeepsItsSlope()
+    {
+        var surface = new PotentialSurface
+        {
+            Plane = "xy",
+            OffsetMm = 0.0,
+            AcrossAxis = "x",
+            DeepAxis = "y",
+            Across = [0.0, 1.0, 2.0],
+            Deep = [0.0, 1.0, 2.0],
+            Values = [0, double.NaN, 0, 10, 10, 10, 30, 30, 30],
+            Inside = new string?[9],
+            Plateaus = [],
+            Height = SurfaceHeight.Potential,
+            Unit = "V",
+            OutsideDomain = 0,
+            Refused = 1,
+        };
+
+        var normals = SurfaceCommand.Compose(surface, 1.0, 2)[0].Meshes[0].Normals;
+
+        // Node (1, 1): across, the neighbour at x = 0 is the hole; the slope toward x = 2 is 20.
+        Assert.Equal(-20.0, normals[3 * ((1 * 3) + 1)], 12);
+
+        // The control: a node with both neighbours finite has its central slope, (30 - 0) / 2.
+        Assert.Equal(-15.0, normals[3 * ((1 * 3) + 0)], 12);
+    }
+
+    /// <summary>A line whose segment colours do not fit its segments is refused as it is made, naming its layer.</summary>
+    [Fact]
+    public void SegmentColoursThatDoNotFitAreRefusedWhereTheyAreMade()
+    {
+        var line = new PictureLine([0, 0, 0, 1, 1, 1, 2, 2, 2], 0, 0, 0, [1, 1, 1]);
+
+        var refusal = Assert.Throws<ArgumentException>(() => new PictureLayer("mesh", [], [line], 1.0, false));
+        Assert.Contains("layer 'mesh'", refusal.Message, StringComparison.Ordinal);
+
+        Assert.Throws<ArgumentException>(() => new Einzel.Render.RasterLine([0, 0, 0, 1, 1, 1], 0, 0, 0, [1, 1]));
+
+        // The control: three numbers for each of two segments is a line.
+        _ = new PictureLayer("mesh", [], [line with { SegmentColors = [1, 1, 1, 0, 0, 0] }], 1.0, false);
+        _ = new Einzel.Render.RasterLine([0, 0, 0, 1, 1, 1], 0, 0, 0, [1, 1, 1]);
     }
 
     private static IEnumerable<(double X, double Y, double Z)> Triples(IReadOnlyList<double> flat)

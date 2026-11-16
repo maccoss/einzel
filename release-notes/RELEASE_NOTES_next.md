@@ -145,9 +145,16 @@ become a feature release without being renamed twice.
   model.json` and `render surface --cycle-mean model.json` used to read the model as the switch's
   value.
 - **Every verb refuses a malformed command line before doing anything**, naming what is wrong: a
-  flag that takes a value and was given none (`--out --json`, a bare `--progress`), and an
-  argument the verb does not take (`--no-trajectory out.svg`, `validate a.json b.json`). These
-  used to be dropped without a word, exit 0. Every spelling the verbs document is unchanged.
+  flag the verb does not read (`unknown flag --no-scales for render surface`), a flag that takes a
+  value and was given none (`--out --json`, a bare `--progress`), and an argument the verb does not
+  take (`--no-trajectory out.svg`, `validate a.json b.json`). Under `--json` the refusal is JSON on
+  stdout as well. These used to be accepted and ignored, exit 0. `--help` and `--json` behave
+  exactly as before on every verb, and every flag a verb documents is unchanged. **What changes:**
+  a flag a verb never read is now an error - `--dry-run` on `validate`, `project`, `estimate`,
+  `solve`, `run`, `preview`, `test`, `verify`, `compare`, `schema`, `templates`, `examples` and
+  `doctor`; `--project` on `init`, `new`, `validate`, `outline`, `estimate`, `solve`, `probe`,
+  `preview`, `compare`, `schema`, `templates`, `examples` and `agents`; and any other flag a verb
+  does not read. `docs/cli.md` lists each verb's flags.
 - **`render surface` draws each conductor at what it holds**, not at what the summed field reads
   inside it, and says so where the two disagree (`render.plateau-disagrees`); a long thin box is
   sampled across its width, `--samples NxM` sets both counts, `--out` and `--csv` may not be one

@@ -349,4 +349,7 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
     /// <inheritdoc/>
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
         HeldConductors.AgreedMean(_elements, conductor, fromSeconds, periodSeconds, samples);
+
+    /// <inheritdoc/>
+    public bool HasConductor(string conductor) => HeldConductors.AnyHas(_elements, conductor);
 }

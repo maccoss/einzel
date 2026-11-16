@@ -3549,5 +3549,19 @@ Two findings from Stage 1 that bear on the spec:
   are the drawn ones. The instant check looks through a magnet's wrapper for a drive. And a value
   that is not finite has no label rather than the label 0.
 
+  **An eighth review found the seventh's central check refusing `--help`** - "takes a value",
+  exit 1, after every verb - and calling any typo "takes a value" and an unknown verb's flag the
+  same. A check that knows only which flags are switches cannot tell a value flag from a typo.
+  So each verb's flags are now one registry (`VerbFlags.ByVerb`), held to the handlers by a test
+  that reads each handler's source through the helpers it calls; a flag a verb does not read is
+  refused by name, `--help` and an unknown verb are left to the verb exactly as on main (checked
+  verb by verb against main's build), and under `--json` the refusal is the error as JSON on
+  stdout. Also: each plateau is drawn over its own vertices, not the whole grid's; a render
+  spec's own `atSeconds` is refused at `/atSeconds` and named as the spec's, not as `--at-us`; a
+  sum answers for a name only if no member has it without a single value (an edge-profiled
+  `plate`); a node beside a hole keeps the slope on its finite side; segment colours that do not
+  fit a line are refused where the layer is made; and the probe's leftover field and its copies
+  of the instant check are gone.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

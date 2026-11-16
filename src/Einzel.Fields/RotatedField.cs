@@ -175,4 +175,7 @@ public sealed class RotatedField(
     /// <inheritdoc/>
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
         HeldConductors.ForwardMean(_inner, conductor, fromSeconds, periodSeconds, samples);
+
+    /// <inheritdoc/>
+    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(_inner, conductor);
 }

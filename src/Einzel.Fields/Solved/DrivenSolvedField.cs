@@ -158,6 +158,10 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
         return total;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Its channels are solved over the same conductors, so the first channel says.</remarks>
+    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(_channels[0], conductor);
+
     internal DrivenSolvedField(
         IReadOnlyList<IElectrostaticField> channels,
         IReadOnlyList<double> direct,

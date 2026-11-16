@@ -108,6 +108,9 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded, IHe
         HeldConductors.ForwardMean(_inner, conductor, fromSeconds + _offsetSeconds, periodSeconds, samples);
 
     /// <inheritdoc/>
+    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(_inner, conductor);
+
+    /// <inheritdoc/>
     public double MonochromaticPeriodSeconds => _inner.MonochromaticPeriodSeconds;
 
     /// <inheritdoc/>

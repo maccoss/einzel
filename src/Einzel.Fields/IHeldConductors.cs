@@ -40,6 +40,16 @@ public interface IHeldConductors
     /// </returns>
     double? HeldPotentialOf(string conductor, double timeSeconds);
 
+    /// <summary>Whether this field has a conductor of this name, whether or not it holds one potential.</summary>
+    /// <param name="conductor">The conductor's name.</param>
+    /// <returns>True where the name is one of this field's conductors - an edge-profiled board included.</returns>
+    /// <remarks>
+    /// What separates "no conductor of that name here" from "a conductor of that name, with no
+    /// single potential": both answer <see cref="HeldPotentialOf"/> with null, and a sum must not
+    /// read the second as the first.
+    /// </remarks>
+    bool HasConductor(string conductor);
+
     /// <summary>The mean of <see cref="HeldPotentialOf"/> over a window.</summary>
     /// <param name="conductor">The conductor's name.</param>
     /// <param name="fromSeconds">Where the window opens.</param>
@@ -93,6 +103,32 @@ public static class HeldConductors
     public static double? Forward(IElectrostaticField inner, string conductor, double timeSeconds) =>
         inner is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
 
+    /// <summary>What a wrapper forwards for whether a conductor of this name is there.</summary>
+    /// <param name="inner">The wrapped field.</param>
+    /// <param name="conductor">The conductor's name.</param>
+    /// <returns>Whether the inner field has it.</returns>
+    public static bool ForwardHas(IElectrostaticField inner, string conductor) =>
+        inner is IHeldConductors held && held.HasConductor(conductor);
+
+    /// <summary>Whether any member of a sum has a conductor of this name.</summary>
+    /// <param name="members">The members.</param>
+    /// <param name="conductor">The name.</param>
+    /// <returns>True where one does.</returns>
+    public static bool AnyHas(IReadOnlyList<IElectrostaticField> members, string conductor)
+    {
+        ArgumentNullException.ThrowIfNull(members);
+
+        foreach (var member in members)
+        {
+            if (ForwardHas(member, conductor))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>What a wrapper forwards for a cycle mean.</summary>
     /// <param name="inner">The wrapped field.</param>
     /// <param name="conductor">The conductor's name.</param>
@@ -117,7 +153,8 @@ public static class HeldConductors
     /// <c>plate</c>, one at +100 V and one at -100 V. Answering with the first member that has
     /// the name gave both +100 V to anything asking the sum. A sum answers only where the name
     /// cannot mean two things: one member has it, or every member that has it agrees - which is
-    /// the case a reflected solve makes, its one element seen twice. A caller that knows which
+    /// the case a reflected solve makes, its one element seen twice. A member that has the name
+    /// but no single potential for it (an edge-profiled board) makes the answer null too. A caller that knows which
     /// element it means asks that element, as the probe does.
     /// </remarks>
     public static double? Agreed(IReadOnlyList<IElectrostaticField> members, string conductor, double timeSeconds)
@@ -128,15 +165,20 @@ public static class HeldConductors
 
         foreach (var member in members)
         {
-            if (member is IHeldConductors held && held.HeldPotentialOf(conductor, timeSeconds) is { } value)
+            if (member is not IHeldConductors held || !held.HasConductor(conductor))
             {
-                if (agreed is { } other && other != value)
-                {
-                    return null;
-                }
-
-                agreed = value;
+                continue;
             }
+
+            // A member that has the name and cannot give one value - an edge-profiled board -
+            // means the name has no single answer here, whatever another member says.
+            if (held.HeldPotentialOf(conductor, timeSeconds) is not { } value
+                || (agreed is { } other && other != value))
+            {
+                return null;
+            }
+
+            agreed = value;
         }
 
         return agreed;
@@ -158,15 +200,18 @@ public static class HeldConductors
 
         foreach (var member in members)
         {
-            if (member is IHeldConductors held && held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) is { } value)
+            if (member is not IHeldConductors held || !held.HasConductor(conductor))
             {
-                if (agreed is { } other && other != value)
-                {
-                    return null;
-                }
-
-                agreed = value;
+                continue;
             }
+
+            if (held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) is not { } value
+                || (agreed is { } other && other != value))
+            {
+                return null;
+            }
+
+            agreed = value;
         }
 
         return agreed;

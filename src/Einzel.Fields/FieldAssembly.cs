@@ -100,6 +100,9 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded, IH
         HeldConductors.AgreedMean(_elements, conductor, fromSeconds, periodSeconds, samples);
 
     /// <inheritdoc/>
+    public bool HasConductor(string conductor) => HeldConductors.AnyHas(_elements, conductor);
+
+    /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)
     {
         var total = Vec3.Zero;

@@ -1,0 +1,199 @@
+using System.Text.RegularExpressions;
+
+using Xunit.Abstractions;
+
+namespace Einzel.Cli.Tests;
+
+/// <summary>
+/// The registry of each verb's flags (<see cref="VerbFlags.ByVerb"/>) is the flags each verb's
+/// handler actually reads, and the command line holds every verb to it.
+/// </summary>
+public sealed class VerbFlagsTests(ITestOutputHelper output)
+{
+    // Which handler reads each verb's flags, and which of the handlers it calls belong to a
+    // different verb (render's sub-verbs are dispatched from Render).
+    private static readonly Dictionary<string, (string Handler, string[] Skip)> Handlers = new(StringComparer.Ordinal)
+    {
+        ["init"] = ("Init", []), ["new"] = ("New", []), ["validate"] = ("Validate", []), ["outline"] = ("Outline", []),
+        ["project"] = ("Project", []), ["estimate"] = ("Estimate", []), ["solve"] = ("Solve", []), ["probe"] = ("Probe", []),
+        ["run"] = ("Run", []), ["sweep"] = ("Sweep", []), ["optimise"] = ("Optimise", []), ["optimize"] = ("Optimise", []),
+        ["scan"] = ("Scan", []), ["boundary"] = ("Boundary", []), ["preview"] = ("Preview", []), ["test"] = ("Test", []),
+        ["verify"] = ("Verify", []), ["report"] = ("Report", []), ["export"] = ("Export", []), ["compare"] = ("Compare", []),
+        ["schema"] = ("Schema", []), ["templates"] = ("Catalog", []), ["examples"] = ("Catalog", []),
+        ["agents-md"] = ("AgentsMd", []), ["agents"] = ("Agents", []), ["doctor"] = ("Doctor", []), ["ext"] = ("Ext", []),
+        ["render section"] = ("Render", ["Still", "Surface", "Animation"]),
+        ["render still"] = ("Still", []), ["render surface"] = ("Surface", []), ["render animation"] = ("Animation", []),
+    };
+
+    // Read as a value under a name chosen at run time (`Value(hasPoint ? "at-mm" : "line-mm")`),
+    // which a scan for a literal cannot see.
+    private static readonly HashSet<string> ReadDynamically = new(StringComparer.Ordinal) { "at-mm", "line-mm" };
+
+    /// <summary>
+    /// Every verb's registered flags are exactly the flags its handler reads, through every
+    /// helper it calls; the value-taking ones are the ones it reads as values.
+    /// </summary>
+    /// <remarks>
+    /// The registry is what lets the command line call a flag unknown, or say it takes a value,
+    /// for a particular verb. A handler that grew a flag the registry did not list would refuse
+    /// its own flag; a registry listing a flag no handler reads would accept one that does
+    /// nothing. Either fails here.
+    /// </remarks>
+    [Fact]
+    public void EveryVerbsFlagsAreTheOnesItsHandlerReads()
+    {
+        var source = Source();
+        var bodies = Bodies(source);
+
+        Assert.Equal(VerbFlags.ByVerb.Keys.Order(StringComparer.Ordinal), Handlers.Keys.Order(StringComparer.Ordinal));
+
+        foreach (var (verb, (handler, skip)) in Handlers)
+        {
+            var read = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), ReadPattern);
+            var valued = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), ValuePattern);
+            var refused = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), BarePattern);
+            var flags = VerbFlags.ByVerb[verb];
+
+            output.WriteLine($"{verb}: reads {string.Join(", ", read.Order(StringComparer.Ordinal))}");
+
+            var registered = flags.Switches.Concat(flags.Values).ToHashSet(StringComparer.Ordinal);
+            read.ExceptWith(VerbFlags.Global);
+
+            Assert.True(registered.SetEquals(read), $"{verb}: registered {string.Join(",", registered.Order())} but the handler reads {string.Join(",", read.Order())}");
+            Assert.True(valued.IsSubsetOf(flags.Values), $"{verb}: reads {string.Join(",", valued.Except(flags.Values))} as values, registered otherwise");
+            Assert.Empty(flags.Values.Except(valued).Except(ReadDynamically));
+            Assert.True(flags.Refused.SetEquals(refused), $"{verb}: refuses {string.Join(",", refused)} but registers {string.Join(",", flags.Refused)}");
+        }
+    }
+
+    private static readonly Regex ReadPattern = new(@"(?:\.Has|\.Value|\.Values)\(""([a-z0-9-]+)""\)|(?:TryNumberFlag|TryWholeFlag)\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    private static readonly Regex ValuePattern = new(@"(?:\.Value|\.Values)\(""([a-z0-9-]+)""\)|(?:TryNumberFlag|TryWholeFlag)\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    private static readonly Regex BarePattern = new(@"foreach \(var bare in new\[\] \{([^}]*)\}", RegexOptions.Compiled);
+
+    private static HashSet<string> Walk(string method, Dictionary<string, string> bodies, HashSet<string> seen, Regex pattern)
+    {
+        var found = new HashSet<string>(StringComparer.Ordinal);
+
+        if (!seen.Add(method) || !bodies.TryGetValue(method, out var body))
+        {
+            return found;
+        }
+
+        foreach (Match m in pattern.Matches(body))
+        {
+            if (pattern == BarePattern)
+            {
+                foreach (Match name in Regex.Matches(m.Groups[1].Value, @"""([a-z0-9-]+)"""))
+                {
+                    found.Add(name.Groups[1].Value);
+                }
+            }
+            else
+            {
+                found.Add(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value);
+            }
+        }
+
+        foreach (Match call in Regex.Matches(body, @"\b(\w+)\("))
+        {
+            var callee = call.Groups[1].Value;
+
+            if (callee != method && bodies.ContainsKey(callee))
+            {
+                found.UnionWith(Walk(callee, bodies, seen, pattern));
+            }
+        }
+
+        return found;
+    }
+
+    private static Dictionary<string, string> Bodies(string source)
+    {
+        var bodies = new Dictionary<string, string>(StringComparer.Ordinal);
+        var starts = Regex.Matches(source, @"\n    (?:private|public|internal) static [^\n(]*? (\w+)\(").ToList();
+
+        for (var i = 0; i < starts.Count; i++)
+        {
+            var end = i + 1 < starts.Count ? starts[i + 1].Index : source.Length;
+            var name = starts[i].Groups[1].Value;
+            bodies[name] = (bodies.TryGetValue(name, out var earlier) ? earlier : string.Empty) + source[starts[i].Index..end];
+        }
+
+        // The command line's own refusal reads --help for every verb; it is no handler's.
+        bodies.Remove("Malformed");
+
+        return bodies;
+    }
+
+    private static string Source()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Einzel.Cli", "Program.cs")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+
+        return string.Concat(Directory.GetFiles(Path.Combine(directory!.FullName, "src", "Einzel.Cli"), "*.cs")
+            .Order(StringComparer.Ordinal)
+            .Select(File.ReadAllText)).Replace("\r\n", "\n", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// <c>--help</c> after any verb does what it did before the command line was checked: the
+    /// verb's own answer, never a refusal of <c>--help</c> itself.
+    /// </summary>
+    /// <param name="verb">The verb and sub-verb.</param>
+    [Theory]
+    [InlineData("validate")]
+    [InlineData("render surface")]
+    [InlineData("render section")]
+    [InlineData("probe")]
+    [InlineData("estimate")]
+    public void HelpAfterAVerbIsTheVerbsOwnAnswer(string verb)
+    {
+        var words = verb.Split(' ');
+        var (helped, _, helpErr) = Cli([.. words, "--help"]);
+        var (bare, _, bareErr) = Cli(words);
+
+        output.WriteLine(helpErr);
+
+        Assert.Equal(bare, helped);
+        Assert.Equal(bareErr, helpErr);
+        Assert.DoesNotContain("takes a value", helpErr, StringComparison.Ordinal);
+        Assert.DoesNotContain("unknown flag", helpErr, StringComparison.Ordinal);
+    }
+
+    /// <summary>An unknown verb is reported as one, whatever flags follow it.</summary>
+    [Fact]
+    public void AnUnknownVerbIsAnUnknownCommand()
+    {
+        var (code, _, stderr) = Cli("bogus", "--plane");
+
+        Assert.Equal(1, code);
+        Assert.Contains("unknown command 'bogus'", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("takes a value", stderr, StringComparison.Ordinal);
+    }
+
+    private static (int ExitCode, string Stdout, string Stderr) Cli(params string[] args)
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var previousOut = Console.Out;
+        var previousError = Console.Error;
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            return (Program.Main(args), stdout.ToString(), stderr.ToString());
+        }
+        finally
+        {
+            Console.SetOut(previousOut);
+            Console.SetError(previousError);
+        }
+    }
+}

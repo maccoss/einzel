@@ -489,7 +489,7 @@ public static class SurfaceCommand
         var probe = FieldProbe.Open(modelPath, modelText);
         var model = probe.Model;
 
-        probe.CheckInstantResolution(request.AtUs, "/surface/at-us");
+        Einzel.Fields.FieldInstants.CheckResolution(request.AtUs * 1e-6, probe.Field, "/surface/at-us");
 
         // A mean over a cycle that does not exist is not a number this can draw, and drawing the
         // instant under that name would be a picture captioned with something it is not.
@@ -937,11 +937,8 @@ public static class SurfaceCommand
                 var jl = Math.Max(0, j - 1);
                 var jh = Math.Min(nv - 1, j + 1);
 
-                var dydu = (Y(ih, j) - Y(il, j)) / (surface.Across[ih] - surface.Across[il]);
-                var dydv = (Y(i, jh) - Y(i, jl)) / (surface.Deep[jh] - surface.Deep[jl]);
-
-                dydu = double.IsFinite(dydu) ? dydu : 0.0;
-                dydv = double.IsFinite(dydv) ? dydv : 0.0;
+                var dydu = Slope(Y(il, j), Y(i, j), Y(ih, j), surface.Across[il], surface.Across[i], surface.Across[ih]);
+                var dydv = Slope(Y(i, jl), Y(i, j), Y(i, jh), surface.Deep[jl], surface.Deep[j], surface.Deep[jh]);
 
                 normals[3 * k] = -dydu;
                 normals[(3 * k) + 1] = 1.0;
@@ -990,13 +987,6 @@ public static class SurfaceCommand
         }
 
         // A plateau is flat, so it is lit as flat whatever the neighbouring slope.
-        var flatNormals = new double[normals.Length];
-
-        for (var k = 0; k < nu * nv; k++)
-        {
-            flatNormals[(3 * k) + 1] = 1.0;
-        }
-
         var meshes = new List<PictureMesh> { new(vertices, normals, surfaceTriangles, 1.0, 1.0, 1.0, colors) };
         var plateaus = new List<PictureMesh>();
 
@@ -1004,7 +994,36 @@ public static class SurfaceCommand
         {
             var flat = surface.Plateaus.Single(p => p.Conductor == name).Height;
             var (pr, pg, pb) = Plateau(Ramp(flat));
-            plateaus.Add(new PictureMesh(vertices, flatNormals, triangles, pr, pg, pb));
+
+            // Over its own vertices, not the whole surface's: a mesh handed every node of the
+            // grid is walked whole by the framing and the rasterizer, once per conductor - a
+            // thirty-ring stack at 1001 samples a side is thirty million vertices.
+            var index = new Dictionary<int, int>();
+            var own = new List<double>();
+            var remapped = new int[triangles.Count];
+
+            for (var t = 0; t < triangles.Count; t++)
+            {
+                var node = triangles[t];
+
+                if (!index.TryGetValue(node, out var compact))
+                {
+                    compact = own.Count / 3;
+                    index[node] = compact;
+                    own.AddRange([vertices[3 * node], vertices[(3 * node) + 1], vertices[(3 * node) + 2]]);
+                }
+
+                remapped[t] = compact;
+            }
+
+            var up = new double[own.Count];
+
+            for (var k = 1; k < up.Length; k += 3)
+            {
+                up[k] = 1.0;
+            }
+
+            plateaus.Add(new PictureMesh(own, up, remapped, pr, pg, pb));
         }
 
         meshes.AddRange(Skirts(surface, mmPerUnit, Ramp));
@@ -1346,6 +1365,35 @@ public static class SurfaceCommand
             : a < 1e7 ? $"t={Format(microseconds / 1e3)} ms"
             : a < 1e9 ? $"t={Format(microseconds / 1e6)} s"
             : $"t={(microseconds / 1e6).ToString("0.##e+0", invariant)} s";
+    }
+
+    /// <summary>
+    /// The slope at a node from its neighbours: central where both are finite, one-sided against
+    /// the finite one beside a hole, and flat only where neither is.
+    /// </summary>
+    /// <remarks>
+    /// A refused point is NaN, and a central difference across it is NaN; zeroing that lit every
+    /// node beside a hole as flat. The finite neighbour still says which way the surface slopes.
+    /// </remarks>
+    internal static double Slope(double low, double here, double high, double lowAt, double hereAt, double highAt)
+    {
+        var central = (high - low) / (highAt - lowAt);
+
+        if (double.IsFinite(central))
+        {
+            return central;
+        }
+
+        var up = (high - here) / (highAt - hereAt);
+
+        if (double.IsFinite(up))
+        {
+            return up;
+        }
+
+        var down = (here - low) / (hereAt - lowAt);
+
+        return double.IsFinite(down) ? down : 0.0;
     }
 
     /// <summary>The lowest and highest finite values on a surface.</summary>

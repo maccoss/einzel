@@ -66,6 +66,8 @@ public sealed class SwitchesAreDeclaredTests(ITestOutputHelper output)
     [InlineData("schema extra", "'extra'")]
     [InlineData("render surface {model} --dry-run --no-scale out.png", "'out.png'")]
     [InlineData("probe {model} --at-mm 0,0,0 --at-us --json", "--at-us")]
+    [InlineData("render surface {model} --dry-run --no-scales", "unknown flag --no-scales for render surface")]
+    [InlineData("validate {model} --dry-run --json", "unknown flag --dry-run for validate")]
     public void EveryVerbRefusesAMalformedCommandLine(string args, string named)
     {
         var root = Path.Combine(Path.GetTempPath(), "einzel-switches", Guid.NewGuid().ToString("N"));
@@ -82,7 +84,18 @@ public sealed class SwitchesAreDeclaredTests(ITestOutputHelper output)
 
             Assert.Equal(1, code);
             Assert.Contains(named, stderr, StringComparison.Ordinal);
-            Assert.Equal(string.Empty, stdout);
+            if (words.Contains("--json"))
+            {
+                // AGT-3: the refusal as JSON, naming what it refuses.
+                using var document = System.Text.Json.JsonDocument.Parse(stdout);
+                var error = document.RootElement.GetProperty("errors")[0];
+                Assert.Equal("SCHEMA_INVALID", error.GetProperty("code").GetString());
+                Assert.StartsWith("/args/", error.GetProperty("path").GetString(), StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.Equal(string.Empty, stdout);
+            }
 
             // The same command lines, well formed, are accepted: a switch before the model.
             Assert.Equal(0, Cli(["validate", "--json", model]).ExitCode);

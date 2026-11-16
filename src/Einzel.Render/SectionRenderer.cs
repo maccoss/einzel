@@ -233,7 +233,7 @@ public static class SectionRenderer
         // phase can be placed at. An animation's frames are instants along the run itself.
         if (plan?.AtSeconds is null)
         {
-            FieldInstants.CheckResolution(spec.AtSeconds, field, "/render/at-us");
+            FieldInstants.CheckResolution(spec.AtSeconds, field, spec.InstantFromFlag ? "/render/at-us" : "/atSeconds");
         }
 
         var plane = PlaneFor(model, spec);

@@ -174,7 +174,6 @@ public sealed class FieldProbe
     private readonly CompiledModel _model;
     private readonly RotatedField?[] _tilts;
     private readonly bool _allBounded;
-    private readonly IReadOnlyList<int> _memberElements;
 
     private FieldProbe(
         CompiledModel model,
@@ -184,7 +183,6 @@ public sealed class FieldProbe
         string modelPath,
         string modelHash)
     {
-        _memberElements = memberElements;
         (_members, _leafElements) = Leaves(field, memberElements);
 
         // Once: asking a sequenced field for its operating point allocates a held copy of it.
@@ -913,28 +911,9 @@ public sealed class FieldProbe
             : null;
     }
 
-    /// <summary>
-    /// The finest fraction of the fastest drive period an instant must be placeable to: past it,
-    /// the instant is so large that a double cannot say where in the cycle it falls.
-    /// </summary>
-    public const double InstantResolutionFraction = FieldInstants.ResolutionFraction;
-
-    /// <summary>
-    /// Refuses an instant so late that where it falls in this field's drive cycle is decided by
-    /// rounding.
-    /// </summary>
-    /// <param name="atUs">The instant asked for, in microseconds, or null for none.</param>
-    /// <param name="path">Where the error is located: the flag, as a JSON Pointer.</param>
-    /// <exception cref="EinzelException">The instant is refused.</exception>
-    /// <remarks>
-    /// Asks how far apart neighbouring doubles are at that instant: when it is more than
-    /// <see cref="InstantResolutionFraction"/> of the fastest drive period, the phase drawn is
-    /// whichever one the rounding lands on - at 1e300 microseconds on a 1 MHz drive, any phase
-    /// at all. A field with no drive has no phase to lose and is never refused here; a negative
-    /// or non-finite instant is <see cref="ProbeCommand.CheckInstant"/>'s to refuse.
-    /// </remarks>
-    public void CheckInstantResolution(double? atUs, string path) =>
-        FieldInstants.CheckResolution(atUs * 1e-6, _field, path);
+    /// <summary>The assembled field the probe samples, as every run assembles it.</summary>
+    /// <remarks>For a question about the field as a whole - its drive period, say - asked of the field itself.</remarks>
+    public IElectrostaticField Field => _field;
 
     /// <summary>The warning a time-varying field earns when no instant was asked for.</summary>
     /// <param name="requested">The instant asked for, in microseconds, or absent.</param>
@@ -1121,7 +1100,7 @@ public static class ProbeCommand
         Check(request);
 
         var probe = FieldProbe.Open(modelPath);
-        probe.CheckInstantResolution(request.AtUs, "/probe/at-us");
+        FieldInstants.CheckResolution(request.AtUs * 1e-6, probe.Field, "/probe/at-us");
         var at = (request.AtUs ?? 0.0) * 1e-6;
         var samples = new List<ProbeSample>();
 

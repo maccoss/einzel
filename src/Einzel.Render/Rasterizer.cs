@@ -30,7 +30,16 @@ public sealed record RasterMesh(
 /// color throughout. Each segment is drawn exactly as a line of that segment alone would be.
 /// </param>
 public sealed record RasterLine(
-    IReadOnlyList<double> PointsMm, double R, double G, double B, IReadOnlyList<double>? SegmentColors = null);
+    IReadOnlyList<double> PointsMm, double R, double G, double B, IReadOnlyList<double>? SegmentColors = null)
+{
+    /// <summary>A colour for each segment, three numbers each, checked to fit the segments as the line is made.</summary>
+    public IReadOnlyList<double>? SegmentColors { get; init; } =
+        SegmentColors is { } colors && colors.Count != 3 * Math.Max(0, ((PointsMm ?? []).Count / 3) - 1)
+            ? throw new ArgumentException(
+                $"{colors.Count} segment colour values for {Math.Max(0, ((PointsMm ?? []).Count / 3) - 1)} segments; a line needs three for each",
+                nameof(SegmentColors))
+            : SegmentColors;
+}
 
 /// <summary>One layer, drawn whole before the next.</summary>
 /// <param name="Meshes">Its surfaces.</param>

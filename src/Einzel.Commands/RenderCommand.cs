@@ -112,7 +112,21 @@ public static class RenderCommand
         // spec's own atSeconds - under the rule probe and the surface apply: a run's clock
         // starts at zero. Whether it can be placed in the drive's cycle is asked once the field
         // is built (SectionRenderer).
-        ProbeCommand.CheckInstant(spec.AtSeconds * 1e6, "/render/at-us");
+        if (spec.InstantFromFlag)
+        {
+            ProbeCommand.CheckInstant(spec.AtSeconds * 1e6, "/render/at-us");
+        }
+        else if (!double.IsFinite(spec.AtSeconds) || spec.AtSeconds < 0.0)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/atSeconds",
+                Constraint = "the render spec's atSeconds must be a finite, non-negative number of seconds; a run's clock starts at 0",
+                Observed = new ObservedValue(spec.AtSeconds, "s"),
+                Suggestion = "set atSeconds in the render spec to 0 or a later instant, in seconds",
+            });
+        }
 
         var absolute = Path.GetFullPath(modelPath);
         var text = File.ReadAllText(absolute);

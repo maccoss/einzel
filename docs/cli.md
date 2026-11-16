@@ -885,11 +885,54 @@ and `--at-us` is refused below zero and where the drive's phase cannot be placed
 --at-us`, `--width-mm` and `--equipotentials` are read without `Parse`, so a typo is exit 1 rather
 than exit 6, and a negative instant is refused at `/render/at-us`.
 
-**Every verb refuses a malformed command line, before it does anything** (`Program.Malformed`): a
-flag that is not a switch and was given no value, and more positional arguments than the verb takes
-(one table, `Program.MaximumPositionals`; `render`, `ext` and `agents` count their sub-verb). Both
-used to be per-verb, so `render section m.json --out --json` or `--no-trajectory out.svg` still
-dropped the flag or the file at exit 0.
+**Every verb refuses a malformed command line, before it does anything** (`Program.Malformed`),
+against its own flags (`VerbFlags.ByVerb`): a flag the verb does not read (`unknown flag --no-scales
+for render surface`), a flag it reads as a value given none, and more positional arguments than it
+takes. Under `--json` the refusal is also on stdout as JSON - `{"ran": false, "errors": [...]}`, each
+error with its code, the flag or argument as its `path` (`/args/--out`), and a suggestion - so an
+agent never gets an empty stdout and a bare exit 1. `--json` and `--help` are accepted by every verb,
+and a command line asking for `--help`, or naming no verb this knows, is left to the verb exactly as
+before. A flag a verb did not read used to be accepted and ignored, which is how a mistyped
+`--no-scales` drew the scale anyway. `VerbFlagsTests` reads each verb's handler, through every helper
+it calls, and fails when the registry and the handler disagree.
+
+| Verb | Switches | Flags that take a value | Positional arguments (a sub-verb counts) |
+| --- | --- | --- | --- |
+| `init` | `--dry-run` | `--vcs` | 1 |
+| `new` | `--dry-run` | `--from-example`, `--from-template` | 1 |
+| `validate` | - | - | 1 |
+| `outline` | `--dry-run` | `--set` | 1 |
+| `project` | - | `--project` | 1 |
+| `estimate` | `--no-calibrate` | `--threshold` | 1 |
+| `solve` | - | - | 1 |
+| `probe` | `--dry-run` | `--at-mm`, `--line-mm`, `--to-mm`, `--samples`, `--at-us`, `--csv` | 1 |
+| `run` | `--vtu` | `--progress`, `--project` | 1 |
+| `sweep` | `--dry-run` | `--project` | 1 |
+| `optimise` | `--dry-run` | `--project` | 1 |
+| `optimize` | `--dry-run` | `--project` | 1 |
+| `scan` | `--dry-run` | `--project` | 1 |
+| `boundary` | `--dry-run` | `--project` | 1 |
+| `preview` | - | - | 1 |
+| `test` | - | `--project` | 1 |
+| `verify` | - | `--project` | 1 |
+| `report` | `--dry-run` | `--out`, `--project` | 1 |
+| `export` | `--composite`, `--dry-run`, `--mesh` | `--at-us`, `--box-mm`, `--project`, `--step-mm` | 1 |
+| `compare` | - | `--ions` | 1 |
+| `schema` | `--study` | - | 0 |
+| `templates` | - | - | 1 |
+| `examples` | - | - | 1 |
+| `agents-md` | `--dry-run` | `--project` | 1 |
+| `agents` | `--dry-run` | - | 3 |
+| `doctor` | - | `--project` | 1 |
+| `ext` | `--dry-run` | `--input`, `--kind`, `--project` | 2 |
+| `render section` | `--dry-run`, `--no-trajectory` | `--at-us`, `--caption`, `--equipotentials`, `--format`, `--out`, `--progress`, `--project`, `--width-mm` | 2 |
+| `render still` | `--dry-run`, `--no-scale`, `--see-through` | `--height-px`, `--out`, `--project`, `--view`, `--width-px` | 2 |
+| `render surface` | `--cycle-mean`, `--dry-run`, `--no-scale` | `--at-us`, `--box-mm`, `--csv`, `--height`, `--height-mm-per-ev`, `--height-mm-per-v`, `--height-px`, `--mesh-lines`, `--offset-mm`, `--out`, `--plane`, `--project`, `--relief`, `--samples`, `--view`, `--width-px` | 2 |
+| `render animation` | `--dry-run` | `--caption`, `--format`, `--fps`, `--out`, `--progress`, `--project`, `--width-mm` | 2 |
+
+`--json` and `--help` are accepted everywhere besides. `probe` also knows the bare `--at`, `--line` and
+`--to`, and `render surface` the bare `--offset`, `--box`, `--at` and `--height-mm`, only to refuse them
+with the spelling that carries a unit.
 
 **A flag that takes a value and is given none is a validation failure naming the flag** - `--at-us
 --cycle-mean`, `--csv --json`. This is in the shared flag readers, so it also holds for `render

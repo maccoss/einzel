@@ -39,6 +39,9 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX)
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
         HeldConductors.ForwardMean(inner, conductor, fromSeconds, periodSeconds, samples);
 
+    /// <inheritdoc/>
+    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(inner, conductor);
+
     private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
 
     private Vec3 Reflect(in Vec3 position) => new((2.0 * planeX) - position.X, position.Y, position.Z);
