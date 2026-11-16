@@ -120,7 +120,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--dry-run` | Say what would be written, and write nothing |
 | `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model - including a sequenced run that ends in the diffusive description |
 | `--at-us <t>` | `render section` and `render surface`: the instant to draw a driven field (or, for a section, a diffusive density) at |
-| `--cycle-mean` | `render surface` only: draw the potential averaged over one drive cycle - for a sinusoidal drive, the DC part - instead of an instant |
+| `--cycle-mean` | `render surface` only: draw the potential averaged over one drive cycle - for a sinusoidal drive, the DC part - instead of an instant. Refused for a field with no drive (static, or a sequence of static states) |
 | `--plane xy\|xz\|yz`, `--offset-mm d`, `--box-mm a0,b0,a1,b1` | `render surface` only: the plane, its offset along the normal, and the rectangle sampled in the plane's own axis order |
 | `--height potential\|energy` | `render surface` only: volts, or q·phi for the model's ion in electronvolts |
 | `--view iso\|side\|top\|front` | `render still` only: the named view, the same names as the window's buttons |
@@ -852,7 +852,16 @@ states the scale - `heightMmPerUnit`, `unitsPerMm`, `lowest`, `highest` - which 
 text and on the picture as a labelled bar. `--cycle-mean` draws the part of a driven field that does
 not oscillate (exactly the DC for a sinusoid; `render.cycle-mean` says what was averaged); with no
 instant and no cycle mean, a driven field is drawn at t = 0 and `render.field-at-instant` says so.
-`--csv` writes the sampled grid. Units are in the flag names, as for the probe; a bare `--offset`,
+**A field with no drive has no cycle to average**, so `--cycle-mean` on a static model, or on a
+sequence whose states are all static, is refused at `/surface/cycle-mean` (exit 1) rather than
+drawn as an instant under the mean's name; `--at-us` on a static model is drawn, with
+`render.instant-ignored` saying it changed nothing. With no `--offset-mm` the plane passes through
+the middle of the domain along its normal (z = 0 for a 2-D model's own `xy` plane). Two elements
+that each have a conductor of one name are two plateaus, labelled `name (element N)`.
+`scaleDrawn` is false, and the bar absent, in `--view top` (the height points at the viewer) and
+in a picture too small for the bar's labels. The model is read once: `modelHash` is the hash of
+the text the field was built from.
+`--csv` writes the sampled grid, quoted per RFC 4180. Units are in the flag names, as for the probe; a bare `--offset`,
 `--box` or `--at` is refused. See [Rendering](rendering.md) for the figures and what they show.
 
 ### `einzel export --composite`

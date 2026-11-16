@@ -861,11 +861,20 @@ own potential - nearer the surface an interpolant overshoots by a per cent or tw
 written as two halves meeting on a line is never deeper than the plane's offset from the seam, so the
 single deepest sample was the first answer and the wrong one (it put an end rod at 2.89 V). The outcome lists each plateau with that value and the lowest and highest the
 field reported anywhere inside it on the plane, so a plateau that is not really flat (an analytic
-element superposed over a solved electrode) says so.
+element superposed over a solved electrode) says so. **A plateau is one conductor of one element.**
+A name is unique within one solve and no further, so where two elements each have a `plate` on the
+plane they are two plateaus, labelled `plate (element 0)` and `plate (element 1)`, each at its own
+potential; keyed by name alone they were one plateau at one median, a conductor drawn at a potential
+it does not hold. Each plateau carries its `element` and its `name` as written.
 
 **The plane** is a coordinate plane at an offset. A cross-section or axisymmetric model defaults
 to its own plane (`xy`: for an axisymmetric solve that is the half-plane drawn whole, y the
-radius); a volume defaults to the plane through its middle normal to its thinnest side. The box
+radius); a volume defaults to the plane through its middle normal to its thinnest side. **With no
+`--offset-mm` the plane passes through the middle of the model's domain along its normal** - for a
+2-D model's own plane, `xy`, that is z = 0, the plane the solve is declared in. Any other plane of a
+2-D model is cut through the domain's middle like a volume's (the planar mirror pair's `yz` at
+x = 383.5 mm, not at x = 0, which is 90 mm inside one end); such a cut is legitimate and seldom
+interesting, since a cross-section does not vary along z. The box
 defaults to the solve domain's extent in the plane; `--box-mm` takes four numbers in the plane's
 own axis order (for `yz`: y0, z0, y1, z1). The longer side runs across the picture.
 
@@ -887,6 +896,18 @@ a potential rather than as a difference from an arbitrary floor. The orthographi
 every vertical the same screen length per millimetre wherever it stands, which is what lets the
 bar stand beside the surface and be read against any part of it.
 
+**The bar is left out where it cannot be read, and the outcome says so** (`scaleDrawn: false`), as
+the still's ruler leaves out an arm that points at the viewer. Two cases. In `--view top` the height
+runs straight at the camera, so the bar is a point with every label on top of the last: it is not
+drawn, and from above the color is the only encoding of the potential the picture has - the range is
+`lowest` and `highest` and the `Scale` text chunk. A flat color key for that view would be the better
+answer and is not built. And in a small picture the labels' room is reserved in pixels and fitted
+until the frame stops moving (it used to be reserved once, in millimetres at the first framing's
+scale, which the refit then shrank under the labels); if the labels would take more than half the
+surface's size, or still not sit inside the picture, the scale is left off and the surface is drawn
+at full size - at 200 by 150 pixels the einzel lens is drawn without it, at 320 by 200 with it. The
+picture is then exactly the one `--no-scale` draws.
+
 **Potential or potential energy.** `--height energy` draws q·phi for the model's ion, in
 electronvolts: a positive ion's hills are a negative ion's valleys, so for a negative ion the
 picture is the potential upside down, and a ball rolling on it goes where the ion goes. A model with
@@ -907,6 +928,26 @@ a rectangular wave's mean is not zero (it is `2*duty - 1` of its amplitude, and 
 which is right - it is DC); and a field carrying two frequencies is averaged over the faster one's
 period, so the slower drive's contribution is not its cycle mean unless its amplitude is zero (the
 linear ion trap's resonance-excitation drive is declared at zero amplitude, so its mean is exact).
+
+**A field with no drive has no cycle mean, and `--cycle-mean` is refused for it** - located at
+`/surface/cycle-mean`, exit 1, with what to do instead. That is a static model, and also a
+sequenced one whose states are all static (`sequenced-extraction`, `sequenced-uniform`): it varies
+with time and has no period to average over. The second used to dereference the absent window and
+exit 6, after sampling the instantaneous field under the mean's name; the first accepted the flag
+and ignored it. Refused rather than drawn as the instant with a warning, because the caption and
+the outcome would otherwise say "cycle mean" over a picture that is not one. **`--at-us` on a static
+field is the other way round**: the picture is right at every instant, so it is drawn and
+`render.instant-ignored` (advisory) says the flag changed nothing - which is also what lets one
+command line be used across static and driven models.
+
+**The CSV is RFC 4180.** A conductor's label is whatever the model's author wrote, so one holding a
+comma, a quote or a line break is quoted, and a warning that runs over several lines stays inside
+`#` comment lines above the table.
+
+**One read of the model (PRJ-3).** `Execute` reads the document once and builds the field from that
+text; the hash in the outcome and in the PNG is `FieldProbe.ModelHash`, of the same text. It used to
+hash its own read and then let the probe read again, so an edit between the two named one revision
+beside a surface of another.
 
 **Composed in the command layer, rasterized in `Einzel.Render`**, the split `render still` makes:
 the mesh, its colors, the plateaus, the edge curtains, the camera and the scale are

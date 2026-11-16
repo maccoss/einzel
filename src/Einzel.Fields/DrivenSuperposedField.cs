@@ -319,17 +319,28 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
     }
 
     /// <inheritdoc/>
-    public string? ConductorAt(in Vec3 position)
+    public string? ConductorAt(in Vec3 position) =>
+        ConductorElementAt(in position) is var index and >= 0
+            ? ((IConductorBounded)_elements[index]).ConductorAt(in position)
+            : null;
+
+    /// <summary>
+    /// Which of <see cref="Elements"/> holds the conductor <see cref="ConductorAt"/> names: a
+    /// name is unique only within one element, so the name alone does not say.
+    /// </summary>
+    /// <param name="position">Where to look.</param>
+    /// <returns>The element's index in <see cref="Elements"/>, or -1 when the point is in no conductor.</returns>
+    public int ConductorElementAt(in Vec3 position)
     {
-        foreach (var element in _elements)
+        for (var i = 0; i < _elements.Length; i++)
         {
-            if (element is IConductorBounded bounded
+            if (_elements[i] is IConductorBounded bounded
                 && bounded.SignedDistanceToConductor(in position) <= 0.0)
             {
-                return bounded.ConductorAt(in position);
+                return i;
             }
         }
 
-        return null;
+        return -1;
     }
 }

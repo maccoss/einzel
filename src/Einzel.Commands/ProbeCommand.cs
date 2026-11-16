@@ -159,6 +159,8 @@ public sealed class FieldProbe
     private readonly CompiledModel _model;
     private readonly RotatedField?[] _tilts;
     private readonly bool _allBounded;
+    private readonly double? _cycleMeanWindow;
+    private readonly int[] _electricElements;
 
     private FieldProbe(
         CompiledModel model,
@@ -197,6 +199,42 @@ public sealed class FieldProbe
         ];
 
         _allBounded = Elements.Count > 0 && Elements.All(e => e.HasDomain);
+
+        // Once, here: asking a composite for its shortest period walks every member, and a
+        // surface asks for the window at every sample point.
+        _cycleMeanWindow = _driven is not null && double.IsFinite(_driven.ShortestPeriodSeconds)
+            ? _driven.ShortestPeriodSeconds
+            : null;
+
+        // The assembly sums one electric member per element that is not a magnet, in order.
+        _electricElements =
+        [
+            .. Enumerable.Range(0, model.Fields.Count)
+                .Where(i => model.Fields[i].Kind != CompiledFieldKind.UniformMagnetic),
+        ];
+    }
+
+    /// <summary>
+    /// Which field element holds the conductor a point is in, by its index in the model: a
+    /// conductor's name is unique only within one solve, so two elements may each have a
+    /// "plate" and the name alone does not say which this is.
+    /// </summary>
+    /// <param name="positionMm">Where, in millimetres.</param>
+    /// <returns>The element's index, or null where the field knows no conductor there.</returns>
+    public int? ConductorElementAt(Vec3 positionMm)
+    {
+        var point = MillimetresToMetres(positionMm);
+        var electric = _field is Einzel.Fields.Magnetic.MagnetizedField magnetized ? magnetized.Electric : _field;
+
+        var member = electric switch
+        {
+            SuperposedField sum => sum.ConductorElementAt(in point),
+            DrivenSuperposedField sum => sum.ConductorElementAt(in point),
+            IConductorBounded => 0,
+            _ => -1,
+        };
+
+        return member >= 0 && member < _electricElements.Length ? _electricElements[member] : null;
     }
 
     /// <summary>The model, as an absolute path.</summary>
@@ -336,12 +374,10 @@ public sealed class FieldProbe
 
     /// <summary>
     /// The window a cycle mean is taken over, in seconds: one period of the fastest drive; absent
-    /// for a static field.
+    /// for a field with no drive - a static one, or a sequence whose every state is static -
+    /// which has no cycle to average over.
     /// </summary>
-    public double? CycleMeanWindowSeconds =>
-        _field is ITimeVaryingField driven && double.IsFinite(driven.ShortestPeriodSeconds)
-            ? driven.ShortestPeriodSeconds
-            : null;
+    public double? CycleMeanWindowSeconds => _cycleMeanWindow;
 
     /// <summary>Whether the field oscillates at one frequency, so one period is its whole cycle.</summary>
     public bool Monochromatic =>
@@ -366,8 +402,19 @@ public sealed class FieldProbe
     /// potential's gradient would be is not what this method measures.
     /// </param>
     /// <returns>The sample; a refused point is a row with status refused, never an exception.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// A cycle mean was asked of a field with no drive period
+    /// (<see cref="CycleMeanWindowSeconds"/> is absent). It is not answered with the instant: a
+    /// caller that asked for a mean and was handed an instantaneous value could not tell.
+    /// </exception>
     public ProbeSample At(int index, Vec3 positionMm, double atSeconds, bool cycleMean)
     {
+        if (cycleMean && _cycleMeanWindow is null)
+        {
+            throw new InvalidOperationException(
+                "a cycle mean was asked of a field with no drive period; check CycleMeanWindowSeconds first");
+        }
+
         var point = new Vec3(positionMm.X * MetresPerMm, positionMm.Y * MetresPerMm, positionMm.Z * MetresPerMm);
         var position = new[] { positionMm.X, positionMm.Y, positionMm.Z };
 
@@ -495,7 +542,7 @@ public sealed class FieldProbe
 
         try
         {
-            if (cycleMean && _driven is not null && CycleMeanWindowSeconds is { } window)
+            if (cycleMean && _driven is not null && _cycleMeanWindow is { } window)
             {
                 var held = Held(_driven, atSeconds);
                 potential = held.CycleMeanPotentialAt(in point, atSeconds, window, CycleMeanSamples);

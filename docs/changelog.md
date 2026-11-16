@@ -3401,4 +3401,29 @@ Two findings from Stage 1 that bear on the spec:
   three are in SPEC.md's review list, and the gas statistics carry the correlated-streams caveat
   already recorded there.
 
-  Not built: the surface in the interactive window, arbitrary planes, free camera angles.
+  **A review found ten things, and seven were the picture or the outcome saying something untrue.**
+  `--cycle-mean` on a sequence whose states are all static (`sequenced-extraction`,
+  `sequenced-uniform`) dereferenced an absent drive period and exited 6, after the probe had
+  sampled the instantaneous field under the mean's name; on a static model the flag was accepted and
+  ignored. **A field with no drive has no cycle mean**, so both are refused at
+  `/surface/cycle-mean`, and `FieldProbe.At` throws rather than hand back an instant; `--at-us` on
+  a static model, which is harmless, is drawn with `render.instant-ignored`. `Execute` hashed its
+  own read of the model and the probe read again (PRJ-3): one read now, the hash the probe's. In
+  `--view top` the vertical bar projected to a point with its labels overprinted and `scaleDrawn`
+  true; it is left out and reported absent, the still's rule for an arm pointing at the viewer - a
+  flat color key would be the better answer from above and is not built. Label room was reserved
+  once in millimetres at a scale the refit then shrank; it is fitted to a fixed point in pixels,
+  and a picture where the labels would take over half the surface's size or still not fit is
+  drawn without the scale and says so. **Plateaus were keyed by conductor name alone**, and a name
+  is unique only within one solve, so two elements' `plate`s were one plateau at one median; keyed
+  by element and name now, labelled `name (element N)` where a name repeats
+  (`ConductorElementAt` on the two composites and the probe). A 2-D model's default offset was 0
+  for every plane where the request's own doc said the domain's middle: it is the middle, and z = 0
+  only on the model's own `xy`. The CSV wrote names and multi-line warnings unescaped (RFC 4180
+  now). The probe recomputed the shortest drive period at every sample point (once, at open). And
+  the verb had its own number, box and size parsers beside `still`'s and `probe`'s and a third
+  private elementary charge; one of each now. Nine regression tests, each failing under the
+  mutation that restores its defect and no other.
+
+  Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
+  key for the top view.

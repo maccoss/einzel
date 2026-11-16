@@ -1817,8 +1817,8 @@ public static class ViewportCommand
         _ => result.Outcome.ToString(),
     };
 
-    /// <summary>The elementary charge, in coulombs.</summary>
-    private const double ElementaryCharge = 1.602176634e-19;
+    /// <summary>The elementary charge, in coulombs: the transport's own constant, not a second copy.</summary>
+    private const double ElementaryCharge = Einzel.Transport.IonSpecies.ElementaryChargeSi;
 
     /// <summary>Cells along the longest axis when extracting a volume conductor.</summary>
     private const int VolumeCells = 48;

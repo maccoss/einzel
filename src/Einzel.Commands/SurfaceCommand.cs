@@ -24,7 +24,11 @@ public static class SurfaceHeight
 
 /// <summary>Where, when and how to draw a potential surface.</summary>
 /// <param name="Plane">"xy", "xz" or "yz", or absent for the model's own plane.</param>
-/// <param name="OffsetMm">How far along the plane's normal, in millimetres; absent for the domain's middle.</param>
+/// <param name="OffsetMm">
+/// How far along the plane's normal, in millimetres; absent for the middle of the model's domain
+/// along that normal. For a cross-section or an axisymmetric model drawn on its own plane, xy,
+/// that is z = 0, the plane the solve is declared in.
+/// </param>
 /// <param name="BoxMm">
 /// The sampled rectangle as four numbers in the plane's own axis order (for "xz": x0, z0, x1, z1),
 /// in millimetres; absent for the solve domain's extent in the plane.
@@ -39,8 +43,14 @@ public static class SurfaceHeight
 /// <param name="HeightMmPerUnit">
 /// An explicit scale: millimetres of drawn height per volt (or per electronvolt for the energy).
 /// </param>
-/// <param name="AtUs">The instant, in microseconds, or absent when none was asked for.</param>
-/// <param name="CycleMean">Whether to draw the potential averaged over one drive cycle.</param>
+/// <param name="AtUs">
+/// The instant, in microseconds, or absent when none was asked for. A static field is the same at
+/// every instant, so one given for it changes nothing and is warned about.
+/// </param>
+/// <param name="CycleMean">
+/// Whether to draw the potential averaged over one drive cycle. Refused for a field with no drive
+/// - a static one, or a sequence whose states are all static - which has no cycle to average.
+/// </param>
 public sealed record SurfaceRequest(
     string? Plane = null,
     double? OffsetMm = null,
@@ -54,7 +64,10 @@ public sealed record SurfaceRequest(
     bool CycleMean = false);
 
 /// <summary>A conductor met by the plane, drawn as a flat plateau at its own potential.</summary>
-/// <param name="Conductor">Its name.</param>
+/// <param name="Conductor">
+/// Its label: its name, and where two field elements each have a conductor of that name on the
+/// plane, the name followed by the element, "plate (element 1)", so the two are told apart.
+/// </param>
 /// <param name="PotentialV">
 /// The potential it is drawn at: the median of the field's values over the deeper half of the samples
 /// inside it, which for a solved element is the electrode's own potential.
@@ -63,8 +76,17 @@ public sealed record SurfaceRequest(
 /// <param name="Samples">How many samples fell inside it.</param>
 /// <param name="LowestV">The lowest potential the field reported anywhere inside it on the plane.</param>
 /// <param name="HighestV">The highest, so a plateau that is not really flat says so.</param>
+/// <param name="Element">The field element it belongs to, by index in the model; absent where unknown.</param>
+/// <param name="Name">Its name as the model wrote it, which is unique only within its element.</param>
 public sealed record SurfacePlateau(
-    string Conductor, double PotentialV, double Height, int Samples, double LowestV, double HighestV);
+    string Conductor,
+    double PotentialV,
+    double Height,
+    int Samples,
+    double LowestV,
+    double HighestV,
+    int? Element = null,
+    string? Name = null);
 
 /// <summary>A sampled potential surface, before anything is drawn.</summary>
 /// <remarks>
@@ -97,7 +119,10 @@ public sealed record PotentialSurface
     /// </summary>
     public required IReadOnlyList<double> Values { get; init; }
 
-    /// <summary>The conductor each node is inside, or null for free space.</summary>
+    /// <summary>
+    /// The conductor each node is inside, by its plateau's label
+    /// (<see cref="SurfacePlateau.Conductor"/>), or null for free space.
+    /// </summary>
     public required IReadOnlyList<string?> Inside { get; init; }
 
     /// <summary>The plateaus, one per conductor the plane meets.</summary>
@@ -215,7 +240,12 @@ public sealed record SurfaceOutcome
     /// <summary>Whether a validity violation marked the picture with a hatched band.</summary>
     public required bool Tainted { get; init; }
 
-    /// <summary>Whether the vertical scale was drawn on the picture.</summary>
+    /// <summary>
+    /// Whether the vertical scale was drawn on the picture. False when it was not asked for, when
+    /// the view looks straight down the height (the top view, where the bar is a point), and
+    /// when a small picture has no room for the bar and its labels beside the surface; the scale is in
+    /// <see cref="HeightMmPerUnit"/> and the PNG's text either way.
+    /// </summary>
     public required bool ScaleDrawn { get; init; }
 
     /// <summary>Everything that qualifies the picture, which the PNG also carries (GRD-2).</summary>
@@ -309,7 +339,17 @@ public static class SurfaceCommand
     /// <summary>How far toward white the surface under the mesh is tinted, so the lines read over it.</summary>
     public const double SurfaceTint = 0.62;
 
-    private const double ElementaryCharge = 1.602176634e-19;
+    // How many times the frame is refitted round the scale's labels before giving up on it
+    // settling; a picture too small for its labels never settles, and the fit check leaves the
+    // scale out.
+    private const int LabelFitPasses = 12;
+
+    /// <summary>
+    /// How much of its unlabelled size the surface must keep once room is made for the scale's
+    /// labels. Below this the labels are taking most of a small picture and the surface is a
+    /// smudge beside them, so the scale is left off and the surface drawn at full size.
+    /// </summary>
+    public const double SmallestLabelledFraction = 0.5;
 
     /// <summary>Samples a model's potential on a plane.</summary>
     /// <param name="modelPath">The model.</param>
@@ -319,19 +359,63 @@ public static class SurfaceCommand
     public static (PotentialSurface Surface, FieldProbe Probe, IReadOnlyList<ValidityWarning> Warnings) Sample(
         string modelPath, SurfaceRequest request)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+
+        var absolute = Path.GetFullPath(modelPath);
+
+        return Sample(absolute, File.ReadAllText(absolute), request);
+    }
+
+    /// <summary>Samples the potential of model text already read.</summary>
+    /// <param name="modelPath">Where the text came from; imported files resolve against its directory.</param>
+    /// <param name="modelText">The model document.</param>
+    /// <param name="request">Where and how.</param>
+    /// <returns>
+    /// The sampled surface, the probe it came from - whose <see cref="FieldProbe.ModelHash"/> is
+    /// the hash of this text - and the warnings sampling earned.
+    /// </returns>
+    /// <exception cref="EinzelException">The model does not validate, or the request is malformed.</exception>
+    /// <remarks>
+    /// One read of the model (PRJ-3): the field and the hash recorded beside it are of the same
+    /// revision however the file is edited meanwhile.
+    /// </remarks>
+    public static (PotentialSurface Surface, FieldProbe Probe, IReadOnlyList<ValidityWarning> Warnings) Sample(
+        string modelPath, string modelText, SurfaceRequest request)
+    {
         ArgumentNullException.ThrowIfNull(request);
         Check(request);
 
-        var probe = FieldProbe.Open(modelPath);
+        var probe = FieldProbe.Open(modelPath, modelText);
         var model = probe.Model;
+
+        // A mean over a cycle that does not exist is not a number this can draw, and drawing the
+        // instant under that name would be a picture captioned with something it is not.
+        if (request.CycleMean && probe.CycleMeanWindowSeconds is null)
+        {
+            throw Refusal(
+                "/surface/cycle-mean",
+                probe.TimeVarying
+                    ? "--cycle-mean averages the potential over one drive period, and this field has "
+                      + "no drive: it changes with time only by switching between static states (a "
+                      + "sequence), so there is no cycle to average over"
+                    : "--cycle-mean averages the potential over one drive period, and this field is "
+                      + "static: it has no drive and no cycle to average over",
+                probe.TimeVarying
+                    ? "drop --cycle-mean and give --at-us <t> to choose which state of the sequence to draw"
+                    : "drop --cycle-mean; a static field is already the part that does not oscillate");
+        }
+
         var domain = probe.DomainMm();
         var twoD = model.Fields.Any(f => f.Solve is not null) && !model.Fields.Any(f => f.Solve3D is not null);
 
         var plane = request.Plane ?? DefaultPlane(domain, twoD);
         var (a, b, n) = Axes(plane);
 
+        // The middle of the domain along the normal - except on a 2-D model's own plane, where
+        // the normal is the axis the solve is invariant along (or rotated about) and z = 0 is the
+        // plane it is declared in.
         var centre = domain is { } d ? Component(Mid(d.Min, d.Max), n) : 0.0;
-        var offset = request.OffsetMm ?? (twoD ? 0.0 : centre);
+        var offset = request.OffsetMm ?? (twoD && plane == "xy" ? 0.0 : centre);
 
         double a0, b0, a1, b1;
 
@@ -370,14 +454,15 @@ public static class SurfaceCommand
         var vs = Grid(v0, v1, nv);
 
         var energy = request.Height == SurfaceHeight.Energy;
-        var charge = model.ChargeSi / ElementaryCharge;
+        var charge = model.ChargeSi / Einzel.Transport.IonSpecies.ElementaryChargeSi;
         var factor = energy ? charge : 1.0;
 
         var at = (request.AtUs ?? 0.0) * 1e-6;
-        var cycleMean = request.CycleMean && probe.TimeVarying;
+        var cycleMean = request.CycleMean;
 
         var raw = new double[nu * nv];
-        var inside = new string?[nu * nv];
+        var names = new string?[nu * nv];
+        var elements = new int?[nu * nv];
         var depth = new double[nu * nv];
         var outside = 0;
         var refused = 0;
@@ -402,7 +487,8 @@ public static class SurfaceCommand
                 }
                 else if (sample.Status == ProbeStatus.InsideConductor)
                 {
-                    inside[k] = sample.Conductor ?? "conductor";
+                    names[k] = sample.Conductor ?? "conductor";
+                    elements[k] = probe.ConductorElementAt(point);
                     depth[k] = sample.ConductorDistanceMm ?? 0.0;
                 }
             }
@@ -412,8 +498,28 @@ public static class SurfaceCommand
         // element every node inside is pinned to the electrode, so that is the electrode's
         // potential exactly; nearer the surface an interpolant overshoots by a per cent or two by
         // construction, which is why the deep samples and a median rather than an average.
+        //
+        // Keyed by element and name together: a name is unique only within one solve, so two
+        // elements may each have a "plate", and one median over both would draw two conductors
+        // at a potential neither holds. Where a name does repeat, the label says which element.
         var plateaus = new List<SurfacePlateau>();
         var level = new Dictionary<string, double>(StringComparer.Ordinal);
+
+        var repeated = Enumerable.Range(0, raw.Length)
+            .Where(k => names[k] is not null)
+            .GroupBy(k => names[k]!, StringComparer.Ordinal)
+            .Where(g => g.Select(k => elements[k]).Distinct().Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var inside = new string?[nu * nv];
+
+        for (var k = 0; k < raw.Length; k++)
+        {
+            inside[k] = names[k] is { } name && repeated.Contains(name)
+                ? string.Create(CultureInfo.InvariantCulture, $"{name} (element {elements[k]?.ToString(CultureInfo.InvariantCulture) ?? "?"})")
+                : names[k];
+        }
 
         foreach (var group in Enumerable.Range(0, raw.Length)
             .Where(k => inside[k] is not null && double.IsFinite(raw[k]))
@@ -435,14 +541,16 @@ public static class SurfaceCommand
                 factor * potential,
                 group.Count(),
                 group.Min(k => raw[k]),
-                group.Max(k => raw[k])));
+                group.Max(k => raw[k]),
+                elements[group.First()],
+                names[group.First()]));
         }
 
         var values = new double[raw.Length];
 
         for (var k = 0; k < raw.Length; k++)
         {
-            var v = inside[k] is { } name && level.TryGetValue(name, out var flat) ? flat : raw[k];
+            var v = inside[k] is { } label && level.TryGetValue(label, out var flat) ? flat : raw[k];
             values[k] = (factor * v) + 0.0;
         }
 
@@ -461,6 +569,16 @@ public static class SurfaceCommand
                       + "the top of its cycle - and not a field the instrument holds; give --at-us "
                       + "to choose the instant, or --cycle-mean for the part that does not oscillate",
                 WarningSeverity.Provenance));
+        }
+
+        if (!probe.TimeVarying && request.AtUs is { } unused)
+        {
+            warnings.Add(new ValidityWarning(
+                "render.instant-ignored",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"--at-us {unused:G6} was given and this field is static - nothing in the model is driven or sequenced - so the surface is the same at every instant and the flag changed nothing"),
+                WarningSeverity.Advisory));
         }
 
         if (cycleMean)
@@ -708,6 +826,11 @@ public static class SurfaceCommand
     /// <param name="dryRun">Whether to draw without writing.</param>
     /// <param name="scale">Whether to draw the vertical scale on the picture.</param>
     /// <param name="csvPath">Where to write the sampled values as CSV, or null for none.</param>
+    /// <param name="modelText">
+    /// The model document, for a caller that has already read it; null to read
+    /// <paramref name="modelPath"/>, once. Either way the hash recorded is of the text the field
+    /// was built from (PRJ-3).
+    /// </param>
     /// <returns>What was drawn and where it went.</returns>
     /// <exception cref="EinzelException">The model does not validate, or the request is malformed.</exception>
     /// <exception cref="ArgumentException">The view has no such name.</exception>
@@ -722,7 +845,8 @@ public static class SurfaceCommand
         string? outputPath = null,
         bool dryRun = false,
         bool scale = true,
-        string? csvPath = null)
+        string? csvPath = null,
+        string? modelText = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentNullException.ThrowIfNull(project);
@@ -740,56 +864,84 @@ public static class SurfaceCommand
         }
 
         var absolute = Path.GetFullPath(modelPath);
-        var hash = ContentHash.OfText(File.ReadAllText(absolute));
 
-        var (surface, probe, warnings) = Sample(absolute, request);
+        // One read (PRJ-3): the hash is the probe's, of the very text the field was built from.
+        var (surface, probe, warnings) = Sample(absolute, modelText ?? File.ReadAllText(absolute), request);
+        var hash = probe.ModelHash;
         var mmPerUnit = Scale(surface, request);
         var layers = Compose(surface, mmPerUnit, request.MeshLines);
 
         var (low, high) = Range(surface);
         var bar = Bar(surface, mmPerUnit, angles, low, high);
 
-        var points = layers.SelectMany(Points).Concat(scale ? bar.Points : []).ToList();
-        var framing = Framing.Around(points, angles.Azimuth, angles.Elevation);
-        var matrix = framing.Matrix((double)width / height);
+        var drawn = layers.SelectMany(Points).ToList();
+        var aspect = (double)width / height;
+        var matrix = Framing.Around(drawn, angles.Azimuth, angles.Elevation).Matrix(aspect);
 
-        // Room for the scale's labels, which sit left of the bar: measured with a first framing,
-        // as a point that far left of the bar in the picture's own screen direction, then fitted
-        // again. The second fit is a little smaller, so the labels fit with room to spare.
+        var tainted = warnings.Any(w => w.Severity == WarningSeverity.ValidityViolation);
+        var cycleMean = request.CycleMean;
+        var instantUs = probe.TimeVarying ? request.AtUs ?? 0.0 : (double?)null;
+
+        RasterOverlay? overlay = null;
+
         if (scale)
         {
+            // Room for the scale's labels, which sit left of the bar, and for the caption above
+            // it. Their sizes are in pixels and the frame is fitted in millimetres, and making
+            // room shrinks the picture, which makes the same pixels more millimetres: so the room
+            // is fitted again until the scale stops moving, not once.
             var textHeight = ScaleIndicator.TextHeightFor(width, height);
             var widest = new[] { low, high, 0.0 }.Concat(surface.Plateaus.Select(p => p.Height))
                 .Max(v => StrokeFont.Width($"{Format(v, high - low)} {surface.Unit}", textHeight));
-            var widestCaption = Math.Max(StrokeFont.Width("cycle mean", textHeight), widest);
+            var reachPx = Math.Max(StrokeFont.Width("cycle mean", textHeight), widest) + (1.6 * textHeight) + 8.0;
+            var liftPx = 3.0 * textHeight;
+            var fitted = matrix;
 
-            var across = Math.Sqrt((matrix[0] * matrix[0]) + (matrix[4] * matrix[4]) + (matrix[8] * matrix[8]));
-            var pxPerMm = across * width / 2.0;
-            var reach = (widestCaption + (1.6 * textHeight) + 8.0) / pxPerMm;
-            var (lx, ly, lz) = (-matrix[0] / across, -matrix[4] / across, -matrix[8] / across);
-
-            foreach (var (x, y, z) in bar.Points)
+            for (var pass = 0; pass < LabelFitPasses; pass++)
             {
-                points.Add((x + (lx * reach), y + (ly * reach), z + (lz * reach)));
+                var across = Math.Sqrt((fitted[0] * fitted[0]) + (fitted[4] * fitted[4]) + (fitted[8] * fitted[8]));
+                var up = Math.Sqrt((fitted[1] * fitted[1]) + (fitted[5] * fitted[5]) + (fitted[9] * fitted[9]));
+                var reach = reachPx / (across * width / 2.0);
+                var lift = liftPx / (up * height / 2.0);
+
+                var points = new List<(double X, double Y, double Z)>(drawn);
+                points.AddRange(bar.Points);
+
+                foreach (var (x, y, z) in bar.Points)
+                {
+                    points.Add((x - (fitted[0] / across * reach), y - (fitted[4] / across * reach), z - (fitted[8] / across * reach)));
+                }
+
+                var (tx, ty, tz) = bar.Points[1];
+                points.Add((tx + (fitted[1] / up * lift), ty + (fitted[5] / up * lift), tz + (fitted[9] / up * lift)));
+
+                var next = Framing.Around(points, angles.Azimuth, angles.Elevation).Matrix(aspect);
+                var nextAcross = Math.Sqrt((next[0] * next[0]) + (next[4] * next[4]) + (next[8] * next[8]));
+                fitted = next;
+
+                if (Math.Abs((nextAcross / across) - 1.0) < 1e-3)
+                {
+                    break;
+                }
             }
 
-            // And above the bar, for the caption naming the instant.
-            var up = Math.Sqrt((matrix[1] * matrix[1]) + (matrix[5] * matrix[5]) + (matrix[9] * matrix[9]));
-            var lift = 3.0 * textHeight / (up * height / 2.0);
-            var (tx, ty, tz) = bar.Points[1];
-            points.Add((tx + (matrix[1] / up * lift), ty + (matrix[5] / up * lift), tz + (matrix[9] / up * lift)));
+            // Left out where it cannot be read, as the still's ruler is: seen from straight above
+            // the bar is a point with every label on top of the last, and in a picture too small
+            // for its labels they would run off the edge or squeeze the surface to a smudge. The
+            // picture is then framed without it.
+            var candidate = Overlay(surface, bar, fitted, width, height, low, high, mmPerUnit, cycleMean, instantUs);
 
-            framing = Framing.Around(points, angles.Azimuth, angles.Elevation);
-            matrix = framing.Matrix((double)width / height);
+            var kept = Math.Sqrt((fitted[0] * fitted[0]) + (fitted[4] * fitted[4]) + (fitted[8] * fitted[8]))
+                / Math.Sqrt((matrix[0] * matrix[0]) + (matrix[4] * matrix[4]) + (matrix[8] * matrix[8]));
+
+            if (BarShows(fitted, width, height)
+                && kept >= SmallestLabelledFraction
+                && Fits(candidate, width, height))
+            {
+                overlay = candidate;
+                matrix = fitted;
+            }
         }
-
-        var tainted = warnings.Any(w => w.Severity == WarningSeverity.ValidityViolation);
-        var cycleMean = request.CycleMean && probe.TimeVarying;
-        var instantUs = probe.TimeVarying ? request.AtUs ?? 0.0 : (double?)null;
-
-        var overlay = scale
-            ? Overlay(surface, bar, matrix, width, height, low, high, mmPerUnit, cycleMean, instantUs)
-            : null;
 
         var rgb = Rasterizer.Draw(
             [.. layers.Select(StillCommand.Raster)],
@@ -877,7 +1029,9 @@ public static class SurfaceCommand
     /// <returns>The CSV text.</returns>
     /// <remarks>
     /// The numbers behind the picture, so a well depth read off it can be read off the data
-    /// instead. A node inside a conductor carries the plateau's value and the conductor's name.
+    /// instead. A node inside a conductor carries the plateau's value and the conductor's label,
+    /// quoted per RFC 4180 where it holds a comma, a quote or a line break - a name is whatever
+    /// the model's author wrote.
     /// </remarks>
     public static string ToCsv(PotentialSurface surface, IReadOnlyList<ValidityWarning> warnings)
     {
@@ -889,9 +1043,12 @@ public static class SurfaceCommand
 
         text.Append(invariant, $"# {surface.Height} on the {surface.Plane} plane at {surface.OffsetMm:G17} mm\n");
 
+        // A message may run over several lines; each one stays a comment, or the second line
+        // would be read as a row of the table.
         foreach (var warning in warnings)
         {
-            text.Append(invariant, $"# {warning.Severity}: {warning.Code}: {warning.Message}\n");
+            var message = warning.Message.ReplaceLineEndings("\n# ");
+            text.Append(invariant, $"# {warning.Severity}: {warning.Code}: {message}\n");
         }
 
         text.Append(invariant, $"{surface.AcrossAxis}_mm,{surface.DeepAxis}_mm,{(surface.Unit == "V" ? "potential_V" : "potential_energy_eV")},conductor\n");
@@ -902,7 +1059,7 @@ public static class SurfaceCommand
             {
                 var value = surface.At(i, j);
                 var cell = double.IsFinite(value) ? value.ToString("G17", invariant) : string.Empty;
-                text.Append(invariant, $"{surface.Across[i]:G17},{surface.Deep[j]:G17},{cell},{surface.Inside[(i * surface.Deep.Count) + j]}\n");
+                text.Append(invariant, $"{surface.Across[i]:G17},{surface.Deep[j]:G17},{cell},{CsvField(surface.Inside[(i * surface.Deep.Count) + j])}\n");
             }
         }
 
@@ -1185,6 +1342,58 @@ public static class SurfaceCommand
         return new RasterOverlay(strokes, texts, ScaleIndicator.LineWidthPx);
     }
 
+    /// <summary>
+    /// Whether the vertical bar reads as a length in this view: false where it points at the
+    /// viewer, by the rule the still's ruler uses for an arm (<see cref="ScaleIndicator.HiddenBelow"/>).
+    /// </summary>
+    private static bool BarShows(double[] matrix, int width, int height)
+    {
+        // A millimetre of height on screen against a millimetre across the screen. Asked of the
+        // view, not of the bar's own length, so a flat surface - whose bar has no length in any
+        // view - is still drawn with its one label from the side and still left out from above.
+        var seen = Math.Sqrt(Math.Pow(matrix[4] * width / 2.0, 2) + Math.Pow(matrix[5] * height / 2.0, 2));
+        var full = Math.Sqrt((matrix[0] * matrix[0]) + (matrix[4] * matrix[4]) + (matrix[8] * matrix[8])) * width / 2.0;
+
+        return seen >= ScaleIndicator.HiddenBelow * full;
+    }
+
+    /// <summary>Whether every stroke and every line of text of an overlay lies inside the picture.</summary>
+    private static bool Fits(RasterOverlay overlay, int width, int height)
+    {
+        foreach (var stroke in overlay.Strokes)
+        {
+            for (var i = 0; i + 1 < stroke.PointsPx.Count; i += 2)
+            {
+                if (stroke.PointsPx[i] < 0.0 || stroke.PointsPx[i] > width
+                    || stroke.PointsPx[i + 1] < 0.0 || stroke.PointsPx[i + 1] > height)
+                {
+                    return false;
+                }
+            }
+        }
+
+        foreach (var text in overlay.Texts)
+        {
+            var half = 0.5 * StrokeFont.Width(text.Text, text.HeightPx);
+
+            if (text.CenterXPx - half < 0.0 || text.CenterXPx + half > width
+                || text.CenterYPx - (0.5 * text.HeightPx) < 0.0 || text.CenterYPx + (0.5 * text.HeightPx) > height)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>A CSV field, quoted per RFC 4180 where it holds a comma, a quote or a line break.</summary>
+    private static string CsvField(string? field) =>
+        field is null
+            ? string.Empty
+            : field.AsSpan().IndexOfAny(",\"\r\n") < 0
+                ? field
+                : "\"" + field.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
     private static IEnumerable<(double X, double Y, double Z)> Points(PictureLayer layer)
     {
         foreach (var mesh in layer.Meshes)
@@ -1345,12 +1554,12 @@ public static class SurfaceCommand
         }
     }
 
-    private static EinzelException Refusal(string path, string constraint) =>
+    private static EinzelException Refusal(string path, string constraint, string? suggestion = null) =>
         new(new EinzelError
         {
             Code = ErrorCodes.SchemaInvalid,
             Path = path,
             Constraint = constraint,
-            Suggestion = "see 'einzel render surface' for the flags",
+            Suggestion = suggestion ?? "see 'einzel render surface' for the flags",
         });
 }

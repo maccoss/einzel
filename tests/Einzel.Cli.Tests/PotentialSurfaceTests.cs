@@ -347,12 +347,341 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     [InlineData("--samples", "2")]
     [InlineData("--height", "kinetic")]
     [InlineData("--box", "1,2,3,4")]
+    [InlineData("--width-px", "1600px")]
+    [InlineData("--at-us", "soon")]
     public void AMalformedRequestIsRefused(string flag, string value)
     {
         var model = Model("template", "quadrupole");
         var (code, _, stderr) = Cli("render", "surface", model, flag, value, "--dry-run");
         output.WriteLine(stderr);
         Assert.Equal(1, code);
+    }
+
+    /// <summary>A cycle mean of a field with no drive cycle is refused, with what to do instead.</summary>
+    /// <param name="kind">Example or template.</param>
+    /// <param name="name">The model.</param>
+    /// <remarks>
+    /// A sequence whose states are all static varies with time and has no drive period: it used
+    /// to dereference the absent window and exit 6, "a defect in einzel", after sampling the
+    /// instantaneous field under the mean's name. A static model accepted the flag and ignored
+    /// it. Neither has a cycle, so neither has a cycle mean.
+    /// </remarks>
+    [Theory]
+    [InlineData("example", "sequenced-extraction")]
+    [InlineData("example", "sequenced-uniform")]
+    [InlineData("example", "slit-transmission")]
+    public void ACycleMeanOfAFieldWithNoDriveIsRefused(string kind, string name)
+    {
+        var model = Model(kind, name);
+
+        var (code, stdout, stderr) = Cli(
+            "render", "surface", model, "--cycle-mean", "--box-mm", "-5,-5,5,5", "--samples", "11", "--dry-run");
+
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+        Assert.Contains("/surface/cycle-mean", stderr, StringComparison.Ordinal);
+        Assert.Contains("drop --cycle-mean", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("INTERNAL_ERROR", stdout + stderr, StringComparison.Ordinal);
+
+        // And the same field drawn at an instant is fine: the control.
+        Assert.Equal(0, Cli("render", "surface", model, "--box-mm", "-5,-5,5,5", "--samples", "11", "--dry-run").ExitCode);
+
+        // The probe itself does not hand back an instant under a mean's name either.
+        var probe = FieldProbe.Open(model);
+        Assert.Null(probe.CycleMeanWindowSeconds);
+        Assert.Throws<InvalidOperationException>(
+            () => probe.At(0, new Einzel.Core.Geometry.Vec3(0, 0, 0), 0.0, cycleMean: true));
+    }
+
+    /// <summary>A driven field's cycle mean still draws, with its window reported.</summary>
+    [Fact]
+    public void ADrivenFieldStillHasACycleMean()
+    {
+        using var json = Json(
+            "render", "surface", Model("template", "quadrupole-rf"), "--cycle-mean", "--samples", "21", "--dry-run");
+
+        Assert.True(json.RootElement.GetProperty("cycleMean").GetBoolean());
+        Assert.True(Number(json, "cycleMeanWindowUs") > 0.0);
+    }
+
+    /// <summary>An instant given for a static field is said to have changed nothing.</summary>
+    [Fact]
+    public void AnInstantOnAStaticFieldIsWarnedAbout()
+    {
+        var model = Model("example", "slit-transmission");
+
+        using var with = Json("render", "surface", model, "--at-us", "3", "--samples", "21", "--dry-run");
+        using var without = Json("render", "surface", model, "--samples", "21", "--dry-run");
+
+        Assert.Contains("render.instant-ignored", Codes(with));
+        Assert.DoesNotContain("render.instant-ignored", Codes(without));
+        Assert.False(with.RootElement.TryGetProperty("instantUs", out var instant) && instant.ValueKind == JsonValueKind.Number);
+    }
+
+    /// <summary>The hash recorded is of the text the field was built from: one read (PRJ-3).</summary>
+    /// <remarks>
+    /// The file on disk holds one revision and the command is handed another, which is what an
+    /// edit landing between two reads amounts to. With a second read the hash would name the
+    /// disk's revision beside a surface of the other's.
+    /// </remarks>
+    [Fact]
+    public void TheHashIsOfTheTextTheFieldWasBuiltFrom()
+    {
+        var path = Model("example", "slit-transmission");
+        var onDisk = File.ReadAllText(path);
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(onDisk)!;
+        node["fields"]![0]!["solve"]!["electrodes"]![0]!["potential"]!["value"] = 75.0;
+        var handed = node.ToJsonString();
+
+        var outcome = SurfaceCommand.Execute(
+            path,
+            new Einzel.Project.ProjectLayout(_root),
+            new SurfaceRequest(Samples: 81),
+            width: 200,
+            height: 150,
+            dryRun: true,
+            modelText: handed);
+
+        Assert.Equal(Einzel.Project.ContentHash.OfText(handed), outcome.ModelHash);
+        Assert.NotEqual(Einzel.Project.ContentHash.OfText(onDisk), outcome.ModelHash);
+        Assert.Equal(75.0, outcome.Plateaus.Single(p => p.Conductor == "slitUpper").PotentialV, 9);
+
+        // And with no text handed over, the one read is the file's.
+        var read = SurfaceCommand.Execute(
+            path, new Einzel.Project.ProjectLayout(_root), new SurfaceRequest(Samples: 81), width: 200, height: 150, dryRun: true);
+
+        Assert.Equal(Einzel.Project.ContentHash.OfText(onDisk), read.ModelHash);
+    }
+
+    /// <summary>Seen from straight above, the vertical bar is a point: it is left out and reported absent.</summary>
+    [Fact]
+    public void TheTopViewHasNoVerticalScale()
+    {
+        var model = Model("example", "slit-transmission");
+        var top = Path.Combine(_root, "top.png");
+        var bare = Path.Combine(_root, "top-bare.png");
+
+        using var json = Json("render", "surface", model, "--view", "top", "--samples", "81", "--out", top);
+        using var side = Json("render", "surface", model, "--view", "side", "--samples", "81", "--dry-run");
+        using var iso = Json("render", "surface", model, "--samples", "81", "--dry-run");
+
+        Assert.False(json.RootElement.GetProperty("scaleDrawn").GetBoolean());
+        Assert.True(side.RootElement.GetProperty("scaleDrawn").GetBoolean());
+        Assert.True(iso.RootElement.GetProperty("scaleDrawn").GetBoolean());
+
+        // The scale itself is still in the outcome and in the file.
+        Assert.True(Number(json, "heightMmPerUnit") > 0.0);
+        Assert.Contains(Text(File.ReadAllBytes(top)), t => t.Keyword == "Scale");
+
+        // And the picture is the one --no-scale draws: nothing of the bar, and no room left for it.
+        Assert.Equal(0, Cli("render", "surface", model, "--view", "top", "--samples", "81", "--no-scale", "--out", bare).ExitCode);
+        Assert.Equal(Decode(File.ReadAllBytes(bare)).Rgb, Decode(File.ReadAllBytes(top)).Rgb);
+    }
+
+    /// <summary>
+    /// A picture too small for the scale's labels is drawn without the scale and says so; one
+    /// with room keeps every label inside the picture.
+    /// </summary>
+    /// <remarks>
+    /// The einzel lens's labels are "500 V" and "-3 V". Room for them used to be reserved once,
+    /// in millimetres at the first framing's scale, and the refit that made the room shrank the
+    /// scale under them.
+    /// </remarks>
+    [Fact]
+    public void ASmallPictureKeepsItsLabelsInsideOrLeavesTheScaleOut()
+    {
+        var model = Model("example", "einzel-lens");
+        var small = Path.Combine(_root, "small.png");
+        var bare = Path.Combine(_root, "small-bare.png");
+
+        using var json = Json("render", "surface", model, "--width-px", "200", "--height-px", "150", "--samples", "61", "--out", small);
+        Assert.Equal(0, Cli("render", "surface", model, "--width-px", "200", "--height-px", "150", "--samples", "61", "--no-scale", "--out", bare).ExitCode);
+
+        Assert.False(json.RootElement.GetProperty("scaleDrawn").GetBoolean());
+        Assert.Equal(Decode(File.ReadAllBytes(bare)).Rgb, Decode(File.ReadAllBytes(small)).Rgb);
+
+        foreach (var (w, h) in new[] { (60, 60), (120, 400), (320, 200), (400, 120), (600, 400) })
+        {
+            var with = Path.Combine(_root, $"fit-{w}x{h}.png");
+            var without = Path.Combine(_root, $"fit-{w}x{h}-bare.png");
+            var size = new[] { "--width-px", $"{w}", "--height-px", $"{h}", "--samples", "61" };
+
+            using var fitted = Json(["render", "surface", model, .. size, "--out", with]);
+            Assert.Equal(0, Cli(["render", "surface", model, .. size, "--no-scale", "--out", without]).ExitCode);
+
+            var drawn = fitted.RootElement.GetProperty("scaleDrawn").GetBoolean();
+            var (_, _, rgb) = Decode(File.ReadAllBytes(with));
+            var (_, _, plain) = Decode(File.ReadAllBytes(without));
+
+            output.WriteLine($"{w} x {h}: scale {(drawn ? "drawn" : "left out")}");
+
+            if (!drawn)
+            {
+                Assert.Equal(plain, rgb);
+                continue;
+            }
+
+            // Drawn: nothing but ground on the outermost pixels, so no label runs off an edge.
+            var ground = (rgb[0], rgb[1], rgb[2]);
+
+            for (var x = 0; x < w; x++)
+            {
+                foreach (var y in new[] { 0, h - 1 })
+                {
+                    var i = 3 * ((y * w) + x);
+                    Assert.Equal(ground, (rgb[i], rgb[i + 1], rgb[i + 2]));
+                }
+            }
+
+            for (var y = 0; y < h; y++)
+            {
+                foreach (var x in new[] { 0, w - 1 })
+                {
+                    var i = 3 * ((y * w) + x);
+                    Assert.Equal(ground, (rgb[i], rgb[i + 1], rgb[i + 2]));
+                }
+            }
+        }
+
+        // The default size has room, and says so.
+        using var roomy = Json("render", "surface", model, "--width-px", "600", "--height-px", "400", "--samples", "61", "--dry-run");
+        Assert.True(roomy.RootElement.GetProperty("scaleDrawn").GetBoolean());
+    }
+
+    /// <summary>
+    /// Two elements that each have a conductor of one name are two plateaus, each at its own
+    /// potential, labelled by element.
+    /// </summary>
+    /// <remarks>
+    /// A name is unique within one solve and no further. Keyed by name alone, the two were one
+    /// plateau at one median - a conductor drawn at a potential it does not hold.
+    /// </remarks>
+    [Fact]
+    public void SameNamedConductorsInTwoElementsAreTwoPlateaus()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+
+        foreach (var electrode in fields[0]!["solve"]!["electrodes"]!.AsArray())
+        {
+            electrode!["potential"]!["value"] = 40.0;
+        }
+
+        // The same slit again, 40 mm downstream in a domain of its own, at another potential.
+        var second = fields[0]!.DeepClone();
+        second["solve"]!["minX"]!["value"] = 20;
+        second["solve"]!["maxX"]!["value"] = 60;
+
+        foreach (var electrode in second["solve"]!["electrodes"]!.AsArray())
+        {
+            electrode!["minX"]!["value"] = 40;
+            electrode["maxX"]!["value"] = 41;
+            electrode["potential"]!["value"] = -30.0;
+        }
+
+        fields.Add(second);
+
+        var path = Path.Combine(_root, "two-slits.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var (surface, _, _) = SurfaceCommand.Sample(
+            path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 60, 10], Samples: 161));
+
+        foreach (var plateau in surface.Plateaus)
+        {
+            output.WriteLine($"{plateau.Conductor}: {plateau.PotentialV} V, element {plateau.Element}, {plateau.Samples} samples");
+        }
+
+        Assert.Equal(4, surface.Plateaus.Count);
+
+        foreach (var name in new[] { "slitUpper", "slitLower" })
+        {
+            var first = surface.Plateaus.Single(p => p.Conductor == $"{name} (element 0)");
+            var other = surface.Plateaus.Single(p => p.Conductor == $"{name} (element 1)");
+
+            Assert.Equal(40.0, first.PotentialV, 6);
+            Assert.Equal(-30.0, other.PotentialV, 6);
+            Assert.Equal((0, name), (first.Element, first.Name));
+            Assert.Equal((1, name), (other.Element, other.Name));
+        }
+
+        // A name that does not repeat keeps its plain label.
+        var (alone, _, _) = SurfaceCommand.Sample(
+            Model("example", "slit-transmission"), new SurfaceRequest(Samples: 81));
+
+        Assert.Equal(["slitLower", "slitUpper"], alone.Plateaus.Select(p => p.Conductor));
+        Assert.All(alone.Plateaus, p => Assert.Equal(0, p.Element));
+    }
+
+    /// <summary>
+    /// With no offset given, a plane is drawn through the middle of the domain along its normal;
+    /// a 2-D model's own plane is the one its solve is declared in, z = 0.
+    /// </summary>
+    /// <remarks>
+    /// The mirror pair's domain runs from -90 mm to well past 700 mm in x, so the middle along x
+    /// is nowhere near zero: the default used to be 0 for every plane of a 2-D model, which for
+    /// yz is a cut 90 mm inside one end rather than through the middle.
+    /// </remarks>
+    [Fact]
+    public void TheDefaultOffsetIsTheDomainsMiddleAlongTheNormal()
+    {
+        var model = Model("template", "planar-mirror-pair");
+        var domain = FieldProbe.Open(model).DomainMm()!.Value;
+        var middle = (domain.Min.X + domain.Max.X) / 2.0;
+
+        var (yz, _, _) = SurfaceCommand.Sample(model, new SurfaceRequest(Plane: "yz", Samples: 5));
+        var (xy, _, _) = SurfaceCommand.Sample(model, new SurfaceRequest(Samples: 5));
+        var (asked, _, _) = SurfaceCommand.Sample(model, new SurfaceRequest(Plane: "yz", OffsetMm: 12.5, Samples: 5));
+
+        output.WriteLine($"x from {domain.Min.X} to {domain.Max.X} mm; yz drawn at {yz.OffsetMm} mm");
+
+        Assert.True(Math.Abs(middle) > 100.0, "the control: the middle is far from zero");
+        Assert.Equal(middle, yz.OffsetMm, 9);
+        Assert.Equal("xy", xy.Plane);
+        Assert.Equal(0.0, xy.OffsetMm);
+        Assert.Equal(12.5, asked.OffsetMm);
+    }
+
+    /// <summary>The CSV quotes a name per RFC 4180 and keeps a multi-line warning in comments.</summary>
+    [Fact]
+    public void TheCsvQuotesNamesAndKeepsWarningsInComments()
+    {
+        var surface = new PotentialSurface
+        {
+            Plane = "xy",
+            OffsetMm = 0.0,
+            AcrossAxis = "x",
+            DeepAxis = "y",
+            Across = [0.0, 1.0],
+            Deep = [0.0, 1.0],
+            Values = [1.0, 2.0, 3.0, 4.0],
+            Inside = [null, "plate, \"upper\"", "plain", "two\nlines"],
+            Plateaus = [],
+            Height = SurfaceHeight.Potential,
+            Unit = "V",
+            OutsideDomain = 0,
+            Refused = 0,
+        };
+
+        var csv = SurfaceCommand.ToCsv(
+            surface,
+            [new Einzel.Core.Results.ValidityWarning("a.code", "first line\r\nsecond, line\nthird", Einzel.Core.Results.WarningSeverity.Qualified)]);
+
+        output.WriteLine(csv);
+
+        var lines = csv.Split('\n');
+
+        Assert.Equal("# Qualified: a.code: first line", lines[1]);
+        Assert.Equal("# second, line", lines[2]);
+        Assert.Equal("# third", lines[3]);
+        Assert.Equal("x_mm,y_mm,potential_V,conductor", lines[4]);
+        Assert.Equal("0,0,1,", lines[5]);
+        Assert.Equal("0,1,2,\"plate, \"\"upper\"\"\"", lines[6]);
+        Assert.Equal("1,0,3,plain", lines[7]);
+        Assert.Equal("1,1,4,\"two", lines[8]);
+        Assert.Equal("lines\"", lines[9]);
     }
 
     private static IEnumerable<(double X, double Y, double Z)> Triples(IReadOnlyList<double> flat)

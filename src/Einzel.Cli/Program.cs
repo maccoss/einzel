@@ -1057,6 +1057,21 @@ public static class Program
     {
         value = default;
 
+        if (!TryNumbers(text, 3, out var v))
+        {
+            return false;
+        }
+
+        value = new Core.Geometry.Vec3(v[0], v[1], v[2]);
+        return true;
+    }
+
+    /// <summary>Reads exactly <paramref name="count"/> comma-separated numbers, in the invariant culture.</summary>
+    /// <remarks>One parser for a point, a rectangle and a box, so the three cannot come to read a number differently.</remarks>
+    private static bool TryNumbers(string? text, int count, out double[] values)
+    {
+        values = [];
+
         if (text is null)
         {
             return false;
@@ -1064,15 +1079,97 @@ public static class Program
 
         var parts = text.Split(',', StringSplitOptions.TrimEntries);
 
-        if (parts.Length != 3
-            || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
-            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y)
-            || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var z))
+        if (parts.Length != count)
         {
             return false;
         }
 
-        value = new Core.Geometry.Vec3(x, y, z);
+        var parsed = new double[count];
+
+        for (var i = 0; i < count; i++)
+        {
+            if (!double.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out parsed[i]))
+            {
+                return false;
+            }
+        }
+
+        values = parsed;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads an optional numeric flag. False, with the reason on stderr, when it was given and
+    /// is not a number; true with a null value when it was not given.
+    /// </summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="flag">The flag, without its dashes.</param>
+    /// <param name="what">What it takes, as the message says it: "a number", "a time in microseconds".</param>
+    /// <param name="value">The number, or null when the flag is absent.</param>
+    private static bool TryNumberFlag(CommandLine options, string flag, string what, out double? value)
+    {
+        value = null;
+
+        if (options.Value(flag) is not { } text)
+        {
+            return true;
+        }
+
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        Console.Error.WriteLine($"--{flag} takes {what}, and '{text}' is not one.");
+        return false;
+    }
+
+    /// <summary>
+    /// Reads an optional whole-number flag. TryParse rather than Parse: a typo such as "1600px"
+    /// is the caller's mistake, and Parse would throw it through to the handler for defects in
+    /// the engine, exit 6.
+    /// </summary>
+    private static bool TryWholeFlag(CommandLine options, string flag, int otherwise, out int value, string what = "a whole number")
+    {
+        value = otherwise;
+
+        if (options.Value(flag) is not { } text)
+        {
+            return true;
+        }
+
+        if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+        {
+            return true;
+        }
+
+        Console.Error.WriteLine($"--{flag} takes {what}, and '{text}' is not one.");
+        return false;
+    }
+
+    /// <summary>The pixel size of a raster picture, from <c>--width-px</c> and <c>--height-px</c>.</summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="what">What is being drawn, for the message: "a still", "a surface picture".</param>
+    /// <param name="width">Width in pixels, 1600 unless given.</param>
+    /// <param name="height">Height in pixels, 1000 unless given.</param>
+    private static bool TryPictureSize(CommandLine options, string what, out int width, out int height)
+    {
+        height = 0;
+        var limits = $"{what} is between 16 and 8192 pixels on each side";
+
+        if (!TryWholeFlag(options, "width-px", 1600, out width, "a whole number of pixels (" + limits + ")")
+            || !TryWholeFlag(options, "height-px", 1000, out height, "a whole number of pixels (" + limits + ")"))
+        {
+            return false;
+        }
+
+        if (width is < 16 or > 8192 || height is < 16 or > 8192)
+        {
+            Console.Error.WriteLine(limits);
+            return false;
+        }
+
         return true;
     }
 
@@ -1121,10 +1218,8 @@ public static class Program
 
             to = end;
 
-            if (options.Value("samples") is { } asked
-                && !int.TryParse(asked, NumberStyles.Integer, invariant, out samples))
+            if (!TryWholeFlag(options, "samples", samples, out samples))
             {
-                Console.Error.WriteLine($"--samples takes a whole number, and '{asked}' is not one.");
                 return (int)ExitCode.ValidationFailure;
             }
         }
@@ -1134,17 +1229,9 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        double? at = null;
-
-        if (options.Value("at-us") is { } instant)
+        if (!TryNumberFlag(options, "at-us", "a time in microseconds", out var at))
         {
-            if (!double.TryParse(instant, NumberStyles.Float, invariant, out var parsed))
-            {
-                Console.Error.WriteLine($"--at-us takes a time in microseconds, and '{instant}' is not one.");
-                return (int)ExitCode.ValidationFailure;
-            }
-
-            at = parsed;
+            return (int)ExitCode.ValidationFailure;
         }
 
         var outcome = ProbeCommand.Execute(options.Positional[0], new ProbeRequest(from, to, samples, at));
@@ -1630,46 +1717,21 @@ public static class Program
 
             if (options.Value("box-mm") is { } box)
             {
-                var parts = box.Split(',', StringSplitOptions.TrimEntries);
-
-                if (parts.Length != 6
-                    || parts.Any(p => !double.TryParse(
-                        p, NumberStyles.Float, CultureInfo.InvariantCulture, out _)))
+                if (!TryNumbers(box, 6, out var v))
                 {
                     Console.Error.WriteLine(
                         "--box-mm takes six numbers, x0,y0,z0,x1,y1,z1, in millimetres (no spaces).");
                     return (int)ExitCode.ValidationFailure;
                 }
 
-                var v = parts.Select(p => double.Parse(p, CultureInfo.InvariantCulture)).ToArray();
                 boxMin = new Core.Geometry.Vec3(v[0], v[1], v[2]);
                 boxMax = new Core.Geometry.Vec3(v[3], v[4], v[5]);
             }
 
-            double? step = null;
-            double? instant = null;
-
-            foreach (var (flag, unit) in new[] { ("step-mm", "millimetres"), ("at-us", "microseconds") })
+            if (!TryNumberFlag(options, "step-mm", "a number of millimetres", out var step)
+                || !TryNumberFlag(options, "at-us", "a number of microseconds", out var instant))
             {
-                if (options.Value(flag) is not { } asked)
-                {
-                    continue;
-                }
-
-                if (!double.TryParse(asked, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
-                {
-                    Console.Error.WriteLine($"--{flag} takes a number of {unit}, and '{asked}' is not one.");
-                    return (int)ExitCode.ValidationFailure;
-                }
-
-                if (flag == "step-mm")
-                {
-                    step = parsed;
-                }
-                else
-                {
-                    instant = parsed;
-                }
+                return (int)ExitCode.ValidationFailure;
             }
 
             outcome = ExportCommand.Composite(modelPath, layout, boxMin, boxMax, step, instant, dryRun);
@@ -1862,34 +1924,8 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        // TryParse rather than Parse: a typo such as "1600px" is the caller's mistake, and
-        // Parse would throw it through to the handler for defects in the engine, exit 6.
-        int? Pixels(string flag, int otherwise)
+        if (!TryPictureSize(options, "a still", out var width, out var height))
         {
-            if (options.Value(flag) is not { } given)
-            {
-                return otherwise;
-            }
-
-            if (int.TryParse(given, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out var pixels))
-            {
-                return pixels;
-            }
-
-            Console.Error.WriteLine($"--{flag} '{given}' is not a whole number of pixels; a still is between 16 and 8192 pixels on each side");
-
-            return null;
-        }
-
-        if (Pixels("width-px", 1600) is not { } width || Pixels("height-px", 1000) is not { } height)
-        {
-            return (int)ExitCode.ValidationFailure;
-        }
-
-        if (width is < 16 or > 8192 || height is < 16 or > 8192)
-        {
-            Console.Error.WriteLine("a still is between 16 and 8192 pixels on each side");
-
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -1943,11 +1979,16 @@ public static class Program
         draws the potential on a plane as height above it (SIMION's potential-energy view)
           --plane        the plane; a cross-section or axisymmetric model defaults to its own (xy),
                          a volume to the plane through its middle normal to its thinnest side
+          --offset-mm    how far along the plane's normal; by default the middle of the domain
+                         (z = 0 for a 2-D model's own xy plane)
           --box-mm       the rectangle sampled, in the plane's own axis order (for xz: x0,z0,x1,z1)
           --height       potential (volts, the default) or energy: q*phi for the model's ion, in eV
           --relief       the drawn height of the whole range as a fraction of the longer side (0.35)
           --at-us        the instant to draw a driven or sequenced field at
-          --cycle-mean   the potential averaged over one drive cycle: for a sinusoidal drive, the DC
+          --cycle-mean   the potential averaged over one drive cycle: for a sinusoidal drive, the DC;
+                         refused for a field with no drive, which has no cycle to average
+          --no-scale     leave the vertical scale off the picture (it is also left off, and
+                         reported absent, in --view top and where a small picture has no room)
           --csv          also write the sampled values, one row per node
 
         """;
@@ -1979,49 +2020,14 @@ public static class Program
 
         var invariant = CultureInfo.InvariantCulture;
 
-        bool Number(string flag, out double? value)
-        {
-            value = null;
-
-            if (options.Value(flag) is not { } text)
-            {
-                return true;
-            }
-
-            if (double.TryParse(text, NumberStyles.Float, invariant, out var parsed))
-            {
-                value = parsed;
-                return true;
-            }
-
-            Console.Error.WriteLine($"--{flag} takes a number, and '{text}' is not one.");
-            return false;
-        }
-
-        bool Whole(string flag, int otherwise, out int value)
-        {
-            value = otherwise;
-
-            if (options.Value(flag) is not { } text)
-            {
-                return true;
-            }
-
-            if (int.TryParse(text, NumberStyles.None, invariant, out value))
-            {
-                return true;
-            }
-
-            Console.Error.WriteLine($"--{flag} takes a whole number, and '{text}' is not one.");
-            return false;
-        }
-
-        if (!Number("offset-mm", out var offset) || !Number("relief", out var relief)
-            || !Number("height-mm-per-v", out var perVolt) || !Number("height-mm-per-ev", out var perEv)
-            || !Number("at-us", out var at)
-            || !Whole("samples", SurfaceCommand.DefaultSamples, out var samples)
-            || !Whole("mesh-lines", SurfaceCommand.DefaultMeshLines, out var meshLines)
-            || !Whole("width-px", 1600, out var width) || !Whole("height-px", 1000, out var height))
+        if (!TryNumberFlag(options, "offset-mm", "a number of millimetres", out var offset)
+            || !TryNumberFlag(options, "relief", "a number", out var relief)
+            || !TryNumberFlag(options, "height-mm-per-v", "a number of millimetres per volt", out var perVolt)
+            || !TryNumberFlag(options, "height-mm-per-ev", "a number of millimetres per electronvolt", out var perEv)
+            || !TryNumberFlag(options, "at-us", "a time in microseconds", out var at)
+            || !TryWholeFlag(options, "samples", SurfaceCommand.DefaultSamples, out var samples)
+            || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, out var meshLines)
+            || !TryPictureSize(options, "a surface picture", out var width, out var height))
         {
             return (int)ExitCode.ValidationFailure;
         }
@@ -2057,11 +2063,7 @@ public static class Program
 
         if (options.Value("box-mm") is { } boxText)
         {
-            var parts = boxText.Split(',');
-            var numbers = new double[parts.Length];
-
-            if (parts.Length != 4
-                || !parts.Select((p, i) => double.TryParse(p, NumberStyles.Float, invariant, out numbers[i])).All(ok => ok))
+            if (!TryNumbers(boxText, 4, out var numbers))
             {
                 Console.Error.WriteLine("--box-mm takes four numbers, a0,b0,a1,b1, in millimetres in the plane's own axis order (no spaces).");
                 return (int)ExitCode.ValidationFailure;
@@ -2075,12 +2077,6 @@ public static class Program
         if (!SurfaceCommand.Views.ContainsKey(view))
         {
             Console.Error.WriteLine($"no view named '{view}'; the named views are {string.Join(", ", SurfaceCommand.Views.Keys)}");
-            return (int)ExitCode.ValidationFailure;
-        }
-
-        if (width is < 16 or > 8192 || height is < 16 or > 8192)
-        {
-            Console.Error.WriteLine("a surface picture is between 16 and 8192 pixels on each side");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -2126,6 +2122,13 @@ public static class Program
         Console.Out.WriteLine(string.Create(
             invariant,
             $"height {outcome.HeightMmPerUnit:G4} mm per {outcome.Unit} ({outcome.UnitsPerMm:G4} {outcome.Unit} per drawn mm); values {outcome.Lowest:G6} to {outcome.Highest:G6} {outcome.Unit}{when}"));
+
+        if (!outcome.ScaleDrawn && !options.Has("no-scale"))
+        {
+            Console.Out.WriteLine(
+                "the vertical scale is not on the picture: it does not show in this view or does not fit at this size; "
+                + "the scale above is in the PNG's text");
+        }
 
         foreach (var plateau in outcome.Plateaus)
         {
