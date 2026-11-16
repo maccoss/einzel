@@ -1358,6 +1358,156 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>
+    /// Both halves of a reflected solve are conductors where the solve put them: the probe says
+    /// inside, and the surface draws a plateau, in the declared half and in its mirror image.
+    /// </summary>
+    /// <remarks>
+    /// A reflected solve is one element whose field is itself a sum, the solve plus its mirror
+    /// image. The probe once took every sum apart and mapped the pieces by position against the
+    /// assembly's one-entry-per-element list, so the mirror image had no element: every point in
+    /// it read as free space and its conductors drew no plateau - the planar mirror pair and both
+    /// Astral analysers among them. Checked in a cross-section and in a volume.
+    /// </remarks>
+    [Fact]
+    public void BothHalvesOfAReflectedSolveAreConductors()
+    {
+        // A cross-section: the slit, mirrored about its domain's far edge at x = 20 mm.
+        var plane = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var solve = plane["fields"]![0]!["solve"]!;
+        solve["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "value": 20, "unit": "mm" }""");
+
+        foreach (var electrode in solve["electrodes"]!.AsArray())
+        {
+            electrode!["potential"]!["value"] = 40.0;
+        }
+
+        plane["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[59, 0, 0]");
+        var flat = Path.Combine(_root, "reflected-slit.json");
+        File.WriteAllText(flat, plane.ToJsonString());
+
+        // A volume: the parallel plates, mirrored about the domain's edge at x = 30 mm.
+        var volume = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "parallel-plate-gap-3d")))!;
+        volume["fields"]![0]!["solve3d"]!["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "value": 30, "unit": "mm" }""");
+        var solid = Path.Combine(_root, "reflected-plates.json");
+        File.WriteAllText(solid, volume.ToJsonString());
+
+        foreach (var (path, inDeclared, inMirror, box, planeName, name) in new[]
+        {
+            (flat, new Einzel.Core.Geometry.Vec3(0.5, 5.0, 0.0), new Einzel.Core.Geometry.Vec3(39.5, 5.0, 0.0), new double[] { -20, -10, 60, 10 }, "xy", "slitUpper"),
+            (solid, new Einzel.Core.Geometry.Vec3(0.0, 0.0, 5.5), new Einzel.Core.Geometry.Vec3(60.0, 0.0, 5.5), new double[] { -30, -15, 90, 15 }, "xz", "upper"),
+        })
+        {
+            var probe = FieldProbe.Open(path);
+
+            foreach (var point in new[] { inDeclared, inMirror })
+            {
+                var row = probe.At(0, point, 0.0);
+                output.WriteLine($"{Path.GetFileName(path)} ({point.X}, {point.Y}, {point.Z}): {row.Status} {row.Conductor}");
+
+                Assert.Equal(ProbeStatus.InsideConductor, row.Status);
+                Assert.Equal(name, row.Conductor);
+                Assert.Equal(0, probe.ConductorElementAt(point));
+            }
+
+            var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: planeName, BoxMm: box, Samples: 121));
+            var plateau = surface.Plateaus.Single(p => p.Conductor == name);
+            var mirrorX = surface.Across.Select((x, i) => (x, i)).Where(c => c.x > (planeName == "xy" ? 20 : 30)).Select(c => c.i).ToHashSet();
+            var inMirrorHalf = Enumerable.Range(0, surface.Inside.Count).Count(k => surface.Inside[k] == name && mirrorX.Contains(k / surface.Deep.Count));
+
+            output.WriteLine($"  plateau {plateau.Conductor} at {plateau.PotentialV} V over {plateau.Samples} samples, {inMirrorHalf} in the mirror half");
+
+            Assert.Equal(0, plateau.Element);
+            Assert.True(inMirrorHalf > 0 && inMirrorHalf * 3 > plateau.Samples, "the mirror half has a plateau too");
+        }
+    }
+
+    /// <summary>
+    /// A conductor one element declares past its own solve does not hide the conductor another
+    /// element really has at that point.
+    /// </summary>
+    /// <remarks>
+    /// The first solve's jaw is declared running from 10 to 60 mm, though the solve stops at
+    /// 20; the second solve, from 20 to 60 mm, has a block at 30 to 40. At (35, 5) the point is
+    /// deep inside the jaw's declared shape and less deep inside the block, so a search for the
+    /// nearest conductor that applied the domain test afterwards found the jaw, rejected it,
+    /// and reported free space where the block is.
+    /// </remarks>
+    [Fact]
+    public void AShapePastItsSolveDoesNotHideAnotherSolvesConductor()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+        var jaw = fields[0]!["solve"]!["electrodes"]!.AsArray();
+        jaw[0]!["minX"]!["value"] = 10.0;
+        jaw[0]!["maxX"]!["value"] = 60.0;
+
+        var second = fields[0]!.DeepClone();
+        second["solve"]!["minX"]!["value"] = 20.0;
+        second["solve"]!["maxX"]!["value"] = 60.0;
+        var block = second["solve"]!["electrodes"]!.AsArray();
+        block.RemoveAt(1);
+        block[0]!["name"] = "block";
+        block[0]!["minX"]!["value"] = 30.0;
+        block[0]!["maxX"]!["value"] = 40.0;
+        block[0]!["minY"]!["value"] = 4.0;
+        block[0]!["maxY"]!["value"] = 6.0;
+        block[0]!["potential"]!["value"] = 25.0;
+        fields.Add(second);
+        node["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[59, 0, 0]");
+
+        var path = Path.Combine(_root, "shape-past-solve.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var probe = FieldProbe.Open(path);
+        var row = probe.At(0, new Einzel.Core.Geometry.Vec3(35.0, 5.0, 0.0), 0.0);
+
+        output.WriteLine($"(35, 5): {row.Status} {row.Conductor}");
+
+        Assert.Equal(ProbeStatus.InsideConductor, row.Status);
+        Assert.Equal("block", row.Conductor);
+        Assert.Equal(1, probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(35.0, 5.0, 0.0)));
+
+        var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 60, 10], Samples: 161));
+        var plateau = surface.Plateaus.Single(p => p.Name == "block");
+        Assert.Equal(25.0, plateau.PotentialV);
+        Assert.True(plateau.Samples > 20);
+    }
+
+    /// <summary>
+    /// The surface sampled across many threads is byte for byte the surface sampled on one:
+    /// the picture, the outcome and the CSV.
+    /// </summary>
+    [Fact]
+    public void SamplingInParallelChangesNothing()
+    {
+        foreach (var (kind, name, request) in new (string, string, SurfaceRequest)[]
+        {
+            ("template", "quadrupole", new SurfaceRequest(Samples: 161)),
+            ("template", "quadrupole-rf", new SurfaceRequest(Samples: 161, CycleMean: true)),
+            ("template", "einzel-lens", new SurfaceRequest(Samples: 161, AtUs: 0.0)),
+        })
+        {
+            var model = Model(kind, name);
+            var results = new List<(byte[] Png, string Json, string Csv)>();
+
+            foreach (var parallelism in new int?[] { 1, null })
+            {
+                var png = Path.Combine(_root, $"{name}-{parallelism?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "all"}.png");
+                var csv = Path.ChangeExtension(png, ".csv");
+                var outcome = SurfaceCommand.Execute(
+                    model, new Einzel.Project.ProjectLayout(_root), request, width: 400, height: 260,
+                    outputPath: png, csvPath: csv, maxParallelism: parallelism);
+
+                results.Add((File.ReadAllBytes(png), CommandJson.Write(outcome with { Artifact = "", Csv = "" }), File.ReadAllText(csv)));
+            }
+
+            Assert.Equal(results[0].Png, results[1].Png);
+            Assert.Equal(results[0].Json, results[1].Json);
+            Assert.Equal(results[0].Csv, results[1].Csv);
+        }
+    }
+
+    /// <summary>
     /// Which of two overlapping conductors a point is credited to does not change when an RF
     /// element is added to the model.
     /// </summary>
@@ -1407,12 +1557,13 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal(a.At(0, point, 0.0).Conductor, b.At(0, point, 0.0).Conductor);
         Assert.Equal("block", b.At(0, point, 0.0).Conductor);
 
-        // The field-level rule the composites share, asked directly.
+        // What the transport names when an ion strikes there is NOT this rule, and is left as
+        // it was: the driven sum names the first member containing the point, the jaw. Loss
+        // itemisation (ACC-5) is not changed under a drawing; the probe picks by its own rule.
         var (field, _, _) = Einzel.Fields.FieldAssembly.BuildMapped(b.Model);
         var sum = Assert.IsType<Einzel.Fields.DrivenSuperposedField>(field);
         var metres = FieldProbe.MillimetresToMetres(point);
-        Assert.Equal(1, sum.ConductorElementAt(in metres));
-        Assert.Equal("block", sum.ConductorAt(in metres));
+        Assert.Equal("slitUpper", sum.ConductorAt(in metres));
     }
 
     /// <summary>

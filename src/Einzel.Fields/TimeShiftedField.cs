@@ -26,7 +26,7 @@ namespace Einzel.Fields;
 /// and nothing inside the integrator knows a sequence exists.
 /// </para>
 /// </remarks>
-public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
+public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded, IHeldConductors
 {
     private readonly ITimeVaryingField _inner;
     private readonly double _offsetSeconds;
@@ -97,6 +97,15 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position) => _inner is IConductorBounded bounded
         ? bounded.ConductorAt(in position) : null;
+
+    /// <inheritdoc/>
+    /// <remarks>On the instrument's clock, as every other answer here is: this leg's t is the inner field's t + offset.</remarks>
+    public double? HeldPotentialOf(string conductor, double timeSeconds) =>
+        HeldConductors.Forward(_inner, conductor, timeSeconds + _offsetSeconds);
+
+    /// <inheritdoc/>
+    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
+        HeldConductors.ForwardMean(_inner, conductor, fromSeconds + _offsetSeconds, periodSeconds, samples);
 
     /// <inheritdoc/>
     public double MonochromaticPeriodSeconds => _inner.MonochromaticPeriodSeconds;

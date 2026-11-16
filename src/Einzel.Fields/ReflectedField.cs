@@ -33,14 +33,11 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX)
 
     /// <inheritdoc/>
     public double? HeldPotentialOf(string conductor, double timeSeconds) =>
-        inner is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
+        HeldConductors.Forward(inner, conductor, timeSeconds);
 
     /// <inheritdoc/>
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        inner is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
-
-
-
+        HeldConductors.ForwardMean(inner, conductor, fromSeconds, periodSeconds, samples);
 
     private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
 

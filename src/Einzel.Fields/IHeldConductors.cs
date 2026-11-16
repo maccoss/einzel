@@ -85,42 +85,24 @@ public static class HeldConductors
         return total / samples;
     }
 
-    /// <summary>
-    /// Which member of a sum holds the conductor at a point: the one whose conductors the
-    /// point is deepest inside, or nearest to - the smallest signed distance, the first on a tie.
-    /// </summary>
-    /// <param name="members">The members of the sum, in order.</param>
-    /// <param name="position">The point, in metres.</param>
-    /// <returns>The member's index, or -1 where no member has conductors.</returns>
-    /// <remarks>
-    /// One rule for every composite, static and driven. They used to differ - the static sum
-    /// took the nearest, the driven one the first member containing the point - so adding an RF
-    /// element to a model could change which of two overlapping conductors a point was credited
-    /// to.
-    /// </remarks>
-    public static int Nearest(IReadOnlyList<IElectrostaticField> members, in Vec3 position)
-    {
-        ArgumentNullException.ThrowIfNull(members);
+    /// <summary>What a wrapper forwards: the inner field's held potential for a conductor, if it holds any.</summary>
+    /// <param name="inner">The wrapped field.</param>
+    /// <param name="conductor">The conductor's name.</param>
+    /// <param name="timeSeconds">The instant, on the inner field's clock.</param>
+    /// <returns>The potential, or null where the inner field holds no such conductor.</returns>
+    public static double? Forward(IElectrostaticField inner, string conductor, double timeSeconds) =>
+        inner is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
 
-        var index = -1;
-        var nearest = double.PositiveInfinity;
-
-        for (var i = 0; i < members.Count; i++)
-        {
-            if (members[i] is IConductorBounded bounded)
-            {
-                var distance = bounded.SignedDistanceToConductor(in position);
-
-                if (distance < nearest)
-                {
-                    nearest = distance;
-                    index = i;
-                }
-            }
-        }
-
-        return index;
-    }
+    /// <summary>What a wrapper forwards for a cycle mean.</summary>
+    /// <param name="inner">The wrapped field.</param>
+    /// <param name="conductor">The conductor's name.</param>
+    /// <param name="fromSeconds">Where the window opens, on the inner field's clock.</param>
+    /// <param name="periodSeconds">How long it is.</param>
+    /// <param name="samples">How many instants, where sampled.</param>
+    /// <returns>The mean, or null where the inner field holds no such conductor.</returns>
+    public static double? ForwardMean(
+        IElectrostaticField inner, string conductor, double fromSeconds, double periodSeconds, int samples) =>
+        inner is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
 
     /// <summary>The first member of a sum that holds a conductor of this name.</summary>
     /// <param name="members">The members.</param>

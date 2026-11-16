@@ -140,13 +140,11 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
 
     /// <inheritdoc/>
     public double? HeldPotentialOf(string conductor, double timeSeconds) =>
-        _electric is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
+        HeldConductors.Forward(_electric, conductor, timeSeconds);
 
     /// <inheritdoc/>
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        _electric is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
-
-
+        HeldConductors.ForwardMean(_electric, conductor, fromSeconds, periodSeconds, samples);
 }
 
 /// <summary>A magnetized field whose electric part is driven.</summary>

@@ -453,22 +453,24 @@ public static class SurfaceCommand
     /// <summary>Samples a model's potential on a plane.</summary>
     /// <param name="modelPath">The model.</param>
     /// <param name="request">Where and how.</param>
+    /// <param name="maxParallelism">Rows sampled at once; null for one per processor, 1 to sample serially.</param>
     /// <returns>The sampled surface, the probe it came from, and the warnings sampling earned.</returns>
     /// <exception cref="EinzelException">The model does not validate, or the request is malformed.</exception>
     public static (PotentialSurface Surface, FieldProbe Probe, IReadOnlyList<ValidityWarning> Warnings) Sample(
-        string modelPath, SurfaceRequest request)
+        string modelPath, SurfaceRequest request, int? maxParallelism = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
 
         var absolute = Path.GetFullPath(modelPath);
 
-        return Sample(absolute, File.ReadAllText(absolute), request);
+        return Sample(absolute, File.ReadAllText(absolute), request, maxParallelism);
     }
 
     /// <summary>Samples the potential of model text already read.</summary>
     /// <param name="modelPath">Where the text came from; imported files resolve against its directory.</param>
     /// <param name="modelText">The model document.</param>
     /// <param name="request">Where and how.</param>
+    /// <param name="maxParallelism">Rows sampled at once; null for one per processor, 1 to sample serially.</param>
     /// <returns>
     /// The sampled surface, the probe it came from - whose <see cref="FieldProbe.ModelHash"/> is
     /// the hash of this text - and the warnings sampling earned.
@@ -479,7 +481,7 @@ public static class SurfaceCommand
     /// revision however the file is edited meanwhile.
     /// </remarks>
     public static (PotentialSurface Surface, FieldProbe Probe, IReadOnlyList<ValidityWarning> Warnings) Sample(
-        string modelPath, string modelText, SurfaceRequest request)
+        string modelPath, string modelText, SurfaceRequest request, int? maxParallelism = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         Check(request);
@@ -580,10 +582,14 @@ public static class SurfaceCommand
         var elements = new int?[nu * nv];
         var depth = new double[nu * nv];
         var held = new double[nu * nv];
-        var outside = 0;
-        var refused = 0;
+        var outsideRows = new int[nu];
+        var refusedRows = new int[nu];
 
-        for (var i = 0; i < nu; i++)
+        // Row by row across the processors: every node writes only its own slots, the probe is
+        // safe to share, and the counts are kept per row and summed after, so the result is the
+        // same whatever the order the rows finish in - asserted byte for byte against a serial
+        // pass.
+        Parallel.For(0, nu, new ParallelOptions { MaxDegreeOfParallelism = maxParallelism ?? -1 }, i =>
         {
             for (var j = 0; j < nv; j++)
             {
@@ -594,11 +600,11 @@ public static class SurfaceCommand
 
                 if (status == ProbeStatus.Refused)
                 {
-                    refused++;
+                    refusedRows[i]++;
                 }
                 else if (status == ProbeStatus.OutsideDomain)
                 {
-                    outside++;
+                    outsideRows[i]++;
                 }
                 else if (status == ProbeStatus.InsideConductor)
                 {
@@ -613,7 +619,10 @@ public static class SurfaceCommand
                     }
                 }
             }
-        }
+        });
+
+        var outside = outsideRows.Sum();
+        var refused = refusedRows.Sum();
 
         // A plateau at the potential the conductor holds, from the solve's own coefficients. Not
         // a reading of the field there: an interpolant overshoots inside a thin conductor, and
@@ -1018,6 +1027,7 @@ public static class SurfaceCommand
     /// <paramref name="modelPath"/>, once. Either way the hash recorded is of the text the field
     /// was built from (PRJ-3).
     /// </param>
+    /// <param name="maxParallelism">Rows sampled at once; null for one per processor, 1 to sample serially.</param>
     /// <returns>What was drawn and where it went.</returns>
     /// <exception cref="EinzelException">The model does not validate, or the request is malformed.</exception>
     /// <exception cref="ArgumentException">The view has no such name.</exception>
@@ -1033,7 +1043,8 @@ public static class SurfaceCommand
         bool dryRun = false,
         bool scale = true,
         string? csvPath = null,
-        string? modelText = null)
+        string? modelText = null,
+        int? maxParallelism = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentNullException.ThrowIfNull(project);
@@ -1070,7 +1081,7 @@ public static class SurfaceCommand
         }
 
         // One read (PRJ-3): the hash is the probe's, of the very text the field was built from.
-        var (surface, probe, warnings) = Sample(absolute, modelText ?? File.ReadAllText(absolute), request);
+        var (surface, probe, warnings) = Sample(absolute, modelText ?? File.ReadAllText(absolute), request, maxParallelism);
         var hash = probe.ModelHash;
         var mmPerUnit = Scale(surface, request);
         var layers = Compose(surface, mmPerUnit, request.MeshLines);

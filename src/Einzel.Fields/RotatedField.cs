@@ -170,11 +170,9 @@ public sealed class RotatedField(
 
     /// <inheritdoc/>
     public double? HeldPotentialOf(string conductor, double timeSeconds) =>
-        _inner is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
+        HeldConductors.Forward(_inner, conductor, timeSeconds);
 
     /// <inheritdoc/>
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        _inner is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
-
-
+        HeldConductors.ForwardMean(_inner, conductor, fromSeconds, periodSeconds, samples);
 }

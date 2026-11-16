@@ -319,18 +319,24 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
     }
 
     /// <inheritdoc/>
-    public string? ConductorAt(in Vec3 position) =>
-        ConductorElementAt(in position) is var index and >= 0
-            ? ((IConductorBounded)_elements[index]).ConductorAt(in position)
-            : null;
+    /// <remarks>
+    /// The first member whose conductor contains the point, as it always has been: this names
+    /// the surface an ion strikes in a loss itemisation (ACC-5), so it is not changed under a
+    /// drawing. The surface and the probe pick a conductor by their own rule.
+    /// </remarks>
+    public string? ConductorAt(in Vec3 position)
+    {
+        foreach (var element in _elements)
+        {
+            if (element is IConductorBounded bounded
+                && bounded.SignedDistanceToConductor(in position) <= 0.0)
+            {
+                return bounded.ConductorAt(in position);
+            }
+        }
 
-    /// <summary>
-    /// Which of <see cref="Elements"/> holds the conductor <see cref="ConductorAt"/> names: a
-    /// name is unique only within one element, so the name alone does not say.
-    /// </summary>
-    /// <param name="position">Where to look.</param>
-    /// <returns>The element's index in <see cref="Elements"/>, or -1 when none has conductors.</returns>
-    public int ConductorElementAt(in Vec3 position) => HeldConductors.Nearest(_elements, in position);
+        return null;
+    }
 
     /// <inheritdoc/>
     /// <remarks>The first member that holds a conductor of that name; names are unique within one element.</remarks>

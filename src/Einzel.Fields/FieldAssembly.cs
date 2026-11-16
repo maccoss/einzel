@@ -65,18 +65,27 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded, IH
     }
 
     /// <inheritdoc/>
-    public string? ConductorAt(in Vec3 position) =>
-        ConductorElementAt(in position) is var index and >= 0
-            ? ((IConductorBounded)_elements[index]).ConductorAt(in position)
-            : null;
+    public string? ConductorAt(in Vec3 position)
+    {
+        string? nearestName = null;
+        var nearest = double.PositiveInfinity;
 
-    /// <summary>
-    /// Which of <see cref="Elements"/> holds the conductor <see cref="ConductorAt"/> names: a
-    /// name is unique only within one element, so the name alone does not say.
-    /// </summary>
-    /// <param name="position">Where to look.</param>
-    /// <returns>The element's index in <see cref="Elements"/>, or -1 when none has conductors.</returns>
-    public int ConductorElementAt(in Vec3 position) => HeldConductors.Nearest(_elements, in position);
+        foreach (var element in _elements)
+        {
+            if (element is IConductorBounded bounded)
+            {
+                var distance = bounded.SignedDistanceToConductor(in position);
+
+                if (distance < nearest)
+                {
+                    nearest = distance;
+                    nearestName = bounded.ConductorAt(in position);
+                }
+            }
+        }
+
+        return nearestName;
+    }
 
     /// <inheritdoc/>
     /// <remarks>The first member that holds a conductor of that name; names are unique within one element.</remarks>

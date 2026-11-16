@@ -3493,13 +3493,30 @@ Two findings from Stage 1 that bear on the spec:
   **A fourth review, smaller.** A plateau was drawn where a declared shape ran past its solve:
   the held value is now asked of the conductor's element by name, after the probe's own domain
   test has said the point is where that element was solved. The static and driven sums credited
-  overlapping conductors by different rules; they share one. `render section` checked only its
+  overlapping conductors by different rules; they share one (a fifth review undid that - see
+  below). `render section` checked only its
   flag's instant; it checks the one it draws at, from the flag or the spec, against both the
   clock's start and the drive's resolution (`FieldInstants.CheckResolution`, now shared by all
   three verbs). A bad `--height-mm-per-ev` was reported at `-per-v`. The noise floor's reference
   counts analytic elements' declared potentials, so an ideal RF quadrupole at its zero is drawn
   flat. And the surface's sampler walks the conductor list once a sample, not three times - the
   pictures and `--json` of three templates are identical before and after.
+
+  **A fifth review found the fourth's refactor had lost every reflected solve's mirror half.** The
+  probe took every sum apart and mapped the pieces by position against the assembly's
+  one-entry-per-element list, and a reflected solve is one element whose field is two pieces - so
+  points in the mirror image read as free space and drew no plateau, where `einzel probe` on main
+  called them inside. Reproduced on a reflected slit before fixing: `ok` at the mirrored jaw, and
+  26 plateau samples where there are 52. The sum is now taken apart in one function that records
+  each piece's element, checked on a reflected cross-section and a reflected volume. With it: the
+  nearest-conductor search only lets solved elements compete, so a shape declared past its solve
+  cannot hide another solve's conductor; **the sums' `ConductorAt` is back to exactly what it is on
+  main**, since it names the surface an ion strikes and the fourth review's unification would have
+  changed driven models' loss tallies under a drawing; sampling runs a row per processor, byte
+  for byte what a serial pass gives; `HasOperatingPoints` no longer copies a sequenced field on
+  every read; the wrappers share one forwarding helper; and `TimeShiftedField` forwards what its
+  conductors hold, on the instrument's clock, with a reflection test holding every
+  conductor-bounded field in the assembly to the same.
 
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

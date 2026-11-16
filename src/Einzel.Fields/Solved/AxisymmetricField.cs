@@ -128,11 +128,11 @@ public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded, 
 
     /// <inheritdoc/>
     public double? HeldPotentialOf(string conductor, double timeSeconds) =>
-        _halfPlane is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
+        HeldConductors.Forward(_halfPlane, conductor, timeSeconds);
 
     /// <inheritdoc/>
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        _halfPlane is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
+        HeldConductors.ForwardMean(_halfPlane, conductor, fromSeconds, periodSeconds, samples);
 
     private static Vec3 Sample(in Vec3 position) =>
         new(position.X, Math.Sqrt((position.Y * position.Y) + (position.Z * position.Z)), 0.0);

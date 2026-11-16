@@ -881,9 +881,21 @@ reached by a `--box-mm` wider than the domain - and a point out there is in no c
 plateau is drawn and the probe does not call it inside. The test is the probe's own domain test.
 The held value is asked of the conductor's element by name (`IHeldConductors.HeldPotentialOf`)
 once the probe has decided which conductor and which element, so the conductor list is walked
-once per sample, not three times. Which of two overlapping conductors a point is credited to is
-one rule for every sum, static or driven (`HeldConductors.Nearest`: the one the point is deepest
-inside); a driven sum used to take the first, so adding an RF element could change the answer.
+once per sample, not three times. **Which conductor a point is in is the probe's own rule**, the
+same whether the model is static or driven: of the conductors whose element was solved at the
+point, the one it is deepest inside. Only those compete - a shape declared past its solve would
+otherwise win wherever it was deepest and hide a conductor another solve really has there. The
+field sums keep their own `ConductorAt` exactly as it was, because that names the surface an ion
+strikes in a loss itemisation (ACC-5): a static sum names the nearest member's conductor and a
+driven one the first member containing the point, and a drawing is no place to change that.
+
+**A reflected solve is one element with two halves.** Its field is itself a sum, the solve and its
+mirror image, and the probe takes the assembled field apart in one place (`FieldProbe.Leaves`),
+recording for every piece the element it came from. A version that took every sum apart and mapped
+the pieces by position against the assembly's one-entry-per-element list left the mirror image
+with no element, so every point in it read as free space and no plateau was drawn there - the
+planar mirror pair and both Astral analysers among the shipped templates. Sampling runs across the
+processors, a row at a time, and is byte for byte what a serial pass gives.
 
 What the sweep of every shipped template and example found with the held value: `tims-analyzer`,
 `tims-front-end` and `tims-tandem` warn on every ring (the analytic RF, as above); `astral-3d` and
