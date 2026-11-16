@@ -145,6 +145,12 @@ become a feature release without being renamed twice.
   amplitudes interleave, and where a search lands moves with the integrator tolerance. Hold 800
   cycles or more and scan the edge; do not bisect it. Measurements are in
   `docs/device-templates.md`.
+- **Measured on a cloud of ions, the stretch brings the holed trap's ejection edge a quarter of
+  the way back.** With 200 ions released in a 0.13 mm ball at random RF phase, half are lost at
+  q_eff 0.9058 in the ideal trap, 0.9176 with two holes and 0.9146 with two holes and a 0.107
+  stretch: the stretch recovers 0.0030 (0.0027 to 0.0037 over tolerance, cloud, hold and mesh)
+  of the 0.0120 the holes cost. Twice that stretch recovers under half. A holed edge quoted
+  finer than 0.0006 belongs to the hold: it falls by that much between 800 and 2000 cycles.
 - **A published three-program comparison is a test.** The single-ion case of Forbes et al. 1999
   (SIMION, ITSIM, ISIS) runs on `paul-trap`: the secular frequencies agree with all three
   programs; the tabulated excursions do not, and do not agree with the ideal field either, which

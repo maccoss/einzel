@@ -2157,10 +2157,12 @@ thousand of q. A test now checks the tolerance reaches the integrator at all, by
   faster than linearly, which shifts the large-amplitude motion and so where an ion reaches the
   endcap; the direction is consistent with the octupole above, but the edge was not decomposed
   into its causes. One hole moves it 0.5 percent, to 0.910.
-- **Whether the stretch brings the holed edge back is not resolved.** Holes plus stretch eject
-  at 0.914-0.916 against 0.917-0.920: the difference is the width of either strip, and the test
-  asserts windows for the two that overlap rather than an order between them. The ideal trap,
-  one hole and the two-holed geometries are asserted in that order.
+- **One ion cannot say whether the stretch brings the holed edge back; an ensemble can, and it
+  does, by 0.0030 of q_eff - a quarter of what the holes moved it.** Bisected, holes plus
+  stretch eject at 0.914-0.916 against 0.917-0.920: the difference is the width of either strip,
+  and the single-ion test asserts windows for the two that overlap rather than an order between
+  them. Measured on a cloud of 200 ions the edges are 0.9146 and 0.9176, separated under every
+  control - "The edge measured on an ensemble", below.
 - **In nominal terms the stretched, holed trap ejects at q_nom 1.034** - 14 percent more volts
   than the ideal trap of the same declared r0. A q scale taken from the drawing is wrong by that
   much.
@@ -2181,8 +2183,9 @@ land on, and which it lands on is decided by one marginal flight. **A longer hol
 strip and does not close it for two holes**: 2.25 V at 200 cycles, 0.75 V at 800 and at 2000 -
 and finer than the scan there are still islands, since the 800-cycle bisection above holds an
 ion at 758.59 V between scan points lost at 758.50 and 758.75. One hole does come down to a
-single step at 800 cycles. So the honest statement of the two-holed edge is the strip, q_eff
-0.917 to 0.920 with tolerance and launch included, and not a bracket 0.2 V wide.
+single step at 800 cycles. So the honest statement of the two-holed edge for one ion is the
+strip, q_eff 0.917 to 0.920 with tolerance and launch included, and not a bracket 0.2 V wide; the
+edge of a cloud is one number with an interval, below.
 
 The platform difference was this, met at 200 cycles on the first version's bore (12.5 micrometres
 larger, where the strip ran 759.25 to 762.50 V). The study's bisection from 600 and 1000 V met
@@ -2202,6 +2205,110 @@ not one place at 800 or 2000 either. The ideal trap is converged at 200 cycles. 
 800 and asserts a window per geometry that contains every bracket measured across the three
 tolerances with 0.0015 of q_eff or more either side - 0.9155 to 0.922 for both holes, 0.9045 to
 0.9065 for the ideal trap.
+
+**The edge measured on an ensemble, and what the stretch does to it.** One ion cannot say
+whether the stretch brings the holed edge back: the two bisected strips above are each as wide as
+the 0.003 between them. In effective q the linear boundary is the same for every geometry by
+construction, so the difference is nonlinear - an ion has to cross the anharmonic region to
+reach an endcap - and near the edge one ion's fate turns on the last digits of the arithmetic. So
+the edge is measured as a property of a cloud (`PaulTrapEdgeEnsemble`, asserted in
+`PaulTrapEndcapHoleEdge`):
+
+- **The cloud**: ions released from rest, uniform in a ball of radius 0.13 mm about the trap
+  center, each at its own RF phase, uniform over a cycle; seeded, and the same ions in every
+  geometry and at every amplitude. The ball's rms is 0.058 mm an axis, against 0.060 mm for a
+  300 K cloud of m/z 500 in this well at q = 0.5, so it is the size of a cooled cloud. It is a
+  stated ball, not a thermal distribution, and carries no velocity spread.
+- **The edge**: the loss fraction within the hold at each q_eff on a 0.001 grid, made monotone
+  (least-squares, pool adjacent violators) and interpolated; the edge is where it crosses 50
+  percent. The interval is a 95 percent percentile bootstrap over ions. The loss criterion is
+  the vertex plane, as above.
+- **What is held fixed**: q_eff, so each geometry's volts are scaled by its own effective radius
+  and the stretch's change of scale (11 percent in volts) is taken out; the cloud in
+  millimeters; the hold in RF cycles. What is compared is what the higher multipoles do.
+
+200 ions, 800 cycles, shipped mesh and tolerance, q_eff 0.895 to 0.935:
+
+| geometry | A4/A2 | edge, q_eff at 50 % loss [95 %] | 10 to 90 % loss | volts at the edge |
+| --- | --- | --- | --- | --- |
+| ideal | +0.90 % | **0.9058** [0.9054, 0.9062] | 0.9032-0.9078 | 740.6 |
+| stretch only | +1.52 % | 0.9050 [0.9043, 0.9055] | 0.9006-0.9079 | 829.2 |
+| exit hole only | -0.59 %, hexapole -0.89 % | 0.9102 [0.9099, 0.9105] | 0.9064-0.9118 | 748.0 |
+| holes + stretch | -0.50 % | **0.9146** [0.9144, 0.9148] | 0.9122-0.9162 | 845.5 |
+| both holes | -2.10 % | **0.9176** [0.9174, 0.9179] | 0.9147-0.9201 | 758.1 |
+
+The 10 to 90 percent width, 0.004 to 0.007, is the cloud's own: where an ion is lost depends on
+where and at what phase it started, in the ideal trap too. It is not the strip, which is a
+property of one ion.
+
+**The controls**, each changing one thing, edges as q_eff at 50 percent loss on 200 ions:
+
+| changed | ideal | both holes | holes + stretch | step between the two holed |
+| --- | --- | --- | --- | --- |
+| nothing (cloud 1) | 0.90583 | 0.91764 | 0.91456 | 0.00308 |
+| tolerance 1e-8 | 0.90583 | 0.91763 | 0.91460 | 0.00303 |
+| tolerance 1e-10 | 0.90583 | 0.91758 | 0.91473 | 0.00285 |
+| cloud 2 | 0.90597 | 0.91770 | 0.91476 | 0.00294 |
+| cloud 3 | 0.90598 | 0.91772 | 0.91500 | 0.00272 |
+| clouds 4 to 8 | not run | 0.91802, 0.91779, 0.91795, 0.91800, 0.91787 | 0.91481, 0.91496, 0.91484, 0.91487, 0.91496 | 0.00321, 0.00283, 0.00311, 0.00313, 0.00291 |
+| hold 2000 cycles | 0.90583 | 0.91706 | 0.91405 | 0.00301 |
+| 40 cells per r0 | 0.90580 | 0.91785 | 0.91415 | 0.00370 |
+| ball 0.065 mm | 0.90703 | 0.91881 | 0.91556 | 0.00325 |
+| ball 0.26 mm | 0.90372 | 0.91447 | 0.91210 | 0.00237 |
+
+- **Tolerance: stable.** The ideal trap loses the same ions at all three (in the 64-ion test, 0
+  of 896 flights change sides between 1e-8 and 1e-9). With holes individual flights do change
+  sides - 73 of 1024 for both holes, 41 of 896 with the stretch - and the edge moves 0.0002 or
+  less, inside its interval. That is the coin of the single-ion measurement, averaged.
+- **Cloud: stable, and the bootstrap interval is a little narrow.** Over eight independent
+  clouds the two-holed edge is 0.91784 with a standard deviation of 0.00015 and the stretched
+  one 0.91485 with 0.00014, against a bootstrap interval of about plus or minus 0.0002 at 95
+  percent: two standard deviations between clouds are 0.0003. **The between-cloud spread is the
+  error bar to use** for a 200-ion edge - this project's own finding about bootstraps over one
+  realization of a chaotic ensemble.
+- **Hold: not stable for the holed edges, and it moves them together.** From 800 to 2000 cycles
+  both fall, by 0.0006 and 0.0005, more than their intervals; the ideal trap's does not move in
+  the fifth figure. Slow growers just above the edge need longer than 800 cycles to reach an
+  endcap, so a holed edge quoted to better than 0.0006 is the edge *at that hold*. The step
+  between them is unchanged, 0.0030.
+- **Mesh: the largest single move in the step.** At 40 cells per r0 the two-holed edge rises
+  0.0002 (inside two standard deviations) and the stretched one falls 0.0004 (outside), so the
+  step reads 0.0037. One cloud at the finer mesh; whether that is the mesh or the draw was not
+  separated, and it is taken as the upper end of the step's uncertainty.
+- **Cloud size: every edge falls as the cloud grows**, the ideal trap's too (0.9070, 0.9058,
+  0.9037 at 0.065, 0.13 and 0.26 mm), which is the edge's dependence on amplitude; the step is
+  0.0033, 0.0031 and 0.0024. The numbers here are for the 0.13 mm ball.
+
+**So the question has an answer. The stretch brings the two-holed trap's edge back toward the
+ideal by 0.0030 of q_eff**: 0.00299 with a standard error of 0.00006 over eight paired clouds of
+200 ions (standard deviation between clouds 0.00017), and between 0.0027 and 0.0037 under every
+control above at this cloud size. The holes move the edge out by 0.0120 (0.9058 to 0.9178), so
+**the stretch recovers a quarter of it** - 23 to 31 percent across the controls - and the
+stretched, holed trap still ejects 0.0088 above the ideal one. The two holed geometries'
+intervals are separated in every row of the table, and the test asserts the order and the step
+on 64 ions and on a second cloud.
+
+**A stretch series, at fixed holes** (200 ions, 800 cycles; multipoles at 20 cells from
+`PaulTrapEndcapHoleStudy.AtFixedHolesTheStretchRemovesMostOfTheOctupoleAndThenStops`):
+
+| stretch | A4/A2 | A6/A2 | r0_eff (mm) | edge, q_eff [95 %] | step from the row above |
+| --- | --- | --- | --- | --- | --- |
+| 0 | -2.10 % | -3.8 % | 4.0189 | 0.9176 [0.9174, 0.9179] | |
+| 0.0535 | -1.10 % | -2.9 % | 4.1337 | 0.9161 [0.9158, 0.9164] | -0.0015 |
+| 0.107 | -0.50 % | -1.8 % | 4.2516 | 0.9146 [0.9144, 0.9148] | -0.0016 |
+| 0.160 | -0.18 % | -0.5 % | 4.3704 | 0.9132 [0.9130, 0.9133] | -0.0014 |
+| 0.214 | -0.23 % | +0.5 % | 4.4934 | 0.9123 [0.9122, 0.9125] | -0.0009 |
+
+(The 0.160 edge was flown at a stretch of 0.160 and its multipoles measured at 0.1605.) **The
+edge falls at every step, five separated intervals in order**, which is much stronger evidence
+than two points that the stretch is what moves it. **It does not follow the octupole alone**:
+the octupole stops rising at one and a half times the shipped stretch - the test was first
+written expecting it to rise at every step, and failed at the last - while the edge goes on
+falling, with the 12-pole, which crosses zero. The main table says the same: one hole and holes
+plus stretch have nearly the same octupole (-0.59 and -0.50 percent) and edges 0.0044 apart. And
+even twice the shipped stretch brings back under half of what the holes did (0.0053 of 0.0120);
+no stretch in this range restores the ideal trap's edge. The stretch alone, on the ideal shape,
+lowers the edge by 0.0008, which one cloud does not resolve (the intervals touch).
 
 **Resonance bands.** Held at 0.3 mm launch, q_eff 0.60 to 0.89 in steps of 0.01, 200 cycles
 (`ResonanceScan`):

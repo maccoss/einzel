@@ -3247,6 +3247,9 @@ Two findings from Stage 1 that bear on the spec:
   | two holes | **-2.10 %** | 4.0189 | **0.917-0.920**, +1.3 % |
   | two holes and the stretch | -0.50 % | 4.2516 | 0.914-0.916 |
 
+  Those edges are one ion's, bisected; on a cloud of 200 they are 0.9058, 0.9102, 0.9176 and
+  0.9146 (below).
+
   **One hole opens a hexapole band** at q_eff 0.785-0.790, where an ion held just below has
   3 beta_z = 1.980 - the order predicted from the broken symmetry - at 20 and 40 cells per r0.
   **Two holes open the octupole's band at q_eff 0.810, given 800 cycles** (2 beta_z + 2 beta_r =
@@ -3304,6 +3307,38 @@ Two findings from Stage 1 that bear on the spec:
     expressions, written out, with the new parameters removed so a leftover reference cannot
     compile. What it cannot assert is that the transcription is the old file; that was checked
     once by solving the old file itself.
+
+  **Whether the stretch brings the holed edge back was "not resolved", and the reason was the
+  method.** In effective q the linear boundary is the same for every geometry by construction,
+  so the difference is nonlinear and one ion's fate near the edge is a coin: the two bisected
+  strips are each as wide as the 0.003 between them. Measured instead on a seeded cloud - 200
+  ions from rest in a 0.13 mm ball (the size of a 300 K cloud), each at its own RF phase, the
+  same ions in every geometry; the edge is where the loss fraction crosses 50 percent, with a
+  bootstrap interval:
+
+  | 200 ions, 800 cycles | edge, q_eff [95 %] |
+  | --- | --- |
+  | ideal | 0.9058 [0.9054, 0.9062] |
+  | one hole | 0.9102 [0.9099, 0.9105] |
+  | two holes and the stretch | **0.9146** [0.9144, 0.9148] |
+  | two holes | **0.9176** [0.9174, 0.9179] |
+
+  **The stretch brings the two-holed edge back by 0.0030 of q_eff, a quarter of the 0.0120 the
+  holes moved it**: 0.00299 with a standard error of 0.00006 over eight paired clouds, and 0.0027
+  to 0.0037 under every control - tolerances of 1e-8 and 1e-10, eight clouds, a 2000-cycle hold,
+  40 cells per r0. The ideal trap loses the same ions at every tolerance; with holes 73 of 1024
+  flights change sides and the edge moves under 0.0002. **Two controls found something.** The
+  hold moves both holed edges down by 0.0006 between 800 and 2000 cycles - more than their
+  intervals, and together, so the step is unchanged - and the standard deviation between clouds,
+  0.00015, is half again what the bootstrap implies, so the between-cloud spread is the error
+  bar. **A stretch series at fixed holes** (0, 0.0535, 0.107, 0.160, 0.214) gives 0.9176, 0.9161,
+  0.9146, 0.9132, 0.9123: five separated intervals in order. **And it does not follow the
+  octupole alone**: A4 goes -2.10, -1.10, -0.50, -0.18, -0.23 percent - the test written
+  expecting it to rise at every step failed at the last - while the edge goes on falling with
+  the 12-pole. Twice the shipped stretch recovers under half of what the holes did. `q_eff`
+  takes out the stretch's 11 percent change of scale; the cloud is the same in millimeters and
+  the hold in cycles. Asserted on 64 ions in `PaulTrapEndcapHoleEdge`, with the order as
+  separated intervals.
 
   **Every number that moved, moved because the bore did** (0.6075 to 0.595 mm): octupole -2.20
   to -2.10 %, two-hole edge bracket q_eff 0.9180-0.9182 to 0.9183-0.9185, the 200-cycle strip's

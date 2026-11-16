@@ -497,6 +497,56 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// With both holes fixed, a stretch removes most of the octupole and then stops: the field
+    /// half of the stretch series whose ejection edges are in <c>docs/device-templates.md</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Five stretches from none to twice the 0.107 the other measurements use: A4/A2 goes
+    /// -2.10, -1.10, -0.50, -0.18 and -0.23 percent, and A6/A2 -3.8, -2.9, -1.8, -0.5 and
+    /// +0.5 percent. <b>This test was first written asserting the octupole rises at every
+    /// step, and it failed at the last</b>: past one and a half times the stretch the octupole
+    /// has stopped rising, and what goes on changing is the 12-pole, which crosses zero.
+    /// </para>
+    /// <para>
+    /// Asserted: the octupole rises over the first three steps, each of which is three times
+    /// or more the 9.4e-4 a finer mesh moves this weight; the 12-pole and the effective radius
+    /// rise at every step. The last step of the octupole, 5e-4, is under what the mesh moves
+    /// it, so its sign is printed and not pinned.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AtFixedHolesTheStretchRemovesMostOfTheOctupoleAndThenStops()
+    {
+        var rows = new[] { 0.0, 0.5 * Stretch, Stretch, 1.5 * Stretch, 2.0 * Stretch }
+            .Select(stretch => Measure(
+                stretch.ToString("F4", CultureInfo.InvariantCulture), 20.0,
+                [("endcapEntranceHoleFraction", HoleFraction), ("endcapExitHoleFraction", HoleFraction),
+                 ("endcapStretchFraction", stretch)]))
+            .ToArray();
+
+        output.WriteLine("stretch   A4/A2      A6/A2      r0_eff(mm)");
+
+        foreach (var row in rows)
+        {
+            output.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{row.Name}  {row.Weights[4],9:E3}  {row.Weights[6],9:E2}  {row.EffectiveMm,9:F4}"));
+        }
+
+        for (var k = 1; k < rows.Length; k++)
+        {
+            if (k <= 3)
+            {
+                Assert.True(rows[k].Weights[4] > rows[k - 1].Weights[4], $"A4 did not rise from stretch {rows[k - 1].Name} to {rows[k].Name}");
+            }
+
+            Assert.True(rows[k].Weights[6] > rows[k - 1].Weights[6], $"A6 did not rise from stretch {rows[k - 1].Name} to {rows[k].Name}");
+            Assert.True(rows[k].EffectiveMm > rows[k - 1].EffectiveMm, $"r0_eff did not grow from stretch {rows[k - 1].Name} to {rows[k].Name}");
+        }
+    }
+
+    /// <summary>
     /// What the holes and the stretch do to the multipoles, at two meshes.
     /// </summary>
     /// <remarks>

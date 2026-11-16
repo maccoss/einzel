@@ -5658,6 +5658,19 @@ bracket moves 1.4 V across integrator tolerances of 1e-8, 1e-9 and 1e-10 while t
 does not move a bit. The number that belongs to the trap is the strip, q_eff 0.917 to 0.920; a
 bracket 0.2 V wide inside it belongs to the tolerance.
 
+**And when two geometries differ by the width of the strip, stop asking one ion.** Whether the
+stretch brings the holed edge back was written down as "not resolved": 0.914-0.916 against
+0.917-0.920, two overlapping strips. The answer was there to be had - 0.0030 of q, separated
+under every control - from a seeded cloud of 200 ions and the amplitude at which half are lost.
+With holes 73 of 1024 flights change sides between tolerances of 1e-8 and 1e-9, and the cloud's
+edge moves under 0.0002: the coin that decided a bisection is one vote. The general form: **a
+quantity decided by a chaotic trajectory is a distribution, and "not resolved" about one sample
+of it is a statement about the method.** Two things the cloud did not make go away, both found
+by its controls: the holed edges fall 0.0006 between 800 and 2000 cycles, so an edge is still an
+edge at a hold; and the bootstrap interval over one cloud was half again narrower than the spread
+between eight clouds, which this project had already found once (a bootstrap over one
+realization is not an error bar in a chaotic ensemble) and met again.
+
 **And that tolerance check had been run and reported clean - through a parameter the function
 ignored.** The flight helper took `relativeTolerance` and handed the integrator a constant, so
 "1e-8 or 1e-10 moves no edge" compared each run with itself. A sensitivity check needs its own

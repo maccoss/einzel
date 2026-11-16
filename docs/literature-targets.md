@@ -1622,4 +1622,8 @@ Run on the `paul-trap` template scaled whole to r0 = 10 mm (gap, ring and endcap
   which table 4 gives sixteen. The sixteen-ion trapping fractions disagree between the codes by
   19 points and the paper itself warns against reading them, so they would not discriminate
   anyway.
-- **The stretched-trap and hole numbers** a real instrument needs are not in this paper.
+- **The stretched-trap and hole numbers** a real instrument needs are not in this paper. What
+  the unsourced 0.175 holes and 0.107 stretch do to the ejection edge is measured in
+  `device-templates.md` ("The edge measured on an ensemble"): the holes move it out 0.0120 of
+  q_eff and the stretch brings back 0.0030 of that. Neither figure is a prediction for a named
+  instrument until the hole radius and the stretch are sourced.

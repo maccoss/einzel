@@ -267,7 +267,8 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
         // 0.0015 or more either side. The ideal trap, one hole, and the two-holed geometries
         // are asserted in that order, with gaps between their windows; holes plus stretch and
         // both holes are NOT ordered by these windows, which overlap - the 0.003 between them
-        // is the width of either strip, and the docs say so rather than claim it.
+        // is the width of either strip, so one ion cannot order them. An ensemble can, and
+        // does: PaulTrapEndcapHoleEdge measures that step as 0.0030 and asserts it.
         Assert.InRange(edges["ideal"], 0.9045, 0.9065);
         Assert.InRange(edges["exit hole only"], 0.9085, 0.9115);
         Assert.InRange(edges["holes + stretch"], 0.9125, 0.918);

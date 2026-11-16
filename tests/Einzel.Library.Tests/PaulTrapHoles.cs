@@ -187,13 +187,22 @@ internal static class PaulTrapHoles
         /// <param name="loss">What counts as losing the ion.</param>
         /// <param name="record">Whether to record the path at sixteen samples a cycle.</param>
         /// <param name="relativeTolerance">The integrator's relative tolerance; the template's by default.</param>
+        /// <param name="phaseCycles">The RF phase at launch, as a fraction of a cycle.</param>
         public Flight Fly(
             double volts, double axialMm, double radialMm, double cycles, Loss loss,
-            bool record = false, double relativeTolerance = 1e-9)
+            bool record = false, double relativeTolerance = 1e-9, double phaseCycles = 0.0)
         {
             var field = volts == ReferenceVolts
                 ? Field
                 : new AmplitudeScaledField(Field, volts / ReferenceVolts);
+
+            // The RF phase at launch, as a fraction of a cycle: the same field seen from that
+            // much later. Zero leaves the field object untouched, so every single-ion result
+            // measured before the ensemble existed is the same flight to the bit.
+            if (phaseCycles != 0.0)
+            {
+                field = new TimeShiftedField(field, phaseCycles / DriveHz);
+            }
 
             var launch = new PhaseState(new Vec3(axialMm * 1e-3, radialMm * 1e-3, 0.0), Vec3.Zero);
 
