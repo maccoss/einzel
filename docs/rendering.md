@@ -895,7 +895,7 @@ several species uses the first and says so (`render.first-species`).
 **A driven field is drawn at an instant, or as its cycle mean.** At `--at-us` the surface is the
 field at that instant, stated on the picture (`t=... µs` above the bar) and in the outcome; with
 neither flag it is t = 0 and `render.field-at-instant` says so, because the top of an RF cycle is a
-field no instrument holds. **`--cycle-mean` draws the DC part**, which is what the owner's
+field no instrument holds. **`--cycle-mean` draws the DC part**, which is what a
 "Z trapping" picture needs: a trap's RF is hundreds of volts and its axial DC a few, so any instant
 shows the RF. It is the potential averaged over one period of the fastest drive, held at the
 operating point `--at-us` for a sequenced or ramped model, and it is taken in closed form where it
