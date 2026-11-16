@@ -221,7 +221,8 @@ public static class StillCommand
             [.. layer.Lines.Select(l => new RasterLine(l.PointsMm, l.R, l.G, l.B, l.SegmentColors))],
             layer.Alpha,
             layer.WritesDepth,
-            layer.DepthBias);
+            layer.DepthBias,
+            layer.Name);
 
     /// <summary>A scale indicator, as the rasterizer draws it: strokes in pixels.</summary>
     /// <remarks>

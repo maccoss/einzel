@@ -32,13 +32,22 @@ public sealed record RasterMesh(
 public sealed record RasterLine(
     IReadOnlyList<double> PointsMm, double R, double G, double B, IReadOnlyList<double>? SegmentColors = null)
 {
-    /// <summary>A colour for each segment, three numbers each, checked to fit the segments as the line is made.</summary>
-    public IReadOnlyList<double>? SegmentColors { get; init; } =
-        SegmentColors is { } colors && colors.Count != 3 * Math.Max(0, ((PointsMm ?? []).Count / 3) - 1)
-            ? throw new ArgumentException(
-                $"{colors.Count} segment colour values for {Math.Max(0, ((PointsMm ?? []).Count / 3) - 1)} segments; a line needs three for each",
-                nameof(SegmentColors))
-            : SegmentColors;
+    /// <summary>What is wrong with the line's segment colors, or null where they fit its segments.</summary>
+    /// <returns>A sentence naming both counts, or null.</returns>
+    /// <remarks>
+    /// The one statement of the rule - three numbers for each segment - asked once, by
+    /// <see cref="Rasterizer.Draw"/> of every line it is handed. A check in a constructor is
+    /// skipped by a <c>with</c> copy, which runs no initializer, and every line that is drawn
+    /// passes through <c>Draw</c> however it was made.
+    /// </remarks>
+    public string? SegmentColorsProblem()
+    {
+        var segments = Math.Max(0, (PointsMm.Count / 3) - 1);
+
+        return SegmentColors is { } colors && colors.Count != 3 * segments
+            ? $"{colors.Count} segment color values for {segments} segments; a line needs three for each"
+            : null;
+    }
 }
 
 /// <summary>One layer, drawn whole before the next.</summary>
@@ -51,12 +60,14 @@ public sealed record RasterLine(
 /// wire mesh drawn exactly on a surface has the surface's depth, and without a bias whether a
 /// line pixel survives the test is a coin toss on rounding.
 /// </param>
+/// <param name="Name">What the layer is, for a refusal to name; null where it has no name.</param>
 public sealed record RasterLayer(
     IReadOnlyList<RasterMesh> Meshes,
     IReadOnlyList<RasterLine> Lines,
     double Alpha,
     bool WritesDepth,
-    double DepthBias = 0.0);
+    double DepthBias = 0.0,
+    string? Name = null);
 
 /// <summary>A flat polyline drawn over the picture, in output pixels.</summary>
 /// <param name="PointsPx">Consecutive x, y pairs, in pixels from the top left.</param>
@@ -177,6 +188,22 @@ public static class Rasterizer
         if (matrix.Count != 16)
         {
             throw new ArgumentException("a projection is a 4x4 matrix", nameof(matrix));
+        }
+
+        // Before anything is drawn, and naming the layer, rather than an index out of range part
+        // way through a picture. Here because every line drawn comes through here, whichever
+        // constructor or `with` made it.
+        for (var l = 0; l < layers.Count; l++)
+        {
+            for (var i = 0; i < layers[l].Lines.Count; i++)
+            {
+                if (layers[l].Lines[i].SegmentColorsProblem() is { } problem)
+                {
+                    throw new ArgumentException(
+                        $"layer {(layers[l].Name is { } name ? $"'{name}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture))}, line {i}: {problem}",
+                        nameof(layers));
+                }
+            }
         }
 
         // Whole output rows to a band, and at least one however small the budget.

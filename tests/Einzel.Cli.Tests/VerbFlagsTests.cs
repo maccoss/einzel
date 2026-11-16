@@ -52,22 +52,54 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
             var read = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), ReadPattern);
             var valued = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), ValuePattern);
             var refused = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), BarePattern);
+            var optional = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), OptionalPattern);
             var flags = VerbFlags.ByVerb[verb];
 
             output.WriteLine($"{verb}: reads {string.Join(", ", read.Order(StringComparer.Ordinal))}");
 
-            var registered = flags.Switches.Concat(flags.Values).ToHashSet(StringComparer.Ordinal);
+            var registered = flags.Switches.Concat(flags.Values).Concat(flags.Optional).ToHashSet(StringComparer.Ordinal);
             read.ExceptWith(VerbFlags.Global);
 
             Assert.True(registered.SetEquals(read), $"{verb}: registered {string.Join(",", registered.Order())} but the handler reads {string.Join(",", read.Order())}");
             Assert.True(valued.IsSubsetOf(flags.Values), $"{verb}: reads {string.Join(",", valued.Except(flags.Values))} as values, registered otherwise");
             Assert.Empty(flags.Values.Except(valued).Except(ReadDynamically));
             Assert.True(flags.Refused.SetEquals(refused), $"{verb}: refuses {string.Join(",", refused)} but registers {string.Join(",", flags.Refused)}");
+
+            // The third kind: a flag whose value may be left off is exactly one read through
+            // the reader that takes it bare, and is neither a switch nor a plain value.
+            Assert.True(flags.Optional.SetEquals(optional), $"{verb}: reads {string.Join(",", optional)} as optional values but registers {string.Join(",", flags.Optional)}");
+            Assert.Empty(flags.Optional.Intersect(flags.Values));
+            Assert.Empty(flags.Optional.Intersect(flags.Switches));
         }
+
+        // The control: the third kind exists, so the scan for it is not matching nothing.
+        Assert.Contains("progress", VerbFlags.ByVerb["run"].Optional);
     }
 
-    private static readonly Regex ReadPattern = new(@"(?:\.Has|\.Value|\.Values)\(""([a-z0-9-]+)""\)|(?:TryNumberFlag|TryWholeFlag)\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
-    private static readonly Regex ValuePattern = new(@"(?:\.Value|\.Values)\(""([a-z0-9-]+)""\)|(?:TryNumberFlag|TryWholeFlag)\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    /// <summary>
+    /// No flag is a switch in one verb and takes a value in another.
+    /// </summary>
+    /// <remarks>
+    /// The parser reads the flags before it knows the verb, so its switches are every verb's
+    /// (<see cref="VerbFlags.AllSwitches"/>, which <see cref="CommandLine.Switches"/> is). A name
+    /// that was a switch in one verb and a value in another would be parsed as a switch in both.
+    /// </remarks>
+    [Fact]
+    public void NoFlagIsASwitchInOneVerbAndAValueInAnother()
+    {
+        var valued = VerbFlags.ByVerb.Values.SelectMany(f => f.Values.Concat(f.Optional)).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Empty(VerbFlags.AllSwitches.Intersect(valued));
+        Assert.Same(VerbFlags.AllSwitches, CommandLine.Switches);
+        Assert.Contains("help", CommandLine.Switches);
+        Assert.Contains("json", CommandLine.Switches);
+        Assert.Contains("cycle-mean", CommandLine.Switches);
+    }
+
+    private const string Readers = "(?:TryNumberFlag|TryWholeFlag|TryChoiceFlag)";
+    private static readonly Regex ReadPattern = new(@"(?:\.Has|\.Value|\.Values)\(""([a-z0-9-]+)""\)|Try\w*Flag\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    private static readonly Regex ValuePattern = new(@"(?:\.Value|\.Values)\(""([a-z0-9-]+)""\)|" + Readers + @"\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    private static readonly Regex OptionalPattern = new(@"(TryOptionalNumberFlag)\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
     private static readonly Regex BarePattern = new(@"foreach \(var bare in new\[\] \{([^}]*)\}", RegexOptions.Compiled);
 
     private static HashSet<string> Walk(string method, Dictionary<string, string> bodies, HashSet<string> seen, Regex pattern)
@@ -87,6 +119,10 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
                 {
                     found.Add(name.Groups[1].Value);
                 }
+            }
+            else if (pattern == OptionalPattern)
+            {
+                found.Add(m.Groups[2].Value);
             }
             else
             {

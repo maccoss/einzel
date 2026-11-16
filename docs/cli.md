@@ -127,7 +127,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--width-px N`, `--height-px N` | `render still` only: the picture's size, 16 to 8192 pixels; the unit is in the name, as `--width-mm` does it |
 | `--see-through` | `render still` only: draw the conductors translucent, as the window's toggle does |
 | `--no-scale` | `render still` only: leave out the ruler, which is drawn by default in the corner the instrument covers least (and left out anyway when the picture is too small to hold it) |
-| `--progress <seconds>` | `run` and both render verbs: how often to say where the transport has got to, on stderr. Thirty seconds by default, `0` for silence |
+| `--progress [<seconds>]` | `run` and both render verbs: how often to say where the transport has got to, on stderr. Thirty seconds by default and when given bare, `0` for silence |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
 Not yet built: `self-update`, which needs `Einzel.Update`. Of the render verbs
@@ -894,7 +894,43 @@ agent never gets an empty stdout and a bare exit 1. `--json` and `--help` are ac
 and a command line asking for `--help`, or naming no verb this knows, is left to the verb exactly as
 before. A flag a verb did not read used to be accepted and ignored, which is how a mistyped
 `--no-scales` drew the scale anyway. `VerbFlagsTests` reads each verb's handler, through every helper
-it calls, and fails when the registry and the handler disagree.
+it calls, and fails when the registry and the handler disagree. The parser's list of switches is
+derived from the same registry, so a switch is declared once.
+
+**A flag's value is read by one of four readers, and refused one way.** A number (`TryNumberFlag`)
+is finite and in the invariant culture. A whole number (`TryWholeFlag`) is **digits alone** - no
+sign, no space, no exponent - within the flag's own range. A word (`TryChoiceFlag`) is one of the
+flag's documented words. Anything else is free text. Every refusal is exit 1, located at
+`/args/--flag`, quotes what was typed, and under `--json` is on stdout as JSON as well.
+`CommandLineMatrixTests` holds the CLI's source to that: no throwing `Parse` or `Convert` on text
+anywhere, and `TryParse` in the two readers alone.
+
+| Flag | Takes |
+| --- | --- |
+| `--width-px`, `--height-px` | 16 to 8192 |
+| `--samples` (`probe`) | 2 to 1,000,000 |
+| `--samples` (`render surface`) | 3 to 1001, or `NxM` with M from 2 |
+| `--mesh-lines` | 1 to 1001 |
+| `--equipotentials` | 0 to 1000 |
+| `--fps` | 1 to 1000 |
+| `--ions` | 1 to 1,000,000 |
+| `--format` | `svg`, `pdf`, in any case |
+| `--kind` | `objective`, `analysis`, `geometry`, `sequence`, `interchange`, in any case |
+| `--vcs` | `git`, `none` |
+| `--height` | `potential`, `energy` |
+| `--plane` | `xy`, `xz`, `yz` |
+| `--view` | the verb's named views |
+
+**`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
+unless turned off, so the flag alone is the default interval, as it always was. Every other flag that
+takes a value is refused bare; before this they were read as though absent.
+
+**The whole surface is run as one table on every change.** `CommandLineMatrixTests` drives every
+verb in the registry through its help, each flag with a value it takes, each value flag bare, each
+with a value that is none, a flag it does not read and one positional argument too many, with and
+without `--json`: 632 command lines. Nothing may exit 6, every refusal is located, and a form the
+verb documents is never refused. A verb or flag added to the registry fails it until it has a
+command line and a sample.
 
 | Verb | Switches | Flags that take a value | Positional arguments (a sub-verb counts) |
 | --- | --- | --- | --- |
@@ -906,7 +942,7 @@ it calls, and fails when the registry and the handler disagree.
 | `estimate` | `--no-calibrate` | `--threshold` | 1 |
 | `solve` | - | - | 1 |
 | `probe` | `--dry-run` | `--at-mm`, `--line-mm`, `--to-mm`, `--samples`, `--at-us`, `--csv` | 1 |
-| `run` | `--vtu` | `--progress`, `--project` | 1 |
+| `run` | `--vtu` | `--progress` (value optional), `--project` | 1 |
 | `sweep` | `--dry-run` | `--project` | 1 |
 | `optimise` | `--dry-run` | `--project` | 1 |
 | `optimize` | `--dry-run` | `--project` | 1 |
@@ -925,10 +961,10 @@ it calls, and fails when the registry and the handler disagree.
 | `agents` | `--dry-run` | - | 3 |
 | `doctor` | - | `--project` | 1 |
 | `ext` | `--dry-run` | `--input`, `--kind`, `--project` | 2 |
-| `render section` | `--dry-run`, `--no-trajectory` | `--at-us`, `--caption`, `--equipotentials`, `--format`, `--out`, `--progress`, `--project`, `--width-mm` | 2 |
+| `render section` | `--dry-run`, `--no-trajectory` | `--at-us`, `--caption`, `--equipotentials`, `--format`, `--out`, `--progress` (value optional), `--project`, `--width-mm` | 2 |
 | `render still` | `--dry-run`, `--no-scale`, `--see-through` | `--height-px`, `--out`, `--project`, `--view`, `--width-px` | 2 |
 | `render surface` | `--cycle-mean`, `--dry-run`, `--no-scale` | `--at-us`, `--box-mm`, `--csv`, `--height`, `--height-mm-per-ev`, `--height-mm-per-v`, `--height-px`, `--mesh-lines`, `--offset-mm`, `--out`, `--plane`, `--project`, `--relief`, `--samples`, `--view`, `--width-px` | 2 |
-| `render animation` | `--dry-run` | `--caption`, `--format`, `--fps`, `--out`, `--progress`, `--project`, `--width-mm` | 2 |
+| `render animation` | `--dry-run` | `--caption`, `--format`, `--fps`, `--out`, `--progress` (value optional), `--project`, `--width-mm` | 2 |
 
 `--json` and `--help` are accepted everywhere besides. `probe` also knows the bare `--at`, `--line` and
 `--to`, and `render surface` the bare `--offset`, `--box`, `--at` and `--height-mm`, only to refuse them

@@ -35,8 +35,7 @@ public sealed class SwitchesAreDeclaredTests(ITestOutputHelper output)
 
         var source = string.Concat(Directory.GetFiles(Path.Combine(directory!.FullName, "src", "Einzel.Cli"), "*.cs").Select(File.ReadAllText));
         var has = System.Text.RegularExpressions.Regex.Matches(source, @"\.Has\(""([a-z0-9-]+)""\)").Select(m => m.Groups[1].Value).ToHashSet();
-        var valued = System.Text.RegularExpressions.Regex.Matches(source, @"(?:\.Values?\(|(?:TryNumberFlag|TryWholeFlag)\(options, )""([a-z0-9-]+)""").Select(m => m.Groups[1].Value)
-            .Concat(System.Text.RegularExpressions.Regex.Matches(source, @"MissingValue\(options, ""[^""]*"", ([^)]*)\)").SelectMany(m => System.Text.RegularExpressions.Regex.Matches(m.Groups[1].Value, @"""([a-z0-9-]+)""").Select(n => n.Groups[1].Value)))
+        var valued = System.Text.RegularExpressions.Regex.Matches(source, @"(?:\.Values?\(|Try\w*Flag\(options, )""([a-z0-9-]+)""").Select(m => m.Groups[1].Value)
             .ToHashSet();
 
         // Read as a value under a name chosen at run time, or refused by name for having no unit.

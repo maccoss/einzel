@@ -146,7 +146,7 @@ become a feature release without being renamed twice.
   value.
 - **Every verb refuses a malformed command line before doing anything**, naming what is wrong: a
   flag the verb does not read (`unknown flag --no-scales for render surface`), a flag that takes a
-  value and was given none (`--out --json`, a bare `--progress`), and an argument the verb does not
+  value and was given none (`--out --json`), and an argument the verb does not
   take (`--no-trajectory out.svg`, `validate a.json b.json`). Under `--json` the refusal is JSON on
   stdout as well. These used to be accepted and ignored, exit 0. `--help` and `--json` behave
   exactly as before on every verb, and every flag a verb documents is unchanged. **What changes:**
@@ -154,7 +154,17 @@ become a feature release without being renamed twice.
   `solve`, `run`, `preview`, `test`, `verify`, `compare`, `schema`, `templates`, `examples` and
   `doctor`; `--project` on `init`, `new`, `validate`, `outline`, `estimate`, `solve`, `probe`,
   `preview`, `compare`, `schema`, `templates`, `examples` and `agents`; and any other flag a verb
-  does not read. `docs/cli.md` lists each verb's flags.
+  does not read. `docs/cli.md` lists each verb's flags. A bare `--progress` is still the default
+  interval; every other flag that takes a value was read as though absent when given bare, and is
+  now refused.
+- **A flag's value is checked where it is typed, on every verb.** `render animation --fps 30fps`,
+  `--width-mm wide` and `compare --ions many` were internal errors, exit 6; they are exit 1 naming
+  the flag. A whole-number flag is digits alone within its range (`--width-px +64`, `--samples
+  2.5` and `--equipotentials -3` are refused). A flag that names one of a few words refuses any
+  other, where it used to fall back silently: `--format pfd` drew an SVG, `ext register --kind
+  objectiv` registered an objective, `init --vcs hg` made no repository. `--height` takes
+  `potential` or `energy` only. `ext test --input` given a file that is not JSON is exit 1, not
+  6. Every such refusal is located at `/args/--flag` and is JSON on stdout under `--json`.
 - **`render surface` draws each conductor at what it holds**, not at what the summed field reads
   inside it, and says so where the two disagree (`render.plateau-disagrees`); a long thin box is
   sampled across its width, `--samples NxM` sets both counts, `--out` and `--csv` may not be one

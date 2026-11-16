@@ -49,35 +49,7 @@ public sealed record PictureLayer(
     IReadOnlyList<PictureLine> Lines,
     double Alpha,
     bool WritesDepth,
-    double DepthBias = 0.0)
-{
-    /// <summary>Its polylines, each checked as the layer is made: a line's segment colours fit its segments.</summary>
-    /// <remarks>
-    /// Checked here, naming the layer, rather than found by the rasterizer as an index out of
-    /// range part way through a picture.
-    /// </remarks>
-    public IReadOnlyList<PictureLine> Lines { get; init; } = Checked(Name, Lines);
-
-    private static IReadOnlyList<PictureLine> Checked(string name, IReadOnlyList<PictureLine> lines)
-    {
-        ArgumentNullException.ThrowIfNull(lines);
-
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var line = lines[i];
-            var segments = Math.Max(0, (line.PointsMm.Count / 3) - 1);
-
-            if (line.SegmentColors is { } colors && colors.Count != 3 * segments)
-            {
-                throw new ArgumentException(
-                    $"layer '{name}', line {i}: {colors.Count} segment colour values for {segments} segments; a line needs three for each",
-                    nameof(lines));
-            }
-        }
-
-        return lines;
-    }
-}
+    double DepthBias = 0.0);
 
 /// <summary>One color scale, as the picture actually draws it.</summary>
 /// <param name="Quantity">What the colors mean: <c>energy</c> or <c>potential</c>.</param>

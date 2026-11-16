@@ -180,7 +180,7 @@ public static class Program
                     Path = $"/args/--{flag}",
                     Constraint = $"unknown flag --{flag} for {key}",
                     Suggestion = $"the flags {key} reads are "
-                        + string.Join(", ", flags.Switches.Concat(flags.Values).Concat(VerbFlags.Global).Order(StringComparer.Ordinal).Select(f => "--" + f)),
+                        + string.Join(", ", flags.Switches.Concat(flags.Values).Concat(flags.Optional).Concat(VerbFlags.Global).Order(StringComparer.Ordinal).Select(f => "--" + f)),
                 };
                 break;
             }
@@ -214,6 +214,35 @@ public static class Program
             return false;
         }
 
+        return !Refuse(options, refusal);
+    }
+
+    /// <summary>
+    /// Refuses a command line for what one of its flags says, naming the flag.
+    /// </summary>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="flag">The flag at fault, without its dashes.</param>
+    /// <param name="constraint">What the flag takes, and what it was given, in the user's own text.</param>
+    /// <param name="suggestion">What to type instead, where there is something to say.</param>
+    /// <returns>Always false, so a reader can return it.</returns>
+    /// <remarks>
+    /// The one way a flag's value is refused, so every such refusal exits 1, is located at
+    /// <c>/args/--flag</c>, and under <c>--json</c> is on stdout as JSON as well (AGT-3) - a
+    /// reader that wrote its own sentence to stderr left an agent an empty stream to parse.
+    /// </remarks>
+    private static bool Refuse(CommandLine options, string flag, string constraint, string? suggestion = null) =>
+        Refuse(
+            options,
+            new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"/args/--{flag}",
+                Constraint = constraint,
+                Suggestion = suggestion,
+            });
+
+    private static bool Refuse(CommandLine options, EinzelError refusal)
+    {
         // CLI-2's split, and AGT-3's: the reason on stderr, and under --json the same error as
         // JSON on stdout, so an agent gets a machine-readable refusal and not an empty stream.
         Console.Error.WriteLine(refusal.ToString());
@@ -223,7 +252,7 @@ public static class Program
             Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [refusal] }));
         }
 
-        return true;
+        return false;
     }
 
     private static int Unknown(string verb)
@@ -936,19 +965,20 @@ public static class Program
         // observed response was to make the study smaller.
         var threshold = EstimateCommand.ThresholdSeconds;
 
-        if (options.Value("threshold") is { } declared)
+        if (!TryNumberFlag(options, "threshold", "a positive number of seconds", out var seconds))
         {
-            if (!double.TryParse(
-                    declared, System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
-                || seconds <= 0.0)
-            {
-                Console.Error.WriteLine(
-                    $"'{declared}' is not a positive number of seconds");
+            return (int)ExitCode.ValidationFailure;
+        }
 
+        if (seconds is { } declared)
+        {
+            if (declared <= 0.0)
+            {
+                Refuse(options, "threshold", $"--threshold takes a positive number of seconds, and '{options.Value("threshold")}' is not a positive number of seconds");
                 return (int)ExitCode.ValidationFailure;
             }
 
-            threshold = seconds;
+            threshold = declared;
         }
 
         // Calibration is on unless refused: an estimate is worth having about the
@@ -1172,7 +1202,7 @@ public static class Program
 
         for (var i = 0; i < count; i++)
         {
-            if (!double.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out parsed[i]))
+            if (!TryNumber(parts[i], out parsed[i]))
             {
                 return false;
             }
@@ -1183,6 +1213,37 @@ public static class Program
     }
 
     /// <summary>
+    /// One number as a command line writes it: the invariant culture, and finite.
+    /// </summary>
+    /// <remarks>
+    /// The only place this file parses a real number, and <see cref="TryWhole"/> the only place
+    /// it parses a whole one (<c>FlagValuesAreReadByTheReadersTests</c> holds it to that): a
+    /// <c>Parse</c> beside them throws a typo through to the handler for defects in the engine,
+    /// exit 6, and a second <c>TryParse</c> is a second rule for what a number looks like.
+    /// "NaN" and "Infinity" parse and are no measurement, so they are refused with the typos.
+    /// </remarks>
+    private static bool TryNumber(string text, out double value) =>
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && double.IsFinite(value);
+
+    /// <summary>
+    /// One whole number as a command line writes it: digits and nothing else, within a range.
+    /// </summary>
+    /// <remarks>
+    /// Digits alone - no sign, no space, no exponent, no separator. No whole-number flag here has
+    /// a negative in its domain (each is a count or a size), so a sign is a typo; and "+241" or
+    /// " 1600" accepted is a second spelling of a number nobody documented.
+    /// </remarks>
+    private static bool TryWhole(string text, int minimum, int maximum, out int value) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value)
+        && value >= minimum
+        && value <= maximum;
+
+    private static string WholeRange(int minimum, int maximum) =>
+        maximum == int.MaxValue
+            ? string.Create(CultureInfo.InvariantCulture, $"{minimum} or more")
+            : string.Create(CultureInfo.InvariantCulture, $"from {minimum} to {maximum}");
+
+    /// <summary>
     /// Reads an optional numeric flag. False, with the reason on stderr, when it was given and
     /// is not a number, or given with no value; true with a null value when it was not given.
     /// </summary>
@@ -1190,7 +1251,8 @@ public static class Program
     /// <param name="flag">The flag, without its dashes.</param>
     /// <param name="what">What it takes, as the message says it: "a number", "a time in microseconds".</param>
     /// <param name="value">The number, or null when the flag is absent.</param>
-    private static bool TryNumberFlag(CommandLine options, string flag, string what, out double? value)
+    /// <param name="suggestion">What to type instead, where there is something to say.</param>
+    private static bool TryNumberFlag(CommandLine options, string flag, string what, out double? value, string? suggestion = null)
     {
         value = null;
 
@@ -1199,22 +1261,38 @@ public static class Program
             return true;
         }
 
-        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+        if (TryNumber(text, out var parsed))
         {
             value = parsed;
             return true;
         }
 
-        Console.Error.WriteLine($"--{flag} takes {what}, and '{text}' is not one.");
-        return false;
+        return Refuse(options, flag, $"--{flag} takes {what}, and '{text}' is not one.", suggestion);
     }
 
     /// <summary>
-    /// Reads an optional whole-number flag. TryParse rather than Parse: a typo such as "1600px"
-    /// is the caller's mistake, and Parse would throw it through to the handler for defects in
-    /// the engine, exit 6.
+    /// Reads a numeric flag whose value may be left off: bare, it is the default, as when absent.
     /// </summary>
-    private static bool TryWholeFlag(CommandLine options, string flag, int otherwise, out int value, string what = "a whole number")
+    /// <remarks>
+    /// The same reader as <see cref="TryNumberFlag"/> under its own name, because the registry
+    /// (<see cref="VerbFlags.Optional"/>) is held to the handlers by which reader each flag goes
+    /// through: a flag read here may be given bare, and one read there may not.
+    /// </remarks>
+    private static bool TryOptionalNumberFlag(CommandLine options, string flag, string what, out double? value, string? suggestion = null) =>
+        TryNumberFlag(options, flag, what, out value, suggestion);
+
+    /// <summary>
+    /// Reads an optional whole-number flag: digits alone, within the flag's own range.
+    /// </summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="flag">The flag, without its dashes.</param>
+    /// <param name="otherwise">The value when the flag is absent.</param>
+    /// <param name="minimum">The least it may be: 0 for a count that may be none, 1 for one that may not.</param>
+    /// <param name="maximum">The most it may be.</param>
+    /// <param name="value">The number, or <paramref name="otherwise"/>.</param>
+    /// <param name="what">What it counts, as the message says it: "a whole number of pixels".</param>
+    private static bool TryWholeFlag(
+        CommandLine options, string flag, int otherwise, int minimum, int maximum, out int value, string what = "a whole number")
     {
         value = otherwise;
 
@@ -1223,13 +1301,47 @@ public static class Program
             return true;
         }
 
-        if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+        if (TryWhole(text, minimum, maximum, out var parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        return Refuse(
+            options,
+            flag,
+            $"--{flag} takes {what} {WholeRange(minimum, maximum)}, written as digits alone, and '{text}' is not one.");
+    }
+
+    /// <summary>
+    /// Reads a flag that is one of a few words. False, refused by name with the words it takes,
+    /// when it was given anything else; true with a null value when it was not given.
+    /// </summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="flag">The flag, without its dashes.</param>
+    /// <param name="choices">The words it takes, as documented.</param>
+    /// <param name="value">The word as documented, whatever case it was typed in; null when absent.</param>
+    /// <param name="exact">True where case matters, as it does for a view or a plane.</param>
+    /// <remarks>
+    /// A flag that fell back to a default on an unknown word - <c>--format pfd</c> drew an SVG,
+    /// <c>--kind objectiv</c> registered an objective, <c>--vcs hg</c> made no repository - said
+    /// nothing about having ignored what was typed.
+    /// </remarks>
+    private static bool TryChoiceFlag(
+        CommandLine options, string flag, IEnumerable<string> choices, out string? value, bool exact = false)
+    {
+        value = null;
+
+        if (options.Value(flag) is not { } text)
         {
             return true;
         }
 
-        Console.Error.WriteLine($"--{flag} takes {what}, and '{text}' is not one.");
-        return false;
+        var comparison = exact ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        value = choices.FirstOrDefault(c => string.Equals(c, text, comparison));
+
+        return value is not null
+            || Refuse(options, flag, $"--{flag} is one of {string.Join(", ", choices)}, and '{text}' is none of them.");
     }
 
     /// <summary>
@@ -1249,22 +1361,26 @@ public static class Program
         var parts = text.Split('x');
 
         if (parts.Length is 1 or 2
-            && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out samples))
+            && TryWhole(parts[0], 3, SurfaceCommand.MaximumSamples, out var longer))
         {
+            samples = longer;
+
             if (parts.Length == 1)
             {
                 return true;
             }
 
-            if (int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var shorter))
+            if (TryWhole(parts[1], 2, SurfaceCommand.MaximumSamples, out var shorter))
             {
                 deep = shorter;
                 return true;
             }
         }
 
-        Console.Error.WriteLine($"--samples takes a whole number, or NxM for the longer side and then the shorter, and '{text}' is neither.");
-        return false;
+        return Refuse(
+            options,
+            "samples",
+            $"--samples takes a whole number {WholeRange(3, SurfaceCommand.MaximumSamples)}, or NxM for the longer side and then the shorter ({WholeRange(2, SurfaceCommand.MaximumSamples)}), written as digits alone, and '{text}' is neither.");
     }
 
     /// <summary>The pixel size of a raster picture, from <c>--width-px</c> and <c>--height-px</c>.</summary>
@@ -1275,21 +1391,10 @@ public static class Program
     private static bool TryPictureSize(CommandLine options, string what, out int width, out int height)
     {
         height = 0;
-        var limits = $"{what} is between 16 and 8192 pixels on each side";
+        var pixels = $"a whole number of pixels ({what} is between 16 and 8192 pixels on each side)";
 
-        if (!TryWholeFlag(options, "width-px", 1600, out width, "a whole number of pixels (" + limits + ")")
-            || !TryWholeFlag(options, "height-px", 1000, out height, "a whole number of pixels (" + limits + ")"))
-        {
-            return false;
-        }
-
-        if (width is < 16 or > 8192 || height is < 16 or > 8192)
-        {
-            Console.Error.WriteLine(limits);
-            return false;
-        }
-
-        return true;
+        return TryWholeFlag(options, "width-px", 1600, 16, 8192, out width, pixels)
+            && TryWholeFlag(options, "height-px", 1000, 16, 8192, out height, pixels);
     }
 
     private static int Probe(CommandLine options)
@@ -1301,8 +1406,7 @@ public static class Program
         {
             if (options.Has(bare))
             {
-                Console.Error.WriteLine(
-                    $"--{bare} has no unit. Say it in the flag's name: --{bare}-mm x,y,z (millimetres).");
+                Refuse(options, bare, $"--{bare} has no unit.", $"Say it in the flag's name: --{bare}-mm x,y,z (millimetres).");
                 return (int)ExitCode.ValidationFailure;
             }
         }
@@ -1317,10 +1421,11 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        if (!TryVec3(options.Value(hasPoint ? "at-mm" : "line-mm"), out var from))
+        var fromFlag = hasPoint ? "at-mm" : "line-mm";
+
+        if (!TryVec3(options.Value(fromFlag), out var from))
         {
-            Console.Error.WriteLine(
-                $"--{(hasPoint ? "at-mm" : "line-mm")} takes three numbers, x,y,z, in millimetres (no spaces).");
+            Refuse(options, fromFlag, $"--{fromFlag} takes three numbers, x,y,z, in millimetres (no spaces), and '{options.Value(fromFlag)}' is not that.");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -1331,20 +1436,25 @@ public static class Program
         {
             if (!TryVec3(options.Value("to-mm"), out var end))
             {
-                Console.Error.WriteLine("--line-mm needs --to-mm x,y,z, the other end, in millimetres.");
+                Refuse(
+                    options,
+                    "to-mm",
+                    options.Value("to-mm") is { } given
+                        ? $"--to-mm takes three numbers, x,y,z, in millimetres (no spaces), and '{given}' is not that."
+                        : "--line-mm needs --to-mm x,y,z, the other end, in millimetres.");
                 return (int)ExitCode.ValidationFailure;
             }
 
             to = end;
 
-            if (!TryWholeFlag(options, "samples", samples, out samples))
+            if (!TryWholeFlag(options, "samples", samples, 2, ProbeCommand.MaximumSamples, out samples, "a whole number of samples, both ends included,"))
             {
                 return (int)ExitCode.ValidationFailure;
             }
         }
         else if (options.Has("to-mm") || options.Has("samples"))
         {
-            Console.Error.WriteLine("--to-mm and --samples describe a line; a point takes only --at-mm.");
+            Refuse(options, options.Has("to-mm") ? "to-mm" : "samples", "--to-mm and --samples describe a line; a point takes only --at-mm.");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -1838,8 +1948,7 @@ public static class Program
             {
                 if (!TryNumbers(box, 6, out var v))
                 {
-                    Console.Error.WriteLine(
-                        "--box-mm takes six numbers, x0,y0,z0,x1,y1,z1, in millimetres (no spaces).");
+                    Refuse(options, "box-mm", $"--box-mm takes six numbers, x0,y0,z0,x1,y1,z1, in millimetres (no spaces), and '{box}' is not that.");
                     return (int)ExitCode.ValidationFailure;
                 }
 
@@ -1935,7 +2044,8 @@ public static class Program
         // to the handler for defects in the engine, exit 6.
         if (!TryNumberFlag(options, "at-us", "a time in microseconds", out var sectionAt)
             || !TryNumberFlag(options, "width-mm", "a width in millimetres", out var sectionWidth)
-            || !TryWholeFlag(options, "equipotentials", 0, out var sectionLevels))
+            || !TryWholeFlag(options, "equipotentials", 0, 0, 1000, out var sectionLevels, "a whole number of contour levels")
+            || !TryChoiceFlag(options, "format", FormatNames, out var sectionFormat))
         {
             return (int)ExitCode.ValidationFailure;
         }
@@ -1952,11 +2062,7 @@ public static class Program
 
         spec = spec with
         {
-            Format = (options.Value("format") ?? spec.Format.ToString()).ToUpperInvariant() switch
-            {
-                "PDF" => FigureFormat.Pdf,
-                _ => FigureFormat.Svg,
-            },
+            Format = FormatOf(sectionFormat, spec.Format),
             WidthMm = sectionWidth ?? spec.WidthMm,
             Equipotentials = options.Has("equipotentials") ? sectionLevels : spec.Equipotentials,
             Trajectory = !options.Has("no-trajectory") && spec.Trajectory,
@@ -1972,7 +2078,7 @@ public static class Program
 
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
 
-        if (!RenderProgress(options, out var sectionProgress))
+        if (!TryProgress(options, out var sectionProgress))
         {
             return (int)ExitCode.ValidationFailure;
         }
@@ -2036,16 +2142,12 @@ public static class Program
         }
 
         var modelPath = positional[0];
-        var view = options.Value("view") ?? "iso";
-
-        if (!ViewportPicture.Views.ContainsKey(view))
+        if (!TryChoiceFlag(options, "view", ViewportPicture.Views.Keys, out var named, exact: true))
         {
-            Console.Error.WriteLine(
-                $"no view named '{view}'; the named views are "
-                + string.Join(", ", ViewportPicture.Views.Keys));
-
             return (int)ExitCode.ValidationFailure;
         }
+
+        var view = named ?? "iso";
 
         if (!TryPictureSize(options, "a still", out var width, out var height))
         {
@@ -2137,7 +2239,7 @@ public static class Program
         {
             if (options.Has(bare))
             {
-                Console.Error.WriteLine($"--{bare} has no unit; see the usage for the spelling with the unit in its name.");
+                Refuse(options, bare, $"--{bare} has no unit; see the usage for the spelling with the unit in its name.");
                 Console.Error.Write(SurfaceUsage);
                 return (int)ExitCode.ValidationFailure;
             }
@@ -2151,35 +2253,25 @@ public static class Program
             || !TryNumberFlag(options, "height-mm-per-ev", "a number of millimetres per electronvolt", out var perEv)
             || !TryNumberFlag(options, "at-us", "a time in microseconds", out var at)
             || !TrySurfaceSamples(options, out var samples, out var deepSamples)
-            || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, out var meshLines)
-            || !TryPictureSize(options, "a surface picture", out var width, out var height))
+            || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, 1, SurfaceCommand.MaximumSamples, out var meshLines, "a whole number of mesh lines")
+            || !TryPictureSize(options, "a surface picture", out var width, out var height)
+            || !TryChoiceFlag(options, "height", SurfaceHeight.Spellings, out var heightGiven, exact: true)
+            || !TryChoiceFlag(options, "plane", SurfaceCommand.Planes, out var plane, exact: true)
+            || !TryChoiceFlag(options, "view", SurfaceCommand.Views.Keys, out var named, exact: true))
         {
             return (int)ExitCode.ValidationFailure;
         }
 
-        // Spelled as a lookup rather than a switch on string literals: `HelpCoversEveryVerbTests`
-        // reads the verbs out of this file's switch arms, and a flag's values are not verbs.
-        var heightNames = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["potential"] = SurfaceHeight.Potential,
-            ["energy"] = SurfaceHeight.Energy,
-            [SurfaceHeight.Energy] = SurfaceHeight.Energy,
-        };
-        var heightGiven = options.Value("height") ?? "potential";
-        var heightKind = heightNames.GetValueOrDefault(heightGiven, heightGiven);
-
-        if (heightKind is not (SurfaceHeight.Potential or SurfaceHeight.Energy))
-        {
-            Console.Error.WriteLine($"--height is potential or energy; got '{heightKind}'.");
-            return (int)ExitCode.ValidationFailure;
-        }
+        var heightKind = SurfaceHeight.Parse(heightGiven ?? SurfaceHeight.Spellings[0]);
 
         // The unit of an explicit scale must match what the height is, or it is the ambiguity
         // a unit in the flag's name exists to prevent.
         if ((perVolt is not null && heightKind == SurfaceHeight.Energy)
             || (perEv is not null && heightKind == SurfaceHeight.Potential))
         {
-            Console.Error.WriteLine(
+            Refuse(
+                options,
+                perVolt is not null ? "height-mm-per-v" : "height-mm-per-ev",
                 "--height-mm-per-v goes with --height potential and --height-mm-per-ev with --height energy.");
             return (int)ExitCode.ValidationFailure;
         }
@@ -2190,23 +2282,17 @@ public static class Program
         {
             if (!TryNumbers(boxText, 4, out var numbers))
             {
-                Console.Error.WriteLine("--box-mm takes four numbers, a0,b0,a1,b1, in millimetres in the plane's own axis order (no spaces).");
+                Refuse(options, "box-mm", $"--box-mm takes four numbers, a0,b0,a1,b1, in millimetres in the plane's own axis order (no spaces), and '{boxText}' is not that.");
                 return (int)ExitCode.ValidationFailure;
             }
 
             box = numbers;
         }
 
-        var view = options.Value("view") ?? "iso";
-
-        if (!SurfaceCommand.Views.ContainsKey(view))
-        {
-            Console.Error.WriteLine($"no view named '{view}'; the named views are {string.Join(", ", SurfaceCommand.Views.Keys)}");
-            return (int)ExitCode.ValidationFailure;
-        }
+        var view = named ?? "iso";
 
         var request = new SurfaceRequest(
-            options.Value("plane"),
+            plane,
             offset,
             box,
             samples,
@@ -2315,6 +2401,17 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
+        // Before the file is opened, as the section reads its own: a typo in a flag is the
+        // caller's mistake whatever the file holds, and Parse threw it through to the handler
+        // for defects in the engine, exit 6.
+        if (!TryNumberFlag(options, "width-mm", "a width in millimetres", out var width)
+            || !TryWholeFlag(options, "fps", 0, 1, 1000, out var fps, "a whole number of frames per second")
+            || !TryChoiceFlag(options, "format", FormatNames, out var format)
+            || !TryProgress(options, out var animationProgress))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var given = Path.GetFullPath(positional[0]);
 
         if (!ReadsAsSpec(given))
@@ -2335,26 +2432,15 @@ public static class Program
 
         spec = spec with
         {
-            Format = (options.Value("format") ?? spec.Format.ToString()).ToUpperInvariant() switch
-            {
-                "PDF" => FigureFormat.Pdf,
-                _ => FigureFormat.Svg,
-            },
-            WidthMm = options.Value("width-mm") is { } width
-                ? double.Parse(width, CultureInfo.InvariantCulture)
-                : spec.WidthMm,
+            Format = FormatOf(format, spec.Format),
+            WidthMm = width ?? spec.WidthMm,
             Caption = options.Value("caption") ?? spec.Caption,
-            Animation = options.Value("fps") is { } fps && spec.Animation is { } declared
-                ? declared with { FramesPerSecond = int.Parse(fps, CultureInfo.InvariantCulture) }
+            Animation = options.Has("fps") && spec.Animation is { } declared
+                ? declared with { FramesPerSecond = fps }
                 : spec.Animation,
         };
 
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
-
-        if (!RenderProgress(options, out var animationProgress))
-        {
-            return (int)ExitCode.ValidationFailure;
-        }
 
         var outcome = RenderCommand.Animation(
             modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
@@ -2472,9 +2558,23 @@ public static class Program
                     return (int)ExitCode.ValidationFailure;
                 }
 
-                var payload = options.Value("input") is { } file
-                    ? System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.GetFullPath(file)))
-                    : new System.Text.Json.Nodes.JsonObject();
+                System.Text.Json.Nodes.JsonNode? payload = new System.Text.Json.Nodes.JsonObject();
+
+                if (options.Value("input") is { } file)
+                {
+                    var text = File.ReadAllText(Path.GetFullPath(file));
+
+                    try
+                    {
+                        payload = System.Text.Json.Nodes.JsonNode.Parse(text);
+                    }
+                    catch (System.Text.Json.JsonException malformed)
+                    {
+                        // The caller's file, not a defect in the engine: it was exit 6.
+                        Refuse(options, "input", $"--input takes a JSON file, and '{file}' does not read as JSON: {malformed.Message}");
+                        return (int)ExitCode.ValidationFailure;
+                    }
+                }
 
                 var outcome = ExtensionCommand.Test(project, rest[0], payload);
 
@@ -2511,10 +2611,16 @@ public static class Program
                     return (int)ExitCode.ValidationFailure;
                 }
 
-                var kind = Enum.TryParse<Einzel.Extensions.ExtensionKind>(
-                    options.Value("kind") ?? "objective", ignoreCase: true, out var parsed)
-                    ? parsed
-                    : Einzel.Extensions.ExtensionKind.Objective;
+                var kinds = Enum.GetValues<Einzel.Extensions.ExtensionKind>();
+
+                if (!TryChoiceFlag(options, "kind", kinds.Select(k => k.ToString().ToLowerInvariant()), out var kindName))
+                {
+                    return (int)ExitCode.ValidationFailure;
+                }
+
+                var kind = kindName is null
+                    ? Einzel.Extensions.ExtensionKind.Objective
+                    : kinds.First(k => string.Equals(k.ToString(), kindName, StringComparison.OrdinalIgnoreCase));
 
                 var created = ExtensionCommand.Register(project, rest[0], kind, options.Has("dry-run"));
 
@@ -2552,9 +2658,10 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        var ions = options.Value("ions") is { } count
-            ? int.Parse(count, CultureInfo.InvariantCulture)
-            : 60;
+        if (!TryWholeFlag(options, "ions", 60, 1, 1_000_000, out var ions, "a whole number of ions"))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
 
         var outcome = ModeComparison.Execute(Path.GetFullPath(options.Positional[0]), ions);
 
@@ -2600,13 +2707,18 @@ public static class Program
     {
         var root = options.Positional.Count > 0 ? options.Positional[0] : ".";
 
+        if (!TryChoiceFlag(options, "vcs", VcsNames, out var vcs, exact: true))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         if (options.Has("dry-run"))
         {
             Console.Out.WriteLine($"would create a project at {Path.GetFullPath(root)}");
             return (int)ExitCode.Success;
         }
 
-        var outcome = InitCommand.Execute(root, withGit: options.Value("vcs") == "git");
+        var outcome = InitCommand.Execute(root, withGit: vcs == "git");
 
         if (options.Has("json"))
         {
@@ -2665,9 +2777,7 @@ public static class Program
         // outline here would make one kind of malformed set loud and the other silent.
         if (options.Has("set") && options.Value("set") is null)
         {
-            Console.Error.WriteLine(
-                "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
-
+            Refuse(options, "set", "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -2687,21 +2797,17 @@ public static class Program
 
                 if (assignment is null || split <= 0)
                 {
-                    Console.Error.WriteLine(
-                        "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
-
+                    Refuse(options, "set", $"--set takes <parameter>=<value>, for example --set inscribedRadius=7, and '{assignment}' is not that");
                     return (int)ExitCode.ValidationFailure;
                 }
 
                 var name = assignment[..split];
 
-                if (!double.TryParse(
-                    assignment[(split + 1)..],
-                    System.Globalization.NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out var value))
+                if (!TryNumber(assignment[(split + 1)..], out var value))
                 {
-                    Console.Error.WriteLine(
+                    Refuse(
+                        options,
+                        "set",
                         $"'{assignment[(split + 1)..]}' is not a number. The value is in the "
                         + "parameter's own declared unit, so write the magnitude alone");
 
@@ -2843,19 +2949,9 @@ public static class Program
         // to say how far they had got, the last of them to a Windows update. Thirty
         // seconds, so a run of a few seconds says one thing and an eight-hour run says a
         // thousand; `--progress 0` asks for silence.
-        var interval = 30.0;
-
-        if (options.Value("progress") is { } asked)
+        if (!TryProgress(options, out var progress))
         {
-            if (!double.TryParse(
-                    asked, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out interval))
-            {
-                Console.Error.WriteLine(
-                    $"--progress takes an interval in seconds, and '{asked}' is not one. "
-                    + "Use 0 to turn it off.");
-                return (int)ExitCode.ValidationFailure;
-            }
+            return (int)ExitCode.ValidationFailure;
         }
 
         var (run, validation) = RunCommand.Execute(
@@ -2866,7 +2962,7 @@ public static class Program
 
             // Diagnostics on stderr (CLI-2), so a caller piping `--json` gets the result
             // document and nothing else however long the run took to produce it.
-            progress: new RunProgress(interval, Console.Error.WriteLine));
+            progress: progress);
 
         if (run is null)
         {
@@ -3369,23 +3465,28 @@ public static class Program
     /// <param name="options">The parsed command line.</param>
     /// <param name="progress">The interval and where to send it.</param>
     /// <returns>True where the flag parsed, false where it did not and was complained about.</returns>
-    private static bool RenderProgress(CommandLine options, out RunProgress? progress)
+    private static bool TryProgress(CommandLine options, out RunProgress? progress)
     {
-        var interval = 30.0;
         progress = null;
 
-        if (options.Value("progress") is { } asked
-            && !double.TryParse(
-                asked, NumberStyles.Float, CultureInfo.InvariantCulture, out interval))
+        // Bare, --progress is the default interval, as it is when absent: reporting is on
+        // unless turned off, so the flag alone says nothing new and is not a mistake.
+        if (!TryOptionalNumberFlag(options, "progress", "an interval in seconds", out var interval, "Use 0 to turn it off."))
         {
-            Console.Error.WriteLine(
-                $"--progress takes an interval in seconds, and '{asked}' is not one. "
-                + "Use 0 to turn it off.");
             return false;
         }
 
-        progress = new RunProgress(interval, Console.Error.WriteLine);
+        progress = new RunProgress(interval ?? 30.0, Console.Error.WriteLine);
         return true;
     }
+
+    /// <summary>The figure formats <c>--format</c> names.</summary>
+    private static readonly string[] FormatNames = ["svg", "pdf"];
+
+    /// <summary>What <c>init --vcs</c> names: a repository, or none, which is also the default.</summary>
+    private static readonly string[] VcsNames = ["git", "none"];
+
+    private static FigureFormat FormatOf(string? named, FigureFormat otherwise) =>
+        named is null ? otherwise : named == "pdf" ? FigureFormat.Pdf : FigureFormat.Svg;
 
 }

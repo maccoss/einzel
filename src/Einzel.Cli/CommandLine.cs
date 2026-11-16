@@ -26,25 +26,11 @@ public sealed class CommandLine
     /// The parser cannot tell a switch from an option by looking: "a following argument that is
     /// not itself an option is this option's value". So <c>render surface --cycle-mean
     /// models/q.json</c> read the model as the switch's value and printed the usage, and
-    /// <c>--no-scale out.png</c> dropped the file without a word. Every switch any verb reads is
-    /// named here; <c>SwitchesAreDeclaredTests.EverySwitchAVerbReadsIsDeclared</c> reads the verbs' source and fails when one is
-    /// read with <c>Has</c> alone and is missing from this list.
+    /// <c>--no-scale out.png</c> dropped the file without a word. Not a list of its own: it is
+    /// every switch the verbs' registry names (<see cref="VerbFlags.AllSwitches"/>), so a switch
+    /// is declared once.
     /// </remarks>
-    public static readonly IReadOnlySet<string> Switches = new HashSet<string>(StringComparer.Ordinal)
-    {
-        "composite",
-        "cycle-mean",
-        "dry-run",
-        "help",
-        "json",
-        "mesh",
-        "no-calibrate",
-        "no-scale",
-        "no-trajectory",
-        "see-through",
-        "study",
-        "vtu",
-    };
+    public static IReadOnlySet<string> Switches => VerbFlags.AllSwitches;
 
     /// <summary>Positional arguments, excluding the verb.</summary>
     public IReadOnlyList<string> Positional => _positional;

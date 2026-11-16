@@ -2092,20 +2092,43 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal(-15.0, normals[3 * ((1 * 3) + 0)], 12);
     }
 
-    /// <summary>A line whose segment colours do not fit its segments is refused as it is made, naming its layer.</summary>
+    /// <summary>
+    /// A line whose segment colors do not fit its segments is refused before anything is drawn,
+    /// naming its layer - however the line was made.
+    /// </summary>
+    /// <remarks>
+    /// Checked once, where every drawn line passes. The first check was in two constructors with
+    /// two copies of the arithmetic, and a <c>with</c> copy runs no initializer, so the third
+    /// case here - a good line given bad colors afterwards - went through both.
+    /// </remarks>
     [Fact]
-    public void SegmentColoursThatDoNotFitAreRefusedWhereTheyAreMade()
+    public void SegmentColorsThatDoNotFitAreRefusedBeforeAnythingIsDrawn()
     {
-        var line = new PictureLine([0, 0, 0, 1, 1, 1, 2, 2, 2], 0, 0, 0, [1, 1, 1]);
+        static byte[] Draw(Einzel.Render.RasterLine line, string? name = "mesh") => Einzel.Render.Rasterizer.Draw(
+            [new Einzel.Render.RasterLayer([], [line], 1.0, true, Name: name)],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            new Einzel.Render.RasterLighting((_, _, _) => 1.0, 1.0),
+            (1.0, 1.0, 1.0),
+            16,
+            16);
 
-        var refusal = Assert.Throws<ArgumentException>(() => new PictureLayer("mesh", [], [line], 1.0, false));
-        Assert.Contains("layer 'mesh'", refusal.Message, StringComparison.Ordinal);
+        var good = new Einzel.Render.RasterLine([0, 0, 0, 1, 1, 1, 2, 2, 2], 0, 0, 0, [1, 1, 1, 0, 0, 0]);
 
-        Assert.Throws<ArgumentException>(() => new Einzel.Render.RasterLine([0, 0, 0, 1, 1, 1], 0, 0, 0, [1, 1]));
+        // Made wrong.
+        var made = Assert.Throws<ArgumentException>(
+            () => Draw(new Einzel.Render.RasterLine(good.PointsMm, 0, 0, 0, [1, 1, 1])));
+        Assert.Contains("layer 'mesh', line 0", made.Message, StringComparison.Ordinal);
+        Assert.Contains("3 segment color values for 2 segments", made.Message, StringComparison.Ordinal);
 
-        // The control: three numbers for each of two segments is a line.
-        _ = new PictureLayer("mesh", [], [line with { SegmentColors = [1, 1, 1, 0, 0, 0] }], 1.0, false);
-        _ = new Einzel.Render.RasterLine([0, 0, 0, 1, 1, 1], 0, 0, 0, [1, 1, 1]);
+        // Made right and copied wrong, which no constructor sees.
+        var copied = Assert.Throws<ArgumentException>(() => Draw(good with { SegmentColors = [1, 1] }));
+        Assert.Contains("layer 'mesh'", copied.Message, StringComparison.Ordinal);
+
+        // A layer with no name is named by its place.
+        Assert.Contains("layer 0, line 0", Assert.Throws<ArgumentException>(() => Draw(good with { SegmentColors = [1] }, null)).Message, StringComparison.Ordinal);
+
+        // The control: three numbers for each of two segments is a line, and is drawn.
+        Assert.NotEmpty(Draw(good));
     }
 
     private static IEnumerable<(double X, double Y, double Z)> Triples(IReadOnlyList<double> flat)

@@ -3563,5 +3563,27 @@ Two findings from Stage 1 that bear on the spec:
   fit a line are refused where the layer is made; and the probe's leftover field and its copies
   of the instant check are gone.
 
+  **A ninth review found the same gap at two more flags, and the answer was to stop finding them
+  one at a time.** `render animation --fps 30fps` and `compare --ions many` were still
+  `int.Parse`, exit 6, three rounds after `--width-px 1600px` stopped being; a bare `--progress`,
+  which had always meant the default interval, was refused by the round that began refusing bare
+  flags; and the shared whole-number reader had quietly widened the still's rule, so ` 1600` and
+  `+241` were accepted. Every flag value now goes through one of four readers and one refusal
+  (exit 1, `/args/--flag`, the typed text quoted, JSON under `--json`); a whole number is digits
+  alone within the flag's range; a flag naming one of a few words refuses any other (`--format
+  pfd` drew an SVG, `--kind objectiv` registered an objective, `--vcs hg` made no repository, and
+  none said so); the registry has a third kind, a value that may be left off, with `--progress`
+  its one member; the parser's switches are derived from the registry; `--height` takes its two
+  documented words through `SurfaceHeight.Parse`; and the segment-colour rule is one function
+  asked once, by the rasterizer, of every line it is handed - a constructor check is skipped by a
+  `with` copy. **`CommandLineMatrixTests` runs the whole surface as a table**: every verb in the
+  registry through its help, each flag valid, bare and with garbage, an unknown flag and an extra
+  positional, with and without `--json` - 632 command lines, none of which may exit 6. Run against
+  main's build as well, every documented form gives main's exit code and output shape. It found
+  two things beyond the review: `render animation` read its flags after opening its file, so a
+  typo was reported as the file's fault, and `ext test --input` with a file that is not JSON was
+  exit 6. A source scan fails if a throwing `Parse` returns to the CLI or a `TryParse` appears
+  outside the two readers.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

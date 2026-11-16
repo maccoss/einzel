@@ -20,6 +20,39 @@ public static class SurfaceHeight
     /// is a negative ion's valley.
     /// </summary>
     public const string Energy = "potential-energy";
+
+    /// <summary>
+    /// The words a caller chooses a height with, the default first: <c>potential</c> and
+    /// <c>energy</c>.
+    /// </summary>
+    /// <remarks>
+    /// What is typed, as against what is recorded: a surface's outcome names its height
+    /// <see cref="Potential"/> or <see cref="Energy"/>, and <c>potential-energy</c> is that
+    /// record's word, not a second spelling of the choice.
+    /// </remarks>
+    public static readonly IReadOnlyList<string> Spellings = ["potential", "energy"];
+
+    /// <summary>The height one of the <see cref="Spellings"/> chooses.</summary>
+    /// <param name="spelling">One of the <see cref="Spellings"/>, exactly.</param>
+    /// <returns><see cref="Potential"/> or <see cref="Energy"/>.</returns>
+    /// <exception cref="ArgumentException"><paramref name="spelling"/> is not one of them.</exception>
+    public static string Parse(string spelling)
+    {
+        ArgumentNullException.ThrowIfNull(spelling);
+
+        if (string.Equals(spelling, Spellings[0], StringComparison.Ordinal))
+        {
+            return Potential;
+        }
+
+        if (string.Equals(spelling, Spellings[1], StringComparison.Ordinal))
+        {
+            return Energy;
+        }
+
+        throw new ArgumentException(
+            $"a surface's height is chosen as {string.Join(" or ", Spellings)}; '{spelling}' is neither", nameof(spelling));
+    }
 }
 
 /// <summary>Where, when and how to draw a potential surface.</summary>
@@ -346,6 +379,9 @@ public static class SurfaceCommand
 
     /// <summary>The drawn height of the whole range, as a fraction of the longer side.</summary>
     public const double DefaultRelief = 0.35;
+
+    /// <summary>The planes a surface may be asked for by name.</summary>
+    public static readonly IReadOnlyList<string> Planes = ["xy", "xz", "yz"];
 
     /// <summary>The camera for a surface: higher than the viewport's iso, so the valleys show.</summary>
     public static readonly IReadOnlyDictionary<string, (double Azimuth, double Elevation)> Views =
@@ -1968,7 +2004,7 @@ public static class SurfaceCommand
 
     private static void Check(SurfaceRequest request)
     {
-        if (request.Plane is { } plane && plane is not ("xy" or "xz" or "yz"))
+        if (request.Plane is { } plane && !Planes.Contains(plane, StringComparer.Ordinal))
         {
             throw Refusal("/surface/plane", $"the plane is xy, xz or yz; got '{plane}'");
         }
