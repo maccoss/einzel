@@ -1436,7 +1436,9 @@ the interval is also read from the build alone - its grid arrays followed by wea
 what its own thread allocated outside them - so another thread allocating beside it moves
 neither end, and an edge the interval still straddles fails as inconclusive rather than as a
 finding. A collection is forced only where an upper bound on the live set could pass what has
-already been read, which reads 32 of a plane build's 385 arrays and changes the least by nothing. What the thread allocated between two readings without reporting it bounds how
+already been read, which reads 32 of a plane build's 385 arrays and changes the least by nothing. The child runs
+in a controlled environment with the collector pinned to workstation, non-concurrent, and reports
+it; a grid array is charged what it occupies, header included. What the thread allocated between two readings without reporting it bounds how
 much higher the peak can have been, and the upper edge is asserted on that bound, so a per-node
 array allocated any other way fails as slack - and fails `GridArraySourceTests`, which reads the
 source of `Einzel.Fields` for one, first. The figures in the table's third column that came

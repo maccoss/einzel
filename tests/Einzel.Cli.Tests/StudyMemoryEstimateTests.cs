@@ -686,18 +686,8 @@ public sealed class SelfFieldMemoryTests(ITestOutputHelper output)
             return Survived();
         }
 
-        static long Survived()
-        {
-            var info = GC.GetGCMemoryInfo(GCKind.FullBlocking);
-            var live = 0L;
-
-            foreach (var generation in info.GenerationInfo)
-            {
-                live += generation.SizeAfterBytes - generation.FragmentationAfterBytes;
-            }
-
-            return live;
-        }
+        // One implementation, shared with the Fields memory tests and the harness.
+        static long Survived() => Einzel.Testing.LiveSetReading.SurvivedLastFullCollection();
 
         static double Once(Func<object> build)
         {

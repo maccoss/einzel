@@ -5896,3 +5896,11 @@ more; the parent read the cases first, and a child that failed its last check ha
 used anyway. A check that runs after the work it vouches for has to be able to withdraw the
 work - so the work counts only once the run says it finished, with an explicit end marker, and
 everything else, however much of it arrived, is a failure of the run.
+
+**A baseline is a promise that what it counted stays.** Every reading is the live set less the
+baseline, so an object counted in the baseline that dies during the measurement makes every
+later reading low by its size - and low is the dangerous direction for a test whose upper edge
+is the one that matters. The measurement broke that promise itself, twice: growing its own
+storage dropped the arrays the baseline had counted, and a warm-up object it made before the
+baseline went out of scope during the build. Neither shows in a test whose build is too small to
+trigger it; both showed in one that holds a known amount at a realistic size.

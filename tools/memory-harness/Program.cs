@@ -216,20 +216,9 @@ void SampleLive()
     }
 }
 
-// What the last full blocking collection left live, from that collection's own record. Reading
-// GC.GetTotalMemory after the collection instead counts whatever the work allocated in between.
-static long Survived()
-{
-    var info = GC.GetGCMemoryInfo(GCKind.FullBlocking);
-    var survived = 0L;
-
-    foreach (var generation in info.GenerationInfo)
-    {
-        survived += generation.SizeAfterBytes - generation.FragmentationAfterBytes;
-    }
-
-    return survived;
-}
+// What the last full blocking collection left live, from that collection's own record: one
+// implementation, shared with the memory tests (tests/Shared/LiveSetReading.cs).
+static long Survived() => Einzel.Testing.LiveSetReading.SurvivedLastFullCollection();
 
 static object[] Elements(EstimateOutcome estimate) =>
     [.. estimate.Elements.Select(e => new { e.Type, e.NodeCount, e.MemoryMiB })];

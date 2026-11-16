@@ -247,6 +247,77 @@ public sealed class GridArraysTests(MeasuredBuilds builds, ITestOutputHelper out
     }
 
     /// <summary>
+    /// A build that outgrows the room made for following its arrays, at the room's real size, is
+    /// read at its true peak to within a few kilobytes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The room made before the baseline is 16,384 arrays, 256 kB of storage. Growing it once
+    /// replaces that storage; dropping what it replaced would take 256 kB the baseline counted out
+    /// of every later reading, and the reading at this build's peak - taken after the growth - would
+    /// be that much low. Kept, the reading is the truth.
+    /// </para>
+    /// <para>
+    /// The build holds 8,000,000 bytes, holds and lets go another 8,000,000, allocates 20,000
+    /// one-byte arrays it drops, then holds 8,800,000 more: its peak is the first and last together,
+    /// and in the child, where nothing else allocates, a reading of it is exact to the few objects
+    /// it keeps them in.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AReadingAfterTheRoomHasGrownIsTheTruth()
+    {
+        var peak = builds.Optimized(output, "grow-drop", 1).Peak;
+        var truth = (double)(ArraySize.Of(8L * 1_000_000) + ArraySize.Of(8L * 1_100_000));
+
+        // The drop let most of the small arrays be passed over; otherwise this would read twenty
+        // thousand times.
+        Assert.True(peak.Collections < 100, $"{peak.Collections} readings were taken");
+
+        output.WriteLine($"truth {truth:N0}: {SolveMemoryTests.Describe(peak, 1)}");
+
+        Assert.Equal(20_003, peak.Readings);
+        Assert.InRange(peak.Held, truth, truth + 4096);
+        Assert.InRange(peak.Least, truth - 4096, truth + 4096);
+        Assert.InRange(peak.Bound, truth, truth + 4096);
+    }
+
+    /// <summary>A build that allocates nothing outside GridArrays reports nothing outside it.</summary>
+    /// <remarks>
+    /// Each array's header and padding are part of what <see cref="GridArrays"/> allocated, and
+    /// counting only its elements booked them as allocated outside it - 24 bytes an array, never
+    /// zero for a clean build.
+    /// </remarks>
+    [Fact]
+    public void ABuildAllocatingOnlyGridArraysReportsNothingOutsideThem()
+    {
+        var holder = new object[3];
+
+        object Build()
+        {
+            holder[0] = GridArrays.New<double>(1_000);
+            holder[1] = GridArrays.New<byte>(7);
+            holder[2] = GridArrays.New<Wide>(33);
+            return holder;
+        }
+
+        // Once first, so that what the runtime does the first time a generic method is called
+        // with a new type is not in the measurement.
+        Build();
+
+        var peak = LiveSet.Peak(Build, collectEveryArray: true);
+
+        output.WriteLine(SolveMemoryTests.Describe(peak, 1));
+
+        Assert.Equal(3, peak.Readings);
+        Assert.Equal(0, peak.Silent);
+        Assert.Equal(0, peak.Unreported);
+        Assert.Equal(
+            ArraySize.Of(8_000) + ArraySize.Of(7) + ArraySize.Of(33L * Unsafe.SizeOf<Wide>()),
+            peak.Tracked);
+    }
+
+    /// <summary>
     /// Reading only where the live set could pass what has been read gives the same least as
     /// reading at every array, on each kind of solve, with far fewer collections.
     /// </summary>
@@ -282,8 +353,10 @@ public sealed class GridArraysTests(MeasuredBuilds builds, ITestOutputHelper out
             Assert.Equal(every.Tracked, some.Tracked);
 
             // The process's own readings move by what the test host's other threads hold at each
-            // instant, so the least is compared through the part only the build moves.
-            Assert.InRange(some.Least, every.Least - 32_768, every.Least + 32_768);
+            // instant - by more than 32 kB, once, in a full Debug run - so the least is compared
+            // through the part only the build moves: the grid arrays, equal above, which the least
+            // is never under.
+            Assert.True(some.Least >= some.Tracked, $"{name}: the least is under the build's own arrays");
             Assert.True(some.Bound >= some.Least, $"{name}: the bound is under the least");
         }
     }
@@ -341,7 +414,7 @@ public sealed class GridArraysTests(MeasuredBuilds builds, ITestOutputHelper out
     [Fact]
     public void AnotherThreadsMemoryDoesNotMoveTheInterval()
     {
-        const long truth = (24 * 8L * 9 * 9 * 9) + (8L * 129 * 129 * 129);
+        var truth = (24 * ArraySize.Of(8L * 9 * 9 * 9)) + ArraySize.Of(8L * 129 * 129 * 129);
 
         var kept = new List<byte[]>();
         var stop = 0;

@@ -54,14 +54,20 @@ public sealed class ChildProtocolTests(ITestOutputHelper output)
     [InlineData("error stream", "wrote to its error stream")]
     [InlineData("other runtime", "ran on .NET 9.9.9")]
     [InlineData("no runtime", "did not say which runtime")]
+    [InlineData("other collector", "ran with the collector server Interactive")]
+    [InlineData("truncated case", "a case line that does not read")]
+    [InlineData("null case", "a case line that does not read: CASE null")]
     public void AnIncompleteRunFailsEveryCase(string how, string said)
     {
         ChildExit exited = how switch
         {
             "no end" => Exit(0, [Runtime(), Begin(), Case()]),
             "error stream" => Exit(0, [Runtime(), Begin(), Case(), "END"], "Unhandled exception."),
-            "other runtime" => Exit(0, ["RUNTIME 9.9.9", Begin(), Case(), "END"]),
-            _ => Exit(0, [Begin(), Case(), "END"]),
+            "other runtime" => Exit(0, ["RUNTIME 9.9.9", "GC " + MemoryCases.ExpectedGc, Begin(), Case(), "END"]),
+            "other collector" => Exit(0, ["RUNTIME " + Version, "GC server Interactive", Begin(), Case(), "END"]),
+            "truncated case" => Exit(0, [Runtime(), Begin(), Case()[..40], "END"]),
+            "null case" => Exit(0, [Runtime(), Begin(), "CASE null", "END"]),
+            _ => Exit(0, ["GC " + MemoryCases.ExpectedGc, Begin(), Case(), "END"]),
         };
 
         var run = MemoryCases.Interpret([Key], exited, Version);
@@ -110,6 +116,69 @@ public sealed class ChildProtocolTests(ITestOutputHelper output)
         Assert.Contains("building test-hang=1", run.Failure, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The child runs in a controlled environment: what the parent was started with neither
+    /// writes to its error stream nor changes the collector it measures under.
+    /// </summary>
+    /// <remarks>
+    /// <c>COREHOST_TRACE</c> makes the host write a trace to the error stream, which fails every
+    /// case; <c>DOTNET_gcServer</c> and <c>DOTNET_gcConcurrent</c> change what a reading of the live
+    /// set is a reading of. Set in this process, they reach a child only if its environment is
+    /// inherited.
+    /// </remarks>
+    [Fact]
+    public void TheParentsEnvironmentDoesNotReachTheChild()
+    {
+        string[] names = ["COREHOST_TRACE", "DOTNET_gcServer", "DOTNET_gcConcurrent", "DOTNET_GCgen0size"];
+        var saved = names.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+
+        Environment.SetEnvironmentVariable("COREHOST_TRACE", "1");
+        Environment.SetEnvironmentVariable("DOTNET_gcServer", "1");
+        Environment.SetEnvironmentVariable("DOTNET_gcConcurrent", "1");
+        Environment.SetEnvironmentVariable("DOTNET_GCgen0size", "0x10000000");
+
+        ChildRun run;
+
+        try
+        {
+            string[] cases = ["ball-flat=0.016"];
+            var exited = MeasuringChild.Run([MemoryCases.Command, JitTier.Optimized.Name, .. cases], JitTier.Optimized);
+
+            run = MemoryCases.Interpret(cases, exited, Version);
+        }
+        finally
+        {
+            foreach (var (name, value) in saved)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
+        }
+
+        output.WriteLine(run.Text);
+
+        Assert.Null(run.Failure);
+        Assert.Contains("GC " + MemoryCases.ExpectedGc, run.Text, StringComparison.Ordinal);
+
+        // And the environment itself: what starting a process needs, then the pins, nothing else.
+        var environment = new Dictionary<string, string?>
+        {
+            ["PATH"] = "path",
+            ["COREHOST_TRACE"] = "1",
+            ["DOTNET_gcServer"] = "1",
+            ["DOTNET_TieredCompilation"] = "1",
+            ["SOME_TOOL_SETTING"] = "x",
+        };
+
+        MeasuringChild.Controlled(environment, JitTier.Optimized);
+
+        Assert.Equal("path", environment["PATH"]);
+        Assert.Equal("0", environment["DOTNET_gcServer"]);
+        Assert.Equal("0", environment["DOTNET_gcConcurrent"]);
+        Assert.Equal("0", environment["DOTNET_TieredCompilation"]);
+        Assert.False(environment.ContainsKey("COREHOST_TRACE"));
+        Assert.False(environment.ContainsKey("SOME_TOOL_SETTING"));
+    }
+
     /// <summary>An unknown command, or none, is refused with a usage line and a non-zero exit.</summary>
     [Fact]
     public void AnUnknownCommandIsRefused()
@@ -120,12 +189,13 @@ public sealed class ChildProtocolTests(ITestOutputHelper output)
         Assert.Contains("usage:", exited.Errors, StringComparison.Ordinal);
     }
 
-    private static string Runtime() => "RUNTIME " + Version;
+    private static string Runtime() => "RUNTIME " + Version + "\nGC " + MemoryCases.ExpectedGc;
 
     private static string Begin() => "BEGIN " + Key;
 
     private static string Case() => "CASE " + JsonSerializer.Serialize(
-        new CaseResult(Key, new MeasuredBuild(new LivePeak(1, 2, 2, 1, 7, 3, 0, 0, 0, null), -1, -1), null));
+        new CaseResult(Key, new MeasuredBuild(new LivePeak(1, 2, 2, 1, 7, 3, 0, 0, 0, 0, null), -1, -1), null));
 
-    private static ChildExit Exit(int code, string[] lines, string errors = "") => new(code, lines, errors, null);
+    private static ChildExit Exit(int code, string[] lines, string errors = "") =>
+        new(code, [.. lines.SelectMany(line => line.Split('\n'))], errors, null);
 }

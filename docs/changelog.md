@@ -3612,3 +3612,42 @@ Two findings from Stage 1 that bear on the spec:
 
   Full suite, 2,045 tests, passes in Debug and in Release; the memory, probe, protocol and source
   tests take about 70 s in Release, 20 of them the test that waits for a child to run out of time.
+
+  **A seventh review found the measurement reading low after a build outgrew its room**, which
+  is the bug of the round. Growing the storage that follows a build's arrays replaced the arrays
+  made before the baseline and dropped them, and they had been counted in the baseline: every
+  reading after the first growth was 256 kB low - the default room of 16,384 arrays - which
+  lowers the least and the process's half of the bound, so an unbilled array of that size could
+  pass. The previous test could not see it, because it grew from a room of one. Now nothing the
+  storage replaces is dropped until the measurement ends, and what growing allocated is measured
+  by the thread's own counter and taken off each reading. **A build that holds 16.8 MB, outgrows
+  the default room and is read afterwards reads 16,800,208 bytes against a truth of 16,800,048**;
+  dropping the replaced storage again fails that test. The warm-up storage made before the
+  baseline is kept to the end for the same reason: an object of the baseline that dies during the
+  build makes every later reading low by its size.
+
+  The rest, each verified first:
+  - **A case line that does not read is the child failing, not the parent throwing.** A line cut
+    off when a child is stopped, or `CASE null`, used to throw out of the method the fixture
+    caches, and every test then failed with the exception instead of what the child said.
+  - **The child runs in a controlled environment and says which collector it ran with.** It keeps
+    only what starting a process needs and the tier, and pins the collector to workstation,
+    non-concurrent - so the only full collections are the ones a measurement forces. It prints
+    `GC workstation Batch`, and anything else fails every case by name. A parent run with
+    `COREHOST_TRACE`, `DOTNET_gcServer` and `DOTNET_gcConcurrent` set no longer reaches it;
+    inheriting the environment again fails that test. What other threads allocate in a quiet child
+    is still a few hundred bytes some collections and nothing at others; where it comes from is
+    not established.
+  - **A grid array is charged what it occupies**, header and padding included, measured from the
+    runtime at startup and checked against arrays of several lengths, so a build that allocates
+    nothing outside `GridArrays` reports nothing there - it reported 24 bytes an array.
+  - **The guard on other threads' allocation asks of the most between two readings**, not the
+    total, which grew with the number of collections a build needs.
+  - The first-tier child's claim is narrowed to JIT-compiled code, which the solver is: the
+    framework is precompiled and runs optimized in every tier, and the child refuses if
+    `Einzel.Fields` ever carries a ReadyToRun header. The off-thread message formats its numbers
+    invariantly. The test project checks documentation references, which found the one stale
+    `cref` the review named and no other. The live-set reader is one file linked into the three
+    projects that measure memory, where it had three copies.
+
+  Full suite, 2,051 tests, passes in Debug and in Release.

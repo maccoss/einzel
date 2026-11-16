@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace Einzel.Fields.Solved;
@@ -145,11 +146,14 @@ internal static class GridArrays
 
         private string? OffThread => Interlocked.Read(ref _offThreadArrays) == 0
             ? null
-            : $"{Interlocked.Read(ref _offThreadArrays):N0} grid array(s), {Interlocked.Read(ref _offThreadBytes):N0} bytes, "
-                + $"were allocated on thread {Volatile.Read(ref _firstThread)} (and perhaps others) while thread {thread} "
-                + "was measuring what a build holds. The live set is read on the measuring thread at its own allocations, "
+            : Invariant(Interlocked.Read(ref _offThreadArrays)) + " grid array(s), "
+                + Invariant(Interlocked.Read(ref _offThreadBytes)) + " bytes, were allocated on thread "
+                + Invariant(Volatile.Read(ref _firstThread)) + " (and perhaps others) while thread " + Invariant(thread)
+                + " was measuring what a build holds. The live set is read on the measuring thread at its own allocations, "
                 + "so arrays a solve allocates on a worker are neither read at nor bounded: allocate them on the calling "
                 + "thread, or make the measurement follow the workers.";
+
+        private static string Invariant(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
 
         public void Allocated(Array array, long bytes)
         {

@@ -19,4 +19,9 @@
     <ProjectReference Include="..\..\src\Einzel.Io\Einzel.Io.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- One reader of the live set for every memory measurement; see the file. -->
+    <Compile Include="..\..\tests\Shared\LiveSetReading.cs" Link="Shared\LiveSetReading.cs" />
+  </ItemGroup>
+
 </Project>

@@ -2,7 +2,13 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!--
+      Documentation comments are checked though not required: a cref that names nothing fails
+      the build (CS1574), which is how a remark pointing at a renamed member is caught. Public
+      members of a test project need no comment, so CS1591 alone is off.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <!--
       An executable, so that the memory tests can run this assembly as a child process, with the
       JIT's tiering pinned, and read a build's live set in a process that holds nothing else.
@@ -28,6 +34,11 @@
     <ProjectReference Include="..\..\src\Einzel.Fields\Einzel.Fields.csproj" />
     <ProjectReference Include="..\..\src\Einzel.Io\Einzel.Io.csproj" />
     <ProjectReference Include="..\..\src\Einzel.Transport\Einzel.Transport.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- One reader of the live set for every memory measurement; see the file. -->
+    <Compile Include="..\Shared\LiveSetReading.cs" Link="Shared\LiveSetReading.cs" />
   </ItemGroup>
 
 </Project>

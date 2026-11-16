@@ -112,6 +112,8 @@ internal static class MemoryCases
         var results = new Dictionary<string, CaseResult>();
         var runtime = (string?)null;
         var begun = (string?)null;
+        var malformed = (string?)null;
+        var gc = (string?)null;
         var ended = false;
 
         foreach (var line in exited.Lines)
@@ -126,9 +128,22 @@ internal static class MemoryCases
             }
             else if (line.StartsWith(CaseLine, StringComparison.Ordinal))
             {
-                var result = JsonSerializer.Deserialize<CaseResult>(line[CaseLine.Length..])!;
-                results[result.Key] = result;
-                begun = null;
+                // A line the child did not finish writing - it was stopped mid-line - or one that
+                // reads as nothing is the child failing, not this method: it must not throw, or the
+                // fixture would cache the exception for every test and lose what the child said.
+                if (Read(line[CaseLine.Length..]) is { } result)
+                {
+                    results[result.Key] = result;
+                    begun = null;
+                }
+                else
+                {
+                    malformed ??= line;
+                }
+            }
+            else if (line.StartsWith(GcLine, StringComparison.Ordinal))
+            {
+                gc = line[GcLine.Length..];
             }
             else if (line == EndLine)
             {
@@ -142,10 +157,14 @@ internal static class MemoryCases
             exited.Problem is { } problem ? problem + inProgress
             : exited.ExitCode != 0 ? $"the measuring child exited {exited.ExitCode}.{inProgress}"
             : exited.Errors.Trim().Length > 0 ? "the measuring child wrote to its error stream"
+            : malformed is not null ? $"the measuring child wrote a case line that does not read: {Shorten(malformed)}"
             : runtime is null ? "the measuring child did not say which runtime it ran on"
             : runtime != expectedRuntime
                 ? $"the measuring child ran on .NET {runtime} and this test process on {expectedRuntime}: the two would "
                     + "not be running the same code, so what one measured is not about the other"
+            : gc != ExpectedGc
+                ? $"the measuring child ran with the collector {gc ?? "unreported"}, not {ExpectedGc}: a reading means "
+                    + "something else under another collector"
             : !ended ? $"the measuring child stopped without saying it had finished.{inProgress}"
             : arguments.FirstOrDefault(a => !results.ContainsKey(a)) is { } missing
                 ? $"the measuring child finished without reporting {missing}"
@@ -163,6 +182,31 @@ internal static class MemoryCases
     /// <summary>The prefix of a line reporting one case.</summary>
     internal const string CaseLine = "CASE ";
 
+    /// <summary>The prefix of the line naming the collector the child ran with.</summary>
+    internal const string GcLine = "GC ";
+
+    /// <summary>
+    /// The collector the child must run with: workstation, and not concurrent, so that the only
+    /// full collections are the ones a measurement forces and no background collection runs
+    /// between them.
+    /// </summary>
+    internal const string ExpectedGc = "workstation Batch";
+
+    /// <summary>A case line's result, or null if it does not read as one.</summary>
+    private static CaseResult? Read(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<CaseResult>(json) is { Key: not null } result ? result : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string Shorten(string line) => line.Length <= 200 ? line : line[..200] + "...";
+
     /// <summary>The prefix of the line saying a case is about to be built.</summary>
     internal const string BeginLine = "BEGIN ";
 
@@ -170,23 +214,24 @@ internal static class MemoryCases
     internal const string EndLine = "END";
 
     /// <summary>
-    /// Fails a measurement during which other threads allocated a large part of what the build
-    /// held.
+    /// Fails a measurement during which another thread allocated, between two readings, more than
+    /// anything but a grid array would come to.
     /// </summary>
     /// <remarks>
-    /// The backstop behind <see cref="GridArrays"/>, which refuses by name to allocate off the
-    /// measuring thread: an array a build allocated on a worker <i>without</i> going through it
-    /// would be neither read at nor bounded, only counted among what other threads allocated. A
-    /// quarter of the build's own peak is far above a runtime's housekeeping - a few hundred
-    /// bytes a reading in a child - and is what a solver that moved its arrays onto workers
-    /// wholesale would show. It does not see one small scratch array allocated that way; the
-    /// source test is what stops that being written.
+    /// The backstop behind <see cref="GridArrays"/>, which records by name any grid array allocated
+    /// off the measuring thread: an array a build allocated on a worker <i>without</i> going through
+    /// it would be neither read at nor bounded, only counted among what other threads allocated.
+    /// Asked of the most between two readings, not of the total: what the runtime's own threads
+    /// do is a few hundred bytes a collection, and a total grows with how many collections a build
+    /// needs - twenty thousand, for one test here - where an array allocated on a worker arrives
+    /// all at once. 64 kB is two orders over that housekeeping and under the smallest grid array
+    /// the memory tests build.
     /// </remarks>
     internal static void AssertTheBuildsOwn(string name, LivePeak peak) =>
         Assert.True(
-            peak.Foreign <= 0.25 * peak.Held,
-            $"{name}: {MemoryVerdict.Disturbed} - threads other than the build's allocated {peak.Foreign:N0} bytes during a build "
-            + $"that held {peak.Held:N0}. Either the measuring process was not the build's alone, or the solver now "
+            peak.ForeignBurst <= 64 * 1024,
+            $"{name}: {MemoryVerdict.Disturbed} - another thread allocated {peak.ForeignBurst:N0} bytes between two readings "
+            + $"({peak.Foreign:N0} in all). Either the measuring process was not the build's alone, or the solver now "
             + $"allocates on worker threads outside {nameof(GridArrays)}, where the live set is neither read nor bounded.");
 
     /// <summary>The child's work: each case built once unmeasured, then measured.</summary>
@@ -196,6 +241,8 @@ internal static class MemoryCases
     internal static int Child(JitTier tier, ReadOnlySpan<string> cases)
     {
         Console.WriteLine(RuntimeLine + Environment.Version);
+        Console.WriteLine(GcLine + (System.Runtime.GCSettings.IsServerGC ? "server" : "workstation") + " "
+            + System.Runtime.GCSettings.LatencyMode);
 
         if (JitTier.Refusal(tier) is { } refusal)
         {
@@ -272,6 +319,25 @@ internal static class MemoryCases
             "sphere" => () => GeometryBuilder3D.BuildField(SolveMemoryTests.Sphere(size)).Field,
             "rods" => () => GeometryBuilder.Build(SolveMemoryTests.Rods(size)).Field,
             "driven-rods" => () => GeometryBuilder.Build(SolveMemoryTests.Rods(size, driven: true)).Field,
+            // For GridArraysTests: more grid arrays than the room made for them before the baseline,
+            // with a reading after the room has grown, of a build whose peak is known exactly.
+            "grow-drop" => () =>
+            {
+                var kept = GridArrays.New<double>(1_000_000);
+
+                // Held at its reading, then let go: the live set falls 8 MB below the peak read so
+                // far, so the twenty thousand small arrays that follow are passed over rather than
+                // read. In a frame of its own, so that it is let go when that frame returns in
+                // every build configuration - Debug code keeps a local to the end of its method.
+                HoldThenLetGo();
+
+                for (var small = 0; small < 20_000; small++)
+                {
+                    _ = GridArrays.New<byte>(1);
+                }
+
+                return new object[] { kept, GridArrays.New<double>(1_100_000) };
+            },
             "fields" => () => Enumerable.Range(0, 40)
                 .Select(_ => new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 9, 9, 9)))
                 .ToArray(),
@@ -290,6 +356,10 @@ internal static class MemoryCases
             _ => throw new ArgumentException($"no build is called '{kind}'", nameof(kind)),
         };
     }
+
+    /// <summary>Allocates an array, holds it through its own reading, and lets it go on return.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void HoldThenLetGo() => GC.KeepAlive(GridArrays.New<double>(1_000_000));
 
     private static ScalarField3D Solve(Geometry3D geometry, DirectCase direct, Action<SolveReport> report)
     {
@@ -341,7 +411,7 @@ public sealed class MeasuredBuilds
         ("ball-one-level", 0.016), ("ball-one-level", 0.032),
         ("thin", 4.096), ("thin", 8.192),
         ("rods", 0.0001), ("rods", 0.00005), ("driven-rods", 0.0001),
-        ("fields", LiveSet.InitialCapacity), ("fields", 1),
+        ("fields", LiveSet.InitialCapacity), ("fields", 1), ("grow-drop", 1),
     ];
 
     // Small, because first-tier code is slow.
@@ -439,19 +509,12 @@ internal static class MeasuringChild
             start.ArgumentList.Add(argument);
         }
 
-        // Every tiering variable, under both prefixes the runtime reads, whatever the parent
-        // was started with: a shell that exports one would otherwise choose the child's tier.
-        foreach (var (name, value) in tier.Environment())
-        {
-            if (value is null)
-            {
-                start.Environment.Remove(name);
-            }
-            else
-            {
-                start.Environment[name] = value;
-            }
-        }
+        // A controlled environment, not the parent's: whatever the parent was started with -
+        // a tracing host, a server or tuned collector, a tiering variable - would otherwise
+        // either write to the child's error stream and fail every case, or quietly change what a
+        // reading means. What a process needs to start, and then the tier and the collector
+        // pinned.
+        Controlled(start.Environment, tier);
 
         using var child = Process.Start(start);
 
@@ -480,6 +543,42 @@ internal static class MeasuringChild
         return finished
             ? new ChildExit(child.ExitCode, lines, errors, null)
             : new ChildExit(-1, lines, errors, $"the measuring child did not finish in {limit.TotalMinutes:0.#} minutes and was stopped.");
+    }
+
+    /// <summary>The variables a child keeps from the parent: what starting a process needs, nothing that tunes it.</summary>
+    internal static readonly string[] Kept =
+    [
+        "PATH", "SystemRoot", "SYSTEMROOT", "windir", "WINDIR", "ComSpec", "TEMP", "TMP", "TMPDIR",
+        "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "ProgramData", "ProgramFiles", "ProgramFiles(x86)",
+        "DOTNET_ROOT", "DOTNET_ROOT_X64", "DOTNET_ROOT(x86)",
+    ];
+
+    /// <summary>Replaces an environment with the controlled one a measuring child runs in.</summary>
+    internal static void Controlled(IDictionary<string, string?> environment, JitTier tier)
+    {
+        var kept = Kept
+            .Where(environment.ContainsKey)
+            .ToDictionary(name => name, name => environment[name], StringComparer.Ordinal);
+
+        environment.Clear();
+
+        foreach (var (name, value) in kept)
+        {
+            environment[name] = value;
+        }
+
+        foreach (var (name, value) in tier.Environment())
+        {
+            if (value is not null)
+            {
+                environment[name] = value;
+            }
+        }
+
+        // Workstation and not concurrent: see MemoryCases.ExpectedGc. The child reports what it ran
+        // with, and is refused if that is anything else.
+        environment["DOTNET_gcServer"] = "0";
+        environment["DOTNET_gcConcurrent"] = "0";
     }
 
     /// <summary>

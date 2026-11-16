@@ -19,6 +19,16 @@ namespace Einzel.Fields.Tests;
 /// A Debug build's code keeps its locals in every tier, so there the optimized child cannot be
 /// optimized and says so instead of refusing; the first-tier child's premise holds either way.
 /// </para>
+/// <para>
+/// <b>What "first-tier" covers is JIT-compiled code: the Einzel assemblies and this one.</b> The
+/// framework ships precompiled (ReadyToRun), and its precompiled methods run optimized whatever
+/// the tiering variables say - <c>DOTNET_ReadyToRun=0</c> would make them JIT too, at the price
+/// of compiling the whole framework the child touches at first tier, for no purpose: a hold
+/// these tests look for is a local in the solver's own frames, and the solver is never
+/// precompiled. That is checked rather than assumed - a first-tier child refuses if
+/// <c>Einzel.Fields</c> or this assembly carries a ReadyToRun header - and the behavioural probe
+/// is a method in this assembly, compiled by the same JIT, in the same tier, as the solver.
+/// </para>
 /// </remarks>
 internal sealed class JitTier
 {
@@ -32,7 +42,7 @@ internal sealed class JitTier
     /// <summary>Everything compiled fully optimized at its first call.</summary>
     internal static JitTier Optimized { get; } = new(true);
 
-    /// <summary>Everything compiled quickly and never promoted.</summary>
+    /// <summary>Every JIT-compiled method compiled quickly and never promoted; see the remarks for what that covers.</summary>
     internal static JitTier First { get; } = new(false);
 
     /// <summary>The name a child is told its tier by.</summary>
@@ -90,11 +100,28 @@ internal sealed class JitTier
                 + "(DOTNET_TieredCompilation=0, or a tiering variable set outside), so a first-tier hold cannot show";
         }
 
+        // Precompiled code runs optimized in every tier, so the solver must be JIT-compiled for its
+        // tier to be the one asked for.
+        if (new[] { typeof(PoissonSolver3D), typeof(JitTier) }.FirstOrDefault(IsPrecompiled) is { } precompiled)
+        {
+            return $"{precompiled.Assembly.GetName().Name} is precompiled (ReadyToRun), so its code runs optimized in every "
+                + "tier and a first-tier hold in it cannot show";
+        }
+
         // First-tier now is not first-tier after a warm-up build unless nothing is ever promoted,
         // and that the code cannot show: it is the one thing taken from the environment.
         return System.Environment.GetEnvironmentVariable("DOTNET_TC_CallCounting") == "0"
             ? null
             : "this process was to stay first-tier and DOTNET_TC_CallCounting is not 0, so methods are promoted as they are called";
+    }
+
+    /// <summary>Whether a type's assembly carries ReadyToRun code.</summary>
+    private static bool IsPrecompiled(Type type)
+    {
+        using var stream = File.OpenRead(type.Assembly.Location);
+        using var reader = new System.Reflection.PortableExecutable.PEReader(stream);
+
+        return reader.PEHeaders.CorHeader?.ManagedNativeHeaderDirectory.Size > 0;
     }
 
     private static bool IsOptimizedBuild(Type type) =>
