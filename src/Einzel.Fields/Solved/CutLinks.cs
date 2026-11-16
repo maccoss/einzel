@@ -53,10 +53,8 @@ public sealed class CutLinks
         ArgumentNullException.ThrowIfNull(grid);
 
         Grid = grid;
-        _fraction = new double[grid.NodeCount * Directions];
-        _potential = new double[grid.NodeCount * Directions];
-
-        AllocationProbe.Allocated(_fraction, _potential);
+        _fraction = GridArrays.New<double>(grid.NodeCount * Directions);
+        _potential = GridArrays.New<double>(grid.NodeCount * Directions);
 
         Array.Fill(_fraction, 1.0);
     }

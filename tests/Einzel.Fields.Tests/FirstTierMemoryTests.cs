@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.Globalization;
-
 using Einzel.Fields.Solved;
 
 using Xunit.Abstractions;
@@ -33,101 +30,48 @@ namespace Einzel.Fields.Tests;
 /// </para>
 /// <para>
 /// <b>Small builds, because first-tier code is slow</b>: a sixty-six-thousand-node plane and a
-/// thirty-six-thousand-node sphere, each read once from inside the build
-/// (<see cref="LiveSet"/>), take a few seconds in all. The upper edge is the one that matters, as in <see cref="SolveMemoryTests"/>; it is 1.03
+/// thirty-six-thousand-node sphere, each built once unmeasured and then read from inside the
+/// build (<see cref="LiveSet"/>), take a few seconds in all. A warm-up cannot promote anything
+/// here, and the child checks that it has not: it tests its tier before the first build and
+/// after the last (<see cref="JitTier"/>). The upper edge is the one that matters, as in <see cref="SolveMemoryTests"/>; it is 1.03
 /// rather than 1.02 because a single build at these sizes carries the build's fixed allocations
 /// per node where a slope would cancel them, and the hold it exists to catch is 1.06.
 /// </para>
 /// </remarks>
 [Collection(nameof(MemoryMeasurement))]
-public sealed class FirstTierMemoryTests(ITestOutputHelper output)
+public sealed class FirstTierMemoryTests(MeasuredBuilds builds, ITestOutputHelper output)
 {
-    /// <summary>The argument that makes the test assembly's entry point measure rather than exit.</summary>
-    internal const string Command = "first-tier-solve-memory";
-
     [Fact]
     public void AFirstTierSolveHoldsWhatItsStatementSays()
     {
-        var lines = MeasuringChild.Run(output, [Command], JitTier.First);
-
-        // Each line ends "... held <ratio> bound <ratio>": what the build held, and the most it
-        // can have held, each over its statement.
-        var ratios = lines
-            .Select(line => line.Split(' '))
-            .ToDictionary(
-                parts => parts[0],
-                parts => (
-                    Held: double.Parse(parts[^3], CultureInfo.InvariantCulture),
-                    Bound: double.Parse(parts[^1], CultureInfo.InvariantCulture)));
-
-        Assert.Equal(["plane", "volume"], ratios.Keys.Order());
-
-        foreach (var (name, ratio) in ratios)
-        {
-            Assert.True(
-                ratio.Held >= 0.85,
-                $"the {name} build held {ratio.Held:F3} of its statement as first-tier code: the statement bills what is not held");
-            Assert.True(
-                ratio.Bound <= 1.03,
-                $"the {name} build held up to {ratio.Bound:F3} of its statement as first-tier code: an array the cycle "
-                + "allocates is held across the recursion by a frame that outlives its last use");
-        }
-    }
-
-    /// <summary>The child's work: one plane and one volume build, each against its statement.</summary>
-    /// <returns>The process exit code.</returns>
-    internal static int Measure()
-    {
-        // Not a test of the tier unless the tier is pinned, and pinned is what the code does,
-        // not what a variable says: refuse rather than pass vacuously.
-        if (Environment.GetEnvironmentVariable("DOTNET_TC_CallCounting") != "0")
-        {
-            Console.Error.WriteLine("DOTNET_TC_CallCounting must be 0, so that nothing is promoted");
-            return 2;
-        }
-
-        if (JitTier.Refusal(JitTier.First) is { } refusal)
-        {
-            Console.Error.WriteLine(refusal);
-            return 2;
-        }
-
         var plane = SolveMemoryTests.Rods(0.0001);
         var planePlan = GeometryBuilder.Memory(plane);
-        var planePeak = LiveSet.Peak(() => GeometryBuilder.Build(plane).Field);
 
-        Report("plane", planePlan.Nodes, planePeak, planePlan.PeakBytes);
+        Check("plane", builds.FirstTier(output, "rods", 0.0001).Peak, planePlan.Nodes, planePlan.PeakBytes);
 
         var sphere = SolveMemoryTests.Sphere(0.000625);
         var spherePlan = GeometryBuilder3D.Memory(sphere);
-        var sphereStated = SolveMemoryTests.WithRealCutArms(sphere, spherePlan);
-        var spherePeak = LiveSet.Peak(() => GeometryBuilder3D.BuildField(sphere).Field);
 
-        Report("volume", spherePlan.Nodes, spherePeak, sphereStated);
-
-        return 0;
-
-        static void Report(string name, long nodes, LivePeak peak, double stated) =>
-            Console.WriteLine(string.Create(
-                CultureInfo.InvariantCulture,
-                $"{name} {nodes} nodes: {peak.Least / nodes:F2} B/node held and {peak.Bound / nodes:F2} at most in {peak.Readings} readings, "
-                + $"{peak.Foreign} B from other threads, {peak.Retaken} retaken, stated {stated / nodes:F2}, "
-                + $"held {peak.Least / stated:F4} bound {peak.Bound / stated:F4}"));
+        Check(
+            "volume",
+            builds.FirstTier(output, "sphere", 0.000625).Peak,
+            spherePlan.Nodes,
+            SolveMemoryTests.WithRealCutArms(sphere, spherePlan));
     }
 
-}
-
-/// <summary>
-/// The test assembly's entry point, which does nothing unless asked to be the first-tier child
-/// of <see cref="FirstTierMemoryTests"/>. The test host loads this assembly as a library and
-/// never calls it.
-/// </summary>
-internal static class Program
-{
-    private static int Main(string[] args) => args switch
+    private void Check(string name, LivePeak peak, long nodes, double stated)
     {
-        [FirstTierMemoryTests.Command] => FirstTierMemoryTests.Measure(),
-        [MemoryCases.Command, .. var cases] => MemoryCases.Child(cases),
-        _ => 0,
-    };
+        output.WriteLine(
+            $"{name} {nodes:N0} nodes: {peak.Least / nodes:F2} B/node held and {peak.Bound / nodes:F2} at most in "
+            + $"{peak.Readings} readings, {peak.Foreign:N0} B from other threads, {peak.Retaken} retaken, stated "
+            + $"{stated / nodes:F2}: held {peak.Least / stated:F4}, bound {peak.Bound / stated:F4}");
+
+        Assert.True(
+            peak.Bound <= 1.03 * stated,
+            $"the {name} build held up to {peak.Bound / stated:F3} of its statement as first-tier code: an array the "
+            + "cycle allocates is held across the recursion by a frame that outlives its last use");
+        Assert.True(
+            peak.Least >= 0.85 * stated,
+            $"the {name} build held {peak.Least / stated:F3} of its statement as first-tier code: the statement bills what is not held");
+    }
 }

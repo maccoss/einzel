@@ -43,32 +43,28 @@ internal sealed record LivePeak(
 /// <remarks>
 /// <para>
 /// <b>A build's live set can only rise at an allocation, so its peak is held just after one.</b>
-/// <see cref="AllocationProbe"/> is told at every per-node allocation a solve makes; here each
-/// report forces a full blocking collection and reads what survived it, from the collector's
+/// Every per-node array a solve allocates comes from <see cref="GridArrays"/>, which tells
+/// whoever is watching; here each one forces a full blocking collection and reads what survived it, from the collector's
 /// own record of that collection. The largest reading is the peak, read at the instant it is
 /// held - not sampled, so there is no window to miss, no second thread whose priority or
 /// scheduling matters, and nothing that depends on how long the solve runs or how many cycles
 /// it takes.
 /// </para>
 /// <para>
-/// <b>What it cannot see it bounds.</b> An allocation with no report - a list, a small array,
-/// or a per-node array somebody adds without one - is not read at. The thread's own allocation
-/// counter says how many bytes were allocated between two readings, and the report says how
-/// many of those it accounts for, so the live set between them was at most the earlier reading
-/// plus the difference. <see cref="LivePeak.Bound"/> is the largest such figure, and an upper
-/// edge is asserted on it: an unreported per-node array fails as slack rather than passing
-/// unseen. That counts garbage as held, which is the price of not being able to tell them
-/// apart - and it is how the enumerators and handle stubs a mask used to allocate for every
-/// node were found.
+/// <b>What it cannot see it bounds.</b> An allocation that does not go through
+/// <see cref="GridArrays"/> - a list, a small array, or a per-node array somebody allocates
+/// directly - is not read at. The thread's own allocation counter says how many bytes were
+/// allocated between two readings, and the array just handed over accounts for some of them,
+/// so the live set between them was at most the earlier reading plus the rest.
+/// <see cref="LivePeak.Bound"/> is the largest such figure, and an upper edge is asserted on
+/// it: a per-node array allocated directly fails as slack rather than passing unseen - and
+/// fails <c>GridArraySourceTests</c> before that, which reads the source for one. That counts
+/// garbage as held, which is the price of not being able to tell them apart, and it is how
+/// the enumerators and handle stubs a mask used to allocate for every node were found.
 /// </para>
 /// <para>
-/// <b>A report cannot be used to hide an allocation.</b> A site hands over the arrays, not a
-/// size, and what they hold is worked out here; an array reported again within
-/// <see cref="Remembered"/> reports is refused by name, and so are arrays holding more than the
-/// thread allocated since the last report, which means one of them is older than that. What is
-/// left is one case, stated rather than excluded: an array allocated some time before it is
-/// reported - never reported, or reported more than <see cref="Remembered"/> reports ago - in
-/// the same stretch as an unreported allocation at least as large.
+/// The array handed over is one <see cref="GridArrays"/> has just allocated, so there is no
+/// size a site could state wrongly and no report it could make twice.
 /// </para>
 /// <para>
 /// <b>Other threads cannot fail a measurement, and cannot make one look better than it is.</b>
@@ -80,9 +76,10 @@ internal sealed record LivePeak(
 /// <item>
 /// A reading follows a full collection, so the only bytes of another thread's in it are ones
 /// still reachable, and there cannot be more of those than that thread has allocated <i>by
-/// then</i>. Each reading is reduced by exactly that, and <see cref="LivePeak.Least"/> is the
-/// largest result: a lower bound that is true whatever the other threads were doing, and
-/// that widens by what was measured rather than failing.
+/// then</i>. The count is taken after the collection, so it covers everything that could be in
+/// the reading and perhaps a little that came after it; each reading is reduced by it, and
+/// <see cref="LivePeak.Least"/> is the largest result: a lower bound that is true whatever the
+/// other threads were doing, and that widens by what was measured rather than failing.
 /// </item>
 /// <item>
 /// <see cref="LivePeak.Bound"/> is of the process, so it is an upper bound on the build as it
@@ -93,9 +90,11 @@ internal sealed record LivePeak(
 /// </item>
 /// </list>
 /// <para>
-/// What is neither read nor bounded is memory the <i>build</i> allocates on another thread: the
-/// probe is per thread. It is counted with the rest, and <see cref="MemoryCases"/> fails a
-/// build by name when that count is a large part of what it held.
+/// Memory the <i>build</i> allocates on another thread would be neither read at nor bounded.
+/// <see cref="GridArrays"/> refuses to allocate on any thread but the one measuring, by name,
+/// for as long as a measurement runs; an array allocated on a worker some other way is counted
+/// with the rest, and <see cref="MemoryCases"/> fails a build when that count is a large part
+/// of what it held.
 /// </para>
 /// <para>
 /// In a process that does nothing but measure, other threads allocate 336 bytes a forced
@@ -111,19 +110,12 @@ internal static class LiveSet
     /// </summary>
     internal const long ForeignLimit = 16 * 1024;
 
-    /// <summary>How many reported arrays back a second report of one is recognized.</summary>
-    internal const int Remembered = 64;
-
     /// <summary>How many times a disturbed measurement is taken before the best is kept.</summary>
     internal const int Attempts = 4;
 
     /// <summary>Measures one build.</summary>
     /// <param name="build">The build; what it returns is held until the measurement ends.</param>
     /// <returns>What it held.</returns>
-    /// <exception cref="InvalidOperationException">
-    /// An array was reported twice, or arrays were reported that hold more than the thread had
-    /// allocated since the last report.
-    /// </exception>
     internal static LivePeak Peak(Func<object> build)
     {
         LivePeak? best = null;
@@ -148,21 +140,10 @@ internal static class LiveSet
 
     private static LivePeak Once(Func<object> build)
     {
-        if (AllocationProbe.Observer is not null)
-        {
-            throw new InvalidOperationException("a measurement is already running on this thread");
-        }
-
-        // The arrays most recently reported, held weakly so that remembering them keeps none
-        // alive, and made before the baseline so that remembering them is not in a reading.
-        var recent = new WeakReference<Array>[Remembered];
-
-        for (var slot = 0; slot < recent.Length; slot++)
-        {
-            recent[slot] = new WeakReference<Array>(null!);
-        }
-
-        var next = 0;
+        // Counted from before the baseline is read, not after: a block another thread allocates
+        // between the two is in every reading and would otherwise be in no count.
+        var processAtPrevious = GC.GetTotalAllocatedBytes(precise: true);
+        var threadAtOthers = GC.GetAllocatedBytesForCurrentThread();
 
         var baseline = Settled();
 
@@ -175,12 +156,10 @@ internal static class LiveSet
         var burst = 0L;
         var readings = 0;
 
-        var processAtPrevious = GC.GetTotalAllocatedBytes(precise: true);
         var threadAtPrevious = GC.GetAllocatedBytesForCurrentThread();
-        var threadAtOthers = threadAtPrevious;
 
-        // What other threads allocated since the last reading: the process's count less this
-        // thread's own.
+        // What other threads allocated since this was last asked: the process's count less
+        // this thread's own.
         void Others()
         {
             var process = GC.GetTotalAllocatedBytes(precise: true);
@@ -193,36 +172,25 @@ internal static class LiveSet
             threadAtOthers = thread;
         }
 
-        void Read(ReadOnlySpan<Array> arrays)
+        void Read(Array array)
         {
-            var allocated = GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious;
-
-            // What the arrays hold, worked out here: a site hands over the arrays and cannot
-            // state a size. Each may be reported once.
-            var reported = Reported(arrays, recent, ref next);
-
-            // An array is allocated with a header, so arrays allocated since the last report
-            // always hold less than the thread allocated. More means one of them was not
-            // allocated since then, and taken off it would cancel that many unreported bytes.
-            if (reported > allocated)
-            {
-                throw new InvalidOperationException(
-                    $"arrays of {reported:N0} bytes were reported to {nameof(AllocationProbe)} when the thread had "
-                    + $"allocated {allocated:N0} since the last report: an array is reported that was allocated earlier");
-            }
-
-            // Everything the thread allocated since the last reading, less what this report
-            // accounts for, was live on top of the last reading at most.
-            var silent = allocated - reported;
+            // Everything the thread allocated since the last reading, less the array just
+            // handed over, was live on top of the last reading at most. An array carries a
+            // header, so this is never negative.
+            var silent = GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious - Buffer.ByteLength(array);
 
             unreported = Math.Max(unreported, silent);
             bound = Math.Max(bound, previous + silent);
 
-            Others();
-
             GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
 
             previous = Survived();
+
+            // After the collection, not before it: whatever of another thread's is in the
+            // reading was allocated by now, and counted before, bytes arriving between the
+            // count and the collection would be in the reading and not taken off it.
+            Others();
+
             peak = Math.Max(peak, previous);
             least = Math.Max(least, previous - foreign);
             readings++;
@@ -233,7 +201,7 @@ internal static class LiveSet
 
         object? built = null;
 
-        AllocationProbe.Observer = Read;
+        GridArrays.StartWatching(Read);
 
         try
         {
@@ -241,7 +209,7 @@ internal static class LiveSet
         }
         finally
         {
-            AllocationProbe.Observer = null;
+            GridArrays.StopWatching();
         }
 
         // The stretch after the last report, which has no reading of its own.
@@ -256,47 +224,6 @@ internal static class LiveSet
 
         return new LivePeak(
             least - baseline, peak - baseline, Math.Max(bound, peak) - baseline, readings, unreported, foreign, burst, 0);
-    }
-
-    /// <summary>
-    /// What the reported arrays hold, in bytes, refusing one reported before.
-    /// </summary>
-    /// <remarks>
-    /// <b>In a frame of its own, and not inlined.</b> Looking through the arrays reported before
-    /// puts one of them in a local, and unoptimized code - a Debug build, or the first-tier
-    /// child - keeps a local to the end of its method. Done in the frame that then collects,
-    /// that kept an array the build had already let go alive through the collection, and the
-    /// measurement read 8 bytes a node of its own making: the hold these tests exist to find
-    /// in the solver, made by the test.
-    /// </remarks>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static long Reported(ReadOnlySpan<Array> arrays, WeakReference<Array>[] recent, ref int next)
-    {
-        var reported = 0L;
-
-        foreach (var array in arrays)
-        {
-            var again = false;
-
-            foreach (var earlier in recent)
-            {
-                again |= earlier.TryGetTarget(out var target) && ReferenceEquals(target, array);
-            }
-
-            recent[next].SetTarget(array);
-            next = (next + 1) % recent.Length;
-
-            if (again)
-            {
-                throw new InvalidOperationException(
-                    $"an array of {Buffer.ByteLength(array):N0} bytes was reported to {nameof(AllocationProbe)} twice: "
-                    + "the second report would be taken off what the thread allocated and hide that much unreported");
-            }
-
-            reported += Buffer.ByteLength(array);
-        }
-
-        return reported;
     }
 
     /// <summary>The live set with nothing pending: collected, finalized, collected.</summary>

@@ -1426,14 +1426,15 @@ runner did - reads about 126.6, which is why the plane test's lower edge is 0.85
 volume tests' is 0.90.
 
 **The solve tests no longer sample.** A build's live set can only rise at an allocation, so the
-solver hands each per-node array it allocates to an internal probe (`AllocationProbe`, one
-thread-static read a call when nobody is observing) and `SolveMemoryTests` reads the live set
+solver allocates each per-node array through one internal helper (`GridArrays`, a static read
+and a branch an array when nobody is watching) and `SolveMemoryTests` reads the live set
 there, on the build's own thread, after a forced full collection, in a child process that does
 nothing else and is pinned fully optimized. The largest reading is the peak, with nothing to
 miss: 43.88 against 43.87 on the thin grid, 135.41 against 135.25 on four rods at 263 k nodes,
 147.2 against 147.2 on the slabs' Galerkin build at 275 k - in Debug as in Release. What the thread allocated between two readings without reporting it bounds how
 much higher the peak can have been, and the upper edge is asserted on that bound, so a per-node
-array added without a report fails as slack. The figures in the table's third column that came
+array allocated any other way fails as slack - and fails `GridArraySourceTests`, which reads the
+solver's source for one, first. The figures in the table's third column that came
 from sampling are unchanged by it. The diffusive and study measurements
 (`SelfFieldMemoryTests`, `StudyMemoryEstimateTests`, `tools/memory-harness`) still sample.
 

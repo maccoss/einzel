@@ -3366,9 +3366,9 @@ Two findings from Stage 1 that bear on the spec:
   millisecond-wide window - and it is removed rather than hedged.
 
   **A build's live set can only rise at an allocation, so its peak is held just after one.** The
-  solver hands each per-node array it allocates to `AllocationProbe` (internal; one
-  thread-static read and a branch a call when nobody observes, twelve call sites in eight
-  types), and
+  solver allocates each per-node array through one internal helper (`GridArrays`: a static read
+  and a branch an array when nobody watches; it began as a probe each site reported to, see
+  the third review below), and
   `LiveSet` forces a full collection at each report on the build's own thread and reads what
   survived. No window, no second thread, no dependence on load or on how many cycles ran - and
   no reliance on the statement to say where the peak is, which a probe placed at the stated
@@ -3376,16 +3376,16 @@ Two findings from Stage 1 that bear on the spec:
 
   | | stated, real cut arms | held, to at most |
   | --- | --- | --- |
-  | Galerkin slabs, 36 k to 275 k nodes, slope | 146.97 | 146.95 to 146.97 |
-  | rediscretized sphere, 36 k to 275 k, slope | 44.98 | 44.96 to 44.99 |
-  | no coarse level, 4.9 k to 36 k, slope | 42.50 | 42.44 to 42.50 |
-  | one coarse level, 36 k to 275 k, slope | 44.71 | 44.70 to 44.71 |
-  | thin grid, 332 k to 664 k, slope | 43.87 | 43.86 to 43.87 |
-  | plane, four rods at 263 k | 135.25 | 135.39 to 135.41 |
-  | a second volume channel | 8.0 | 7.72 to 8.01 |
-  | a second plane channel | 8.0 | 7.32 to 8.03 |
-  | first-tier plane, 66 k | 135.25 | 135.57 to 135.57 |
-  | first-tier sphere, 36 k | 45.19 | 45.10 to 45.25 |
+  | Galerkin slabs, 36 k to 275 k nodes, slope | 146.97 | 146.94 to 146.97 |
+  | rediscretized sphere, 36 k to 275 k, slope | 44.98 | 44.95 to 45.01 |
+  | no coarse level, 4.9 k to 36 k, slope | 42.50 | 42.41 to 42.56 |
+  | one coarse level, 36 k to 275 k, slope | 44.71 | 44.69 to 44.72 |
+  | thin grid, 332 k to 664 k, slope | 43.87 | 43.85 to 43.89 |
+  | plane, four rods, 66 k to 263 k, slope | 135.25 | 135.32 to 135.37 |
+  | a second volume channel | 8.0 | 7.71 to 8.03 |
+  | a second plane channel | 8.0 | 7.13 to 8.10 |
+  | first-tier plane, 66 k | 135.25 | 135.58 to 135.58 |
+  | first-tier sphere, 36 k | 45.19 | 45.11 to 45.26 |
 
   The same to the hundredth in a Debug build.
 
@@ -3447,7 +3447,7 @@ Two findings from Stage 1 that bear on the spec:
     what they hold, so there is no size to get wrong; an array reported again within 64
     reports, or arrays holding more than the thread allocated since the last report, are
     refused by name. Reporting an array twice in `ScalarField3D` fails every solve test with
-    "reported to AllocationProbe twice". What is left is stated: an array reported long after
+    "reported to AllocationProbe twice" (superseded: see the third review). What is left is stated: an array reported long after
     it was allocated, beside an equal unreported allocation.
   - *The harness held an array itself.* Remembering reported arrays put one in a local of the
     frame that then collects, and unoptimized code keeps a local to the end of its method, so
@@ -3472,3 +3472,48 @@ Two findings from Stage 1 that bear on the spec:
   Full suite, 1,978 tests, passes in Debug and in Release. `SPEC.md`'s GRD-8 row described the
   sampler and still carried 143.25 and 51.2 from before #72; it states the method and 135.25
   and 48.8 now.
+
+  **A third review found no fault in the solver and ten weaknesses in the instrument, and the
+  answer to most of them was one function.** Twelve hand-placed reports were a convention
+  nothing enforced: forget one and an array is invisible, make one on a worker thread and it
+  is silently unmeasured, and `Array.Resize` had been written out by hand in the cut store so
+  that a report could sit in the middle of it. **`GridArrays.New` and `GridArrays.Resize`
+  allocate and tell the watcher in one call**, and every field, mask, cut-link store and
+  operator gets its arrays there - 26 allocations in the solver's directory. So a report
+  cannot be forgotten, doubled or mis-sized, because there is no report; the 64-array memory
+  for catching a double one is gone with the need for it. Two things then hold the rule:
+  - `GridArraySourceTests` reads the directory's source and fails on a numeric array
+    allocated with `new` at a length that is not a literal, on `Array.Resize`, on the
+    collector's allocators, and on `.ToArray()` or `.Clone()`. Eight lines it catches are not
+    grid-sized and are listed with the reason; a listed line that no longer exists fails too.
+    A `new double[n]` added to the V-cycle fails it, and fails the memory tests at 1.18 to
+    1.31 as slack besides.
+  - A watch belongs to one thread and is known to the process, so **an array allocated
+    through `GridArrays` on any other thread while a build is measured is refused by name**.
+    Moving the fine residual's allocation onto a pool thread fails every solve test with "a
+    grid array of 287,496 bytes was allocated on thread 4 while thread 2 is measuring".
+    The quarter-of-peak count of other threads' bytes stays as the backstop for an array
+    allocated on a worker some other way, and its remarks now say what it cannot see.
+
+  **Two of the ten were holes in the lower bound, and the test written for the first found the
+  second.** Other threads' bytes were counted *before* the forced collection, so bytes
+  arriving between the count and the collection were in the reading and not taken off it;
+  they are counted after it now. `AnotherThreadsMemoryWidensTheIntervalDownwardOnly` holds
+  that with a thread allocating and keeping 32 kB blocks through a measurement of a known
+  size - and failed about one run in eight with the fix in, the least 37 kB **above** the
+  truth: the count started after the baseline was read, so a block allocated between the two
+  was in every reading and in no count. It starts before the baseline now; twenty-five runs of
+  twenty-five pass, and with the count moved back before the collection, and a millisecond put
+  between them to widen the window, five of five fail.
+
+  The rest: one child process for the whole class instead of one a test (the four rods were
+  being built in three of them), every case built once unmeasured at its own size before it
+  is measured, and the first-tier child given the same warm-up and the same check on other
+  threads - it tests its tier before the first build and after the last, since a warm-up is
+  what would promote code. The plane test asserts a slope like the volume tests, 135.32 to
+  135.37 against 135.25, with its lower edge **tightened from 0.85 to 0.98**; a second plane
+  channel must cost at least nothing, where -10 was allowed. The entry point has a file of
+  its own and an unknown command exits 64 with a usage line. Readings moved only in the
+  width of their intervals, since the smaller build of each pair is no longer the first thing
+  a process measures. The memory classes take 18 s in Release. Full suite, 1,997 tests, passes in both
+  configurations.

@@ -16,9 +16,7 @@ public sealed class ScalarField2D
     {
         ArgumentNullException.ThrowIfNull(grid);
         Grid = grid;
-        _values = new double[grid.NodeCount];
-
-        AllocationProbe.Allocated(_values);
+        _values = GridArrays.New<double>(grid.NodeCount);
     }
 
     /// <summary>The grid these values live on.</summary>
@@ -147,10 +145,8 @@ public sealed class DirichletMask
     {
         ArgumentNullException.ThrowIfNull(grid);
         Grid = grid;
-        _fixed = new bool[grid.NodeCount];
-        _value = new double[grid.NodeCount];
-
-        AllocationProbe.Allocated(_fixed, _value);
+        _fixed = GridArrays.New<bool>(grid.NodeCount);
+        _value = GridArrays.New<double>(grid.NodeCount);
     }
 
     /// <summary>The grid this mask covers.</summary>
@@ -355,7 +351,6 @@ public sealed class DirichletMask
     /// </remarks>
     public void ZeroCutPotentials()
     {
-
         if (Cuts is null)
         {
             return;

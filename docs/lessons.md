@@ -5769,9 +5769,9 @@ its tightest assertion, a tenth of a byte a node, was 100 kB wide beside a known
 races the thing it measures is fixed by not racing, not by choosing which way it may lose.**
 
 **What it is now.** A build's live set can only rise at an allocation, so its maximum is
-attained immediately after one. The solver reports each per-node allocation
-(`AllocationProbe`: internal, per thread, one thread-static read and a branch per array when
-nobody observes), and the test forces a full blocking collection at each report, on the
+attained immediately after one. The solver allocates each per-node array through one helper
+(`GridArrays`: internal, a static read and a branch an array when nobody watches), and the
+test forces a full blocking collection at each of them, on the
 build's own thread, and reads what survived. The largest reading is the peak: nothing to miss,
 no second thread, nothing that depends on the runner's load or on how many cycles ran. Three
 things had to be got right for that to be a measurement rather than a second kind of luck.
@@ -5833,6 +5833,25 @@ favor.** The same goes for the tier a child process runs in: it was checked by r
 environment variable, which a shell can set, and is checked now by dropping the last use of an
 object and seeing whether a collection takes it.
 
+**A convention a test depends on should be a function.** The first version put a report at
+each of twelve allocations, and its correctness rested on every future allocation getting
+one, in the right place, on the right thread, with `Array.Resize` taken apart by hand so that
+one could sit inside it. Three reviews in a row found a different way that could go wrong -
+a wrong size, a second report, a worker thread. `GridArrays.New` allocates and tells the
+watcher in one call, so none of them can be written; a test that reads the source refuses a
+per-node array allocated any other way; and an allocation on a thread other than the
+measuring one is refused by name, because what the watcher does there would be a measurement
+of nothing. **When a review keeps finding new ways to break a rule, the rule is in the wrong
+place**: move it from every call site into the one thing they all call.
+
+**A bound is only a bound if its count starts before what it bounds.** The lower end of the
+interval takes off everything other threads have allocated. That count was taken before the
+forced collection, so bytes arriving between the count and the collection were read and not
+taken off; and it was started after the baseline was read, so a block allocated between the
+two was in every reading and in no count. The second was found by the test written for the
+first, about one run in eight, the "least" coming out 37 kB above a truth known exactly. Both
+are orderings of two lines that read the same either way round.
+
 **Other threads are counted, not judged.** A reading follows a full collection, so nothing of
 another thread's is in it but what is still reachable, and that cannot exceed what the thread
 has allocated by then: each reading is reduced by exactly that, and the lower end of the
@@ -5853,8 +5872,8 @@ assumption in its design.
 The readings are the sampler's best ones, which is the check that the probe changes nothing
 about what is alive: 43.88 on the thin grid, 135.41 and 135.58 on four rods, 147.0 on the
 slabs, 135.56 and 45.25 with nothing promoted. An observed solve is the unobserved solve to
-the last bit of every node (`AllocationProbeTests`). The two memory classes took 60 s and take
-14 s in Release, since a build is measured once instead of three times with a sampler halving
+the last bit of every node (`GridArraysTests`). The two memory classes took 60 s and take
+18 s in Release, since a build is measured once instead of three times with a sampler halving
 its speed, and read the same figures in Debug.
 `SelfFieldMemoryTests` and `StudyMemoryEstimateTests` still sample, and so does
 `tools/memory-harness`.

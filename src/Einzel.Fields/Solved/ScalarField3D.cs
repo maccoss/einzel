@@ -24,9 +24,7 @@ public sealed class ScalarField3D
         grid.ThrowIfTooLargeToSolve();
 
         Grid = grid;
-        _values = new double[grid.NodeCount];
-
-        AllocationProbe.Allocated(_values);
+        _values = GridArrays.New<double>(grid.NodeCount);
     }
 
     /// <summary>The grid these values live on.</summary>

@@ -17,7 +17,7 @@
     <!-- The unculled volume-mask loops are the reference the culled ones are checked
          against on every shipped template (CMP-1), and the templates live in Library. -->
     <InternalsVisibleTo Include="Einzel.Library.Tests" />
-    <!-- AllocationProbe: the memory tests read the live set from inside a build, at each
+    <!-- GridArrays: the memory tests read the live set from inside a build, at each
          allocation, rather than from a second thread racing it. -->
     <InternalsVisibleTo Include="Einzel.Fields.Tests" />
   </ItemGroup>

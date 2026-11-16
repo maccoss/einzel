@@ -100,12 +100,10 @@ public sealed class CutLinks3D
 
         var blocks = (grid.NodeCount + Block - 1) / Block;
 
-        _arms = new byte[blocks * Block];
-        _before = new int[blocks];
-        _fraction = new double[InitialCapacity];
-        _potential = new double[InitialCapacity];
-
-        AllocationProbe.Allocated(_arms, _before, _fraction, _potential);
+        _arms = GridArrays.New<byte>(blocks * Block);
+        _before = GridArrays.New<int>(blocks);
+        _fraction = GridArrays.New<double>(InitialCapacity);
+        _potential = GridArrays.New<double>(InitialCapacity);
     }
 
     /// <summary>The grid these links cover.</summary>
@@ -232,7 +230,8 @@ public sealed class CutLinks3D
             return;
         }
 
-        Resize(CutCount);
+        GridArrays.Resize(ref _fraction, CutCount);
+        GridArrays.Resize(ref _potential, CutCount);
     }
 
     /// <summary>Which of a node's arms are cut.</summary>
@@ -298,29 +297,8 @@ public sealed class CutLinks3D
         var doubled = Math.Max(InitialCapacity, 2L * _fraction.Length);
         var grown = (int)Math.Min(Array.MaxLength, Math.Max(count, doubled));
 
-        Resize(grown);
-    }
-
-    /// <summary>Moves the packed arrays into ones of another length, one at a time.</summary>
-    /// <remarks>
-    /// What <see cref="Array.Resize{T}(ref T[], int)"/> does, written out so that
-    /// <see cref="AllocationProbe"/> is told while each old array is still held beside its
-    /// replacement: that instant is the most this store ever holds, and a report made after the
-    /// old array is dropped would not see it.
-    /// </remarks>
-    private void Resize(int length)
-    {
-        var kept = Math.Min(length, CutCount);
-
-        var fraction = new double[length];
-        AllocationProbe.Allocated(fraction);
-        Array.Copy(_fraction, fraction, kept);
-        _fraction = fraction;
-
-        var potential = new double[length];
-        AllocationProbe.Allocated(potential);
-        Array.Copy(_potential, potential, kept);
-        _potential = potential;
+        GridArrays.Resize(ref _fraction, grown);
+        GridArrays.Resize(ref _potential, grown);
     }
 }
 
@@ -346,10 +324,8 @@ public sealed class DirichletMask3D
         grid.ThrowIfTooLargeToSolve();
 
         Grid = grid;
-        _fixed = new bool[grid.NodeCount];
-        _value = new double[grid.NodeCount];
-
-        AllocationProbe.Allocated(_fixed, _value);
+        _fixed = GridArrays.New<bool>(grid.NodeCount);
+        _value = GridArrays.New<double>(grid.NodeCount);
     }
 
     /// <summary>The grid this mask covers.</summary>

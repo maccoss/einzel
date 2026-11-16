@@ -14,7 +14,7 @@ namespace Einzel.Fields.Tests;
 /// parallel one.
 /// </summary>
 [CollectionDefinition(nameof(MemoryMeasurement), DisableParallelization = true)]
-public sealed class MemoryMeasurement;
+public sealed class MemoryMeasurement : ICollectionFixture<MeasuredBuilds>;
 
 /// <summary>
 /// What a build says it will hold, against what a build actually holds.
@@ -30,8 +30,8 @@ public sealed class MemoryMeasurement;
 /// </para>
 /// <para>
 /// <b>Read from inside the build, at each allocation</b> (<see cref="LiveSet"/>): a build's
-/// live set can only rise at an allocation, so the solver reports each per-node one and the
-/// live set is read there, on the build's thread, after a forced full collection. The largest
+/// live set can only rise at an allocation, so the solver allocates each per-node array through
+/// <see cref="GridArrays"/> and the live set is read there, on the build's thread, after a forced full collection. The largest
 /// reading is the peak. This was a second thread sampling the heap, which has to land inside
 /// the peak - a millisecond on the smaller grids here - and on loaded CI runners did not; a
 /// missed peak read low, and a slope between two builds turned a low reading of the smaller
@@ -60,11 +60,11 @@ public sealed class MemoryMeasurement;
 /// the run failing twenty minutes in, which is the failure GRD-8's gate exists to prevent. If
 /// a solver change adds a per-node array, this is what fails, and the fix is a term in
 /// <see cref="SolveMemoryModel"/> beside the reason for the array - and a report to
-/// <see cref="AllocationProbe"/> where it is allocated.
+/// <see cref="GridArrays"/>, which is where it has to be allocated.
 /// </para>
 /// </remarks>
 [Collection(nameof(MemoryMeasurement))]
-public sealed class SolveMemoryTests(ITestOutputHelper output)
+public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper output)
 {
     /// <summary>The Galerkin hierarchy's peak, per node, against two thin slabs at two meshes.</summary>
     [Fact]
@@ -254,9 +254,8 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         Assert.Equal(1, planOne.Channels);
         Assert.Equal(2, planTwo.Channels);
 
-        var measured = MemoryCases.Measure(output, ("slabs", cell), ("driven-slabs", cell));
-        var peakOne = measured[0].Peak;
-        var peakTwo = measured[1].Peak;
+        var peakOne = builds.Optimized(output, "slabs", cell).Peak;
+        var peakTwo = builds.Optimized(output, "driven-slabs", cell).Peak;
 
         // The most the second channel can have cost, and the least.
         var extra = (peakTwo.Bound - peakOne.Least) / planOne.Nodes;
@@ -339,17 +338,16 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// <summary>The plane statement against a plane build.</summary>
     /// <remarks>
     /// <para>
-    /// <b>Per node of one build, not a slope between two</b>, as it has been since the plane's
-    /// peak - the instant the first coarse level holds two copies of its cut links, a fraction
-    /// of a millisecond - was something a sampling thread caught in one build and missed in the
-    /// other. At a quarter of a million nodes the fixed cost of a build is a tenth of a byte a
-    /// node, and the smaller build is kept, and printed, as the control on that: it reads the
-    /// same per node.
+    /// <b>A slope between two builds, as the volume tests are</b>, so that what a build holds
+    /// whatever its size cancels. It was one build per node, because the plane's peak - the
+    /// instant the first coarse level holds two copies of its cut links, a fraction of a
+    /// millisecond - was something a sampling thread caught in one build and missed in the
+    /// other, and a slope turned that into an error either way.
     /// </para>
     /// <para>
-    /// The lower edge is the 0.85 it was widened to for a sampler that saw only the fine level
-    /// on a loaded runner. Read at the allocation the build reads its statement, and the edge
-    /// is left where it was until the runners have shown the same.
+    /// The lower edge was 0.85, for a sampler that saw only the fine level on a loaded runner.
+    /// Read at the allocation the slope is 1.001 of the statement's, in Debug and Release, and
+    /// the edge is 0.98.
     /// </para>
     /// </remarks>
     [Fact]
@@ -358,24 +356,28 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         var planSmall = GeometryBuilder.Memory(Rods(0.0001));
         var planLarge = GeometryBuilder.Memory(Rods(0.00005));
 
-        var measured = MemoryCases.Measure(output, ("rods", 0.0001), ("rods", 0.00005));
-        var peakSmall = measured[0].Peak;
-        var peakLarge = measured[1].Peak;
+        var peakSmall = builds.Optimized(output, "rods", 0.0001).Peak;
+        var peakLarge = builds.Optimized(output, "rods", 0.00005).Peak;
 
-        var predicted = planLarge.PeakBytes / planLarge.Nodes;
+        var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
+
+        var slope = new SlopeReading(
+            (planLarge.PeakBytes - planSmall.PeakBytes) / nodes,
+            (peakLarge.Least - peakSmall.Bound) / nodes,
+            (peakLarge.Bound - peakSmall.Least) / nodes,
+            false,
+            0);
 
         output.WriteLine(
-            $"plane {planLarge.Nodes:N0} nodes: predicted {predicted:F2} B/node, {Describe(peakLarge, planLarge.Nodes)} "
-            + $"({planSmall.Nodes:N0} nodes: {Describe(peakSmall, planSmall.Nodes)})");
+            $"plane {planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes: predicted {slope.Predicted:F2} B/node, "
+            + $"measured {slope.Lower:F2} to {slope.Upper:F2}");
+        output.WriteLine(
+            $"  smaller: {Describe(peakSmall, planSmall.Nodes)} against {planSmall.PeakBytes / planSmall.Nodes:F2}; "
+            + $"larger: {Describe(peakLarge, planLarge.Nodes)} against {planLarge.PeakBytes / planLarge.Nodes:F2}");
 
         // 135.4 in every tier of the JIT since the V-cycle's descent has frames of its own; 143.4
         // while first-tier code kept the fine residual, which the upper edge fails.
-        Assert.True(
-            peakLarge.Least / planLarge.Nodes >= 0.85 * predicted,
-            $"the build held {peakLarge.Least / planLarge.Nodes:F2} B/node against a statement of {predicted:F2}");
-        Assert.True(
-            peakLarge.Bound / planLarge.Nodes <= 1.02 * predicted,
-            $"the build held up to {peakLarge.Bound / planLarge.Nodes:F2} B/node against a statement of {predicted:F2}");
+        slope.AssertWithin(0.98, 1.02);
     }
 
     /// <summary>A second plane channel costs one kept potential, not a second geometry.</summary>
@@ -400,9 +402,8 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         Assert.Equal(1, planOne.Channels);
         Assert.Equal(2, planTwo.Channels);
 
-        var measured = MemoryCases.Measure(output, ("rods", cell), ("driven-rods", cell));
-        var peakOne = measured[0].Peak;
-        var peakTwo = measured[1].Peak;
+        var peakOne = builds.Optimized(output, "rods", cell).Peak;
+        var peakTwo = builds.Optimized(output, "driven-rods", cell).Peak;
 
         var extra = (peakTwo.Bound - peakOne.Least) / planOne.Nodes;
         var least = (peakTwo.Least - peakOne.Bound) / planOne.Nodes;
@@ -412,10 +413,10 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             + $"the second costs {least:F2} to {extra:F2} "
             + $"(predicted {(planTwo.PeakBytes - planOne.PeakBytes) / planOne.Nodes:F1})");
 
-        // A kept mask is 73. The lower edge allowed for a sampler catching the plane's transient
-        // in one build and missing it in the other, which a reading at the allocation cannot do;
-        // the band is left as it was until runners have shown it can narrow.
-        Assert.True(least >= -10.0, $"a second channel cost {least:F2} B/node at least");
+        // A kept mask is 73. The lower edge was -10, for a sampler catching the plane's transient
+        // in one build and missing it in the other; read at the allocation a second channel
+        // costs 7.3 to 8.0, and less than nothing is not a cost.
+        Assert.True(least >= 0.0, $"a second channel cost {least:F2} B/node at least: less than nothing");
         Assert.True(extra <= 30.0, $"a second channel cost up to {extra:F2} B/node: more than its potential");
     }
 
@@ -461,9 +462,8 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         var armsSmall = WithRealCutArms(small, planSmall);
         var armsLarge = WithRealCutArms(large, planLarge);
 
-        var measured = MemoryCases.Measure(output, (kind, coarse), (kind, fine));
-        var peakSmall = measured[0].Peak;
-        var peakLarge = measured[1].Peak;
+        var peakSmall = builds.Optimized(output, kind, coarse).Peak;
+        var peakLarge = builds.Optimized(output, kind, fine).Peak;
 
         var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
         var billed = (planLarge.PeakBytes - planSmall.PeakBytes) / nodes;
@@ -546,7 +546,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         var planSmall = Plan(direct.Geometry(small));
         var planLarge = Plan(direct.Geometry(large));
 
-        var measured = MemoryCases.Measure(output, (kind, small), (kind, large));
+        MeasuredBuild[] measured = [builds.Optimized(output, kind, small), builds.Optimized(output, kind, large)];
         var peakSmall = measured[0].Peak;
         var peakLarge = measured[1].Peak;
 
