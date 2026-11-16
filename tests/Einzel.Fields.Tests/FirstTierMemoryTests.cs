@@ -61,17 +61,19 @@ public sealed class FirstTierMemoryTests(MeasuredBuilds builds, ITestOutputHelpe
 
     private void Check(string name, LivePeak peak, long nodes, double stated)
     {
-        output.WriteLine(
-            $"{name} {nodes:N0} nodes: {peak.Least / nodes:F2} B/node held and {peak.Bound / nodes:F2} at most in "
-            + $"{peak.Readings} readings, {peak.Foreign:N0} B from other threads, {peak.Retaken} retaken, stated "
-            + $"{stated / nodes:F2}: held {peak.Least / stated:F4}, bound {peak.Bound / stated:F4}");
+        output.WriteLine($"{name} {nodes:N0} nodes, stated {stated / nodes:F2}: {SolveMemoryTests.Describe(peak, nodes)}");
 
-        Assert.True(
-            peak.Bound <= 1.03 * stated,
-            $"the {name} build held up to {peak.Bound / stated:F3} of its statement as first-tier code: an array the "
-            + "cycle allocates is held across the recursion by a frame that outlives its last use");
-        Assert.True(
-            peak.Least >= 0.85 * stated,
-            $"the {name} build held {peak.Least / stated:F3} of its statement as first-tier code: the statement bills what is not held");
+        MemoryVerdict.Covered($"the first-tier {name} build", peak);
+
+        // 1.03 rather than 1.02: a single build at these sizes carries its fixed allocations per
+        // node, where a slope would cancel them. The hold this exists to catch reads 1.06.
+        MemoryVerdict.Within(
+            $"the first-tier {name} build",
+            peak.Least / nodes,
+            peak.Bound / nodes,
+            0.85 * stated / nodes,
+            1.03 * stated / nodes,
+            nodes,
+            peak.Foreign);
     }
 }

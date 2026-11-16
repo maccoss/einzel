@@ -38,11 +38,11 @@ public sealed class MemoryMeasurement : ICollectionFixture<MeasuredBuilds>;
 /// one into an excess.
 /// </para>
 /// <para>
-/// <b>Each measurement is an interval, and each edge is asked of the end that can only fail
-/// truly.</b> <see cref="LivePeak.Least"/> was held; <see cref="LivePeak.Bound"/> adds whatever
-/// the thread allocated between readings without reporting it, and the build cannot have held
-/// more. An upper edge is asserted on the bound and a lower edge on what was held, so a
-/// per-node allocation somebody adds without a report fails the upper edge as slack.
+/// <b>Each measurement is an interval</b> (<see cref="LiveSet"/>): the least the build can have
+/// held and the most. An edge is failed as a finding about the solver only when the interval is
+/// wholly past it and other threads could not account for the excess; otherwise it fails as a
+/// disturbed measurement, by name (<see cref="MemoryVerdict"/>). A per-node allocation outside
+/// <see cref="GridArrays"/> widens the upper end, and fails <c>GridArraySourceTests</c> first.
 /// </para>
 /// <para>
 /// <b>As a slope between two mesh sizes where a build has a cost that does not scale</b> - the
@@ -271,8 +271,10 @@ public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper ou
         // sits between. It was 30 while a kept mask was 105. Kept cut links alone are 2 now,
         // inside this measurement's noise: the defect that held them is defused by the store
         // shrinking rather than caught here.
-        Assert.True(least >= 0.0, $"a second channel cost {least:F2} B/node at least: less than nothing");
-        Assert.True(extra <= 14.0, $"a second channel cost up to {extra:F2} B/node: more than its potential");
+        MemoryVerdict.Covered("one channel", peakOne);
+        MemoryVerdict.Covered("two channels", peakTwo);
+        MemoryVerdict.Within(
+            "the second channel's cost", least, extra, 0.0, 14.0, planOne.Nodes, peakOne.Foreign + peakTwo.Foreign);
     }
 
     /// <summary>
@@ -361,12 +363,8 @@ public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper ou
 
         var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
 
-        var slope = new SlopeReading(
-            (planLarge.PeakBytes - planSmall.PeakBytes) / nodes,
-            (peakLarge.Least - peakSmall.Bound) / nodes,
-            (peakLarge.Bound - peakSmall.Least) / nodes,
-            false,
-            0);
+        var slope = SlopeReading.Of(
+            "the plane slope", (planLarge.PeakBytes - planSmall.PeakBytes) / nodes, peakSmall, peakLarge, nodes, false, 0);
 
         output.WriteLine(
             $"plane {planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes: predicted {slope.Predicted:F2} B/node, "
@@ -416,8 +414,10 @@ public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper ou
         // A kept mask is 73. The lower edge was -10, for a sampler catching the plane's transient
         // in one build and missing it in the other; read at the allocation a second channel
         // costs 7.3 to 8.0, and less than nothing is not a cost.
-        Assert.True(least >= 0.0, $"a second channel cost {least:F2} B/node at least: less than nothing");
-        Assert.True(extra <= 30.0, $"a second channel cost up to {extra:F2} B/node: more than its potential");
+        MemoryVerdict.Covered("one channel", peakOne);
+        MemoryVerdict.Covered("two channels", peakTwo);
+        MemoryVerdict.Within(
+            "the second plane channel's cost", least, extra, 0.0, 30.0, planOne.Nodes, peakOne.Foreign + peakTwo.Foreign);
     }
 
     /// <summary>
@@ -468,12 +468,8 @@ public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper ou
         var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
         var billed = (planLarge.PeakBytes - planSmall.PeakBytes) / nodes;
 
-        var reading = new SlopeReading(
-            (armsLarge - armsSmall) / nodes,
-            (peakLarge.Least - peakSmall.Bound) / nodes,
-            (peakLarge.Bound - peakSmall.Least) / nodes,
-            planLarge.Galerkin,
-            0);
+        var reading = SlopeReading.Of(
+            $"the {kind} slope", (armsLarge - armsSmall) / nodes, peakSmall, peakLarge, nodes, planLarge.Galerkin, 0);
 
         output.WriteLine(
             $"{planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes, {(planLarge.Galerkin ? "galerkin" : "rediscretized")}: "
@@ -489,34 +485,47 @@ public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper ou
     }
 
     /// <summary>One build's reading in bytes a node, with what bounds it.</summary>
-    private static string Describe(LivePeak peak, long nodes) =>
-        $"{peak.Least / nodes:F2} B/node held, {peak.Bound / nodes:F2} at most "
-        + $"({peak.Readings} readings, {peak.Unreported:N0} B unreported between two, "
-        + $"{peak.Foreign:N0} B from other threads and {peak.ForeignBurst:N0} at once, {peak.Retaken} retaken)";
+    internal static string Describe(LivePeak peak, long nodes) =>
+        $"{peak.Least / nodes:F2} to {peak.Bound / nodes:F2} B/node "
+        + $"({peak.Readings} readings; process read {peak.Held / nodes:F2}, grid arrays {peak.Tracked / nodes:F2}; "
+        + $"{peak.Silent:N0} B allocated outside GridArrays, at most {peak.Unreported:N0} between two readings; "
+        + $"{peak.Foreign:N0} B by other threads)";
 
     /// <summary>
     /// A slope between two builds, as the interval the two measurements leave it in, against
     /// the statement's.
     /// </summary>
+    /// <param name="What">What the slope is, for a message.</param>
     /// <param name="Predicted">The statement's slope, bytes a node.</param>
-    /// <param name="Lower">The least the slope can be: the larger held, less the smaller's bound.</param>
-    /// <param name="Upper">The most it can be: the larger's bound, less what the smaller held.</param>
+    /// <param name="Lower">The least the slope can be: the larger build's least, less the smaller's bound.</param>
+    /// <param name="Upper">The most it can be: the larger's bound, less the smaller's least.</param>
+    /// <param name="Nodes">The difference in nodes the slope is over.</param>
+    /// <param name="Foreign">Bytes other threads allocated during the two measurements.</param>
     /// <param name="Galerkin">Whether the builds took the Galerkin hierarchy.</param>
     /// <param name="Levels">How many coarse levels a forced rediscretized solve descended.</param>
-    private sealed record SlopeReading(double Predicted, double Lower, double Upper, bool Galerkin, int Levels)
+    private sealed record SlopeReading(
+        string What, double Predicted, double Lower, double Upper, double Nodes, long Foreign, bool Galerkin, int Levels)
     {
-        /// <summary>Asserts the slope lies within these fractions of the statement's.</summary>
-        public void AssertWithin(double least, double most)
+        public static SlopeReading Of(
+            string what, double predicted, LivePeak small, LivePeak large, double nodes, bool galerkin, int levels)
         {
-            // The upper edge first: an allocation with no report widens the interval both ways,
-            // and it is the upper edge's message that says so.
-            Assert.True(
-                Upper <= most * Predicted,
-                $"the slope is at most {Upper:F2} B/node, {Upper / Predicted:F4} of the statement's {Predicted:F2}: something held is not billed, or is allocated without a report");
-            Assert.True(
-                Lower >= least * Predicted,
-                $"the slope is at least {Lower:F2} B/node, {Lower / Predicted:F4} of the statement's {Predicted:F2}: the statement bills what is not held");
+            MemoryVerdict.Covered(what, small);
+            MemoryVerdict.Covered(what, large);
+
+            return new(
+                what,
+                predicted,
+                (large.Least - small.Bound) / nodes,
+                (large.Bound - small.Least) / nodes,
+                nodes,
+                small.Foreign + large.Foreign,
+                galerkin,
+                levels);
         }
+
+        /// <summary>Asserts the slope lies within these fractions of the statement's.</summary>
+        public void AssertWithin(double least, double most) =>
+            MemoryVerdict.Within(What, Lower, Upper, least * Predicted, most * Predicted, Nodes, Foreign);
     }
 
     /// <summary>
@@ -553,12 +562,8 @@ public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper ou
         var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
         var billed = (planLarge.Stated - planSmall.Stated) / nodes;
 
-        var reading = new SlopeReading(
-            (planLarge.Real - planSmall.Real) / nodes,
-            (peakLarge.Least - peakSmall.Bound) / nodes,
-            (peakLarge.Bound - peakSmall.Least) / nodes,
-            false,
-            planLarge.Levels);
+        var reading = SlopeReading.Of(
+            $"the {kind} slope", (planLarge.Real - planSmall.Real) / nodes, peakSmall, peakLarge, nodes, false, planLarge.Levels);
 
         output.WriteLine(
             $"{planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes, {planLarge.Levels} coarse level(s): "

@@ -3517,3 +3517,62 @@ Two findings from Stage 1 that bear on the spec:
   width of their intervals, since the smaller build of each pair is no longer the first thing
   a process measures. The memory classes take 18 s in Release. Full suite, 1,997 tests, passes in both
   configurations.
+
+  **A fourth review found the interval still widened by other threads, and the answer was to
+  read the build twice over rather than the process once.** Every byte another thread
+  allocated came off the lower end, and a loaded runner's few hundred kilobytes on the smaller
+  build of a slope would have pushed the thin grid's upper edge over 1.02 - the class of failure
+  this whole change exists to remove - so measurements were retaken four times and the least
+  disturbed kept. Now each end has a second reading that uses nothing but the build's own
+  thread: **every grid array is followed by a weak handle**, and after a full blocking collection
+  a handle is cleared exactly when its array is unreachable, so the arrays still alive are an
+  exact part of what the build held, whatever any other thread is doing; and the most it can
+  have held is those arrays plus everything its thread allocated outside `GridArrays`. Each
+  end is the better of the two readings. A thread allocating and keeping 32 kB blocks beside a
+  17.3 MB build moved the process's reading 430 kB and the interval not at all: **17,313,480 to
+  17,318,448 bytes against a truth of 17,313,480**. With the process-only interval restored
+  that test fails. Nothing is retaken any more, and an edge the interval straddles fails as
+  **"INCONCLUSIVE, the measurement was disturbed"**, with the numbers, when other threads
+  allocated enough to account for the excess - never as "not billed".
+
+  The rest, each verified first:
+  - **The count of other threads' bytes starts just before the baseline's last collection.**
+    Started before the first, as the last round left it, it charged the build with what
+    finalizers allocate while the baseline settles: a finalizer allocating 256 kB was charged
+    in full, and is not now. Started after the last, as before that, it missed a block
+    allocated between the collection and the count.
+  - **`GridArraySourceTests` parses `src/Einzel.Fields` with the compiler's own parser**
+    (Microsoft.CodeAnalysis.CSharp 5.9.0, MIT, test-only, the version the pinned SDK compiles
+    with) instead of matching single lines of `Solved/`. It reads every file in every
+    subdirectory, requires each to parse, and catches array creation of any element type with
+    a size not written as a literal, collection expressions with a spread, `ToArray`/`ToList`/
+    `Clone`/`Resize`/`Rent`/`AllocateArray` and the like by name, and collections constructed
+    with a capacity, including target-typed `new(n)`. It caught 94 sites the regex had not; 88
+    distinct expressions are listed with the reason, nearly all "one entry an electrode, a
+    stage, a drive or a basis channel". One is real and stays listed with its size: the volume
+    cull's candidate lists, one a block of 512 nodes, under 0.2 bytes a node and dropped before
+    the solve. Its remarks state what it does not catch - a list grown by `Add` with no capacity.
+  - **A grid array allocated on another thread during a watch is recorded, not refused.** The
+    previous round made a production constructor throw on any thread but the measuring one;
+    now the allocation proceeds, the watch records it, and the measurement fails by name with
+    the count and bytes. The memory measurements run only in the child process.
+  - **The child reports each case separately**, failures included, and a child that fails as a
+    whole - does not start, refuses its tier, runs a different runtime - says so once, as such.
+    A `Lazy` that cached an exception had made one bad case fail every test identically.
+  - **The child's host is the running runtime's own `dotnet`**, found from the runtime's
+    directory rather than from the path, and the child reports the runtime version it ran on,
+    which must equal the test process's.
+  - `GridArrays.New` sizes by `Unsafe.SizeOf<T>()`, which a struct element needs, and
+    `GridArrays.Resize` does what `Array.Resize` does on a null array and an unchanged length.
+
+  Readings, Release and Debug alike, stated against held to at most: Galerkin slope 146.97
+  against 146.95 to 146.97, rediscretized 44.98 against 44.98 to 45.00, no coarse level 42.50
+  against 42.47 to 42.53, one level 44.71 against 44.70 to 44.72, thin grid 43.87 against 43.87
+  to 43.88, plane slope 135.25 against 135.34 to 135.36, first-tier plane 135.25 against 135.58
+  and sphere 45.19 against 45.19 to 45.26. Mutations: the process-only interval, the count
+  started early, sizing by `Buffer.ByteLength`, a resize that always allocates, a scan blind to
+  spreads or to non-primitive element types, a throw on another thread, and every earlier one
+  (an extra held array, an unreported array, the residual back in its frame, the plane
+  enumerator, a skipped electrode, a direct `new double[n]`, an allocation on a pool thread, the
+  Debug-only span) each fail. Full suite, 2,024 tests, passes in Debug and in Release; the
+  memory, probe and source tests take about 40 s in Release and 3.5 minutes in Debug.

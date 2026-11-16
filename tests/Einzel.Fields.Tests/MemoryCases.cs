@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Text.Json;
 
 using Einzel.Fields.Solved;
 
@@ -12,6 +14,18 @@ namespace Einzel.Fields.Tests;
 /// <param name="Levels">Coarse levels the solve descended, where the build is a single forced solve; else -1.</param>
 /// <param name="Cycles">Cycles that solve ran; else -1.</param>
 internal sealed record MeasuredBuild(LivePeak Peak, int Levels, int Cycles);
+
+/// <summary>What the child printed for one case: a measurement, or why there is none.</summary>
+/// <param name="Key">The case, as <see cref="MemoryCases.Key"/> writes it.</param>
+/// <param name="Build">The measurement, or null if the case failed.</param>
+/// <param name="Failure">Why the case failed, or null.</param>
+internal sealed record CaseResult(string Key, MeasuredBuild? Build, string? Failure);
+
+/// <summary>Everything one child process reported.</summary>
+/// <param name="Failure">Why the child as a whole failed - it did not start, refused its tier, crashed - or null.</param>
+/// <param name="Cases">Each case's result, by key; complete only when the child did not fail.</param>
+/// <param name="Text">What the child wrote, both streams, for a failing test to show.</param>
+internal sealed record ChildRun(string? Failure, IReadOnlyDictionary<string, CaseResult> Cases, string Text);
 
 /// <summary>A rediscretized solve driven directly, with the hierarchy forced.</summary>
 /// <param name="Geometry">The geometry at a box length.</param>
@@ -71,47 +85,47 @@ internal static class MemoryCases
     /// <summary>Measures builds in one child process, in the order given.</summary>
     /// <param name="tier">The tier of JIT code the child runs as.</param>
     /// <param name="cases">Each build's kind and its size: a cell size, or a box length for a direct solve.</param>
-    /// <returns>Each case's measurement and the line the child printed for it, by <see cref="Key"/>.</returns>
-    internal static Dictionary<string, (MeasuredBuild Build, string Line)> Measure(
-        JitTier tier, IReadOnlyList<(string Kind, double Size)> cases)
+    /// <returns>What the child reported; this does not throw, so that one failure is reported where it belongs.</returns>
+    internal static ChildRun Measure(JitTier tier, IReadOnlyList<(string Kind, double Size)> cases)
     {
         string[] arguments = [.. cases.Select(c => Key(c.Kind, c.Size))];
 
-        var lines = MeasuringChild.Run([Command, tier.Name, .. arguments], tier);
+        var (failure, stdout, text) = MeasuringChild.Run([Command, tier.Name, .. arguments], tier);
+        var results = new Dictionary<string, CaseResult>();
+        var runtime = (string?)null;
 
-        Assert.Equal(cases.Count, lines.Length);
-
-        var measured = new Dictionary<string, (MeasuredBuild, string)>();
-
-        for (var at = 0; at < lines.Length; at++)
+        foreach (var line in stdout)
         {
-            var parts = lines[at].Split(' ');
-
-            Assert.Equal(arguments[at], parts[0]);
-
-            var peak = new LivePeak(
-                double.Parse(parts[1], CultureInfo.InvariantCulture),
-                double.Parse(parts[2], CultureInfo.InvariantCulture),
-                double.Parse(parts[3], CultureInfo.InvariantCulture),
-                int.Parse(parts[4], CultureInfo.InvariantCulture),
-                long.Parse(parts[5], CultureInfo.InvariantCulture),
-                long.Parse(parts[6], CultureInfo.InvariantCulture),
-                long.Parse(parts[7], CultureInfo.InvariantCulture),
-                int.Parse(parts[8], CultureInfo.InvariantCulture));
-
-            AssertTheBuildsOwn(arguments[at], peak);
-
-            measured.Add(
-                arguments[at],
-                (new MeasuredBuild(
-                    peak,
-                    int.Parse(parts[9], CultureInfo.InvariantCulture),
-                    int.Parse(parts[10], CultureInfo.InvariantCulture)),
-                lines[at]));
+            if (line.StartsWith(RuntimeLine, StringComparison.Ordinal))
+            {
+                runtime = line[RuntimeLine.Length..];
+            }
+            else if (line.StartsWith(CaseLine, StringComparison.Ordinal))
+            {
+                var result = JsonSerializer.Deserialize<CaseResult>(line[CaseLine.Length..])!;
+                results[result.Key] = result;
+            }
         }
 
-        return measured;
+        var expected = Environment.Version.ToString();
+
+        failure ??= runtime is null
+            ? "the measuring child did not say which runtime it ran on"
+            : runtime != expected
+                ? $"the measuring child ran on .NET {runtime} and this test process on {expected}: the two would not "
+                    + "be running the same code, so what one measured is not about the other"
+                : arguments.FirstOrDefault(a => !results.ContainsKey(a)) is { } missing
+                    ? $"the measuring child stopped before it reported {missing}"
+                    : null;
+
+        return new ChildRun(failure, results, text);
     }
+
+    /// <summary>The prefix of the line naming the runtime the child ran on.</summary>
+    internal const string RuntimeLine = "RUNTIME ";
+
+    /// <summary>The prefix of a line reporting one case.</summary>
+    internal const string CaseLine = "CASE ";
 
     /// <summary>
     /// Fails a measurement during which other threads allocated a large part of what the build
@@ -129,10 +143,9 @@ internal static class MemoryCases
     internal static void AssertTheBuildsOwn(string name, LivePeak peak) =>
         Assert.True(
             peak.Foreign <= 0.25 * peak.Held,
-            $"{name}: threads other than the build's allocated {peak.Foreign:N0} bytes during a build that held "
-            + $"{peak.Held:N0}. If the solver now allocates on worker threads outside {nameof(GridArrays)}, the live "
-            + "set is neither read at those allocations nor bounded. Otherwise the measuring process was not the "
-            + "build's alone.");
+            $"{name}: {MemoryVerdict.Disturbed} - threads other than the build's allocated {peak.Foreign:N0} bytes during a build "
+            + $"that held {peak.Held:N0}. Either the measuring process was not the build's alone, or the solver now "
+            + $"allocates on worker threads outside {nameof(GridArrays)}, where the live set is neither read nor bounded.");
 
     /// <summary>The child's work: each case built once unmeasured, then measured.</summary>
     /// <param name="tier">The tier this process is to be running as.</param>
@@ -140,6 +153,8 @@ internal static class MemoryCases
     /// <returns>The process exit code.</returns>
     internal static int Child(JitTier tier, ReadOnlySpan<string> cases)
     {
+        Console.WriteLine(RuntimeLine + Environment.Version);
+
         if (JitTier.Refusal(tier) is { } refusal)
         {
             Console.Error.WriteLine(refusal);
@@ -147,6 +162,24 @@ internal static class MemoryCases
         }
 
         foreach (var item in cases)
+        {
+            Console.WriteLine(CaseLine + JsonSerializer.Serialize(Case(item)));
+        }
+
+        // And still, after every build has run twice: a warm-up is what promotes code.
+        if (JitTier.Refusal(tier) is { } late)
+        {
+            Console.Error.WriteLine("after the builds: " + late);
+            return 2;
+        }
+
+        return 0;
+    }
+
+    /// <summary>One case, built once unmeasured and then measured, or the reason it could not be.</summary>
+    private static CaseResult Case(string item)
+    {
+        try
         {
             var split = item.IndexOf('=', StringComparison.Ordinal);
             var kind = item[..split];
@@ -159,21 +192,18 @@ internal static class MemoryCases
 
             var peak = LiveSet.Peak(build);
 
-            Console.WriteLine(string.Create(
-                CultureInfo.InvariantCulture,
-                $"{item} {peak.Least:R} {peak.Held:R} {peak.Bound:R} {peak.Readings} {peak.Unreported} {peak.Foreign} "
-                + $"{peak.ForeignBurst} {peak.Retaken} "
-                + $"{(Direct.ContainsKey(kind) ? solved!.Levels : -1)} {(Direct.ContainsKey(kind) ? solved!.Cycles : -1)}"));
+            return new CaseResult(
+                item,
+                new MeasuredBuild(
+                    peak,
+                    Direct.ContainsKey(kind) ? solved!.Levels : -1,
+                    Direct.ContainsKey(kind) ? solved!.Cycles : -1),
+                null);
         }
-
-        // And still, after every build has run twice: a warm-up is what promotes code.
-        if (JitTier.Refusal(tier) is { } late)
+        catch (Exception failed)
         {
-            Console.Error.WriteLine("after the builds: " + late);
-            return 2;
+            return new CaseResult(item, null, failed.ToString());
         }
-
-        return 0;
     }
 
     private static Func<object> Build(string kind, double size, Action<SolveReport> report)
@@ -251,43 +281,72 @@ public sealed class MeasuredBuilds
     // Small, because first-tier code is slow.
     private static readonly (string Kind, double Size)[] FirstTierCases = [("rods", 0.0001), ("sphere", 0.000625)];
 
-    private readonly Lazy<Dictionary<string, (MeasuredBuild Build, string Line)>> _optimized =
-        new(() => MemoryCases.Measure(JitTier.Optimized, OptimizedCases));
+    // Lazy over a value that cannot throw: a failure is a result, reported to the tests it
+    // concerns, not an exception cached and rethrown to every test that asks for anything.
+    private readonly Lazy<ChildRun> _optimized = new(() => MemoryCases.Measure(JitTier.Optimized, OptimizedCases));
 
-    private readonly Lazy<Dictionary<string, (MeasuredBuild Build, string Line)>> _first =
-        new(() => MemoryCases.Measure(JitTier.First, FirstTierCases));
+    private readonly Lazy<ChildRun> _first = new(() => MemoryCases.Measure(JitTier.First, FirstTierCases));
 
     /// <summary>A build measured as fully optimized code.</summary>
     internal MeasuredBuild Optimized(ITestOutputHelper output, string kind, double size) =>
-        Find(_optimized.Value, output, kind, size);
+        Find(_optimized.Value, "optimized", output, kind, size);
 
     /// <summary>A build measured as first-tier code that is never promoted.</summary>
     internal MeasuredBuild FirstTier(ITestOutputHelper output, string kind, double size) =>
-        Find(_first.Value, output, kind, size);
+        Find(_first.Value, "first-tier", output, kind, size);
 
-    private static MeasuredBuild Find(
-        Dictionary<string, (MeasuredBuild Build, string Line)> measured, ITestOutputHelper output, string kind, double size)
+    private static MeasuredBuild Find(ChildRun run, string tier, ITestOutputHelper output, string kind, double size)
     {
         var key = MemoryCases.Key(kind, size);
 
-        Assert.True(measured.ContainsKey(key), $"{key} is not among the builds the child measures: add it to the list");
+        if (run.Cases.TryGetValue(key, out var result) && result.Build is { } build)
+        {
+            output.WriteLine($"{key}: {JsonSerializer.Serialize(build)}");
 
-        output.WriteLine($"child: {measured[key].Line}");
+            // The specific failure first: grid arrays allocated off the measuring thread are named
+            // as such, before the count of other threads' bytes they also inflate.
+            MemoryVerdict.Covered(key, build.Peak);
+            MemoryCases.AssertTheBuildsOwn(key, build.Peak);
 
-        return measured[key].Build;
+            return build;
+        }
+
+        if (result?.Failure is { } failure)
+        {
+            Assert.Fail($"{key} failed in the {tier} measuring child, and only this case did: {failure}");
+        }
+
+        if (run.Failure is { } child)
+        {
+            Assert.Fail(
+                $"the {tier} measuring child failed as a whole, so no case it was to measure has a result: {child}"
+                + $"{Environment.NewLine}{run.Text}");
+        }
+
+        Assert.Fail($"{key} is not among the builds the {tier} child measures: add it to the list");
+
+        return null!;
     }
 }
 
 /// <summary>Runs this test assembly's entry point as a child process and returns what it printed.</summary>
 internal static class MeasuringChild
 {
-    /// <summary>Runs the child and returns its standard output's lines.</summary>
+    /// <summary>Runs the child.</summary>
     /// <param name="arguments">The entry point's arguments.</param>
     /// <param name="tier">The tier of JIT code the child is to run as.</param>
-    /// <returns>The non-empty lines the child printed.</returns>
-    internal static string[] Run(IReadOnlyList<string> arguments, JitTier tier)
+    /// <returns>
+    /// Why it failed as a whole, or null; the non-empty lines of its standard output; and both
+    /// its streams, for a message.
+    /// </returns>
+    internal static (string? Failure, string[] Lines, string Text) Run(IReadOnlyList<string> arguments, JitTier tier)
     {
-        var start = new ProcessStartInfo(Host())
+        if (Host() is not { } host)
+        {
+            return ($"no dotnet host was found to run the measuring child: looked for {string.Join(", ", HostCandidates())}", [], "");
+        }
+
+        var start = new ProcessStartInfo(host)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -316,39 +375,62 @@ internal static class MeasuringChild
             }
         }
 
-        using var child = Process.Start(start)!;
+        using var child = Process.Start(start);
+
+        if (child is null)
+        {
+            return ($"the measuring child did not start: {host}", [], "");
+        }
+
         var stdout = child.StandardOutput.ReadToEndAsync();
         var stderr = child.StandardError.ReadToEndAsync();
 
         if (!child.WaitForExit(TimeSpan.FromMinutes(20)))
         {
             child.Kill(entireProcessTree: true);
-            Assert.Fail("the measuring child did not finish in twenty minutes");
+            return ("the measuring child did not finish in twenty minutes", [], "");
         }
 
-        var text = stdout.GetAwaiter().GetResult();
+        var output = stdout.GetAwaiter().GetResult();
         var errors = stderr.GetAwaiter().GetResult();
+        var text = $"{host} exited {child.ExitCode}{Environment.NewLine}{output}{Environment.NewLine}{errors}";
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        Assert.True(
-            child.ExitCode == 0,
-            $"the measuring child exited {child.ExitCode}: {errors}{Environment.NewLine}after printing:{Environment.NewLine}{text}");
-
-        return text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return (child.ExitCode == 0 ? null : $"the measuring child exited {child.ExitCode}: {errors.Trim()}", lines, text);
     }
 
-    /// <summary>The <c>dotnet</c> host this test process runs under.</summary>
-    private static string Host()
+    /// <summary>
+    /// The <c>dotnet</c> host of the runtime this test process runs on, or null if none is found.
+    /// </summary>
+    /// <remarks>
+    /// The running runtime's own installation first, since that is the runtime the child must
+    /// match - and is found from the runtime itself, so a test host that is not <c>dotnet</c>
+    /// (<c>testhost.exe</c>, an IDE's runner) finds it as well. Then the host the CLI says it
+    /// is, then <c>DOTNET_ROOT</c>. Never a bare <c>dotnet</c> off the path, which can be another
+    /// installation; and the child says which runtime it ran on, and is refused if it differs.
+    /// </remarks>
+    internal static string? Host() => HostCandidates().FirstOrDefault(File.Exists);
+
+    private static IEnumerable<string> HostCandidates()
     {
-        // Set by the dotnet CLI for the processes it starts, test hosts included.
-        if (Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host && File.Exists(host))
+        var name = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+
+        // <root>/shared/Microsoft.NETCore.App/<version>/
+        var runtime = new DirectoryInfo(RuntimeEnvironment.GetRuntimeDirectory());
+
+        if (runtime.Parent?.Parent?.Parent is { } root)
         {
-            return host;
+            yield return Path.Combine(root.FullName, name);
         }
 
-        var self = Environment.ProcessPath;
+        if (Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } hostPath)
+        {
+            yield return hostPath;
+        }
 
-        return self is not null && Path.GetFileNameWithoutExtension(self).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
-            ? self
-            : "dotnet";
+        if (Environment.GetEnvironmentVariable("DOTNET_ROOT") is { Length: > 0 } dotnetRoot)
+        {
+            yield return Path.Combine(dotnetRoot, name);
+        }
     }
 }

@@ -1,17 +1,21 @@
+using System.Runtime.CompilerServices;
+
 using Einzel.Fields.Solved;
 
 using Xunit.Abstractions;
+using Xunit.Sdk;
 
 namespace Einzel.Fields.Tests;
 
 /// <summary>
 /// That being watched does not change a solve, that not being watched costs nothing, and that
-/// the measurement built on the watch bounds what it cannot see.
+/// the measurement built on the watch gives an interval that holds what it claims.
 /// </summary>
 /// <remarks>
 /// <see cref="GridArrays"/> sits in the solver so that the memory tests can read what a build
-/// holds from inside it. It is in code that ships, so the two things it must not do are asserted
-/// rather than assumed: move a number, and cost anything when nobody is watching.
+/// holds from inside it. It is in code that ships, so the things it must not do are asserted
+/// rather than assumed: move a number, cost anything when nobody is watching, or make anything
+/// throw because something is.
 /// </remarks>
 [Collection(nameof(MemoryMeasurement))]
 public sealed class GridArraysTests(ITestOutputHelper output)
@@ -41,7 +45,7 @@ public sealed class GridArraysTests(ITestOutputHelper output)
             var arrays = 0;
             double[] watched;
 
-            GridArrays.StartWatching(_ =>
+            GridArrays.StartWatching((_, _) =>
             {
                 arrays++;
                 GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
@@ -53,7 +57,7 @@ public sealed class GridArraysTests(ITestOutputHelper output)
             }
             finally
             {
-                GridArrays.StopWatching();
+                Assert.Null(GridArrays.StopWatching());
             }
 
             var differing = 0;
@@ -129,23 +133,28 @@ public sealed class GridArraysTests(ITestOutputHelper output)
             $"{through / (double)arrays:F1} bytes an array through GridArrays, {direct / (double)arrays:F1} with new; "
             + $"{clock.Elapsed.TotalNanoseconds / arrays:F1} ns an array, allocation included");
 
-        Assert.Equal(direct, through);
+        // Less than a byte an array over what plain arrays cost. Anything the helper allocated a
+        // call - a delegate, a closure, a box - would be at least 24 bytes an array; a few bytes
+        // in all is the runtime doing something once inside one window, which it did, 32 bytes,
+        // in one run in three when this asserted equality.
+        Assert.InRange(through - direct, -arrays, arrays);
     }
 
     /// <summary>
-    /// A grid array allocated on another thread while a build is being measured is refused by
-    /// name, and allowed again once the measurement ends.
+    /// A grid array allocated on another thread while a build is measured is allocated as ever -
+    /// nothing throws - and recorded, and the measurement says so by name.
     /// </summary>
     /// <remarks>
-    /// The live set is read on the measuring thread at its own allocations. A solver that
-    /// allocated a scratch array on a worker and dropped it would be read low and nothing would
-    /// say so: the array is neither read at nor bounded, and one of them is too small a part of
-    /// a build for the count of other threads' bytes to show.
+    /// The live set is read on the measuring thread at its own allocations, so an array a solver
+    /// allocated on a worker would be neither read at nor bounded. Throwing there would make a
+    /// production constructor fail because a test is measuring; recording it fails the
+    /// measurement instead, which is where the problem is.
     /// </remarks>
     [Fact]
-    public void AGridArrayAllocatedOnAnotherThreadWhileMeasuringIsRefused()
+    public void AGridArrayAllocatedOnAnotherThreadWhileMeasuringIsRecordedNotRefused()
     {
         Exception? onWorker = null;
+        double[]? allocated = null;
 
         var peak = LiveSet.Peak(() =>
         {
@@ -153,11 +162,11 @@ public sealed class GridArraysTests(ITestOutputHelper output)
             {
                 try
                 {
-                    _ = new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 9, 9, 9));
+                    allocated = new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 9, 9, 9)).Values.ToArray();
                 }
-                catch (InvalidOperationException refused)
+                catch (Exception thrown)
                 {
-                    onWorker = refused;
+                    onWorker = thrown;
                 }
             });
 
@@ -167,30 +176,15 @@ public sealed class GridArraysTests(ITestOutputHelper output)
             return new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 9, 9, 9));
         });
 
-        Assert.NotNull(onWorker);
-        Assert.Contains("is measuring what a build holds", onWorker.Message, StringComparison.Ordinal);
+        Assert.Null(onWorker);
+        Assert.NotNull(allocated);
+        Assert.NotNull(peak.OffThread);
+        Assert.Contains("1 grid array(s), 5,832 bytes", peak.OffThread, StringComparison.Ordinal);
         Assert.Equal(1, peak.Readings);
         Assert.False(GridArrays.Watched);
 
-        // The control: with no measurement running, any thread may allocate.
-        Exception? unwatched = null;
-
-        var free = new Thread(() =>
-        {
-            try
-            {
-                _ = new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 9, 9, 9));
-            }
-            catch (InvalidOperationException refused)
-            {
-                unwatched = refused;
-            }
-        });
-
-        free.Start();
-        free.Join();
-
-        Assert.Null(unwatched);
+        var named = Assert.Throws<FailException>(() => MemoryVerdict.Covered("a build", peak));
+        Assert.Contains("while thread", named.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -219,30 +213,34 @@ public sealed class GridArraysTests(ITestOutputHelper output)
             return kept ? new object[] { through, silent, later } : new object[] { through, later };
         });
 
-        output.WriteLine(
-            $"kept {kept}: {peak.Held:N0} B held, {peak.Bound:N0} at most, {peak.Unreported:N0} unreported between two readings");
+        output.WriteLine($"kept {kept}: {SolveMemoryTests.Describe(peak, 1)}");
 
         Assert.Equal(2, peak.Readings);
         Assert.InRange(peak.Unreported, bytes, bytes + 4096);
 
         // Held through the second reading or not, the build may have held it on top of the first.
         Assert.True(peak.Bound >= (8.0 * 33 * 33 * 33) + bytes, $"the bound is {peak.Bound:N0}");
+
+        // Not asserted: that the least includes it when kept. An array outside GridArrays is
+        // seen only in the process's reading, less what other threads allocated, and in this
+        // test host they allocate enough to hide it - which a full Debug run did, once.
     }
 
     /// <summary>
-    /// What another thread allocates and keeps during a measurement is taken off the least a
-    /// build can have held, and never off the most.
+    /// Memory another thread allocates and keeps during a measurement moves neither end of the
+    /// interval: it stays tight about what the build held.
     /// </summary>
     /// <remarks>
-    /// The build here holds one array of a known size. Another thread allocates and keeps
-    /// blocks throughout, so every reading is too high by however many of them exist: the
-    /// interval must still contain the truth, which it does only if everything of that thread's
-    /// that could be in a reading has been counted by the time it is taken off.
+    /// The build holds arrays of known size. Another thread allocates and keeps 32 kB blocks
+    /// throughout, so every reading of the process is high by however many exist - hundreds of
+    /// kilobytes. Read from the process alone, the least would fall by everything that thread
+    /// allocated and the bound would rise by everything it kept. Read from the build's own grid
+    /// arrays and its own thread's allocation, neither moves.
     /// </remarks>
     [Fact]
-    public void AnotherThreadsMemoryWidensTheIntervalDownwardOnly()
+    public void AnotherThreadsMemoryDoesNotMoveTheInterval()
     {
-        const long truth = 8L * 129 * 129 * 129;
+        const long truth = (24 * 8L * 9 * 9 * 9) + (8L * 129 * 129 * 129);
 
         var kept = new List<byte[]>();
         var stop = 0;
@@ -286,14 +284,148 @@ public sealed class GridArraysTests(ITestOutputHelper output)
             other.Join();
         }
 
-        var small = 24 * 8L * 9 * 9 * 9;
+        output.WriteLine($"truth {truth:N0} B, {kept.Count} blocks kept: {SolveMemoryTests.Describe(peak, 1)}");
 
-        output.WriteLine(
-            $"truth {truth + small:N0} B: least {peak.Least:N0}, read {peak.Held:N0}, at most {peak.Bound:N0}; "
-            + $"{peak.Foreign:N0} B from the other thread, {kept.Count} blocks kept, {peak.Retaken} retaken");
+        // The thread did disturb the process's reading: otherwise this tests nothing.
+        Assert.True(peak.Foreign > 64 * 1024, $"the other thread allocated only {peak.Foreign:N0} bytes");
+        Assert.True(peak.Held > truth + (32 * 1024), $"the process read {peak.Held:N0}, not disturbed");
 
-        Assert.True(peak.Foreign > 0, "the other thread allocated nothing during the measurement");
-        Assert.True(peak.Least <= truth + small + 4096, $"the least is {peak.Least:N0}, above what the build held");
-        Assert.True(peak.Bound >= truth + small, $"the bound is {peak.Bound:N0}, under what the build held");
+        // And the interval holds the truth, a few kilobytes wide - the arrays' headers, the
+        // field and grid objects, and what the build allocated outside GridArrays.
+        Assert.InRange(peak.Least, truth - 4096, truth);
+        Assert.InRange(peak.Bound, truth, truth + 8192);
+    }
+
+    /// <summary>
+    /// What other threads allocate while the baseline settles is not charged to the build, and
+    /// what they allocate after it is.
+    /// </summary>
+    /// <remarks>
+    /// A finalizer that allocates runs while the baseline waits for pending finalizers. What it
+    /// allocates is in the baseline or dead by the baseline's last collection, so it can be in no
+    /// reading; counted from before the first collection, it was 256 kB of other threads' memory
+    /// charged to a build that held a few kilobytes.
+    /// </remarks>
+    [Fact]
+    public void AFinalizerRunWhileTheBaselineSettlesIsNotChargedToTheBuild()
+    {
+        Abandon();
+
+        var peak = LiveSet.Peak(() => new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 9, 9, 9)));
+
+        output.WriteLine($"{AllocatesWhenFinalized.Finalized} finalized: {SolveMemoryTests.Describe(peak, 1)}");
+
+        Assert.Equal(1, AllocatesWhenFinalized.Finalized);
+        Assert.True(peak.Foreign < 64 * 1024, $"{peak.Foreign:N0} bytes of other threads were charged to the build");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void Abandon() => _ = new AllocatesWhenFinalized();
+    }
+
+    /// <summary>A struct element is sized by what it is, not by what the array type says it holds.</summary>
+    [Fact]
+    public void AStructArrayIsSizedByItsElement()
+    {
+        var sizes = new List<long>();
+
+        GridArrays.StartWatching((_, bytes) => sizes.Add(bytes));
+
+        try
+        {
+            GC.KeepAlive(GridArrays.New<Wide>(1_000));
+            GC.KeepAlive(GridArrays.New<byte>(1_000));
+        }
+        finally
+        {
+            Assert.Null(GridArrays.StopWatching());
+        }
+
+        Assert.Equal([1_000L * Unsafe.SizeOf<Wide>(), 1_000L], sizes);
+        Assert.Equal(24, Unsafe.SizeOf<Wide>());
+    }
+
+    /// <summary><see cref="GridArrays.Resize{T}"/> does what <see cref="Array.Resize{T}"/> does.</summary>
+    [Fact]
+    public void ResizeIsArrayResize()
+    {
+        var allocated = 0;
+
+        GridArrays.StartWatching((_, _) => allocated++);
+
+        try
+        {
+            double[]? none = null;
+            GridArrays.Resize(ref none, 3);
+            Assert.Equal(3, none.Length);
+            Assert.Equal(1, allocated);
+
+            var same = none;
+            GridArrays.Resize(ref same, 3);
+            Assert.Same(none, same);
+            Assert.Equal(1, allocated);
+
+            double[] grown = [1.0, 2.0, 3.0];
+            GridArrays.Resize(ref grown, 5);
+            Assert.Equal([1.0, 2.0, 3.0, 0.0, 0.0], grown);
+            Assert.Equal(2, allocated);
+
+            GridArrays.Resize(ref grown, 2);
+            Assert.Equal([1.0, 2.0], grown);
+            Assert.Equal(3, allocated);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => GridArrays.Resize(ref grown, -1));
+            Assert.Equal(3, allocated);
+
+            // The reference it copies: Array.Resize, the same calls, the same arrays.
+            double[]? reference = null;
+            Array.Resize(ref reference, 3);
+            var referenceSame = reference;
+            Array.Resize(ref referenceSame, 3);
+            Assert.Same(reference, referenceSame);
+        }
+        finally
+        {
+            Assert.Null(GridArrays.StopWatching());
+        }
+    }
+
+    /// <summary>
+    /// A figure past its edge fails as a finding about the solver when other threads could not
+    /// account for the excess, and as a disturbed measurement, by name, when they could.
+    /// </summary>
+    [Fact]
+    public void AnEdgeOtherThreadsCouldExplainIsInconclusiveNotAFinding()
+    {
+        // 0.5 B/node over an edge, on 400,000 nodes: 200 kB.
+        var finding = Assert.Throws<FailException>(
+            () => MemoryVerdict.Within("a slope", 44.0, 44.5, 43.0, 44.0, 400_000, foreign: 10_000));
+        var disturbed = Assert.Throws<FailException>(
+            () => MemoryVerdict.Within("a slope", 44.0, 44.5, 43.0, 44.0, 400_000, foreign: 300_000));
+        var shortfall = Assert.Throws<FailException>(
+            () => MemoryVerdict.Within("a slope", 42.0, 43.5, 43.0, 44.0, 400_000, foreign: 10_000));
+
+        Assert.Contains("not billed", finding.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(MemoryVerdict.Disturbed, finding.Message, StringComparison.Ordinal);
+        Assert.StartsWith(MemoryVerdict.Disturbed, disturbed.Message, StringComparison.Ordinal);
+        Assert.Contains("bills what is not held", shortfall.Message, StringComparison.Ordinal);
+
+        MemoryVerdict.Within("a slope", 43.5, 43.9, 43.0, 44.0, 400_000, foreign: 1_000_000);
+    }
+
+    /// <summary>Three doubles: an element type <see cref="Buffer.ByteLength"/> cannot size.</summary>
+    private readonly record struct Wide(double X, double Y, double Z);
+
+    /// <summary>An object whose finalizer allocates, on the finalizer thread.</summary>
+    private sealed class AllocatesWhenFinalized
+    {
+        private static int finalized;
+
+        public static int Finalized => Volatile.Read(ref finalized);
+
+        ~AllocatesWhenFinalized()
+        {
+            GC.KeepAlive(new byte[256 * 1024]);
+            Interlocked.Increment(ref finalized);
+        }
     }
 }

@@ -5877,3 +5877,15 @@ the last bit of every node (`GridArraysTests`). The two memory classes took 60 s
 its speed, and read the same figures in Debug.
 `SelfFieldMemoryTests` and `StudyMemoryEstimateTests` still sample, and so does
 `tools/memory-harness`.
+
+**Then the interval was made immune rather than retried.** What other threads allocate can
+only be bounded by counting it, and counting it widens the interval by however much they
+allocate - on a loaded runner, enough to fail a slope. Retrying the measurement until it was
+quiet, then keeping the least bad, was a vote under another name. The answer was a second
+reading of each end that another thread cannot touch: the build's own grid arrays, each
+followed by a weak handle, are an exact part of what it holds after a full collection; and
+what its own thread allocated outside them bounds the rest. **When a measurement of a process
+is contaminated by the process, look for a measurement of the subject instead** - here the
+subject announces every allocation that matters, so it can be followed one array at a time.
+And when even that cannot decide, the test should say so by name: a disturbed measurement and
+a defect are different findings, and only one of them is about the code.

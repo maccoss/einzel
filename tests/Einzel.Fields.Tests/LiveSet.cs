@@ -1,41 +1,38 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 using Einzel.Fields.Solved;
 
 namespace Einzel.Fields.Tests;
 
-/// <summary>What a build held at its most, read from inside it.</summary>
+/// <summary>What a build held at its most, read from inside it, as an interval.</summary>
 /// <param name="Least">
-/// The least the build can have held, in bytes above what was live before it: the largest over
-/// the readings of a reading less everything other threads had allocated by then, any of which
-/// may have been live in it.
+/// The least the build can have held at its most, in bytes above what was live before it.
 /// </param>
-/// <param name="Held">The largest live set read during the build, above what was live before it.</param>
-/// <param name="Bound">
-/// The most the build can have held, in bytes: <paramref name="Held"/>, or a reading plus
-/// whatever the thread then allocated without reporting it, whichever is larger.
-/// </param>
-/// <param name="Readings">How many allocations the build reported, each one a reading.</param>
+/// <param name="Bound">The most the build can have held at any instant, in the same terms.</param>
+/// <param name="Held">The largest live set of the process read during the build, above the baseline.</param>
+/// <param name="Tracked">The most the build's own grid arrays came to at a reading, in bytes.</param>
+/// <param name="Readings">How many grid arrays the build allocated, each one a reading.</param>
 /// <param name="Unreported">
-/// The most the build thread allocated between two readings without reporting it, in bytes.
+/// The most the build thread allocated between two readings other than through
+/// <see cref="GridArrays"/>, in bytes.
 /// </param>
-/// <param name="Foreign">
-/// Bytes other threads allocated while the measurement ran, which a reading cannot tell from the
-/// build's own.
-/// </param>
-/// <param name="ForeignBurst">The most of those allocated between two readings.</param>
-/// <param name="Retaken">
-/// Measurements taken again because another thread allocated in bulk during them. When every
-/// attempt was disturbed this is the number of attempts, and the measurement returned is the
-/// least disturbed of them.
+/// <param name="Silent">Everything the build thread allocated other than through <see cref="GridArrays"/>.</param>
+/// <param name="Foreign">Bytes other threads allocated while the measurement ran.</param>
+/// <param name="OffThread">
+/// What <see cref="GridArrays"/> allocated on other threads during the measurement, or null.
+/// A measurement with this set does not cover the build, and is a failure by name.
 /// </param>
 internal sealed record LivePeak(
     double Least,
-    double Held,
     double Bound,
+    double Held,
+    double Tracked,
     int Readings,
     long Unreported,
+    long Silent,
     long Foreign,
-    long ForeignBurst,
-    int Retaken);
+    string? OffThread);
 
 /// <summary>
 /// The most a build holds reachable at once, read on the build's own thread at each allocation.
@@ -44,118 +41,100 @@ internal sealed record LivePeak(
 /// <para>
 /// <b>A build's live set can only rise at an allocation, so its peak is held just after one.</b>
 /// Every per-node array a solve allocates comes from <see cref="GridArrays"/>, which tells
-/// whoever is watching; here each one forces a full blocking collection and reads what survived it, from the collector's
-/// own record of that collection. The largest reading is the peak, read at the instant it is
-/// held - not sampled, so there is no window to miss, no second thread whose priority or
-/// scheduling matters, and nothing that depends on how long the solve runs or how many cycles
-/// it takes.
+/// whoever is watching; here each one forces a full blocking collection and reads what
+/// survived. Nothing is sampled, so there is no window to miss, no second thread whose
+/// priority matters, and nothing that depends on how long the solve runs.
 /// </para>
 /// <para>
-/// <b>What it cannot see it bounds.</b> An allocation that does not go through
-/// <see cref="GridArrays"/> - a list, a small array, or a per-node array somebody allocates
-/// directly - is not read at. The thread's own allocation counter says how many bytes were
-/// allocated between two readings, and the array just handed over accounts for some of them,
-/// so the live set between them was at most the earlier reading plus the rest.
-/// <see cref="LivePeak.Bound"/> is the largest such figure, and an upper edge is asserted on
-/// it: a per-node array allocated directly fails as slack rather than passing unseen - and
-/// fails <c>GridArraySourceTests</c> before that, which reads the source for one. That counts
-/// garbage as held, which is the price of not being able to tell them apart, and it is how
-/// the enumerators and handle stubs a mask used to allocate for every node were found.
-/// </para>
-/// <para>
-/// The array handed over is one <see cref="GridArrays"/> has just allocated, so there is no
-/// size a site could state wrongly and no report it could make twice.
-/// </para>
-/// <para>
-/// <b>Other threads cannot fail a measurement, and cannot make one look better than it is.</b>
-/// A reading is of the process, and cannot tell another thread's live bytes from the build's.
-/// What other threads have allocated is counted - the process's total less this thread's - and
-/// two things follow from it, neither of them a guess about what a runner's threads do:
+/// <b>Each measurement is an interval, and both ends come two ways.</b> The process's live set
+/// is one way, and it is exact only if nothing else in the process allocates. The other uses
+/// nothing but the build's own thread, so another thread cannot move it:
 /// </para>
 /// <list type="bullet">
 /// <item>
-/// A reading follows a full collection, so the only bytes of another thread's in it are ones
-/// still reachable, and there cannot be more of those than that thread has allocated <i>by
-/// then</i>. The count is taken after the collection, so it covers everything that could be in
-/// the reading and perhaps a little that came after it; each reading is reduced by it, and
-/// <see cref="LivePeak.Least"/> is the largest result: a lower bound that is true whatever the
-/// other threads were doing, and that widens by what was measured rather than failing.
+/// <b>Least</b> is the larger, at any reading, of the build's own grid arrays still alive there -
+/// each is followed by a weak handle, and after a full blocking collection a handle is cleared
+/// exactly when its array is unreachable, so this is an exact part of what the build held - and
+/// of the process's reading less everything other threads had allocated since the baseline, the
+/// most of theirs that could be in it.
 /// </item>
 /// <item>
-/// <see cref="LivePeak.Bound"/> is of the process, so it is an upper bound on the build as it
-/// stands, and another thread's memory can only raise it. A measurement in which more than
-/// <see cref="ForeignLimit"/> arrived between two readings is taken again, up to
-/// <see cref="Attempts"/> times, and after that the least disturbed attempt is returned with
-/// its counts: an upper edge it fails then says, in the bytes printed beside it, why.
+/// <b>Bound</b> is, at each instant, the smaller of the process's live set plus what the build
+/// thread has since allocated, and the build's grid arrays alive at the last reading plus
+/// everything the build thread has allocated other than through <see cref="GridArrays"/> since
+/// the baseline, live or not. The first is tight in a quiet process; the second is tight
+/// whatever other threads do, as long as the build allocates little outside
+/// <see cref="GridArrays"/>.
 /// </item>
 /// </list>
 /// <para>
-/// Memory the <i>build</i> allocates on another thread would be neither read at nor bounded.
-/// <see cref="GridArrays"/> refuses to allocate on any thread but the one measuring, by name,
-/// for as long as a measurement runs; an array allocated on a worker some other way is counted
-/// with the rest, and <see cref="MemoryCases"/> fails a build when that count is a large part
-/// of what it held.
+/// So a thread allocating and keeping memory beside a build moves neither end, and nothing is
+/// retaken or voted on. The second bound rests on the build allocating on its own thread:
+/// <see cref="GridArrays"/> records any grid array allocated on another while a watch is on, and
+/// that is reported in <see cref="LivePeak.OffThread"/> and fails by name; an array allocated
+/// on a worker some other way is refused in the source by <c>GridArraySourceTests</c>. And both
+/// ends assume the objects live at the baseline stay live, which in a process doing nothing
+/// else they do.
 /// </para>
 /// <para>
-/// In a process that does nothing but measure, other threads allocate 336 bytes a forced
-/// collection from the second build measured on - the same count in every run, optimized or
-/// not; where it comes from is not established. A test host's threads allocated 10 to 550 kB
-/// during one build, which is why <see cref="MemoryCases"/> measures in a process of its own.
+/// <b>When the interval is still too wide to decide, that is said, not guessed at.</b>
+/// <see cref="MemoryVerdict"/> fails an edge as "not billed" or "bills what is not held" only if
+/// other threads could not account for the excess; otherwise it fails as a disturbed
+/// measurement, with the numbers.
+/// </para>
+/// <para>
+/// <b>The count of other threads' bytes starts just before the baseline's last collection</b>,
+/// not before the first and not after the last. Before the first would charge the build with
+/// what finalizers allocate while the baseline settles - live at the baseline or dead, in no
+/// reading either way. After the last would miss a block allocated between that collection and
+/// the count, which is in every reading and was in no count.
 /// </para>
 /// </remarks>
 internal static class LiveSet
 {
-    /// <summary>
-    /// Bytes other threads may allocate between two readings before the measurement is retaken.
-    /// </summary>
-    internal const long ForeignLimit = 16 * 1024;
-
-    /// <summary>How many times a disturbed measurement is taken before the best is kept.</summary>
-    internal const int Attempts = 4;
+    /// <summary>The most grid arrays one build may allocate.</summary>
+    internal const int Capacity = 1 << 14;
 
     /// <summary>Measures one build.</summary>
     /// <param name="build">The build; what it returns is held until the measurement ends.</param>
     /// <returns>What it held.</returns>
     internal static LivePeak Peak(Func<object> build)
     {
-        LivePeak? best = null;
+        // Allocated before the baseline, so that following the build's arrays is not in a
+        // reading. A weak handle is a slot in the runtime's handle table, not an object.
+        var handles = new GCHandle[Capacity];
+        var sizes = new long[Capacity];
+        var count = 0;
 
-        for (var attempt = 0; attempt < Attempts; attempt++)
+        try
         {
-            var once = Once(build);
-
-            if (once.ForeignBurst <= ForeignLimit)
+            return Measure(build, handles, sizes, ref count);
+        }
+        finally
+        {
+            for (var at = 0; at < count; at++)
             {
-                return once with { Retaken = attempt };
-            }
-
-            if (best is null || once.ForeignBurst < best.ForeignBurst)
-            {
-                best = once;
+                handles[at].Free();
             }
         }
-
-        return best! with { Retaken = Attempts };
     }
 
-    private static LivePeak Once(Func<object> build)
+    private static LivePeak Measure(Func<object> build, GCHandle[] handles, long[] sizes, ref int counted)
     {
-        // Counted from before the baseline is read, not after: a block another thread allocates
-        // between the two is in every reading and would otherwise be in no count.
-        var processAtPrevious = GC.GetTotalAllocatedBytes(precise: true);
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+
+        var processAtOthers = GC.GetTotalAllocatedBytes(precise: true);
         var threadAtOthers = GC.GetAllocatedBytesForCurrentThread();
 
-        var baseline = Settled();
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
 
-        var peak = baseline;
-        var least = baseline;
-        var bound = baseline;
-        var previous = baseline;
-        var unreported = 0L;
-        var foreign = 0L;
-        var burst = 0L;
-        var readings = 0;
+        var baseline = Survived();
 
+        var count = 0;
+        double least = 0, bound = 0, held = 0, tracked = 0;
+        double previous = 0, trackedPrevious = 0;
+        long unreported = 0, silent = 0, foreign = 0;
         var threadAtPrevious = GC.GetAllocatedBytesForCurrentThread();
 
         // What other threads allocated since this was last asked: the process's count less
@@ -164,42 +143,60 @@ internal static class LiveSet
         {
             var process = GC.GetTotalAllocatedBytes(precise: true);
             var thread = GC.GetAllocatedBytesForCurrentThread();
-            var others = Math.Max(0L, (process - processAtPrevious) - (thread - threadAtOthers));
 
-            foreign += others;
-            burst = Math.Max(burst, others);
-            processAtPrevious = process;
+            foreign += Math.Max(0L, (process - processAtOthers) - (thread - threadAtOthers));
+
+            processAtOthers = process;
             threadAtOthers = thread;
         }
 
-        void Read(Array array)
+        // Up to and including the instant before the array arrived: the live set then was at most
+        // the last reading plus what the thread allocated since, and at most the grid arrays alive
+        // at the last reading plus everything the thread has allocated outside GridArrays.
+        void Stretch(long since)
         {
-            // Everything the thread allocated since the last reading, less the array just
-            // handed over, was live on top of the last reading at most. An array carries a
-            // header, so this is never negative.
-            var silent = GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious - Buffer.ByteLength(array);
+            silent += since;
+            unreported = Math.Max(unreported, since);
+            bound = Math.Max(bound, Math.Min(previous + since, trackedPrevious + silent));
+        }
 
-            unreported = Math.Max(unreported, silent);
-            bound = Math.Max(bound, previous + silent);
+        void Read(Array array, long bytes)
+        {
+            if (count == handles.Length)
+            {
+                throw new InvalidOperationException($"a build allocated more than {handles.Length:N0} grid arrays");
+            }
+
+            // An array carries a header, so this is never negative.
+            Stretch(Math.Max(0L, GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious - bytes));
+
+            handles[count] = GCHandle.Alloc(array, GCHandleType.Weak);
+            sizes[count] = bytes;
+            count++;
 
             GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
 
-            previous = Survived();
-
-            // After the collection, not before it: whatever of another thread's is in the
-            // reading was allocated by now, and counted before, bytes arriving between the
-            // count and the collection would be in the reading and not taken off it.
+            // After the collection: whatever of another thread's is in the reading was allocated
+            // by now.
             Others();
 
-            peak = Math.Max(peak, previous);
-            least = Math.Max(least, previous - foreign);
-            readings++;
+            var reading = Survived() - baseline;
+            var alive = Alive(handles, sizes, count);
+
+            held = Math.Max(held, reading);
+            tracked = Math.Max(tracked, alive);
+            least = Math.Max(least, Math.Max(alive, reading - foreign));
+            bound = Math.Max(bound, Math.Min(reading, alive + silent));
+
+            previous = reading;
+            trackedPrevious = alive;
 
             // Read last, so that what this reading allocated for itself is not charged to the build.
             threadAtPrevious = GC.GetAllocatedBytesForCurrentThread();
         }
 
         object? built = null;
+        string? offThread;
 
         GridArrays.StartWatching(Read);
 
@@ -209,31 +206,39 @@ internal static class LiveSet
         }
         finally
         {
-            GridArrays.StopWatching();
+            offThread = GridArrays.StopWatching();
+            counted = count;
         }
 
-        // The stretch after the last report, which has no reading of its own.
-        var tail = Math.Max(0L, GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious);
-
-        unreported = Math.Max(unreported, tail);
-        bound = Math.Max(bound, previous + tail);
-
+        // The stretch after the last array, which has no reading of its own.
+        Stretch(Math.Max(0L, GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious));
         Others();
 
         GC.KeepAlive(built);
 
-        return new LivePeak(
-            least - baseline, peak - baseline, Math.Max(bound, peak) - baseline, readings, unreported, foreign, burst, 0);
+        return new LivePeak(least, Math.Max(bound, least), held, tracked, count, unreported, silent, foreign, offThread);
     }
 
-    /// <summary>The live set with nothing pending: collected, finalized, collected.</summary>
-    private static long Settled()
+    /// <summary>What the followed arrays still alive come to, in bytes.</summary>
+    /// <remarks>
+    /// In a frame of its own, not inlined: reading a handle's target puts the array in a local,
+    /// and unoptimized code keeps a local to the end of its method. Done in the frame that then
+    /// collects, that would keep an array the build had let go alive through the next reading.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static double Alive(GCHandle[] handles, long[] sizes, int count)
     {
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
-        GC.WaitForPendingFinalizers();
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        var alive = 0.0;
 
-        return Survived();
+        for (var at = 0; at < count; at++)
+        {
+            if (handles[at].Target is not null)
+            {
+                alive += sizes[at];
+            }
+        }
+
+        return alive;
     }
 
     /// <summary>
@@ -255,5 +260,62 @@ internal static class LiveSet
         }
 
         return live;
+    }
+}
+
+/// <summary>Whether a measured figure lies inside its edges, said three ways.</summary>
+/// <remarks>
+/// A measurement is an interval. An edge it is wholly past is a finding about the solver; an
+/// edge it straddles is a finding about the measurement. Which of those it is turns on whether
+/// other threads allocated enough to account for the excess: if they did, the test cannot tell
+/// and says so by name, with the numbers, rather than reporting the solver.
+/// </remarks>
+internal static class MemoryVerdict
+{
+    /// <summary>The message a disturbed measurement fails with.</summary>
+    internal const string Disturbed = "INCONCLUSIVE, the measurement was disturbed";
+
+    /// <summary>Asserts a figure in bytes a node lies between two edges.</summary>
+    /// <param name="what">What the figure is, for the message.</param>
+    /// <param name="lower">The least it can be.</param>
+    /// <param name="upper">The most it can be.</param>
+    /// <param name="least">The lower edge.</param>
+    /// <param name="most">The upper edge.</param>
+    /// <param name="nodes">The nodes the figure is per.</param>
+    /// <param name="foreign">Bytes other threads allocated during the measurements it rests on.</param>
+    internal static void Within(string what, double lower, double upper, double least, double most, double nodes, long foreign)
+    {
+        // The upper edge first: an array allocated outside GridArrays widens the interval both
+        // ways, and it is the upper edge's message that says so.
+        if (upper > most)
+        {
+            var excess = (upper - most) * nodes;
+
+            Assert.Fail(foreign >= excess
+                ? $"{Disturbed}: {what} is at most {upper:F2} B/node, over the edge of {most:F2} by {excess:N0} bytes, and other "
+                    + $"threads allocated {foreign:N0} bytes during the measurement - enough to be the excess. The solver may be "
+                    + "fine or not; run it again in a quieter process."
+                : $"{what} is at most {upper:F2} B/node against an edge of {most:F2}: something held is not billed, or is "
+                    + $"allocated without GridArrays (other threads allocated only {foreign:N0} of the {excess:N0} bytes over)");
+        }
+
+        if (lower < least)
+        {
+            var shortfall = (least - lower) * nodes;
+
+            Assert.Fail(foreign >= shortfall
+                ? $"{Disturbed}: {what} is at least {lower:F2} B/node, under the edge of {least:F2} by {shortfall:N0} bytes, and "
+                    + $"other threads allocated {foreign:N0} bytes during the measurement - enough to be the shortfall."
+                : $"{what} is at least {lower:F2} B/node against an edge of {least:F2}: the statement bills what is not held");
+        }
+    }
+
+    /// <summary>Fails a measurement that does not cover the build, by name.</summary>
+    internal static void Covered(string what, LivePeak peak)
+    {
+        if (peak.OffThread is { } offThread)
+        {
+            Assert.Fail($"{what}: {offThread}");
+        }
     }
 }
