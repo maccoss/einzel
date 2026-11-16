@@ -56,7 +56,7 @@ public sealed class CutLinks
         _fraction = new double[grid.NodeCount * Directions];
         _potential = new double[grid.NodeCount * Directions];
 
-        AllocationProbe.Allocated(sizeof(double) * ((long)_fraction.Length + _potential.Length));
+        AllocationProbe.Allocated(_fraction, _potential);
 
         Array.Fill(_fraction, 1.0);
     }

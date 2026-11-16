@@ -5762,6 +5762,42 @@ With readings that cannot miss, a slope is the difference of two exact figures, 
 that need one to cancel a fixed cost have it back, the thin-grid test included, and a forced
 solve fails if it ran fewer cycles than it was asked for.
 
+**The instrument then made the defect it measures, twice, and both showed only in Debug.** A
+plain `dotnet test` builds Debug, and the first version had been run in Release alone.
+
+- The plane's bound read 18 bytes a node over. An allocation-tick listener named the type,
+  `System.RuntimeFieldInfoStub`: a span written as a collection expression of constants is
+  made from a field handle, optimized code turns that into a pointer to data, and unoptimized
+  code allocates a stub for the handle every time the expression is evaluated - once a node,
+  in a loop over a coarse mask. **Garbage that exists in one build configuration is still the
+  engine's**, and the bound cannot tell garbage from held memory by design; the answer was to
+  find the site, not to teach the bound to forgive it.
+- To refuse an array reported twice, the harness looked through the arrays reported before -
+  and that loop left one of them in a local of the frame that then forced the collection.
+  Unoptimized code keeps a local to the end of its method, so an array the solver had already
+  let go was alive at the reading: 52.95 bytes a node against 45.01, one grid-sized array,
+  attributed to the solver. It is the hold #72 found in the V-cycle, written into the test
+  for it. **Whatever a measuring frame touches is in the measurement**; the bookkeeping is in
+  a frame of its own, as the residual is.
+
+**And a report could be used to hide an allocation**, which is the general hazard of an
+instrument that subtracts what it is told. A site stated how many bytes it had allocated and
+the rest of what the thread allocated was "unreported": a count too large by exactly what was
+allocated silently came to zero, and `max(0, ...)` made sure of it. The site hands over the
+arrays now and the observer measures them. **Let the instrument measure what it can; a number
+supplied by the code under test is a number the code under test can get wrong in its own
+favor.** The same goes for the tier a child process runs in: it was checked by reading an
+environment variable, which a shell can set, and is checked now by dropping the last use of an
+object and seeing whether a collection takes it.
+
+**Other threads are counted, not judged.** A reading follows a full collection, so nothing of
+another thread's is in it but what is still reachable, and that cannot exceed what the thread
+has allocated by then: each reading is reduced by exactly that, and the lower end of the
+interval is true whatever a runner's threads do. Nothing about them fails a measurement,
+except one thing by name - other threads allocating more than a quarter of what a build held,
+which is what a solver that started allocating on workers would look like, and which a
+per-thread probe could neither read nor bound.
+
 **The rule.** Before sampling a quantity from outside, ask whether the code under test passes
 through a countable set of instants at which the quantity can change, and read it at those. For
 a live set the instants are allocations, and "the peak is just after an allocation" is a
@@ -5775,6 +5811,7 @@ The readings are the sampler's best ones, which is the check that the probe chan
 about what is alive: 43.88 on the thin grid, 135.41 and 135.58 on four rods, 147.0 on the
 slabs, 135.56 and 45.25 with nothing promoted. An observed solve is the unobserved solve to
 the last bit of every node (`AllocationProbeTests`). The two memory classes took 60 s and take
-13 s, since a build is measured once instead of three times with a sampler halving its speed.
+14 s in Release, since a build is measured once instead of three times with a sampler halving
+its speed, and read the same figures in Debug.
 `SelfFieldMemoryTests` and `StudyMemoryEstimateTests` still sample, and so does
 `tools/memory-harness`.

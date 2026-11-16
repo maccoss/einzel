@@ -105,8 +105,7 @@ public sealed class CutLinks3D
         _fraction = new double[InitialCapacity];
         _potential = new double[InitialCapacity];
 
-        AllocationProbe.Allocated(
-            _arms.Length + (sizeof(int) * (long)_before.Length) + (2L * sizeof(double) * InitialCapacity));
+        AllocationProbe.Allocated(_arms, _before, _fraction, _potential);
     }
 
     /// <summary>The grid these links cover.</summary>
@@ -314,12 +313,12 @@ public sealed class CutLinks3D
         var kept = Math.Min(length, CutCount);
 
         var fraction = new double[length];
-        AllocationProbe.Allocated(sizeof(double) * (long)length);
+        AllocationProbe.Allocated(fraction);
         Array.Copy(_fraction, fraction, kept);
         _fraction = fraction;
 
         var potential = new double[length];
-        AllocationProbe.Allocated(sizeof(double) * (long)length);
+        AllocationProbe.Allocated(potential);
         Array.Copy(_potential, potential, kept);
         _potential = potential;
     }
@@ -350,7 +349,7 @@ public sealed class DirichletMask3D
         _fixed = new bool[grid.NodeCount];
         _value = new double[grid.NodeCount];
 
-        AllocationProbe.Allocated(_fixed.Length + (sizeof(double) * (long)_value.Length));
+        AllocationProbe.Allocated(_fixed, _value);
     }
 
     /// <summary>The grid this mask covers.</summary>

@@ -48,11 +48,7 @@ public sealed class FirstTierMemoryTests(ITestOutputHelper output)
     [Fact]
     public void AFirstTierSolveHoldsWhatItsStatementSays()
     {
-        // Nothing is counted, so nothing is promoted: every method stays first-tier.
-        var lines = MeasuringChild.Run(
-            output,
-            [Command],
-            new Dictionary<string, string> { ["DOTNET_TC_CallCounting"] = "0", ["DOTNET_TieredPGO"] = "0" });
+        var lines = MeasuringChild.Run(output, [Command], JitTier.First);
 
         // Each line ends "... held <ratio> bound <ratio>": what the build held, and the most it
         // can have held, each over its statement.
@@ -82,10 +78,17 @@ public sealed class FirstTierMemoryTests(ITestOutputHelper output)
     /// <returns>The process exit code.</returns>
     internal static int Measure()
     {
-        // Not a test of the tier unless the tier is pinned; refuse rather than pass vacuously.
+        // Not a test of the tier unless the tier is pinned, and pinned is what the code does,
+        // not what a variable says: refuse rather than pass vacuously.
         if (Environment.GetEnvironmentVariable("DOTNET_TC_CallCounting") != "0")
         {
             Console.Error.WriteLine("DOTNET_TC_CallCounting must be 0, so that nothing is promoted");
+            return 2;
+        }
+
+        if (JitTier.Refusal(JitTier.First) is { } refusal)
+        {
+            Console.Error.WriteLine(refusal);
             return 2;
         }
 
@@ -108,7 +111,7 @@ public sealed class FirstTierMemoryTests(ITestOutputHelper output)
             Console.WriteLine(string.Create(
                 CultureInfo.InvariantCulture,
                 $"{name} {nodes} nodes: {peak.Least / nodes:F2} B/node held and {peak.Bound / nodes:F2} at most in {peak.Readings} readings, "
-                + $"{peak.Foreign} B from other threads, {peak.Discarded} retaken, stated {stated / nodes:F2}, "
+                + $"{peak.Foreign} B from other threads, {peak.Retaken} retaken, stated {stated / nodes:F2}, "
                 + $"held {peak.Least / stated:F4} bound {peak.Bound / stated:F4}"));
     }
 

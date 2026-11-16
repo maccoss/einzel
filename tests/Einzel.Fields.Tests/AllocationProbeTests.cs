@@ -100,8 +100,11 @@ public sealed class AllocationProbeTests(ITestOutputHelper output)
     {
         Assert.Null(AllocationProbe.Observer);
 
+        var array = new double[4];
+        var other = new int[4];
+
         // Once, so that anything a first call does is done.
-        AllocationProbe.Allocated(1);
+        AllocationProbe.Allocated(array, other);
 
         const int reports = 100_000_000;
 
@@ -110,14 +113,15 @@ public sealed class AllocationProbeTests(ITestOutputHelper output)
 
         for (var report = 0; report < reports; report++)
         {
-            AllocationProbe.Allocated(report);
+            AllocationProbe.Allocated(array);
+            AllocationProbe.Allocated(array, other);
         }
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         // Printed and not asserted: a time is a statement about a machine. A solve makes a few
         // hundred reports.
-        output.WriteLine($"{clock.Elapsed.TotalNanoseconds / reports:F2} ns a report with nobody observing");
+        output.WriteLine($"{clock.Elapsed.TotalNanoseconds / (2.0 * reports):F2} ns a report with nobody observing");
 
         Assert.Equal(0L, allocated);
     }
@@ -147,5 +151,103 @@ public sealed class AllocationProbeTests(ITestOutputHelper output)
         {
             AllocationProbe.Observer = null;
         }
+    }
+
+    /// <summary>
+    /// An array a build allocates without reporting is in the bound, whether it is kept or
+    /// dropped at once.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AnUnreportedArrayIsBoundedAsHeld(bool kept)
+    {
+        const int length = 200_000;
+        const long bytes = sizeof(double) * (long)length;
+
+        var peak = LiveSet.Peak(() =>
+        {
+            var reported = new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 33, 33, 33));
+            var silent = new double[length];
+
+            silent[0] = 1.0;
+
+            // A second report, so that the silent array falls between two readings and not in
+            // the stretch after the last.
+            var later = new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 9, 9, 9));
+
+            return kept ? new object[] { reported, silent, later } : new object[] { reported, later };
+        });
+
+        output.WriteLine(
+            $"kept {kept}: {peak.Held:N0} B held, {peak.Bound:N0} at most, {peak.Unreported:N0} unreported between two readings");
+
+        Assert.Equal(2, peak.Readings);
+        Assert.InRange(peak.Unreported, bytes, bytes + 4096);
+
+        // Held through the second reading or not, the build may have held it on top of the first.
+        Assert.True(peak.Bound >= (8.0 * 33 * 33 * 33) + bytes, $"the bound is {peak.Bound:N0}");
+    }
+
+    /// <summary>
+    /// A report cannot be used to hide an allocation: an array reported twice, or one allocated
+    /// before the last report, is refused by name.
+    /// </summary>
+    /// <remarks>
+    /// The observer takes what the reported arrays hold off what the thread allocated and calls
+    /// the rest unreported. While a site stated a byte count, a count 800 kB too large beside
+    /// 800 kB allocated silently came to nothing unreported, and passed. A site hands over the
+    /// arrays now, so the two ways left to report more than was allocated are these.
+    /// </remarks>
+    [Fact]
+    public void AReportCannotHideAnAllocation()
+    {
+        var twice = Assert.Throws<InvalidOperationException>(() => LiveSet.Peak(() =>
+        {
+            // 800 kB reported twice beside 800 kB unreported: the sizes cancel exactly.
+            var array = new double[100_000];
+
+            AllocationProbe.Allocated(array);
+
+            var silent = new double[100_000];
+
+            AllocationProbe.Allocated(array);
+
+            return new object[] { silent, array };
+        }));
+
+        Assert.Contains("twice", twice.Message, StringComparison.Ordinal);
+        Assert.Null(AllocationProbe.Observer);
+
+        var old = new double[100_000];
+
+        var earlier = Assert.Throws<InvalidOperationException>(() => LiveSet.Peak(() =>
+        {
+            AllocationProbe.Allocated(old);
+
+            return old;
+        }));
+
+        Assert.Contains("allocated earlier", earlier.Message, StringComparison.Ordinal);
+        Assert.Null(AllocationProbe.Observer);
+
+        // The control: the same build reporting each array once, as it allocates it, is
+        // measured, and the silent array is in its bound.
+        var peak = LiveSet.Peak(() =>
+        {
+            var array = new double[100_000];
+
+            AllocationProbe.Allocated(array);
+
+            var silent = new double[100_000];
+            var last = new double[2_000];
+
+            AllocationProbe.Allocated(last);
+
+            return new object[] { silent, array, last };
+        });
+
+        Assert.Equal(2, peak.Readings);
+        Assert.InRange(peak.Unreported, 800_000, 800_000 + 4096);
     }
 }

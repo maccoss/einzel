@@ -72,10 +72,7 @@ internal static class MemoryCases
         // Fully optimized from the first call, so that what a local's lifetime is does not
         // depend on which methods the runtime has got round to promoting by the time they are
         // measured. FirstTierMemoryTests pins the other end.
-        var lines = MeasuringChild.Run(
-            output,
-            [Command, .. arguments],
-            new Dictionary<string, string> { ["DOTNET_TieredCompilation"] = "0" });
+        var lines = MeasuringChild.Run(output, [Command, .. arguments], JitTier.Optimized);
 
         Assert.Equal(cases.Length, lines.Length);
 
@@ -85,25 +82,57 @@ internal static class MemoryCases
 
             Assert.Equal(arguments[at], parts[0]);
 
+            var peak = new LivePeak(
+                double.Parse(parts[1], CultureInfo.InvariantCulture),
+                double.Parse(parts[2], CultureInfo.InvariantCulture),
+                double.Parse(parts[3], CultureInfo.InvariantCulture),
+                int.Parse(parts[4], CultureInfo.InvariantCulture),
+                long.Parse(parts[5], CultureInfo.InvariantCulture),
+                long.Parse(parts[6], CultureInfo.InvariantCulture),
+                long.Parse(parts[7], CultureInfo.InvariantCulture),
+                int.Parse(parts[8], CultureInfo.InvariantCulture));
+
+            AssertTheBuildsOwn(arguments[at], peak);
+
             return new MeasuredBuild(
-                new LivePeak(
-                    double.Parse(parts[1], CultureInfo.InvariantCulture),
-                    double.Parse(parts[2], CultureInfo.InvariantCulture),
-                    int.Parse(parts[3], CultureInfo.InvariantCulture),
-                    long.Parse(parts[4], CultureInfo.InvariantCulture),
-                    long.Parse(parts[5], CultureInfo.InvariantCulture),
-                    long.Parse(parts[6], CultureInfo.InvariantCulture),
-                    int.Parse(parts[7], CultureInfo.InvariantCulture)),
-                int.Parse(parts[8], CultureInfo.InvariantCulture),
-                int.Parse(parts[9], CultureInfo.InvariantCulture));
+                peak,
+                int.Parse(parts[9], CultureInfo.InvariantCulture),
+                int.Parse(parts[10], CultureInfo.InvariantCulture));
         })];
     }
+
+    /// <summary>
+    /// Fails a measurement during which other threads allocated a large part of what the build
+    /// held.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="AllocationProbe"/> is per thread: an array a build allocates on a worker thread
+    /// is not read at and not bounded, only counted among what other threads allocated. The
+    /// solvers allocate on the thread that calls them, and in a child process that count is a
+    /// few hundred bytes a reading. A quarter of the build's own peak is far above anything a
+    /// runtime's housekeeping does and far below a solver that has moved its per-node arrays to
+    /// workers, which would allocate several times its peak there.
+    /// </remarks>
+    internal static void AssertTheBuildsOwn(string name, LivePeak peak) =>
+        Assert.True(
+            peak.Foreign <= 0.25 * peak.Held,
+            $"{name}: threads other than the build's allocated {peak.Foreign:N0} bytes during a build that held "
+            + $"{peak.Held:N0}. If the solver now allocates on worker threads, {nameof(AllocationProbe)} - which is per "
+            + "thread - neither reads the live set at those allocations nor bounds them, and the observer has to "
+            + "follow the build onto them. Otherwise the measuring process was not the build's alone.");
+
 
     /// <summary>The child's work: each case built once unmeasured per kind, then measured.</summary>
     /// <param name="cases">The cases, each <c>kind=size</c>.</param>
     /// <returns>The process exit code.</returns>
     internal static int Child(ReadOnlySpan<string> cases)
     {
+        if (JitTier.Refusal(JitTier.Optimized) is { } refusal)
+        {
+            Console.Error.WriteLine(refusal);
+            return 2;
+        }
+
         var warmed = new HashSet<string>();
 
         foreach (var item in cases)
@@ -124,7 +153,8 @@ internal static class MemoryCases
 
             Console.WriteLine(string.Create(
                 CultureInfo.InvariantCulture,
-                $"{item} {peak.Held:R} {peak.Bound:R} {peak.Readings} {peak.Unreported} {peak.Foreign} {peak.ForeignBurst} {peak.Discarded} "
+                $"{item} {peak.Least:R} {peak.Held:R} {peak.Bound:R} {peak.Readings} {peak.Unreported} {peak.Foreign} "
+                + $"{peak.ForeignBurst} {peak.Retaken} "
                 + $"{(Direct.ContainsKey(kind) ? solved!.Levels : -1)} {(Direct.ContainsKey(kind) ? solved!.Cycles : -1)}"));
         }
 
@@ -188,12 +218,9 @@ internal static class MeasuringChild
     /// <summary>Runs the child and returns its standard output's lines.</summary>
     /// <param name="output">Where both of the child's streams are copied.</param>
     /// <param name="arguments">The entry point's arguments.</param>
-    /// <param name="environment">Variables to set for the child, or null.</param>
+    /// <param name="tier">The tier of JIT code the child is to run as.</param>
     /// <returns>The non-empty lines the child printed.</returns>
-    internal static string[] Run(
-        ITestOutputHelper output,
-        IReadOnlyList<string> arguments,
-        IReadOnlyDictionary<string, string>? environment)
+    internal static string[] Run(ITestOutputHelper output, IReadOnlyList<string> arguments, JitTier tier)
     {
         var start = new ProcessStartInfo(Host())
         {
@@ -210,9 +237,18 @@ internal static class MeasuringChild
             start.ArgumentList.Add(argument);
         }
 
-        foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+        // Every tiering variable, under both prefixes the runtime reads, whatever the parent
+        // was started with: a shell that exports one would otherwise choose the child's tier.
+        foreach (var (name, value) in tier.Environment())
         {
-            start.Environment[name] = value;
+            if (value is null)
+            {
+                start.Environment.Remove(name);
+            }
+            else
+            {
+                start.Environment[name] = value;
+            }
         }
 
         using var child = Process.Start(start)!;
@@ -251,4 +287,107 @@ internal static class MeasuringChild
             ? self
             : "dotnet";
     }
+}
+
+/// <summary>Which tier of JIT code a measuring child runs as, set by its parent and checked by it.</summary>
+/// <remarks>
+/// <para>
+/// What a solve holds depends on the tier: first-tier code keeps a local alive to the end of its
+/// method and optimized code to its last use. Which a method runs as is otherwise the machine's
+/// choice - how often it has been called, how busy the background compiler is - so each child is
+/// pinned to one end, and <b>checks which end it is at by what the code does</b> rather than by
+/// what the environment says: it drops the last use of an object and sees whether a collection
+/// takes it. A shell that exports <c>DOTNET_TieredCompilation=0</c> used to turn the first-tier
+/// child into an optimized one that passed for the wrong reason.
+/// </para>
+/// <para>
+/// A Debug build's code keeps its locals in every tier, so there the optimized child cannot be
+/// optimized and says so instead of refusing; the first-tier child's premise holds either way.
+/// </para>
+/// </remarks>
+internal sealed class JitTier
+{
+    private static readonly string[] Variables =
+        ["TieredCompilation", "TC_QuickJit", "TC_QuickJitForLoops", "TC_CallCounting", "TieredPGO", "TC_OnStackReplacement", "ReadyToRun"];
+
+    private readonly bool _optimized;
+
+    private JitTier(bool optimized) => _optimized = optimized;
+
+    /// <summary>Everything compiled fully optimized at its first call.</summary>
+    internal static JitTier Optimized { get; } = new(true);
+
+    /// <summary>Everything compiled quickly and never promoted.</summary>
+    internal static JitTier First { get; } = new(false);
+
+    /// <summary>The variables to set, and with a null value to remove, for a child of this tier.</summary>
+    internal IEnumerable<(string Name, string? Value)> Environment()
+    {
+        foreach (var variable in Variables)
+        {
+            yield return ($"COMPlus_{variable}", null);
+            yield return ($"DOTNET_{variable}", null);
+        }
+
+        if (_optimized)
+        {
+            yield return ("DOTNET_TieredCompilation", "0");
+        }
+        else
+        {
+            // Nothing is counted, so nothing is promoted: every method stays first-tier.
+            yield return ("DOTNET_TieredCompilation", "1");
+            yield return ("DOTNET_TC_QuickJit", "1");
+            yield return ("DOTNET_TC_QuickJitForLoops", "1");
+            yield return ("DOTNET_TC_OnStackReplacement", "0");
+            yield return ("DOTNET_TC_CallCounting", "0");
+            yield return ("DOTNET_TieredPGO", "0");
+        }
+    }
+
+    /// <summary>
+    /// Why this process is not running as the tier asked for, or null if it is.
+    /// </summary>
+    internal static string? Refusal(JitTier wanted)
+    {
+        var keeps = ALocalOutlivesItsLastUse();
+        var unoptimizedBuild = !IsOptimizedBuild(typeof(PoissonSolver3D)) || !IsOptimizedBuild(typeof(JitTier));
+
+        if (wanted._optimized)
+        {
+            // A Debug build is unoptimized in every tier, and is measured as what it is.
+            return keeps && !unoptimizedBuild
+                ? "this process was to run fully optimized code and a local outlives its last use: "
+                    + "tiering is on, so what a build holds would depend on what has been promoted"
+                : null;
+        }
+
+        return keeps
+            ? null
+            : "this process was to run first-tier code and a local dies at its last use: the code is optimized "
+                + "(DOTNET_TieredCompilation=0, or a tiering variable set outside), so a first-tier hold cannot show";
+    }
+
+    private static bool IsOptimizedBuild(Type type) =>
+        type.Assembly.GetCustomAttributes(typeof(DebuggableAttribute), false) is not [DebuggableAttribute debuggable, ..]
+        || !debuggable.IsJITOptimizerDisabled;
+
+    /// <summary>Whether, in the code this process is running, an object survives its local's last use.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static bool ALocalOutlivesItsLastUse()
+    {
+        var held = new object();
+        var weak = new WeakReference(held);
+
+        Use(held);
+
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+
+        return weak.IsAlive;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void Use(object value) => GC.KeepAlive(value);
 }

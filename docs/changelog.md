@@ -3251,8 +3251,9 @@ Two findings from Stage 1 that bear on the spec:
   millisecond-wide window - and it is removed rather than hedged.
 
   **A build's live set can only rise at an allocation, so its peak is held just after one.** The
-  solver reports each per-node allocation to `AllocationProbe` (internal; one thread-static
-  read and a branch per array when nobody observes, twelve call sites in eight types), and
+  solver hands each per-node array it allocates to `AllocationProbe` (internal; one
+  thread-static read and a branch a call when nobody observes, twelve call sites in eight
+  types), and
   `LiveSet` forces a full collection at each report on the build's own thread and reads what
   survived. No window, no second thread, no dependence on load or on how many cycles ran - and
   no reliance on the statement to say where the peak is, which a probe placed at the stated
@@ -3260,16 +3261,18 @@ Two findings from Stage 1 that bear on the spec:
 
   | | stated, real cut arms | held, to at most |
   | --- | --- | --- |
-  | Galerkin slabs, 36 k to 275 k nodes, slope | 146.97 | 146.73 to 146.97 |
-  | rediscretized sphere, 36 k to 275 k, slope | 44.98 | 44.73 to 44.99 |
-  | no coarse level, 4.9 k to 36 k, slope | 42.50 | 42.45 to 42.51 |
-  | one coarse level, 36 k to 275 k, slope | 44.71 | 44.69 to 44.71 |
-  | thin grid, 332 k to 664 k, slope | 43.87 | 43.85 to 43.87 |
-  | plane, four rods at 263 k | 135.25 | 135.23 to 135.41 |
-  | a second volume channel | 8.0 | 7.51 to 8.01 |
-  | a second plane channel | 8.0 | 6.73 to 8.03 |
-  | first-tier plane, 66 k | 135.25 | 135.56 to 135.57 |
-  | first-tier sphere, 36 k | 45.19 | 44.23 to 45.25 |
+  | Galerkin slabs, 36 k to 275 k nodes, slope | 146.97 | 146.95 to 146.97 |
+  | rediscretized sphere, 36 k to 275 k, slope | 44.98 | 44.96 to 44.99 |
+  | no coarse level, 4.9 k to 36 k, slope | 42.50 | 42.44 to 42.50 |
+  | one coarse level, 36 k to 275 k, slope | 44.71 | 44.70 to 44.71 |
+  | thin grid, 332 k to 664 k, slope | 43.87 | 43.86 to 43.87 |
+  | plane, four rods at 263 k | 135.25 | 135.39 to 135.41 |
+  | a second volume channel | 8.0 | 7.72 to 8.01 |
+  | a second plane channel | 8.0 | 7.32 to 8.03 |
+  | first-tier plane, 66 k | 135.25 | 135.57 to 135.57 |
+  | first-tier sphere, 36 k | 45.19 | 45.10 to 45.25 |
+
+  The same to the hundredth in a Debug build.
 
   The interval's upper end adds whatever the thread allocated between two readings without
   reporting it, and the upper edge is asserted there, so a per-node array added with no report
@@ -3282,25 +3285,75 @@ Two findings from Stage 1 that bear on the spec:
   what other threads allocated showed the xUnit host's threads allocating **10 to 550 kB during
   one build**, so the builds are measured in a child process (fully optimized from the first
   call, one unmeasured build of each kind first). There it is 336 bytes a forced collection,
-  the same in every run and of no established source; it is taken off the interval's lower end,
-  and a measurement in which over 16 kB arrives between two readings is retaken - for a cause
-  measured, not by a vote. That the host's allocations *were* the "100 to 300 kB high, once a
+  the same in every run and of no established source. Each reading is reduced by what other
+  threads had allocated *by then* - a reading follows a full collection, so no more of theirs
+  can be in it - and the largest result is the interval's lower end; a measurement in which
+  over 16 kB arrives between two readings is retaken, for a cause measured, not by a vote, and
+  after four the least disturbed is kept and reported, never thrown away as a failure. That the host's allocations *were* the "100 to 300 kB high, once a
   process" reading is inferred, not shown.
 
   Checks: the readings equal the sampler's best ones (43.88, 135.4, 147.0, and 135.56 and
   45.25 with nothing promoted), so the probe changes nothing about what is alive; an observed
   solve is the unobserved one **to the last bit of every node**, on a rediscretized volume, a
   Galerkin volume and a plane; 100 million unobserved reports allocate nothing, at 0.36 ns
-  each; and with all twenty-four hardware threads held by busy loops, five runs read the same
-  figures to the hundredth with no measurement retaken. Mutations: an
+  each (0.7 ns since a report carries the arrays); and with all twenty-four hardware threads
+  held by busy loops, five runs read the same figures to the hundredth with no measurement
+  retaken. Mutations: an
   extra reported array held through the restriction reads 1.18 and fails the three
   rediscretized tests and the first-tier one; a raw unreported array dropped at once reads 1.20 to 1.36
   and fails the same four; the fine residual put back in the recursing frame fails the
   first-tier test at 1.06. A forced solve now fails if it ran fewer cycles than asked. The two
-  memory classes took 60 s and take 13 s. No stated figure changed; three in the thin-grid
+  memory classes took 60 s and take 14 s in Release. No stated figure changed; three in the thin-grid
   test's remarks were wrong and are corrected in the test and in `docs/cli.md` (the second
   coarse level is 0.028 of the fine grid, its mask 0.25 bytes a node, the statement without it
   43.62). **Not done**: `SelfFieldMemoryTests`, `StudyMemoryEstimateTests` and
   `tools/memory-harness` still sample, and the Linux half of the account - that the runner
   descheduled the sampler - was never reproduced, WSL here having no SDK.
   `docs/lessons.md`, "The most a build holds is held just after an allocation".
+
+  **A second review ran it in Debug, which is what a plain `dotnet test` runs, and three tests
+  failed.** The bound read 153.5 bytes a node on the plane against 135.25: 18 a node of
+  garbage that only unoptimized code allocates. An allocation-tick listener in the child named
+  it - `System.RuntimeFieldInfoStub`, 813 ticks of about 100 kB. `DirichletMask.ZeroCutPotentials`
+  walked its four directions through a span written as a collection expression, which is made
+  from a field handle, and unoptimized code allocates a stub for that handle on every pass:
+  once a node, for every coarse mask of every cycle. It walks a static array now, and Debug
+  reads what Release reads. The same review found the interface enumeration removed from
+  `CutTowards` still in both `Shadowed` checks and in the unculled volume reference; all
+  three are index loops. `PlaneMaskTests` holds the plane mask to both things nothing held it
+  to: every cut link against the definition written out in the test, bit for bit (1,136 cut
+  arms at 257 by 257, 272 at 65 by 65, none differing; skipping an electrode fails both), and
+  73.00 bytes a node allocated against 73 kept, where the enumerator read 174.
+
+  **Four more were defects in the measurement, and one of them was the defect it measures.**
+  - *A report could hide an allocation.* A site stated a byte count, and what was unreported
+    was `max(0, allocated - reported)`: a count 800 kB too large beside 800 kB allocated
+    silently came to nothing. A site hands over the arrays now and the observer works out
+    what they hold, so there is no size to get wrong; an array reported again within 64
+    reports, or arrays holding more than the thread allocated since the last report, are
+    refused by name. Reporting an array twice in `ScalarField3D` fails every solve test with
+    "reported to AllocationProbe twice". What is left is stated: an array reported long after
+    it was allocated, beside an equal unreported allocation.
+  - *The harness held an array itself.* Remembering reported arrays put one in a local of the
+    frame that then collects, and unoptimized code keeps a local to the end of its method, so
+    in Debug the larger sphere read 52.95 bytes a node against 45.01 - one grid-sized array the
+    solver had let go, kept alive by the test, and reported as the solver's. The bookkeeping
+    has a frame of its own. **The first-tier hold of #72, reproduced in the instrument built
+    to detect it**, and found only because the suite was run in the configuration the
+    instrument's own code is unoptimized in.
+  - *Other threads could fail a measurement.* Eight attempts and a throw, calibrated on one
+    machine, with every foreign byte of the whole build taken off the lower end. Now per
+    reading and never thrown, as above; what remains by design is a named failure when other
+    threads allocated more than a quarter of what a build held, which is what a solver that
+    moved its arrays onto workers would look like, since the probe is per thread and would
+    neither read at those allocations nor bound them.
+  - *The first-tier child trusted a variable.* It checked `DOTNET_TC_CallCounting=0` and
+    inherited everything else, so a shell exporting `DOTNET_TieredCompilation=0` made it an
+    optimized child that passed for the wrong reason. Each child now has every tiering
+    variable set or cleared under both prefixes, and **checks its tier by what the code
+    does**: it drops the last use of an object and sees whether a collection takes it. Run
+    with the wrong environment each child refuses by name.
+
+  Full suite, 1,978 tests, passes in Debug and in Release. `SPEC.md`'s GRD-8 row described the
+  sampler and still carried 143.25 and 51.2 from before #72; it states the method and 135.25
+  and 48.8 now.

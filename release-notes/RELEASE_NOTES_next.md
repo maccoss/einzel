@@ -198,7 +198,8 @@ become a feature release without being renamed twice.
   `c-trap`'s build at 0.5 mm takes 14 s where it took 16; `linear-ion-trap-3d`'s is unchanged.
 - **Building a cross-section's conductor mask allocated per stencil arm**: an enumerator for
   each of a free node's four arms, 101 bytes a node of garbage, 27 MB on a quarter-million-node
-  plane. It allocates what it keeps now; the masks are unchanged.
+  plane. It allocates what it keeps now; the masks are unchanged. A Debug build allocated a
+  further 18 bytes a node while zeroing each coarse mask's cut potentials, and no longer does.
 - **`einzel export` wrote an RF cross-section as a grounded box.** A two-dimensional geometry
   whose electrodes hold their potential as drive rather than DC exported every node at zero -
   `quadrupole-rf`, `linear-ion-trap`, `stellar-ion-trap`, `multipole-guide`, `paul-trap` and

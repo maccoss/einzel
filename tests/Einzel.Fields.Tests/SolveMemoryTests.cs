@@ -492,7 +492,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     private static string Describe(LivePeak peak, long nodes) =>
         $"{peak.Least / nodes:F2} B/node held, {peak.Bound / nodes:F2} at most "
         + $"({peak.Readings} readings, {peak.Unreported:N0} B unreported between two, "
-        + $"{peak.Foreign:N0} B from other threads and {peak.ForeignBurst:N0} at once, {peak.Discarded} retaken)";
+        + $"{peak.Foreign:N0} B from other threads and {peak.ForeignBurst:N0} at once, {peak.Retaken} retaken)";
 
     /// <summary>
     /// A slope between two builds, as the interval the two measurements leave it in, against

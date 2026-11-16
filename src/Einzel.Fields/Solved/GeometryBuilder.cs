@@ -699,8 +699,11 @@ public static class GeometryBuilder
         IReadOnlyList<CompiledElectrode> electrodes,
         double fromX, double fromY, double toX, double toY, double entry)
     {
-        foreach (var electrode in electrodes)
+        // By index, as CutTowards: enumerating the interface allocates an enumerator a call.
+        for (var at = 0; at < electrodes.Count; at++)
         {
+            var electrode = electrodes[at];
+
             if (electrode.FirstEntry(fromX, fromY, toX, toY) is { } nearer
                 && nearer > 0.0
                 && nearer < entry - SharedFaceNodes.ToleranceFraction)

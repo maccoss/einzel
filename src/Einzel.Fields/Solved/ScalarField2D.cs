@@ -18,7 +18,7 @@ public sealed class ScalarField2D
         Grid = grid;
         _values = new double[grid.NodeCount];
 
-        AllocationProbe.Allocated(sizeof(double) * (long)_values.Length);
+        AllocationProbe.Allocated(_values);
     }
 
     /// <summary>The grid these values live on.</summary>
@@ -134,6 +134,9 @@ public enum EdgeCondition
 /// </remarks>
 public sealed class DirichletMask
 {
+    private static readonly StencilDirection[] AllDirections =
+        [StencilDirection.East, StencilDirection.West, StencilDirection.North, StencilDirection.South];
+
     private readonly bool[] _fixed;
     private readonly double[] _value;
 
@@ -147,7 +150,7 @@ public sealed class DirichletMask
         _fixed = new bool[grid.NodeCount];
         _value = new double[grid.NodeCount];
 
-        AllocationProbe.Allocated(_fixed.Length + (sizeof(double) * (long)_value.Length));
+        AllocationProbe.Allocated(_fixed, _value);
     }
 
     /// <summary>The grid this mask covers.</summary>
@@ -352,6 +355,7 @@ public sealed class DirichletMask
     /// </remarks>
     public void ZeroCutPotentials()
     {
+
         if (Cuts is null)
         {
             return;
@@ -363,8 +367,10 @@ public sealed class DirichletMask
         {
             for (var i = 0; i < Grid.CountX; i++)
             {
-                foreach (var direction in (ReadOnlySpan<StencilDirection>)
-                    [StencilDirection.East, StencilDirection.West, StencilDirection.North, StencilDirection.South])
+                // From a static array: a span written here as a collection expression is made
+                // from a field handle, and unoptimized code allocates a stub for that handle on
+                // every pass - garbage for every node of every coarse mask in a Debug build.
+                foreach (var direction in AllDirections)
                 {
                     var fraction = Cuts.Fraction(i, j, direction);
 
