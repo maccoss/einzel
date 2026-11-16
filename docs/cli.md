@@ -1394,7 +1394,7 @@ array, in the same file as the reasons for the arrays), and a test measures real
 against it. It was 48 bytes a node for every solve, from a comment listing three fields and
 some restriction buffers, and nothing measured it.
 
-| solve | bytes a node at peak | measured, Release, live set sampled through the build |
+| solve | bytes a node at peak | measured, Release, live set of the build |
 | --- | --- | --- |
 | volume, Galerkin hierarchy | 149.5 on a deep grid; 151.3 Astral at 1.12 M nodes, 150.4 at 8.68 M | 150.8 and 148.2 |
 | volume, rediscretized hierarchy | 48.8 on a deep grid; the largest instant of a cycle over the real levels, every memoised coarse mask and the bottom solve's scratch included - 46.5 with no coarse level | with each geometry's real cut arms, a sphere 45.0 against 45.0 deep, 42.50 against 42.50 with no coarse level, 44.87 against 44.71 one level deep, 43.87 against 43.87 on a thin grid two levels deep; 45.3 to 47.1 on the C-trap and segmented quadrupole against 48.8 to 48.9 billed (51.2 stated, and 47.8 to 48.7 measured, while first-tier code kept the V-cycle residual) |
@@ -1425,6 +1425,18 @@ the collections allow, a build whose samples see only the fine level - a loaded 
 runner did - reads about 126.6, which is why the plane test's lower edge is 0.85 where the
 volume tests' is 0.90.
 
+**The solve tests no longer sample.** A build's live set can only rise at an allocation, so the
+solver reports each per-node allocation it makes (`AllocationProbe`, internal, one thread-static
+read per array when nobody is observing) and `SolveMemoryTests` reads the live set there, on the
+build's own thread, after a forced full collection, in a child process that does nothing else.
+The largest reading is the peak, with nothing to miss: 43.88 against 43.87 on the thin grid,
+135.41 against 135.25 on four rods at 263 k nodes, 147.0 against 147.2 on the slabs' Galerkin
+build at 275 k. What the thread allocated between two readings without reporting it bounds how
+much higher the peak can have been, and the upper edge is asserted on that bound, so a per-node
+array added without a report fails as slack. The figures in the table's third column that came
+from sampling are unchanged by it. The diffusive and study measurements
+(`SelfFieldMemoryTests`, `StudyMemoryEstimateTests`, `tools/memory-harness`) still sample.
+
 **The step from 143.25 to 135.25 was what first-tier code held, and the explanation recorded
 for it before was wrong.** The V-cycles kept each level's residual as a local of the frame that
 recursed. Optimized code ends a local at its last use; first-tier code, which every method runs
@@ -1444,8 +1456,8 @@ measuring a solve in a child process with promotion switched off.
 of a cycle with every level's residual held, true of first-tier code only - and then 48.6, the
 fine restriction with one coarse mask. Derived from what is alive at each instant it is 48.8 on
 a deep grid: the coarsener memoises every coarse mask for the whole solve, so from the second
-cycle on all of them are live at the fine restriction (0.16 bytes a node on a deep grid, 0.30
-on an 8193 by 9 by 9 one, which measures 43.87 against 43.87 with them and would read 0.30 over
+cycle on all of them are live at the fine restriction (0.16 bytes a node on a deep grid, 0.25
+on an 8193 by 9 by 9 one, which measures 43.88 against 43.87 with them and would read 0.25 over
 without). And a solve that builds no coarse level relaxes the fine grid itself with a scratch
 residual over it, 46.5 bytes a node where 38.5 was billed - an under-bill of 17 percent on any
 rediscretized solve too small to coarsen.

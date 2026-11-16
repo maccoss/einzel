@@ -5686,57 +5686,95 @@ that replaced it are, by construction, the runs in which first-tier code execute
 the residual back inline reads 1.06 of the statement there (143.57 and 47.94 bytes a node)
 while every in-process memory test still passes.
 
-## A slope between two builds takes the smaller one's missed peak at the smaller build over the difference
+## The most a build holds is held just after an allocation, so read it there
 
 `ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays` failed once on the Linux CI runner
-reading 1.028 of its statement, 45.11 bytes a node against 43.87, with the two builds printed
-at 42.64 and 43.88. Nothing was held that should not have been. The larger build read its
-statement to the hundredth, and the smaller read low by 1.24 - which is 8 x 0.154, one double
-for each node of the first coarse level: the restricted residual, alive beside the fine
-residual only while `Restrict` runs, about a millisecond on that grid. The sampler takes a
-sample about every millisecond, and on Linux its raised priority is not honored, so a loaded
-runner deschedules it across the one such window a two-cycle solve had.
+reading 1.028 of its statement: a slope of 45.11 bytes a node against 43.87, from builds
+printed at 42.64 and 43.88. Nothing was held that should not have been. The larger build read
+its statement, and the smaller read low by 1.24 - which is 8 x 0.154, one double for each node
+of the first coarse level: the restricted residual, alive beside the fine residual only while
+`Restrict` runs, about a millisecond on that grid, once in a two-cycle solve. The live set was
+read by a second thread forcing a collection about every millisecond, and that thread did not
+land in the window.
 
-**The readings are quantized, which is what identifies a miss.** A sample lands on one of the
-instants a solve passes through, so a reading is the statement's own arithmetic at some earlier
-instant: 43.88 (the peak), 43.63 (the first cycle's restriction, before the second coarse mask
-is memoised, 0.25 less), 42.64 (the fine residual alone) or 42.39 (that, in the first cycle).
-Delaying the sampler by 2, 4 and 5 ms a sample on an idle workstation produced those values
-in all but two of some two hundred readings - the two, 43.09 and 43.10 of the larger build,
-are low and not identified - and at 4 ms the failing pair itself, 42.65 and 43.88 giving
-45.11, in eight runs of thirty-two; at 20 ms every reading is 35.88, a solve with no cycle seen
-at all. An allocation the statement omits would read above the statement in both builds, and
-a fixed cost would not come out as a multiple of a coarse level's node count.
+**The readings were quantized, which is what identified a miss.** A sample lands on one of the
+instants a solve passes through, so a reading is the statement's own arithmetic at some
+earlier instant: 43.88 (the peak), 43.63 (the first cycle's restriction, before the second
+coarse mask is memoised, 0.25 less), 42.64 (the fine residual alone), 42.39 (that, in the
+first cycle). Delaying the sampler by 2, 4 and 5 ms a sample on an idle workstation produced
+those values in all but two of some two hundred readings - the two, 43.09 and 43.10 of the
+larger build, were low and never identified - and at 4 ms the failing pair itself, printed as
+42.65 and 43.88 and making 45.11, in eight runs of thirty-two; at 20 ms every reading was
+35.88, a solve with no cycle seen at all. An allocation the statement omits would read above
+the statement in both builds. **When a flaky reading is off by an amount, divide the amount by
+the node counts of the levels before looking for a cause: a multiple of a level is an instant,
+not an allocation.** Not reproduced on Linux - WSL on that machine had no SDK - so that the
+runner descheduled the sampler, whose raised priority Linux does not honor, is an inference.
 
-**Why this test and not the others.** A slope is (large - small) over the difference in nodes,
-so a reading of the smaller build that is low by d bytes a node raises the slope by d times
-the smaller build over the difference. Between two cubes at a halved cell that weight is a
-seventh, and a miss is lost in the band. This test doubles one axis: the difference is the
-smaller build, the weight is one, and the miss arrives whole and with the wrong sign, on the
-edge that is supposed to mean "something is held that is not charged". The comment beside the
-assertion already recorded the mechanism ("under load the smaller read 43.63 once and the slope
-44.12") and moved one assertion off the slope for it, and left the band on.
+**Why that test: a slope takes the smaller build's miss at the smaller build over the
+difference in nodes.** Between two cubes at a halved cell that weight is a seventh. That test
+doubles one axis, so the weight is one, and the miss arrived whole, with the wrong sign, on the
+edge that means "something is held that is not charged".
 
-**The rule.** A sampled peak can miss and read low, so an upper bound belongs on a single
-build's reading, where a miss can only pass; a slope is for cancelling a fixed cost, and is
-worth its sign problem only where there is a fixed cost to cancel - here both builds read the
-same bytes a node after a warm-up solve, so there was none. Before trusting a slope, work out
-the weight it gives the smaller build. And when a flaky reading is off by an amount, divide
-that amount by the node counts of the levels before looking for a cause: a multiple of a
-level is an instant, not an allocation.
+**The first fix moved the hazard rather than removing it**, and a review said so. It asserted
+each build against its own statement, where a miss "can only pass". That dropped the slope's
+cancelling of what a build holds whatever its size; it left a sampler descheduled across a
+whole solve reading 0.82 against a lower edge of 0.90; it left every other memory test on the
+same sampler; it ran six cycles for five windows where nothing checked that six cycles ran; and
+its tightest assertion, a tenth of a byte a node, was 100 kB wide beside a known reading 100 to
+300 kB high once a process. Each was a way for a sampler to be unlucky. **A measurement that
+races the thing it measures is fixed by not racing, not by choosing which way it may lose.**
 
-The test now holds each build to its own statement and prints the slope; with the sampler
-delayed 4 ms it passes twelve runs of twelve, the slope reading 45.11 in one of them, and with
-one extra grid-sized array held at the fine restriction it fails eleven of eleven, three idle
-and eight delayed. Six cycles where it ran two give each reading five windows instead of one, so that a
-loaded runner sees the peak it is asserting on more often than it did; that raises what a pass
-is worth and is not what makes the test unable to fail falsely. **Not reproduced on Linux**:
-the WSL install on this machine has no .NET SDK, so the Linux half of the account - the
-priority - is an inference from the readings, which the delayed sampler reproduces on Windows.
+**What it is now.** A build's live set can only rise at an allocation, so its maximum is
+attained immediately after one. The solver reports each per-node allocation
+(`AllocationProbe`: internal, per thread, one thread-static read and a branch per array when
+nobody observes), and the test forces a full blocking collection at each report, on the
+build's own thread, and reads what survived. The largest reading is the peak: nothing to miss,
+no second thread, nothing that depends on the runner's load or on how many cycles ran. Three
+things had to be got right for that to be a measurement rather than a second kind of luck.
 
-Also seen while measuring, and not a cause of this failure: once in a process, at no fixed
-point, one reading of nine came out 100 to 300 kB **high** (44.33 against 43.88 at 664
-thousand nodes, 44.18 at 332 thousand), with tiering on, off, and with call counting off. It
-is something else in the test process allocating during a reading. It is the "first reading
-in a process" outlier the self-field test recorded, and it is not always the first. The
-middle of three discards one; two in one test have not been seen.
+- **What is not reported is bounded, and the bound is what the upper edge is asserted on.**
+  The thread's own allocation counter says how many bytes it allocated between two readings,
+  and the reports say how many of those they account for; the live set between them was at
+  most the earlier reading plus the rest. So a reading is an interval - held, and at most -
+  and an array added to the solver without a report fails as slack instead of passing unseen.
+  An array allocated silently and dropped before the next report reads 1.20 to 1.36 of the statement
+  that way, and one held through a restriction 1.18.
+- **The bound found a real allocation on its first run.** The plane build's bound was 174 bytes
+  a node against 135 held: the plane cut-link builder enumerated its electrode list through
+  `IReadOnlyList`, which allocates an enumerator for every arm of every free node - 101 bytes
+  a node of garbage across a mask, 26.8 MB on a 263 k-node plane. It is an index loop now and
+  the bound is 207 bytes above the reading. A sampler measuring the live set had no way to see
+  garbage at all.
+- **The process has to be the build's.** A reading is of the whole process. Counting what
+  other threads allocated - the process's total less this thread's - showed a test host's own
+  threads allocating 10 to 550 kB during one build, and that is the likeliest account of the
+  reading "100 to 300 kB high, once a process" that a middle-of-three had been outvoting. (It
+  cannot be shown to be those bytes; it is the only allocation in the process that was not the
+  build's.) So the builds are measured in a child process, fully optimized from the first call
+  so that a local's lifetime does not depend on what has been promoted yet, after one unmeasured
+  build of each kind. There, other threads allocate 336 bytes a forced collection from the
+  second measurement on - the same in every run, source not established - which is taken off
+  the lower end of the interval, and a measurement in which more than 16 kB arrives between two
+  readings is taken again: discarded for a cause that was measured, never for its value.
+
+With readings that cannot miss, a slope is the difference of two exact figures, so the tests
+that need one to cancel a fixed cost have it back, the thin-grid test included, and a forced
+solve fails if it ran fewer cycles than it was asked for.
+
+**The rule.** Before sampling a quantity from outside, ask whether the code under test passes
+through a countable set of instants at which the quantity can change, and read it at those. For
+a live set the instants are allocations, and "the peak is just after an allocation" is a
+property of the quantity rather than of the solver, which is what lets a probe at every
+allocation find a peak the statement does not know about - one placed only where the statement
+says the peak is could not. And account for what the probe cannot see with a counter the
+runtime already keeps, so that the gap is a number in the test's output rather than an
+assumption in its design.
+
+The readings are the sampler's best ones, which is the check that the probe changes nothing
+about what is alive: 43.88 on the thin grid, 135.41 and 135.58 on four rods, 147.0 on the
+slabs, 135.56 and 45.25 with nothing promoted. An observed solve is the unobserved solve to
+the last bit of every node (`AllocationProbeTests`). The two memory classes took 60 s and take
+13 s, since a build is measured once instead of three times with a sampler halving its speed.
+`SelfFieldMemoryTests` and `StudyMemoryEstimateTests` still sample, and so does
+`tools/memory-harness`.

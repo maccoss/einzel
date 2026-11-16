@@ -17,6 +17,8 @@ public sealed class ScalarField2D
         ArgumentNullException.ThrowIfNull(grid);
         Grid = grid;
         _values = new double[grid.NodeCount];
+
+        AllocationProbe.Allocated(sizeof(double) * (long)_values.Length);
     }
 
     /// <summary>The grid these values live on.</summary>
@@ -144,6 +146,8 @@ public sealed class DirichletMask
         Grid = grid;
         _fixed = new bool[grid.NodeCount];
         _value = new double[grid.NodeCount];
+
+        AllocationProbe.Allocated(_fixed.Length + (sizeof(double) * (long)_value.Length));
     }
 
     /// <summary>The grid this mask covers.</summary>

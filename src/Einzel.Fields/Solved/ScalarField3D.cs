@@ -25,6 +25,8 @@ public sealed class ScalarField3D
 
         Grid = grid;
         _values = new double[grid.NodeCount];
+
+        AllocationProbe.Allocated(sizeof(double) * (long)_values.Length);
     }
 
     /// <summary>The grid these values live on.</summary>

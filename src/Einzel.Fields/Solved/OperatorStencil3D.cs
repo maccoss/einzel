@@ -48,6 +48,8 @@ public sealed class OperatorStencil3D
         _diagonal = new double[grid.NodeCount];
         _arm = new double[grid.NodeCount * Arms];
         _known = new double[grid.NodeCount];
+
+        AllocationProbe.Allocated(sizeof(double) * ((long)_diagonal.Length + _arm.Length + _known.Length));
     }
 
     /// <summary>The grid this operator is over.</summary>

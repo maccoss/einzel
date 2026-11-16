@@ -196,6 +196,9 @@ become a feature release without being renamed twice.
   extruded electrodes: 5.5 kB a node on `c-trap`, 260 bytes on `linear-ion-trap-3d`, against
   the 105 the mask keeps. It now allocates only what it keeps, and the masks are bit-identical.
   `c-trap`'s build at 0.5 mm takes 14 s where it took 16; `linear-ion-trap-3d`'s is unchanged.
+- **Building a cross-section's conductor mask allocated per stencil arm**: an enumerator for
+  each of a free node's four arms, 101 bytes a node of garbage, 27 MB on a quarter-million-node
+  plane. It allocates what it keeps now; the masks are unchanged.
 - **`einzel export` wrote an RF cross-section as a grounded box.** A two-dimensional geometry
   whose electrodes hold their potential as drive rather than DC exported every node at zero -
   `quadrupole-rf`, `linear-ion-trap`, `stellar-ion-trap`, `multipole-guide`, `paul-trap` and

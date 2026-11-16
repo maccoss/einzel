@@ -3232,22 +3232,75 @@ Two findings from Stage 1 that bear on the spec:
   window". History is kept where it explains a decision - the Helix section, the globalization
   reversal, the camera defects - and marked as history rather than read as the current state.
 
-- **The thin-grid memory test failed on a slope, and the builds it was a slope of were both
-  right.** `ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays` read 1.028 of its statement
-  once on the Linux CI runner: 45.11 bytes a node from builds printed at 42.64 and 43.88 against
-  43.87. The larger build read its statement; the smaller read low by 1.24, which is one double
-  for each node of the first coarse level - the sampler missed the millisecond in which the
-  restricted residual is alive beside the fine one, the only such window a two-cycle solve has
-  after its masks are memoised. **A slope takes the smaller build's miss at the smaller build
-  over the difference in nodes**: a seventh between two cubes at a halved cell, and one here,
-  where one axis is doubled. Reproduced on an idle workstation by delaying the sampler 4 ms a
-  sample: readings fall on 42.64, 43.63 and 43.88, each the statement's arithmetic at an earlier
-  instant, and the failing pair came up in eight runs of thirty-two. The test now holds each build to its own statement, where a miss can only pass,
-  and prints the slope (both builds read 43.88 after a warm-up, so there was no fixed cost for
-  a slope to cancel); it runs six cycles so a reading has five windows. Delayed, twelve of
-  twelve pass; with an extra grid-sized array held at the fine restriction, eleven of eleven
-  fail. No engine code and no stated figure changed. Three figures in the test's remarks were
-  wrong and are corrected: the second coarse level is 0.028 of the fine grid, its mask 0.25
-  bytes a node, and the statement without it 43.62. Not reproduced on Linux - WSL here has no
-  SDK - so that the runner descheduled the sampler is an inference from the readings.
-  `docs/lessons.md`, "A slope between two builds takes the smaller one's missed peak".
+- **The solve memory tests read the live set from inside the build, and stopped racing it.**
+  `ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays` read 1.028 of its statement once on
+  the Linux CI runner: a slope of 45.11 bytes a node from builds printed at 42.64 and 43.88
+  against 43.87. The larger build read its statement; the smaller read low by 1.24, one double
+  for each node of the first coarse level - the sampling thread missed the millisecond in which
+  the restricted residual is alive beside the fine one, and a slope between two builds one of
+  which is twice the other takes the smaller one's miss whole. Reproduced on an idle
+  workstation by delaying the sampler 4 ms a sample: readings fell on 42.64, 43.63 and 43.88,
+  each the statement's arithmetic at an earlier instant, and the failing pair came up in eight
+  runs of thirty-two.
+
+  **A first fix asserted each build alone, where a miss "can only pass", and a review found
+  five ways it still lost**: no cancelling of a build's fixed cost, a lower edge a sampler
+  descheduled across a whole solve fell under, every other memory test still on the sampler,
+  six cycles assumed and never checked, and a tenth-of-a-byte assertion narrower than a known
+  100 to 300 kB outlier. All five are one problem - a second thread sampling a
+  millisecond-wide window - and it is removed rather than hedged.
+
+  **A build's live set can only rise at an allocation, so its peak is held just after one.** The
+  solver reports each per-node allocation to `AllocationProbe` (internal; one thread-static
+  read and a branch per array when nobody observes, twelve call sites in eight types), and
+  `LiveSet` forces a full collection at each report on the build's own thread and reads what
+  survived. No window, no second thread, no dependence on load or on how many cycles ran - and
+  no reliance on the statement to say where the peak is, which a probe placed at the stated
+  peaks would have had.
+
+  | | stated, real cut arms | held, to at most |
+  | --- | --- | --- |
+  | Galerkin slabs, 36 k to 275 k nodes, slope | 146.97 | 146.73 to 146.97 |
+  | rediscretized sphere, 36 k to 275 k, slope | 44.98 | 44.73 to 44.99 |
+  | no coarse level, 4.9 k to 36 k, slope | 42.50 | 42.45 to 42.51 |
+  | one coarse level, 36 k to 275 k, slope | 44.71 | 44.69 to 44.71 |
+  | thin grid, 332 k to 664 k, slope | 43.87 | 43.85 to 43.87 |
+  | plane, four rods at 263 k | 135.25 | 135.23 to 135.41 |
+  | a second volume channel | 8.0 | 7.51 to 8.01 |
+  | a second plane channel | 8.0 | 6.73 to 8.03 |
+  | first-tier plane, 66 k | 135.25 | 135.56 to 135.57 |
+  | first-tier sphere, 36 k | 45.19 | 44.23 to 45.25 |
+
+  The interval's upper end adds whatever the thread allocated between two readings without
+  reporting it, and the upper edge is asserted there, so a per-node array added with no report
+  fails as slack. **That bound found a real allocation on its first run**: the plane cut-link
+  builder enumerated its electrode list through an interface, an enumerator for every arm of
+  every free node - **101 bytes a node of garbage, 26.8 MB on a 263 k-node plane**, which no
+  sampler of the live set could see. It is an index loop now; masks are unchanged.
+
+  **And it identified the outlier as far as it can be.** A reading is of the process; counting
+  what other threads allocated showed the xUnit host's threads allocating **10 to 550 kB during
+  one build**, so the builds are measured in a child process (fully optimized from the first
+  call, one unmeasured build of each kind first). There it is 336 bytes a forced collection,
+  the same in every run and of no established source; it is taken off the interval's lower end,
+  and a measurement in which over 16 kB arrives between two readings is retaken - for a cause
+  measured, not by a vote. That the host's allocations *were* the "100 to 300 kB high, once a
+  process" reading is inferred, not shown.
+
+  Checks: the readings equal the sampler's best ones (43.88, 135.4, 147.0, and 135.56 and
+  45.25 with nothing promoted), so the probe changes nothing about what is alive; an observed
+  solve is the unobserved one **to the last bit of every node**, on a rediscretized volume, a
+  Galerkin volume and a plane; 100 million unobserved reports allocate nothing, at 0.36 ns
+  each; and with all twenty-four hardware threads held by busy loops, five runs read the same
+  figures to the hundredth with no measurement retaken. Mutations: an
+  extra reported array held through the restriction reads 1.18 and fails the three
+  rediscretized tests and the first-tier one; a raw unreported array dropped at once reads 1.20 to 1.36
+  and fails the same four; the fine residual put back in the recursing frame fails the
+  first-tier test at 1.06. A forced solve now fails if it ran fewer cycles than asked. The two
+  memory classes took 60 s and take 13 s. No stated figure changed; three in the thin-grid
+  test's remarks were wrong and are corrected in the test and in `docs/cli.md` (the second
+  coarse level is 0.028 of the fine grid, its mask 0.25 bytes a node, the statement without it
+  43.62). **Not done**: `SelfFieldMemoryTests`, `StudyMemoryEstimateTests` and
+  `tools/memory-harness` still sample, and the Linux half of the account - that the runner
+  descheduled the sampler - was never reproduced, WSL here having no SDK.
+  `docs/lessons.md`, "The most a build holds is held just after an allocation".

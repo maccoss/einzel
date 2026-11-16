@@ -47,6 +47,8 @@ public sealed class GalerkinOperator3D
         Grid = grid;
 
         _coefficient = new double[grid.NodeCount * Entries];
+
+        AllocationProbe.Allocated(sizeof(double) * (long)_coefficient.Length);
     }
 
     /// <summary>The grid this operator is over.</summary>
@@ -110,6 +112,9 @@ public sealed class GalerkinOperator3D
         // touches a few dozen nodes out of millions, so clearing would dominate.
         var stamp = new int[fineGrid.NodeCount];
         var generation = 0;
+
+        AllocationProbe.Allocated(
+            (sizeof(double) * ((long)column.Length + applied.Length)) + (sizeof(int) * (long)stamp.Length));
 
         var touched = new List<int>(32);
         var rows = new List<int>(256);
@@ -179,6 +184,9 @@ public sealed class GalerkinOperator3D
 
         var stamp = new int[fineGrid.NodeCount];
         var generation = 0;
+
+        AllocationProbe.Allocated(
+            (sizeof(double) * ((long)column.Length + applied.Length)) + (sizeof(int) * (long)stamp.Length));
 
         var touched = new List<int>(32);
         var rows = new List<int>(512);
