@@ -19,6 +19,32 @@ public sealed class CommandLine
     {
     }
 
+    /// <summary>
+    /// The flags that never take a value, so the argument after one is never taken as its value.
+    /// </summary>
+    /// <remarks>
+    /// The parser cannot tell a switch from an option by looking: "a following argument that is
+    /// not itself an option is this option's value". So <c>render surface --cycle-mean
+    /// models/q.json</c> read the model as the switch's value and printed the usage, and
+    /// <c>--no-scale out.png</c> dropped the file without a word. Every switch any verb reads is
+    /// named here; <c>SwitchesAreDeclaredTests</c> reads the verbs' source and fails when one is
+    /// read with <c>Has</c> alone and is missing from this list.
+    /// </remarks>
+    public static readonly IReadOnlySet<string> Switches = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "composite",
+        "cycle-mean",
+        "dry-run",
+        "json",
+        "mesh",
+        "no-calibrate",
+        "no-scale",
+        "no-trajectory",
+        "see-through",
+        "study",
+        "vtu",
+    };
+
     /// <summary>Positional arguments, excluding the verb.</summary>
     public IReadOnlyList<string> Positional => _positional;
 
@@ -76,8 +102,8 @@ public sealed class CommandLine
             }
 
             // A following argument that is not itself an option is this option's
-            // value. Flags such as --json simply have none.
-            if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            // value - unless this is a switch, which never has one.
+            if (!Switches.Contains(name) && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
             {
                 parsed._options[name] = args[++i];
                 parsed._all.Add((name, args[i]));

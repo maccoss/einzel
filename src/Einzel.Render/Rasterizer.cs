@@ -25,7 +25,12 @@ public sealed record RasterMesh(
 /// <param name="R">Red, zero to one.</param>
 /// <param name="G">Green, zero to one.</param>
 /// <param name="B">Blue, zero to one.</param>
-public sealed record RasterLine(IReadOnlyList<double> PointsMm, double R, double G, double B);
+/// <param name="SegmentColors">
+/// A color for each segment, three numbers each, in place of the line's one color; null for one
+/// color throughout. Each segment is drawn exactly as a line of that segment alone would be.
+/// </param>
+public sealed record RasterLine(
+    IReadOnlyList<double> PointsMm, double R, double G, double B, IReadOnlyList<double>? SegmentColors = null);
 
 /// <summary>One layer, drawn whole before the next.</summary>
 /// <param name="Meshes">Its surfaces.</param>
@@ -485,7 +490,11 @@ public static class Rasterizer
                             continue;
                         }
 
-                        Put(index, line.R * shade, line.G * shade, line.B * shade, alpha);
+                        var (lr, lg, lb) = line.SegmentColors is { } colors
+                            ? (colors[i], colors[i + 1], colors[i + 2])
+                            : (line.R, line.G, line.B);
+
+                        Put(index, lr * shade, lg * shade, lb * shade, alpha);
 
                         if (writesDepth)
                         {

@@ -21,7 +21,7 @@ namespace Einzel.Fields.Solved;
 /// could never express.
 /// </para>
 /// </remarks>
-public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded
+public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded, IHeldConductors
 {
     private readonly IElectrostaticField _halfPlane;
 
@@ -125,6 +125,14 @@ public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded
         var sample = Sample(in position);
         return bounded.ConductorAt(in sample);
     }
+
+    /// <inheritdoc/>
+    public double? HeldPotentialAt(in Vec3 position, double timeSeconds) =>
+        _halfPlane is IHeldConductors held ? held.HeldPotentialAt(Sample(in position), timeSeconds) : null;
+
+    /// <inheritdoc/>
+    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
+        _halfPlane is IHeldConductors held ? held.HeldCycleMeanAt(Sample(in position), fromSeconds, periodSeconds, samples) : null;
 
     private static Vec3 Sample(in Vec3 position) =>
         new(position.X, Math.Sqrt((position.Y * position.Y) + (position.Z * position.Z)), 0.0);

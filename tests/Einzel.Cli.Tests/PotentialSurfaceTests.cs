@@ -1053,6 +1053,10 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         }
 
         Assert.Contains(ProbeStatus.InsideConductor, new[] { probe.At(0, new Einzel.Core.Geometry.Vec3(8.5, 0.0, 0.0), 0.0).Status });
+
+        // The row names the elements a point is outside, which the shared core collects.
+        Assert.Equal([0], probe.At(0, new Einzel.Core.Geometry.Vec3(500.0, 0.0, 0.0), 0.0).OutsideElements);
+        Assert.Empty(probe.At(0, new Einzel.Core.Geometry.Vec3(1.0, 0.5, 0.0), 0.0).OutsideElements);
     }
 
     /// <summary>
@@ -1088,6 +1092,365 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         Assert.DoesNotContain("render.surface-flat", Codes(asked));
         Assert.Equal(2.0, Number(asked, "heightMmPerUnit"));
+    }
+
+    /// <summary>
+    /// A plateau is drawn at what the conductor holds, not at what the summed field reads inside
+    /// it, and where the two disagree the surface says so.
+    /// </summary>
+    /// <remarks>
+    /// The slit's jaws are held at 40 V, and a uniform analytic field is summed over the whole
+    /// model - which has no conductors and fills all space, so inside the jaws the sum reads
+    /// about -960 V. The plateau used to be the median of those readings: a conductor drawn at a
+    /// potential nothing holds, reported as its own in the picture, the outcome, the PNG and the
+    /// CSV. The control is the same model without the analytic field, where the two agree and
+    /// nothing is said.
+    /// </remarks>
+    [Fact]
+    public void APlateauIsWhatTheConductorHoldsNotWhatTheSumReads()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+
+        foreach (var electrode in node["fields"]![0]!["solve"]!["electrodes"]!.AsArray())
+        {
+            electrode!["potential"]!["value"] = 40.0;
+        }
+
+        var alone = Path.Combine(_root, "jaws.json");
+        File.WriteAllText(alone, node.ToJsonString());
+
+        node["fields"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse(
+            """{ "type": "uniform", "field": { "value": [2000000.0, 0, 0], "unit": "V/m" } }"""));
+
+        var summed = Path.Combine(_root, "jaws-in-a-field.json");
+        File.WriteAllText(summed, node.ToJsonString());
+
+        using var with = Json("render", "surface", summed, "--samples", "161", "--dry-run");
+        using var without = Json("render", "surface", alone, "--samples", "161", "--dry-run");
+
+        foreach (var plateau in with.RootElement.GetProperty("plateaus").EnumerateArray())
+        {
+            output.WriteLine($"{plateau.GetProperty("conductor")}: {plateau.GetProperty("potentialV")} V, the sum reads {plateau.GetProperty("sampledV")} V");
+
+            Assert.Equal(40.0, plateau.GetProperty("potentialV").GetDouble());
+            Assert.True(plateau.GetProperty("sampledV").GetDouble() < -500.0, "the control: the sum inside the jaw is far from what it holds");
+        }
+
+        var disagree = with.RootElement.GetProperty("warnings").EnumerateArray()
+            .Where(w => w.GetProperty("code").GetString() == "render.plateau-disagrees")
+            .Select(w => w.GetProperty("message").GetString()!)
+            .ToList();
+
+        Assert.Equal(2, disagree.Count);
+        Assert.Contains(disagree, m => m.Contains("'slitUpper'", StringComparison.Ordinal) && m.Contains("holds 40 V", StringComparison.Ordinal));
+        Assert.Equal("Qualified", with.RootElement.GetProperty("warnings").EnumerateArray()
+            .First(w => w.GetProperty("code").GetString() == "render.plateau-disagrees").GetProperty("severity").GetString());
+
+        Assert.DoesNotContain("render.plateau-disagrees", Codes(without));
+        Assert.All(without.RootElement.GetProperty("plateaus").EnumerateArray(), p => Assert.Equal(40.0, p.GetProperty("potentialV").GetDouble()));
+    }
+
+    /// <summary>
+    /// A driven electrode's plateau is its potential at the instant drawn, over every generator
+    /// it taps and every stage a sequence puts it in, and its cycle mean under
+    /// <c>--cycle-mean</c>.
+    /// </summary>
+    /// <remarks>
+    /// The rods of <c>quadrupole-rf</c> hold nothing of DC and 500 V of drive at 1 MHz: an eighth
+    /// of a cycle in, 500 cos(pi/4) = 353.553 V, and over a cycle nothing. A second stage at
+    /// 1000 V holds 1000 V at a whole number of cycles. Read as the DC alone - the recurring way
+    /// a driven electrode has been read as earthed here - every one of these is zero.
+    /// </remarks>
+    [Fact]
+    public void ADrivenPlateauIsItsPotentialAtTheInstant()
+    {
+        var model = Model("template", "quadrupole-rf");
+
+        double Rod(string path, params string[] more)
+        {
+            using var json = Json(["render", "surface", path, "--samples", "41", "--dry-run", .. more]);
+            return json.RootElement.GetProperty("plateaus").EnumerateArray()
+                .Select(p => Math.Abs(p.GetProperty("potentialV").GetDouble())).Distinct().Single();
+        }
+
+        Assert.Equal(500.0 * Math.Cos(Math.PI / 4.0), Rod(model, "--at-us", "0.125"), 9);
+        Assert.Equal(500.0, Rod(model), 9);
+        Assert.Equal(0.0, Rod(model, "--cycle-mean"), 9);
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(model))!;
+        node["schemaVersion"] = "0.14";
+        node["sequence"] = System.Text.Json.Nodes.JsonNode.Parse(
+            """
+            [
+              { "name": "hold", "duration": { "value": 5.0, "unit": "us" } },
+              { "name": "raise", "duration": { "value": 5.0, "unit": "us" },
+                "set": { "rfAmplitude": { "value": 1000.0, "unit": "V" } } }
+            ]
+            """);
+
+        var sequenced = Path.Combine(_root, "raised-quadrupole.json");
+        File.WriteAllText(sequenced, node.ToJsonString());
+
+        Assert.Equal(500.0, Rod(sequenced, "--at-us", "2"), 9);
+        Assert.Equal(1000.0, Rod(sequenced, "--at-us", "7"), 9);
+    }
+
+    /// <summary>The largest potential any electrode reaches counts its drive and every stage.</summary>
+    [Fact]
+    public void ThePeakElectrodePotentialCountsDrivesAndStages()
+    {
+        var model = Model("template", "quadrupole-rf");
+        Assert.Equal(500.0, SurfaceCommand.PeakElectrodePotential(FieldProbe.Open(model).Model), 9);
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(model))!;
+        node["schemaVersion"] = "0.14";
+        node["sequence"] = System.Text.Json.Nodes.JsonNode.Parse(
+            """
+            [
+              { "name": "hold", "duration": { "value": 5.0, "unit": "us" } },
+              { "name": "raise", "duration": { "value": 5.0, "unit": "us" },
+                "set": { "rfAmplitude": { "value": 1500.0, "unit": "V" } } }
+            ]
+            """);
+
+        var sequenced = Path.Combine(_root, "peak-quadrupole.json");
+        File.WriteAllText(sequenced, node.ToJsonString());
+
+        Assert.Equal(1500.0, SurfaceCommand.PeakElectrodePotential(FieldProbe.Open(sequenced).Model), 9);
+        Assert.Equal(100.0, SurfaceCommand.PeakElectrodePotential(FieldProbe.Open(Model("template", "quadrupole")).Model), 9);
+    }
+
+    /// <summary>
+    /// A long, thin box is sampled across its width as well as along it, and the counts and
+    /// spacings are reported; <c>--samples NxM</c> sets both.
+    /// </summary>
+    /// <remarks>
+    /// The mirror pair's domain is 947 by 30 mm. Square cells from 81 samples along it gave 4
+    /// rows across it, and from the default 241 gave nine: a board or a gap was a facet or two
+    /// and <c>--samples</c> could not help, being capped on the long side. The cells may now be
+    /// longer than wide, and the drawn plane is the box, not a stretched one.
+    /// </remarks>
+    [Fact]
+    public void ALongThinBoxIsSampledAcrossItsWidth()
+    {
+        var model = Model("template", "planar-mirror-pair");
+
+        int[] Samples(JsonDocument d) => [.. d.RootElement.GetProperty("samples").EnumerateArray().Select(e => e.GetInt32())];
+        double[] Steps(JsonDocument d) => [.. d.RootElement.GetProperty("stepsMm").EnumerateArray().Select(e => e.GetDouble())];
+
+        using (var json = Json("render", "surface", model, "--samples", "81", "--dry-run"))
+        {
+            Assert.Equal([81, SurfaceCommand.MinimumDeepSamples], Samples(json));
+            Assert.Equal(947.0 / 80.0, Steps(json)[0], 6);
+            Assert.Equal(30.0 / (SurfaceCommand.MinimumDeepSamples - 1), Steps(json)[1], 6);
+        }
+
+        using (var json = Json("render", "surface", model, "--samples", "101x31", "--dry-run"))
+        {
+            Assert.Equal([101, 31], Samples(json));
+        }
+
+        // Square where square is enough, and fewer across than asked along is respected.
+        using (var json = Json("render", "surface", Model("template", "quadrupole"), "--samples", "41", "--dry-run"))
+        {
+            Assert.Equal([41, 41], Samples(json));
+            Assert.Equal(Steps(json)[0], Steps(json)[1], 12);
+        }
+
+        using (var json = Json("render", "surface", model, "--samples", "21", "--dry-run"))
+        {
+            Assert.Equal([21, 21], Samples(json));
+        }
+
+        // The plane is drawn at its true size: across 947 mm and deep 30 mm in the picture's frame.
+        var (surface, _, _) = SurfaceCommand.Sample(model, new SurfaceRequest(Samples: 81));
+        var mesh = SurfaceCommand.Compose(surface, 1.0, 10)[0].Meshes[0].VerticesMm;
+        var zs = Enumerable.Range(0, mesh.Count / 3).Select(k => mesh[(3 * k) + 2]).ToList();
+        Assert.Equal(30.0, zs.Max() - zs.Min(), 6);
+
+        Assert.Equal(1, Cli("render", "surface", model, "--samples", "81x1", "--dry-run").ExitCode);
+        Assert.Equal(1, Cli("render", "surface", model, "--samples", "81y31", "--dry-run").ExitCode);
+    }
+
+    /// <summary>A switch never takes the argument after it as its value.</summary>
+    /// <remarks>
+    /// "A following argument that is not itself an option is this option's value", so
+    /// <c>--cycle-mean models/q.json</c> read the model as the switch's value and printed the
+    /// usage, and <c>--no-scale out.png</c> dropped the file name without a word.
+    /// </remarks>
+    [Fact]
+    public void ASwitchDoesNotSwallowTheNextArgument()
+    {
+        var model = Model("template", "quadrupole-rf");
+
+        var first = Cli("render", "surface", "--cycle-mean", model, "--samples", "21", "--dry-run");
+        Assert.True(first.ExitCode == 0, first.Stderr);
+
+        var stray = Cli("render", "surface", model, "--samples", "21", "--dry-run", "--no-scale", "out.png");
+        output.WriteLine(stray.Stderr);
+        Assert.Equal(1, stray.ExitCode);
+        Assert.Contains("'out.png'", stray.Stderr, StringComparison.Ordinal);
+
+        var still = Cli("render", "still", model, "--dry-run", "--see-through", "picture.png");
+        Assert.Equal(1, still.ExitCode);
+        Assert.Contains("'picture.png'", still.Stderr, StringComparison.Ordinal);
+
+        var json = Cli("render", "surface", "--json", model, "--samples", "21", "--dry-run");
+        Assert.True(json.ExitCode == 0, json.Stderr);
+        Assert.StartsWith("{", json.Stdout.TrimStart(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Every flag a verb reads with <c>Has</c> alone is a switch, and the parser knows it.
+    /// </summary>
+    /// <remarks>
+    /// The parser cannot tell a switch from an option by looking at it, so the list is the
+    /// only thing that stops a switch swallowing the next argument; this reads the verbs' own
+    /// source and fails when a switch is added to a verb and not to the list.
+    /// </remarks>
+    [Fact]
+    public void EverySwitchAVerbReadsIsDeclared()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Einzel.Cli", "Program.cs")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+
+        var source = string.Concat(Directory.GetFiles(Path.Combine(directory!.FullName, "src", "Einzel.Cli"), "*.cs").Select(File.ReadAllText));
+        var has = System.Text.RegularExpressions.Regex.Matches(source, @"\.Has\(""([a-z0-9-]+)""\)").Select(m => m.Groups[1].Value).ToHashSet();
+        var valued = System.Text.RegularExpressions.Regex.Matches(source, @"(?:\.Values?\(|(?:TryNumberFlag|TryWholeFlag)\(options, )""([a-z0-9-]+)""").Select(m => m.Groups[1].Value)
+            .Concat(System.Text.RegularExpressions.Regex.Matches(source, @"MissingValue\(options, ""[^""]*"", ([^)]*)\)").SelectMany(m => System.Text.RegularExpressions.Regex.Matches(m.Groups[1].Value, @"""([a-z0-9-]+)""").Select(n => n.Groups[1].Value)))
+            .ToHashSet();
+
+        // Read as a value under a name chosen at run time, or refused by name for having no unit.
+        string[] notSwitches = ["at-mm", "line-mm", "at", "line", "to", "offset", "box", "height-mm"];
+
+        var switches = has.Except(valued).Except(notSwitches).Order().ToList();
+        output.WriteLine("switches: " + string.Join(", ", switches));
+
+        Assert.True(switches.Count >= 8, "the control: the scan found the switches");
+        Assert.Empty(switches.Except(CommandLine.Switches));
+        Assert.Empty(CommandLine.Switches.Except(switches));
+    }
+
+    /// <summary>The CSV and the picture may not be one file: refused before anything is drawn.</summary>
+    [Fact]
+    public void TheCsvAndThePictureMustBeDifferentFiles()
+    {
+        var model = Model("template", "quadrupole");
+        var target = Path.Combine(_root, "both.png");
+
+        var (code, _, stderr) = Cli("render", "surface", model, "--samples", "21", "--out", target, "--csv", target);
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+        Assert.Contains("/surface/csv", stderr, StringComparison.Ordinal);
+        Assert.False(File.Exists(target));
+
+        var other = Cli("render", "surface", model, "--samples", "21", "--out", target, "--csv", Path.Combine(_root, "BOTH.csv"));
+        Assert.Equal(0, other.ExitCode);
+    }
+
+    /// <summary>
+    /// An instant before the clock starts is refused by every verb that takes one, and one too
+    /// late to place in the drive's cycle is refused by the surface and the probe.
+    /// </summary>
+    [Fact]
+    public void AnInstantThatCannotBeDrawnIsRefused()
+    {
+        var quadrupole = Model("template", "quadrupole-rf");
+        var sequenced = Model("example", "sequenced-extraction");
+
+        foreach (var (args, path) in new (string[] Args, string Path)[]
+        {
+            (["render", "surface", sequenced, "--at-us", "-1", "--samples", "21", "--dry-run"], "/surface/at-us"),
+            (["render", "section", sequenced, "--at-us", "-1", "--dry-run"], "/render/at-us"),
+            (["probe", sequenced, "--at-mm", "0,0,0", "--at-us", "-1"], "/probe/at-us"),
+            (["render", "surface", quadrupole, "--at-us", "1e300", "--samples", "21", "--dry-run"], "/surface/at-us"),
+            (["probe", quadrupole, "--at-mm", "0,0,0", "--at-us", "1e300"], "/probe/at-us"),
+        })
+        {
+            var (code, stdout, stderr) = Cli(args);
+            output.WriteLine($"{string.Join(' ', args[..2])} {args[^4..].Last()}: exit {code}: {stderr.Trim()}");
+
+            Assert.Equal(1, code);
+            Assert.Contains(path, stdout + stderr, StringComparison.Ordinal);
+        }
+
+        // Late but placeable is fine: 1e6 us is a whole number of 1 us cycles.
+        Assert.Equal(0, Cli("render", "surface", quadrupole, "--at-us", "1000000", "--samples", "21", "--dry-run").ExitCode);
+
+        Assert.Equal("t=2.5 µs", SurfaceCommand.Instant(2.5));
+        Assert.Equal("t=15 ms", SurfaceCommand.Instant(1.5e4));
+        Assert.Equal("t=1e+294 s", SurfaceCommand.Instant(1e300));
+    }
+
+    /// <summary>The probe may be sampled from several threads at several instants at once.</summary>
+    [Fact]
+    public void TheProbeAnswersTheSameFromManyThreads()
+    {
+        var probe = FieldProbe.Open(Model("template", "quadrupole-rf"));
+        var point = FieldProbe.MillimetresToMetres(new Einzel.Core.Geometry.Vec3(1.0, 0.5, 0.0));
+        var instants = Enumerable.Range(0, 64).Select(i => i * 0.0173e-6).ToArray();
+
+        double Mean(double at)
+        {
+            probe.SamplePotential(in point, at, cycleMean: true, out var v, out _, out _, out _);
+            return v;
+        }
+
+        var sequential = instants.Select(Mean).ToArray();
+        var parallel = new double[instants.Length];
+
+        Parallel.For(0, instants.Length * 20, new ParallelOptions { MaxDegreeOfParallelism = 8 }, n =>
+        {
+            var i = n % instants.Length;
+            parallel[i] = Mean(instants[i]);
+        });
+
+        Assert.Equal(sequential, parallel);
+    }
+
+    /// <summary>
+    /// The wire mesh is one polyline per mesh line, and draws exactly what a line per segment
+    /// drew.
+    /// </summary>
+    [Fact]
+    public void TheWireMeshIsPolylinesThatDrawWhatSegmentsDrew()
+    {
+        var (surface, _, _) = SurfaceCommand.Sample(Model("template", "quadrupole"), new SurfaceRequest(Samples: 121));
+        var mesh = SurfaceCommand.Compose(surface, SurfaceCommand.Scale(surface, new SurfaceRequest()), 40)
+            .Single(l => l.Name == "mesh").Lines.Where(l => l.SegmentColors is not null).ToList();
+
+        var segments = new List<Einzel.Render.RasterLine>();
+
+        foreach (var line in mesh)
+        {
+            for (var s = 0; 3 * (s + 1) < line.PointsMm.Count; s++)
+            {
+                var c = line.SegmentColors!;
+                segments.Add(new Einzel.Render.RasterLine(
+                    [.. line.PointsMm.Skip(3 * s).Take(6)], c[3 * s], c[(3 * s) + 1], c[(3 * s) + 2]));
+            }
+        }
+
+        output.WriteLine($"{mesh.Count} polylines for {segments.Count} segments");
+        Assert.True(mesh.Count * 20 < segments.Count, "the polylines are not one per segment");
+
+        var points = mesh.SelectMany(l => Triples(l.PointsMm)).ToList();
+        var matrix = Framing.Around(points, -35.0, -32.0).Matrix(1.5);
+        var lighting = new Einzel.Render.RasterLighting((_, _, _) => 1.0, 1.0);
+
+        byte[] Draw(IReadOnlyList<Einzel.Render.RasterLine> lines) => Einzel.Render.Rasterizer.Draw(
+            [new Einzel.Render.RasterLayer([], lines, 1.0, false)], matrix, lighting, (1.0, 1.0, 1.0), 600, 400, lineWidth: 1.2);
+
+        var polylines = Draw([.. mesh.Select(l => new Einzel.Render.RasterLine(l.PointsMm, l.R, l.G, l.B, l.SegmentColors))]);
+        Assert.Equal(Draw(segments), polylines);
+        Assert.Contains(polylines, b => b < 200);
     }
 
     private static IEnumerable<(double X, double Y, double Z)> Triples(IReadOnlyList<double> flat)

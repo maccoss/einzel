@@ -855,13 +855,37 @@ the axis.
 superposition, regions, mirrors, tilts and the axisymmetric mapping are honored, the assembly's
 warnings come along (`mesh.node-on-shared-face`, an unconverged solve, a region's step), and a
 point the field refuses is a hole in the surface counted by `probe.refused`. A conductor is
-detected the probe's way, by the composite field's signed distance; its plateau is drawn at the
-**median of the deeper half** of the samples inside it, which on a solved element is the electrode's
-own potential - nearer the surface an interpolant overshoots by a per cent or two, and a conductor
-written as two halves meeting on a line is never deeper than the plane's offset from the seam, so the
-single deepest sample was the first answer and the wrong one (it put an end rod at 2.89 V). The outcome lists each plateau with that value and the lowest and highest the
-field reported anywhere inside it on the plane, so a plateau that is not really flat (an analytic
-element superposed over a solved electrode) says so. **A plateau is one conductor of one element.**
+detected the probe's way, by the composite field's signed distance.
+
+**A plateau is drawn at what the conductor holds, not at what the field reads inside it**
+(`FieldProbe.HeldPotentialAt`, from `IHeldConductors`). A static solve holds each electrode at its
+declared potential; a driven or staged one holds it at the sum over channels of its coefficient in
+that channel's pattern times the channel's weight at the instant - the same weights the field is
+summed with, so every generator it taps, every stage and every ramp is in it, and under
+`--cycle-mean` the mean of that over the window. It used to be the median of the deeper half of the
+samples inside the conductor, and that is wrong two ways. **Inside metal the sum carries every
+other element's potential too**: an analytic element has no conductors and fills all space, so on
+`tims-analyzer` the analytic RF quadrupole summed inside the DC rings read 150 to 1250 V and
+`ring-0`, which holds 0.018 V at t = 0, was drawn and reported at 657 V. And **an interpolant
+overshoots inside a thin conductor**: `linear-ion-trap-3d`'s 20 V lenses read 20.13 V. The outcome
+keeps the readings beside the held value - `lowestV`, `highestV`, and `sampledV`, the old median -
+and where the median strays from the held value by more than `PlateauTolerance` (2 %) of the
+potentials the model deals in, `render.plateau-disagrees` names the conductor, the spread and the
+held value. The surface beside such a plateau is the sum, so it steps at the conductor's edge; that
+is the honest picture of a model that sums an analytic field over metal, and the warning says so
+rather than either number being reported silently. **An edge-profiled board is not a plateau**: its
+potential varies along it, so there is no one height to draw it at, and it is drawn as the field
+sampled there.
+
+What the sweep of every shipped template and example found with the held value: `tims-analyzer`,
+`tims-front-end` and `tims-tandem` warn on every ring (the analytic RF, as above); `astral-3d` and
+`compact-astral-3d` warn on the two end walls, which hold 0 V while the summed field inside them
+reads about 5930 V, because the two mirror solves' domains overlap there and each adds its own
+potential inside the other's wall. Elsewhere the held value differs from the old median only by the
+interpolant's overshoot - a per cent or less on the funnels' rings, 0.6 V on the linear traps'
+housing walls - and nothing warns.
+
+**A plateau is one conductor of one element.**
 A name is unique within one solve and no further, so where two elements each have a `plate` on the
 plane they are two plateaus, labelled `plate (element 0)` and `plate (element 1)`, each at its own
 potential; keyed by name alone they were one plateau at one median, a conductor drawn at a potential
@@ -877,6 +901,16 @@ x = 383.5 mm, not at x = 0, which is 90 mm inside one end); such a cut is legiti
 interesting, since a cross-section does not vary along z. The box
 defaults to the solve domain's extent in the plane; `--box-mm` takes four numbers in the plane's
 own axis order (for `yz`: y0, z0, y1, z1). The longer side runs across the picture.
+
+**Each axis is sampled enough to resolve it.** `--samples N` is the count along the longer side
+(241 by default); the shorter gets square cells, but never fewer than 61 samples
+(`SurfaceCommand.MinimumDeepSamples`, or N if that is fewer), and `--samples NxM` sets both. With
+square cells alone the planar mirror pair's 947 by 30 mm domain got nine rows across at the
+default and four at `--samples 81`, so a board or the gap was a facet or two and no `--samples`
+could fix it, the long side being capped at 1001. The cells may now be longer than they are wide;
+the vertices are at the true positions, so the drawn plane is the box and not a stretched one, and
+the mesh lines are a fixed distance apart on both axes. The outcome reports both counts
+(`samples`) and both spacings (`stepsMm`).
 
 **The picture is a rotation of the model, never its mirror image.** The frame the surface is drawn
 in is (across, height, depth) with the plane's own positive normal as the height, and depth runs
@@ -938,8 +972,10 @@ the diffusive mode's pseudopotential already uses). For a sinusoidal drive that 
 part that does not oscillate. Two limits, both stated by `render.cycle-mean` on every such picture:
 a rectangular wave's mean is not zero (it is `2*duty - 1` of its amplitude, and it is included,
 which is right - it is DC); and a field carrying two frequencies is averaged over the faster one's
-period, so the slower drive's contribution is not its cycle mean unless its amplitude is zero (the
-linear ion trap's resonance-excitation drive is declared at zero amplitude, so its mean is exact).
+period, so the slower drive's contribution is not its cycle mean unless its amplitude is zero. A
+drive at zero amplitude is not a second frequency: `linear-ion-trap-3d` declares its
+resonance-excitation drive at zero amplitude, so its field oscillates at the RF alone,
+`render.cycle-mean` is Provenance on its picture, and the mean is exact.
 
 **A field with no drive has no cycle mean, and `--cycle-mean` is refused for it** - located at
 `/surface/cycle-mean`, exit 1, with what to do instead. That is a static model, and also a
@@ -952,7 +988,13 @@ unheld that put "this field carries more than one frequency" on every sequenced 
 one. The second used to dereference the absent window and
 exit 6, after sampling the instantaneous field under the mean's name; the first accepted the flag
 and ignored it. Refused rather than drawn as the instant with a warning, because the caption and
-the outcome would otherwise say "cycle mean" over a picture that is not one. **`--at-us` on a static
+the outcome would otherwise say "cycle mean" over a picture that is not one. **An instant must be one
+the field can be drawn at**: a negative one is refused, as `probe` and now `render section` refuse it
+(a model's clock starts at zero, and a sequence would answer with its first phase under a time it
+never reaches), and so is one so late that neighbouring doubles there are more than a thousandth of
+the fastest drive period apart (`FieldProbe.CheckInstantResolution`, shared with `probe`) - at
+1e300 us on a 1 MHz drive the phase drawn was whichever the rounding gave, under a 300-digit
+caption. The caption is compact at any size (`t=15 ms`, `t=1e+294 s`). **`--at-us` on a static
 field is the other way round**: the picture is right at every instant, so it is drawn and
 `render.instant-ignored` (advisory) says the flag changed nothing - which is also what lets one
 command line be used across static and driven models.
@@ -960,7 +1002,9 @@ command line be used across static and driven models.
 **The CSV is RFC 4180.** A conductor's label is whatever the model's author wrote, so one holding a
 comma, a quote or a line break is quoted, and a warning that runs over several lines stays inside
 `#` comment lines above the table. The file is in the outcome (`csv`), on the terminal beside the
-picture, and announced by `--dry-run`; it used to be written and mentioned nowhere.
+picture, and announced by `--dry-run`; it used to be written and mentioned nowhere. **The two must
+be different files**, refused before anything is sampled: `--out a.png --csv a.png` wrote the table
+over the picture and exited 0.
 
 **A conductor's name is text, not a keyword.** The PNG lists each plateau as `Plateau 1`,
 `Plateau 2`, ... with the label and its potential in the chunk's text, which is UTF-8 of any
@@ -992,7 +1036,14 @@ hidden. **The bias is two pixels' worth of depth** (`SurfaceCommand.MeshDepthBia
 frame is settled): a line lies on the surface's own triangle edges, so all the bias has to cover is
 the line's width on a slope. It was a fixed 4e-3 of clip depth, which is a fraction of the scene's
 depth - about six pixels in the iso view, two millimetres on a 600 mm box, and hundreds of pixels
-looking along a long one - enough to draw the mesh on the far side of a thin ridge through it. The surface has its own camera (`SurfaceCommand.Views`) and its own softer light: the
+looking along a long one - enough to draw the mesh on the far side of a thin ridge through it.
+**That is checked by arithmetic, not by pixels**: the test recomputes the bias in pixels from the
+framing for four scenes. A pixel test was tried on a 600 by 80 mm box with a 12 mm ridge at
+100 V and does not discriminate cleanly - the old bias drew 3 to 10 per cent more mesh-coloured
+pixels than the new, with no region where one shows a line the other hides - so it is not claimed.
+The mesh is one polyline per mesh line, broken only where a segment is left out, each segment
+with its own color (`PictureLine.SegmentColors`); a test rasterizes it against the same mesh as one
+line per segment and asserts the pixels identical. The surface has its own camera (`SurfaceCommand.Views`) and its own softer light: the
 viewport's quarter of ambient light painted dark bands across every slope that faced sideways to
 the lamp, which read as a feature of the potential. The stroke font gained the letters the scale
 needs (`V`, `eV`, signs, `t=`, `s`, `cycle mean`). `--csv` writes the sampled grid, one row per node

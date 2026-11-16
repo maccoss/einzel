@@ -428,4 +428,27 @@ public static class DriveChannels
 
         return true;
     }
+
+    /// <summary>
+    /// Each named conductor's coefficient in each channel's pattern: the potential the
+    /// conductor is held at in that channel's solve, zero where the channel does not reach it.
+    /// </summary>
+    /// <param name="channels">The channels, in the order their solves are summed.</param>
+    /// <param name="names">The conductors to give coefficients for.</param>
+    /// <returns>Name to one coefficient per channel.</returns>
+    public static IReadOnlyDictionary<string, double[]> Coefficients(
+        IReadOnlyList<DriveChannel> channels, IEnumerable<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(channels);
+        ArgumentNullException.ThrowIfNull(names);
+
+        var coefficients = new Dictionary<string, double[]>(StringComparer.Ordinal);
+
+        foreach (var name in names)
+        {
+            coefficients[name] = [.. channels.Select(c => c.Pattern.GetValueOrDefault(name, 0.0))];
+        }
+
+        return coefficients;
+    }
 }

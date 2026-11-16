@@ -46,7 +46,7 @@ public sealed class RotatedField(
     double halfTurns,
     double centreX,
     double centreZ)
-    : IElectrostaticField, IConductorBounded
+    : IElectrostaticField, IConductorBounded, IHeldConductors
 {
     private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
     private readonly double _cos = double.CosPi(halfTurns);
@@ -167,4 +167,12 @@ public sealed class RotatedField(
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position) =>
         _inner is IConductorBounded bounded ? bounded.ConductorAt(ToLocal(in position)) : null;
+
+    /// <inheritdoc/>
+    public double? HeldPotentialAt(in Vec3 position, double timeSeconds) =>
+        _inner is IHeldConductors held ? held.HeldPotentialAt(ToLocal(in position), timeSeconds) : null;
+
+    /// <inheritdoc/>
+    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
+        _inner is IHeldConductors held ? held.HeldCycleMeanAt(ToLocal(in position), fromSeconds, periodSeconds, samples) : null;
 }

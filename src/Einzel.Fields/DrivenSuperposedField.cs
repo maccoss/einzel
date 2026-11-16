@@ -29,7 +29,7 @@ namespace Einzel.Fields;
 /// know which is which beyond the type test.
 /// </para>
 /// </remarks>
-public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
+public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded, IHeldConductors
 {
     private readonly IElectrostaticField[] _elements;
 
@@ -322,6 +322,19 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
     public string? ConductorAt(in Vec3 position) =>
         ConductorElementAt(in position) is var index and >= 0
             ? ((IConductorBounded)_elements[index]).ConductorAt(in position)
+            : null;
+
+    /// <inheritdoc/>
+    /// <remarks>Asked of the element whose conductor it is, alone, at the same instant.</remarks>
+    public double? HeldPotentialAt(in Vec3 position, double timeSeconds) =>
+        ConductorElementAt(in position) is var index and >= 0 && _elements[index] is IHeldConductors held
+            ? held.HeldPotentialAt(in position, timeSeconds)
+            : null;
+
+    /// <inheritdoc/>
+    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
+        ConductorElementAt(in position) is var index and >= 0 && _elements[index] is IHeldConductors held
+            ? held.HeldCycleMeanAt(in position, fromSeconds, periodSeconds, samples)
             : null;
 
     /// <summary>

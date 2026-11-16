@@ -141,6 +141,12 @@ public sealed record ProbeOutcome
 /// the assembly's warnings come along. A driven or sequenced field is read through its
 /// time-varying interface at an explicit instant: reading it through the static one would answer
 /// at t = 0 without saying so, which is a defect this project has met six times.
+/// <para>
+/// <b>Safe to share across threads.</b> Every sampling member may be called concurrently, at the
+/// same instant or different ones: the only mutable state is the field held at the last
+/// operating point asked for, kept as one immutable object replaced by reference, so a reader
+/// sees a whole state and never half of one.
+/// </para>
 /// </remarks>
 public sealed class FieldProbe
 {
@@ -440,19 +446,10 @@ public sealed class FieldProbe
 
         var point = new Vec3(positionMm.X * MetresPerMm, positionMm.Y * MetresPerMm, positionMm.Z * MetresPerMm);
         var position = new[] { positionMm.X, positionMm.Y, positionMm.Z };
-
         var outside = new List<int>();
 
-        for (var i = 0; i < _model.Fields.Count; i++)
-        {
-            if (Elements[i].HasDomain && !InsideDomain(i, in point))
-            {
-                outside.Add(i);
-            }
-        }
-
         var status = SampleCore(
-            in point, atSeconds, cycleMean, outside.Count,
+            in point, atSeconds, cycleMean, outside,
             out var potential, out var field, out var distance, out var note, out var averaged);
 
         if (status == ProbeStatus.Refused)
@@ -528,36 +525,21 @@ public sealed class FieldProbe
     /// <param name="potential">The potential in volts; NaN where the point was refused.</param>
     /// <param name="field">The electric field in volts per metre; NaN components where refused.</param>
     /// <returns>One of the <see cref="ProbeStatus"/> values, the same one <see cref="At(int, Vec3, double)"/> gives.</returns>
-    public string Sample(in Vec3 pointMetres, double atSeconds, out double potential, out Vec3 field)
-    {
-        var outsideCount = 0;
-
-        for (var i = 0; i < _model.Fields.Count; i++)
-        {
-            if (Elements[i].HasDomain && !InsideDomain(i, in pointMetres))
-            {
-                outsideCount++;
-            }
-        }
-
-        var status = SampleCore(
-            in pointMetres, atSeconds, cycleMean: false, outsideCount,
+    public string Sample(in Vec3 pointMetres, double atSeconds, out double potential, out Vec3 field) =>
+        SampleCore(
+            in pointMetres, atSeconds, cycleMean: false, outside: null,
             out potential, out field, out _, out _, out _);
 
-        if (status == ProbeStatus.Refused)
-        {
-            potential = double.NaN;
-            field = new Vec3(double.NaN, double.NaN, double.NaN);
-        }
-
-        return status;
-    }
-
+    // The one evaluation every public sampler goes through: which domains the point is outside
+    // (collected into `outside` when a row wants them, counted otherwise), the potential and
+    // field or their cycle mean, the conductor distance, and the status. A refused point comes
+    // back with NaN potential and field and no distance, so a caller that does not build a row
+    // has nothing to remember.
     private string SampleCore(
         in Vec3 point,
         double atSeconds,
         bool cycleMean,
-        int outsideCount,
+        List<int>? outside,
         out double potential,
         out Vec3 field,
         out double? distance,
@@ -567,6 +549,17 @@ public sealed class FieldProbe
         distance = null;
         note = null;
         averaged = false;
+
+        var outsideCount = 0;
+
+        for (var i = 0; i < _model.Fields.Count; i++)
+        {
+            if (Elements[i].HasDomain && !InsideDomain(i, in point))
+            {
+                outsideCount++;
+                outside?.Add(i);
+            }
+        }
 
         try
         {
@@ -594,8 +587,8 @@ public sealed class FieldProbe
             // point, and a profile crossing it must still report every other row. Only that
             // refusal: any other argument exception is a defect or a malformed request, and
             // turning it into a row would report a million refused points with exit 0.
-            potential = 0.0;
-            field = Vec3.Zero;
+            potential = double.NaN;
+            field = new Vec3(double.NaN, double.NaN, double.NaN);
             note = refusal.Message;
             return ProbeStatus.Refused;
         }
@@ -630,11 +623,14 @@ public sealed class FieldProbe
         return status;
     }
 
-    private (double At, ITimeVaryingField Field, double? Window) HeldAt(double atSeconds)
+    private HeldState HeldAt(double atSeconds)
     {
         // One held field per instant, not per point: a sequenced geometry allocates a held copy,
-        // and asking a composite for its period walks every member.
-        if (_held is { } cached && cached.At == atSeconds)
+        // and asking a composite for its period walks every member. The cache is one immutable
+        // object replaced by reference, so a thread reading it sees an old state or a new one
+        // and never half of each; two threads asking at once may both build it, which costs a
+        // duplicate and changes no answer.
+        if (Volatile.Read(ref _held) is { } cached && cached.At == atSeconds)
         {
             return cached;
         }
@@ -652,12 +648,15 @@ public sealed class FieldProbe
                 ? null
                 : double.IsFinite(shortest) ? shortest : null;
 
-        _held = (atSeconds, held, window);
+        var state = new HeldState(atSeconds, held, window);
+        Volatile.Write(ref _held, state);
 
-        return _held.Value;
+        return state;
     }
 
-    private (double At, ITimeVaryingField Field, double? Window)? _held;
+    private sealed record HeldState(double At, ITimeVaryingField Field, double? Window);
+
+    private HeldState? _held;
 
     private void RefuseMeanWithoutCycle(double atSeconds, bool cycleMean)
     {
@@ -700,31 +699,101 @@ public sealed class FieldProbe
         conductor = null;
         element = null;
 
-        var outsideCount = 0;
-
-        for (var i = 0; i < _model.Fields.Count; i++)
-        {
-            if (Elements[i].HasDomain && !InsideDomain(i, in pointMetres))
-            {
-                outsideCount++;
-            }
-        }
-
         var status = SampleCore(
-            in pointMetres, atSeconds, cycleMean, outsideCount,
+            in pointMetres, atSeconds, cycleMean, outside: null,
             out potential, out _, out conductorDistance, out _, out _);
 
-        if (status == ProbeStatus.Refused)
-        {
-            potential = double.NaN;
-            conductorDistance = null;
-        }
-        else if (status == ProbeStatus.InsideConductor)
+        if (status == ProbeStatus.InsideConductor)
         {
             ConductorOf(in pointMetres, out conductor, out element);
         }
 
         return status;
+    }
+
+    /// <summary>
+    /// The potential the conductor containing a point holds - what the solve pinned there, not
+    /// what the summed field reads there - at an instant or as its cycle mean.
+    /// </summary>
+    /// <param name="pointMetres">A point inside the conductor, in metres.</param>
+    /// <param name="atSeconds">The instant; for a cycle mean, the operating point.</param>
+    /// <param name="cycleMean">Whether to report the mean over the same window a cycle-mean sample uses.</param>
+    /// <returns>
+    /// Volts; null where no conductor contains the point or the conductor has no single
+    /// potential (an edge-profiled board). See <see cref="IHeldConductors"/>.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">A cycle mean was asked where there is no drive period.</exception>
+    /// <remarks>
+    /// Inside metal the total potential is the conductor's, whatever else the model sums there:
+    /// an analytic element has no conductors and fills all space, so the composite field read
+    /// inside a ring carries the analytic element's potential too, and an interpolant reads a
+    /// thin conductor a per cent or so off. Neither is what the electrode holds.
+    /// </remarks>
+    public double? HeldPotentialAt(in Vec3 pointMetres, double atSeconds, bool cycleMean)
+    {
+        RefuseMeanWithoutCycle(atSeconds, cycleMean);
+
+        if (!cycleMean || _driven is null)
+        {
+            return ((_driven as IElectrostaticField) ?? _field) is IHeldConductors held
+                ? held.HeldPotentialAt(in pointMetres, atSeconds)
+                : null;
+        }
+
+        var state = HeldAt(atSeconds);
+
+        // The mean of a weighted sum is the weighted sum of the means: taken in closed form from
+        // the channels' mean weights where it can be, as the potential's own cycle mean is.
+        return state.Field is IHeldConductors at && state.Window is { } window
+            ? at.HeldCycleMeanAt(in pointMetres, atSeconds, window, CycleMeanSamples)
+            : null;
+    }
+
+    /// <summary>
+    /// The finest fraction of the fastest drive period an instant must be placeable to: past it,
+    /// the instant is so large that a double cannot say where in the cycle it falls.
+    /// </summary>
+    public const double InstantResolutionFraction = 1e-3;
+
+    /// <summary>
+    /// Refuses an instant so late that where it falls in this field's drive cycle is decided by
+    /// rounding.
+    /// </summary>
+    /// <param name="atUs">The instant asked for, in microseconds, or null for none.</param>
+    /// <param name="path">Where the error is located: the flag, as a JSON Pointer.</param>
+    /// <exception cref="EinzelException">The instant is refused.</exception>
+    /// <remarks>
+    /// Asks how far apart neighbouring doubles are at that instant: when it is more than
+    /// <see cref="InstantResolutionFraction"/> of the fastest drive period, the phase drawn is
+    /// whichever one the rounding lands on - at 1e300 microseconds on a 1 MHz drive, any phase
+    /// at all. A field with no drive has no phase to lose and is never refused here; a negative
+    /// or non-finite instant is <see cref="ProbeCommand.CheckInstant"/>'s to refuse.
+    /// </remarks>
+    public void CheckInstantResolution(double? atUs, string path)
+    {
+        if (atUs is not { } t || !double.IsFinite(t) || _driven is null
+            || !double.IsFinite(_driven.ShortestPeriodSeconds))
+        {
+            return;
+        }
+
+        var seconds = t * 1e-6;
+        var spacing = Math.Abs(double.BitIncrement(seconds) - seconds);
+        var period = _driven.ShortestPeriodSeconds;
+
+        if (spacing > InstantResolutionFraction * period)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = path,
+                Constraint = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"--at-us {t:G6} is too late to place in the drive's cycle: neighbouring instants there are {spacing * 1e6:G3} us apart, more than {InstantResolutionFraction:G1} of the fastest drive period ({period * 1e6:G6} us), so the phase drawn would be decided by rounding"),
+                Observed = new ObservedValue(t, "us"),
+                Suggestion = "give an earlier instant at the same phase: a driven field repeats every period, so it draws the same field",
+            });
+        }
     }
 
     /// <summary>The warning a time-varying field earns when no instant was asked for.</summary>
@@ -912,6 +981,7 @@ public static class ProbeCommand
         Check(request);
 
         var probe = FieldProbe.Open(modelPath);
+        probe.CheckInstantResolution(request.AtUs, "/probe/at-us");
         var at = (request.AtUs ?? 0.0) * 1e-6;
         var samples = new List<ProbeSample>();
 
@@ -1066,14 +1136,15 @@ public static class ProbeCommand
     /// refused because a run's clock starts at zero: a sequenced field has no phase before it,
     /// and an answer there would be the first phase's under a time the instrument never reaches.
     /// </remarks>
-    internal static void CheckInstant(double? atUs)
+    /// <param name="path">Where the error is located: the verb's own flag, as a JSON Pointer.</param>
+    public static void CheckInstant(double? atUs, string path = "/probe/at-us")
     {
         if (atUs is { } instant && (!double.IsFinite(instant) || instant < 0.0))
         {
             throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
-                Path = "/probe/at-us",
+                Path = path,
                 Constraint = "--at-us must be a finite, non-negative number of microseconds; a run's clock starts at 0",
                 Observed = new ObservedValue(instant, "us"),
                 Suggestion = "give --at-us 0 or a later instant, in microseconds",

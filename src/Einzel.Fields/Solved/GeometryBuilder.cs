@@ -1047,7 +1047,10 @@ public static class GeometryBuilder
             potential,
             new BicubicInterpolant(potential),
             boundaryIsDiscontinuous: solve.BoundaryIsDiscontinuous,
-            conductors: solve.Electrodes);
+            conductors: solve.Electrodes)
+        {
+            HoldsDeclaredPotentials = true,
+        };
 
         // Wrapped before any reflection, so a reflection composes in space rather
         // than in the half-plane - it mirrors the axial coordinate of a field that
@@ -1165,7 +1168,12 @@ public static class GeometryBuilder
         if (solve.Stages.Count == 0)
         {
             return (
-                new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms), worst);
+                new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms)
+                {
+                    ConductorCoefficients = DriveChannels.Coefficients(
+                        groups, solve.Electrodes.Where(e => e.Shape != ElectrodeShape.EdgeProfile).Select(e => e.Name)),
+                },
+                worst);
         }
 
         var boundaries = new List<double>(solve.Stages.Count);
@@ -1222,7 +1230,11 @@ public static class GeometryBuilder
         var sequenced = new DrivenSolvedField(
             channels, direct, harmonics, frequencies, waveforms,
             boundaries, stageDirect, stageHarmonics,
-            anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null);
+            anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null)
+        {
+            ConductorCoefficients = DriveChannels.Coefficients(
+                groups, solve.Electrodes.Where(e => e.Shape != ElectrodeShape.EdgeProfile).Select(e => e.Name)),
+        };
 
         return (sequenced, worst);
     }

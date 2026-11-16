@@ -21,7 +21,7 @@ namespace Einzel.Fields;
 /// <see cref="SignedDistanceToDiscontinuity"/>.
 /// </para>
 /// </remarks>
-public sealed class SuperposedField : IElectrostaticField, IConductorBounded
+public sealed class SuperposedField : IElectrostaticField, IConductorBounded, IHeldConductors
 {
     private readonly IElectrostaticField[] _elements;
 
@@ -68,6 +68,22 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded
     public string? ConductorAt(in Vec3 position) =>
         ConductorElementAt(in position) is var index and >= 0
             ? ((IConductorBounded)_elements[index]).ConductorAt(in position)
+            : null;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Asked of the element whose conductor it is, alone: inside metal the potential is the
+    /// conductor's, whatever else is summed there.
+    /// </remarks>
+    public double? HeldPotentialAt(in Vec3 position, double timeSeconds) =>
+        ConductorElementAt(in position) is var index and >= 0 && _elements[index] is IHeldConductors held
+            ? held.HeldPotentialAt(in position, timeSeconds)
+            : null;
+
+    /// <inheritdoc/>
+    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
+        ConductorElementAt(in position) is var index and >= 0 && _elements[index] is IHeldConductors held
+            ? held.HeldCycleMeanAt(in position, fromSeconds, periodSeconds, samples)
             : null;
 
     /// <summary>

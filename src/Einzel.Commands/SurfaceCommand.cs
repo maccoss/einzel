@@ -33,7 +33,12 @@ public static class SurfaceHeight
 /// The sampled rectangle as four numbers in the plane's own axis order (for "xz": x0, z0, x1, z1),
 /// in millimetres; absent for the solve domain's extent in the plane.
 /// </param>
-/// <param name="Samples">Samples along the longer side of the box; the shorter follows at the same spacing.</param>
+/// <param name="Samples">Samples along the longer side.</param>
+/// <param name="DeepSamples">
+/// Samples along the shorter side; absent for the same spacing as the longer side, but never
+/// fewer than <see cref="SurfaceCommand.MinimumDeepSamples"/> (or <paramref name="Samples"/>, if
+/// that is fewer), so a long thin box still resolves across its width.
+/// </param>
 /// <param name="MeshLines">Drawn mesh lines along the longer side, so the wire mesh reads as a mesh.</param>
 /// <param name="Height">One of the <see cref="SurfaceHeight"/> values.</param>
 /// <param name="Relief">
@@ -61,7 +66,8 @@ public sealed record SurfaceRequest(
     double Relief = SurfaceCommand.DefaultRelief,
     double? HeightMmPerUnit = null,
     double? AtUs = null,
-    bool CycleMean = false);
+    bool CycleMean = false,
+    int? DeepSamples = null);
 
 /// <summary>A conductor met by the plane, drawn as a flat plateau at its own potential.</summary>
 /// <param name="Conductor">
@@ -69,13 +75,17 @@ public sealed record SurfaceRequest(
 /// plane, the name followed by the element, "plate (element 1)", so the two are told apart.
 /// </param>
 /// <param name="PotentialV">
-/// The potential it is drawn at: the median of the field's values over the deeper half of the samples
-/// inside it, which for a solved element is the electrode's own potential.
+/// The potential it is drawn at: what the electrode holds at the instant drawn (or its mean over
+/// the cycle, under <c>--cycle-mean</c>), from the solve's own coefficients - not a reading of the
+/// field, which inside metal carries anything else the model sums there.
 /// </param>
 /// <param name="Height">The same in the drawn quantity (volts or electronvolts).</param>
 /// <param name="Samples">How many samples fell inside it.</param>
-/// <param name="LowestV">The lowest potential the field reported anywhere inside it on the plane.</param>
-/// <param name="HighestV">The highest, so a plateau that is not really flat says so.</param>
+/// <param name="LowestV">
+/// The lowest potential the summed field reads anywhere inside it on the plane, which differs from
+/// <paramref name="PotentialV"/> where another element is summed inside the metal.
+/// </param>
+/// <param name="HighestV">The highest the summed field reads inside it.</param>
 /// <param name="Element">The field element it belongs to, by index in the model; absent where unknown.</param>
 /// <param name="Name">Its name as the model wrote it, which is unique only within its element.</param>
 public sealed record SurfacePlateau(
@@ -86,7 +96,15 @@ public sealed record SurfacePlateau(
     double LowestV,
     double HighestV,
     int? Element = null,
-    string? Name = null);
+    string? Name = null)
+{
+    /// <summary>
+    /// The median of the summed field's readings over the deeper half of the samples inside the
+    /// conductor: what the plateau used to be drawn at, kept so a reader can see how far the
+    /// sum strays from the conductor's own potential.
+    /// </summary>
+    public double SampledV { get; init; } = PotentialV;
+}
 
 /// <summary>A sampled potential surface, before anything is drawn.</summary>
 /// <remarks>
@@ -213,6 +231,13 @@ public sealed record SurfaceOutcome
     /// <summary>Samples along each axis, across then deep.</summary>
     public required IReadOnlyList<int> Samples { get; init; }
 
+    /// <summary>
+    /// The spacing between samples along each axis, across then deep, in millimetres. The two
+    /// differ when the box is long and thin; the picture is drawn at the true positions either
+    /// way.
+    /// </summary>
+    public required IReadOnlyList<double> StepsMm { get; init; }
+
     /// <summary>Mesh lines drawn along each axis, across then deep.</summary>
     public required IReadOnlyList<int> MeshLines { get; init; }
 
@@ -303,6 +328,18 @@ public static class SurfaceCommand
 
     /// <summary>The most samples along the longer side.</summary>
     public const int MaximumSamples = 1001;
+
+    /// <summary>
+    /// The fewest samples across the shorter side unless fewer were asked for along the longer:
+    /// with square cells a 947 by 30 mm analyser got nine rows, too few for a board or a gap.
+    /// </summary>
+    public const int MinimumDeepSamples = 61;
+
+    /// <summary>
+    /// How far, as a fraction of the potentials the model deals in, the summed field may read
+    /// inside a conductor from what the conductor holds before the surface says so.
+    /// </summary>
+    public const double PlateauTolerance = 0.02;
 
     /// <summary>Mesh lines along the longer side unless asked otherwise.</summary>
     public const int DefaultMeshLines = 40;
@@ -450,6 +487,8 @@ public static class SurfaceCommand
         var probe = FieldProbe.Open(modelPath, modelText);
         var model = probe.Model;
 
+        probe.CheckInstantResolution(request.AtUs, "/surface/at-us");
+
         // A mean over a cycle that does not exist is not a number this can draw, and drawing the
         // instant under that name would be a picture captioned with something it is not.
         // Asked of the field held at the chosen instant, which is the field the mean is taken on:
@@ -519,9 +558,13 @@ public static class SurfaceCommand
         var deepSign = even ? -1.0 : 1.0;
         var (u0, u1, v0, v1) = swap ? (b0, b1, a0, a1) : (a0, a1, b0, b1);
 
+        // Square cells by default, but never so few across the shorter side that a thin box is a
+        // handful of facets: the cells may then be longer than they are wide, and the picture
+        // is drawn at the true positions either way.
         var nu = request.Samples;
         var step = (u1 - u0) / (nu - 1);
-        var nv = Math.Max(2, Math.Min(MaximumSamples, (int)Math.Round((v1 - v0) / step) + 1));
+        var nv = request.DeepSamples
+            ?? Math.Clamp((int)Math.Round((v1 - v0) / step) + 1, Math.Min(MinimumDeepSamples, nu), MaximumSamples);
 
         var us = Grid(u0, u1, nu);
         var vs = Grid(v0, v1, nv);
@@ -536,6 +579,7 @@ public static class SurfaceCommand
         var names = new string?[nu * nv];
         var elements = new int?[nu * nv];
         var depth = new double[nu * nv];
+        var held = new double[nu * nv];
         var outside = 0;
         var refused = 0;
 
@@ -558,17 +602,24 @@ public static class SurfaceCommand
                 }
                 else if (status == ProbeStatus.InsideConductor)
                 {
-                    names[k] = conductor ?? "conductor";
-                    elements[k] = element;
-                    depth[k] = distance ?? 0.0;
+                    // Only a conductor with one potential is a plateau: an edge-profiled board's
+                    // varies along it, so it is drawn as the field sampled there.
+                    if (probe.HeldPotentialAt(in point, at, cycleMean) is { } volts)
+                    {
+                        names[k] = conductor ?? "conductor";
+                        elements[k] = element;
+                        depth[k] = distance ?? 0.0;
+                        held[k] = volts;
+                    }
                 }
             }
         }
 
-        // A plateau at the conductor's own potential, from the samples deep inside it. On a solved
-        // element every node inside is pinned to the electrode, so that is the electrode's
-        // potential exactly; nearer the surface an interpolant overshoots by a per cent or two by
-        // construction, which is why the deep samples and a median rather than an average.
+        // A plateau at the potential the conductor holds, from the solve's own coefficients. Not
+        // a reading of the field there: an interpolant overshoots inside a thin conductor, and
+        // inside metal the sum carries every other element's potential too - an analytic element
+        // has no conductors and fills all space. The readings are kept beside it, as the range
+        // and the deeper half's median, so the difference can be seen.
         //
         // Keyed by element and name together: a name is unique only within one solve, so two
         // elements may each have a "plate", and one median over both would draw two conductors
@@ -603,7 +654,8 @@ public static class SurfaceCommand
             // one beside a face where the interpolant overshoots.
             var ordered = group.OrderBy(k => depth[k]).ToList();
             var deeper = ordered.Take(Math.Max(1, ordered.Count / 2)).Select(k => raw[k]).Order().ToList();
-            var potential = deeper[deeper.Count / 2];
+            var sampled = deeper[deeper.Count / 2];
+            var potential = held[ordered[0]];
             level[group.Key] = potential;
 
             plateaus.Add(new SurfacePlateau(
@@ -614,7 +666,10 @@ public static class SurfaceCommand
                 group.Min(k => raw[k]),
                 group.Max(k => raw[k]),
                 elements[group.First()],
-                names[group.First()]));
+                names[group.First()])
+            {
+                SampledV = sampled,
+            });
         }
 
         var values = new double[raw.Length];
@@ -631,18 +686,7 @@ public static class SurfaceCommand
         // ion's acceleration potential, and the largest value on the plane, in the drawn unit.
         var reference = Math.Abs(model.AccelerationPotentialSi);
 
-        foreach (var element in model.Fields)
-        {
-            foreach (var electrode in element.Solve?.Electrodes ?? [])
-            {
-                reference = Math.Max(reference, Math.Abs(electrode.Potential));
-            }
-
-            foreach (var electrode in element.Solve3D?.Electrodes ?? [])
-            {
-                reference = Math.Max(reference, Math.Abs(electrode.Potential));
-            }
-        }
+        reference = Math.Max(reference, PeakElectrodePotential(model));
 
         foreach (var v in raw)
         {
@@ -653,6 +697,24 @@ public static class SurfaceCommand
         }
 
         reference *= Math.Abs(factor);
+
+        // The plateaus are in volts and the reference in the drawn unit.
+        var referenceVolts = factor != 0.0 ? reference / Math.Abs(factor) : reference;
+
+        foreach (var plateau in plateaus)
+        {
+            var stray = Math.Max(Math.Abs(plateau.LowestV - plateau.PotentialV), Math.Abs(plateau.HighestV - plateau.PotentialV));
+
+            if (Math.Abs(plateau.SampledV - plateau.PotentialV) > PlateauTolerance * referenceVolts && stray > 0.0)
+            {
+                warnings.Add(new ValidityWarning(
+                    "render.plateau-disagrees",
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"inside '{plateau.Conductor}' the summed field reads {plateau.LowestV:G6} to {plateau.HighestV:G6} V (median {plateau.SampledV:G6} V) where the conductor holds {plateau.PotentialV:G6} V: another element's potential is summed inside the metal - an analytic element has no conductors and fills all space, and a solve whose domain overlaps this conductor adds its own potential there - so the plateau is drawn at the conductor's own potential and the surface beside it is the sum, which steps at the conductor's edge"),
+                    WarningSeverity.Qualified));
+            }
+        }
 
         var (lowest, highest) = Range(values);
         var span = Math.Max(highest, 0.0) - Math.Min(lowest, 0.0);
@@ -918,7 +980,7 @@ public static class SurfaceCommand
 
         foreach (var (name, triangles) in plateauTriangles.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
-            var flat = surface.Plateaus.First(p => p.Conductor == name).Height;
+            var flat = surface.Plateaus.Single(p => p.Conductor == name).Height;
             var (pr, pg, pb) = Plateau(Ramp(flat));
             plateaus.Add(new PictureMesh(vertices, flatNormals, triangles, pr, pg, pb));
         }
@@ -989,6 +1051,23 @@ public static class SurfaceCommand
         }
 
         var absolute = Path.GetFullPath(modelPath);
+        var path = outputPath is { } named
+            ? Path.GetFullPath(named)
+            : Path.Combine(project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".surface.png");
+        var csv = csvPath is null ? null : Path.GetFullPath(csvPath);
+
+        // Before anything is sampled: written in turn to one file, the table would replace the
+        // picture, with exit 0 and the file named as both.
+        if (csv is not null && string.Equals(
+            Path.TrimEndingDirectorySeparator(csv),
+            Path.TrimEndingDirectorySeparator(path),
+            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            throw Refusal(
+                "/surface/csv",
+                $"--csv and the picture are the same file, {path}: the table would be written over the picture",
+                "give --csv a file of its own, such as one ending in .csv");
+        }
 
         // One read (PRJ-3): the hash is the probe's, of the very text the field was built from.
         var (surface, probe, warnings) = Sample(absolute, modelText ?? File.ReadAllText(absolute), request);
@@ -1088,12 +1167,7 @@ public static class SurfaceCommand
             Rasterizer.Hatch(rgb, width, height);
         }
 
-        var path = outputPath is { } named
-            ? Path.GetFullPath(named)
-            : Path.Combine(project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".surface.png");
-
         var windowUs = cycleMean ? probe.CycleMeanWindowSecondsAt((request.AtUs ?? 0.0) * 1e-6) * 1e6 : null;
-        var csv = csvPath is null ? null : Path.GetFullPath(csvPath);
 
         var warningJson = warnings.Select(w => new WarningJson
         {
@@ -1119,8 +1193,11 @@ public static class SurfaceCommand
             AcrossMm = [surface.Across[0], surface.Across[^1]],
             DeepMm = [surface.Deep[0], surface.Deep[^1]],
             Samples = [surface.Across.Count, surface.Deep.Count],
-            MeshLines = [MeshIndices(surface.Across.Count, Stride(surface, request.MeshLines)).Count,
-                MeshIndices(surface.Deep.Count, Stride(surface, request.MeshLines)).Count],
+            MeshLines = [MeshIndices(surface.Across.Count, Strides(surface, request.MeshLines).Across).Count,
+                MeshIndices(surface.Deep.Count, Strides(surface, request.MeshLines).Deep).Count],
+            StepsMm = [
+                (surface.Across[^1] - surface.Across[0]) / (surface.Across.Count - 1),
+                (surface.Deep[^1] - surface.Deep[0]) / (surface.Deep.Count - 1)],
             Height = surface.Height,
             Unit = surface.Unit,
             ChargeNumber = surface.ChargeNumber,
@@ -1223,6 +1300,20 @@ public static class SurfaceCommand
         return text == "-0" ? "0" : text;
     }
 
+    /// <summary>An instant as the picture states it: compact at any size, in characters the stroke font draws.</summary>
+    /// <param name="microseconds">The instant.</param>
+    /// <returns>"t=2.5 µs", "t=12.3 ms", or with an exponent past a thousand seconds.</returns>
+    public static string Instant(double microseconds)
+    {
+        var invariant = CultureInfo.InvariantCulture;
+        var a = Math.Abs(microseconds);
+
+        return a < 1e4 ? $"t={Format(microseconds)} µs"
+            : a < 1e7 ? $"t={Format(microseconds / 1e3)} ms"
+            : a < 1e9 ? $"t={Format(microseconds / 1e6)} s"
+            : $"t={(microseconds / 1e6).ToString("0.##e+0", invariant)} s";
+    }
+
     /// <summary>The lowest and highest finite values on a surface.</summary>
     private static (double Low, double High) Range(PotentialSurface surface) => Range(surface.Values);
 
@@ -1257,8 +1348,20 @@ public static class SurfaceCommand
         return zs;
     }
 
-    private static int Stride(PotentialSurface surface, int meshLines) =>
-        Math.Max(1, (int)Math.Round((Math.Max(surface.Across.Count, surface.Deep.Count) - 1) / (double)Math.Max(1, meshLines)));
+    // Every how many samples a mesh line is drawn along each axis: the lines are a fixed
+    // distance apart on both, the longer side over the number asked for, so a box sampled with
+    // cells longer than they are wide still has a square mesh.
+    private static (int Across, int Deep) Strides(PotentialSurface surface, int meshLines)
+    {
+        var across = surface.Across[^1] - surface.Across[0];
+        var deep = surface.Deep[^1] - surface.Deep[0];
+        var spacing = Math.Max(across, deep) / Math.Max(1, meshLines);
+
+        static int Of(double extent, int count, double spacing) =>
+            Math.Max(1, (int)Math.Round(spacing / (extent / Math.Max(1, count - 1))));
+
+        return (Of(across, surface.Across.Count, spacing), Of(deep, surface.Deep.Count, spacing));
+    }
 
     private static List<int> MeshIndices(int count, int stride)
     {
@@ -1283,6 +1386,11 @@ public static class SurfaceCommand
     /// segment's middle. A segment with both ends inside one conductor is a plateau and is left
     /// undrawn, so the mesh stops at the plateau's edge.
     /// </summary>
+    /// <remarks>
+    /// One polyline per mesh line, broken only where a segment is left out, with a color per
+    /// segment: twenty thousand two-point lines at the default size were the same picture drawn
+    /// with twenty thousand records.
+    /// </remarks>
     private static List<PictureLine> WireMesh(
         PotentialSurface surface,
         double mmPerUnit,
@@ -1291,50 +1399,67 @@ public static class SurfaceCommand
     {
         var nu = surface.Across.Count;
         var nv = surface.Deep.Count;
-        var stride = Stride(surface, meshLines);
+        var (strideU, strideV) = Strides(surface, meshLines);
         var lines = new List<PictureLine>();
+
+        List<double>? points = null;
+        List<double>? colors = null;
+
+        void Flush()
+        {
+            if (points is { Count: > 3 })
+            {
+                lines.Add(new PictureLine(points, colors![0], colors[1], colors[2], colors));
+            }
+
+            points = null;
+            colors = null;
+        }
 
         void Segment(int i0, int j0, int i1, int j1)
         {
             var va = surface.At(i0, j0);
             var vb = surface.At(i1, j1);
 
-            if (!double.IsFinite(va) || !double.IsFinite(vb))
-            {
-                return;
-            }
-
             var na = surface.Inside[(i0 * nv) + j0];
             var nb = surface.Inside[(i1 * nv) + j1];
 
-            if (na is not null && na == nb)
+            if (!double.IsFinite(va) || !double.IsFinite(vb) || (na is not null && na == nb))
             {
+                Flush();
                 return;
+            }
+
+            if (points is null)
+            {
+                points = [surface.Across[i0], va * mmPerUnit, surface.DeepSign * surface.Deep[j0]];
+                colors = [];
             }
 
             var (r, g, b) = ramp(0.5 * (va + vb));
 
-            lines.Add(new PictureLine(
-                [surface.Across[i0], va * mmPerUnit, surface.DeepSign * surface.Deep[j0], surface.Across[i1], vb * mmPerUnit, surface.DeepSign * surface.Deep[j1]],
-                r * 0.8,
-                g * 0.8,
-                b * 0.8));
+            points.AddRange([surface.Across[i1], vb * mmPerUnit, surface.DeepSign * surface.Deep[j1]]);
+            colors!.AddRange([r * 0.8, g * 0.8, b * 0.8]);
         }
 
-        foreach (var j in MeshIndices(nv, stride))
+        foreach (var j in MeshIndices(nv, strideV))
         {
             for (var i = 0; i + 1 < nu; i++)
             {
                 Segment(i, j, i + 1, j);
             }
+
+            Flush();
         }
 
-        foreach (var i in MeshIndices(nu, stride))
+        foreach (var i in MeshIndices(nu, strideU))
         {
             for (var j = 0; j + 1 < nv; j++)
             {
                 Segment(i, j, i, j + 1);
             }
+
+            Flush();
         }
 
         return lines;
@@ -1488,7 +1613,7 @@ public static class SurfaceCommand
         }
 
         // What instant the heights are, above the bar: a picture of a driven field is a frame.
-        var caption = cycleMean ? "cycle mean" : instantUs is { } t ? $"t={Format(t)} µs" : null;
+        var caption = cycleMean ? "cycle mean" : instantUs is { } t ? Instant(t) : null;
 
         if (caption is not null)
         {
@@ -1542,6 +1667,56 @@ public static class SurfaceCommand
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The largest potential any electrode of a model reaches, in volts: over every state a
+    /// sequence puts it in (a ramp's end included), its DC plus the amplitude of every generator
+    /// it taps, and for an edge-profiled board the largest value on its profile.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <returns>Volts; zero for a model with no electrodes.</returns>
+    /// <remarks>
+    /// Over every state and every tap, because reading the DC alone - the recurring way this
+    /// project has read a driven electrode as earthed - made an RF-only model at rest look like
+    /// a model of nothing, so its rounding was stretched to the full relief.
+    /// </remarks>
+    public static double PeakElectrodePotential(Core.Model.CompiledModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var peak = 0.0;
+
+        foreach (var element in model.Fields)
+        {
+            if (element.Solve is { } plane)
+            {
+                foreach (var state in Core.Model.ElectrodeOverlap.StatesOf(plane.Electrodes, plane.Stages))
+                {
+                    foreach (var electrode in state)
+                    {
+                        var dc = electrode.Shape == Core.Model.ElectrodeShape.EdgeProfile
+                            ? electrode.Profile.Select(point => Math.Abs(point.Potential)).DefaultIfEmpty(0.0).Max()
+                            : Math.Abs(electrode.Potential);
+
+                        peak = Math.Max(peak, dc + electrode.Taps.Sum(t => Math.Abs(t.Amplitude)));
+                    }
+                }
+            }
+
+            if (element.Solve3D is { } volume)
+            {
+                foreach (var state in Core.Model.ElectrodeOverlap3D.StatesOf(volume.Electrodes, volume.Stages))
+                {
+                    foreach (var electrode in state)
+                    {
+                        peak = Math.Max(peak, Math.Abs(electrode.Potential) + electrode.Taps.Sum(t => Math.Abs(t.Amplitude)));
+                    }
+                }
+            }
+        }
+
+        return peak;
     }
 
     /// <summary>A CSV field, quoted per RFC 4180 where it holds a comma, a quote or a line break.</summary>
@@ -1711,9 +1886,14 @@ public static class SurfaceCommand
             throw Refusal("/surface/height-mm-per-v", "the height scale must be a positive, finite number of millimetres per unit");
         }
 
-        if (request.AtUs is { } instant && !double.IsFinite(instant))
+        // The rule probe and render section apply: a model's clock starts at zero, so a negative
+        // instant has no state to draw - a sequence would answer with its first phase under a
+        // time the instrument never reaches.
+        ProbeCommand.CheckInstant(request.AtUs, "/surface/at-us");
+
+        if (request.DeepSamples is { } deep && (deep < 2 || deep > MaximumSamples))
         {
-            throw Refusal("/surface/at-us", "the instant must be a finite number of microseconds");
+            throw Refusal("/surface/samples", $"samples along the shorter side are 2 to {MaximumSamples}; got {deep}");
         }
     }
 

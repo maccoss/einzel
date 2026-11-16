@@ -3454,5 +3454,41 @@ Two findings from Stage 1 that bear on the spec:
   where it is now drawn flat below 1e-9 of the model's own potentials, with
   `render.surface-flat`.
 
+  **A third review found the plateaus were readings, not potentials.** A plateau was the median
+  of the summed field over the samples inside a conductor, and inside metal the sum carries every
+  element: on `tims-analyzer` the analytic RF quadrupole put `ring-0`, which holds 0.018 V, at
+  657 V in the picture, the outcome, the PNG and the CSV, and an interpolant put
+  `linear-ion-trap-3d`'s 20 V lenses at 20.13 V. **A plateau is now what the conductor holds**,
+  from the solve's own coefficients (`IHeldConductors` on the solved fields and every wrapper,
+  `DrivenSolvedField.ConductorCoefficients`, `FieldProbe.HeldPotentialAt`): a static solve's
+  declared potential, a driven or staged one's sum of channel weights times its pattern
+  coefficients at the instant, over every tap, stage and ramp, and its cycle mean under
+  `--cycle-mean`. Where the sum strays from it, `render.plateau-disagrees` says so. An
+  edge-profiled board has no one potential and is not a plateau. **The sweep of every shipped
+  template and example is the control**: the TIMS templates warn on every ring, as expected; the
+  two Astral templates warn on their end walls, which hold 0 V while the summed field there reads
+  about 5930 V because the two mirror solves' domains overlap - a property of those templates
+  this surfaced; everywhere else the held value differs from the old median by the interpolant's
+  overshoot alone and nothing warns.
+
+  Nine more. The noise floor's reference read each electrode's DC alone, so an RF-only model at
+  rest had none: it is the peak any electrode reaches over every state and tap. A long thin box
+  got square cells, nine rows across the mirror pair's 30 mm at the default: the shorter side now
+  gets at least 61 samples, `--samples NxM` sets both, and `stepsMm` reports both spacings.
+  **Every switch swallowed the next argument** - `render surface --cycle-mean model.json` printed
+  the usage, `--no-scale out.png` dropped the name, and `einzel run --json model.json` failed the
+  same way: `CommandLine.Switches` names every switch, a test holds the list to the verbs'
+  source, and `render surface` and `render still` refuse a second argument. `--out a.png --csv
+  a.png` wrote the table over the picture; refused before work. A negative `--at-us` drew a
+  sequence's first stage at "t = -1 us", and 1e300 us drew a rounding-chosen phase under a
+  300-digit caption: refused below zero (now in `render section` too, whose `--at-us`,
+  `--width-mm` and `--equipotentials` also stop throwing exit 6 on a typo), refused where the
+  drive's phase cannot be placed (`FieldProbe.CheckInstantResolution`, in `probe` too), and the
+  caption is compact. The probe's held-field cache was a nullable tuple written from any thread;
+  it is one immutable object swapped by reference. The wire mesh is one polyline per mesh line
+  with a color per segment, pixel-identical to a line per segment and tested so. And the
+  surface's sampler, the row sampler and the grid sampler share one core that counts the
+  domains a point is outside.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

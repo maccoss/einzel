@@ -25,7 +25,13 @@ public sealed record PictureMesh(
 /// <param name="R">Red, zero to one.</param>
 /// <param name="G">Green, zero to one.</param>
 /// <param name="B">Blue, zero to one.</param>
-public sealed record PictureLine(IReadOnlyList<double> PointsMm, double R, double G, double B);
+/// <param name="SegmentColors">
+/// A color for each segment, three numbers each, in place of <paramref name="R"/>,
+/// <paramref name="G"/> and <paramref name="B"/>; null for one color along the whole line.
+/// Drawn by the still's rasterizer; the window draws a line in its one color.
+/// </param>
+public sealed record PictureLine(
+    IReadOnlyList<double> PointsMm, double R, double G, double B, IReadOnlyList<double>? SegmentColors = null);
 
 /// <summary>One layer of a composed picture, drawn whole before the next.</summary>
 /// <param name="Name">What the layer is: field, paths, conductors or density.</param>

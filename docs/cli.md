@@ -865,6 +865,21 @@ x right and y up, as `render section` does). A range on the plane below 1e-9 of 
 potentials is rounding and is drawn flat (`render.surface-flat`). `--csv`'s file is reported as
 `csv` in `--json` and on the terminal, and by `--dry-run`.
 
+**A switch never takes the argument after it as its value.** The parser cannot tell `--json` from
+`--out` by looking, and read "the next argument that is not itself an option" as any flag's value,
+so `render surface --cycle-mean models/q.json` took the model as the switch's value and printed the
+usage, and `--no-scale out.png` dropped the file name. `CommandLine.Switches` names every switch any
+verb reads - `composite`, `cycle-mean`, `dry-run`, `json`, `mesh`, `no-calibrate`, `no-scale`,
+`no-trajectory`, `see-through`, `study`, `vtu` - and a test reads the verbs' source and fails when a
+switch is added without it. That changes every verb: `einzel run --json models/x.json` used to fail
+the same way. `render surface` and `render still` also refuse a second argument, naming it.
+
+**`render surface`'s plateaus are what each conductor holds** (see Rendering), `--samples` takes
+`N` or `NxM`, `stepsMm` reports the spacing on both axes, `--out` and `--csv` may not be one file,
+and `--at-us` is refused below zero and where the drive's phase cannot be placed. `render section
+--at-us`, `--width-mm` and `--equipotentials` are read without `Parse`, so a typo is exit 1 rather
+than exit 6, and a negative instant is refused at `/render/at-us`.
+
 **A flag that takes a value and is given none is a validation failure naming the flag** - `--at-us
 --cycle-mean`, `--csv --json`. This is in the shared flag readers, so it also holds for `render
 still` (`--width-px`, `--height-px`, `--view`, `--out`), `probe` (`--at-us`, `--samples`, `--csv`)

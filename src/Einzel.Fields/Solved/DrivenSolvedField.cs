@@ -33,7 +33,7 @@ namespace Einzel.Fields.Solved;
 /// pair down by the same relative amounts, so the whole filter is still one solve.
 /// </para>
 /// </remarks>
-public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
+public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IHeldConductors
 {
     private readonly IElectrostaticField[] _channels;
     private readonly double[] _direct;
@@ -90,6 +90,93 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         _stageEndDirect = source._stageEndDirect;
         _stageEndHarmonics = source._stageEndHarmonics;
         _operatingPoint = operatingPoint;
+        ConductorCoefficients = source.ConductorCoefficients;
+    }
+
+    /// <summary>
+    /// Each conductor's coefficient in each channel's pattern, by name: what the conductor is
+    /// held at in a channel's solve, so that at any instant it holds the sum over channels of
+    /// that coefficient times the channel's weight. An edge-profiled board has no single
+    /// coefficient and no entry. Set by the builder; null where none was given.
+    /// </summary>
+    public IReadOnlyDictionary<string, double[]>? ConductorCoefficients { get; init; }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The sum over channels of the conductor's coefficient times the channel's weight - the
+    /// same weights <see cref="PotentialAt(in Vec3, double)"/> sums the channel fields with,
+    /// so a stage, a ramp and every generator a conductor taps are all in it, and held at an
+    /// operating point exactly as the potential is.
+    /// </remarks>
+    public double? HeldPotentialAt(in Vec3 position, double timeSeconds)
+    {
+        if (ConductorCoefficients is null || !(SignedDistanceToConductor(in position) <= 0.0)
+            || ConductorAt(in position) is not { } name
+            || !ConductorCoefficients.TryGetValue(name, out var coefficients))
+        {
+            return null;
+        }
+
+        var total = 0.0;
+
+        for (var k = 0; k < coefficients.Length && k < _channels.Length; k++)
+        {
+            if (coefficients[k] != 0.0)
+            {
+                total += coefficients[k] * Weight(k, timeSeconds);
+            }
+        }
+
+        return total;
+    }
+
+    /// <inheritdoc/>
+    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples)
+    {
+        if (ConductorCoefficients is null || !(SignedDistanceToConductor(in position) <= 0.0)
+            || ConductorAt(in position) is not { } name
+            || !ConductorCoefficients.TryGetValue(name, out var coefficients))
+        {
+            return null;
+        }
+
+        var total = 0.0;
+
+        for (var k = 0; k < coefficients.Length && k < _channels.Length; k++)
+        {
+            if (coefficients[k] == 0.0)
+            {
+                continue;
+            }
+
+            if ((_operatingPoint is null && _boundaries.Length > 0)
+                || CycleMeanWeight(k, fromSeconds, periodSeconds) is not { } mean)
+            {
+                // Not a whole number of cycles, or a sequence not held: average the instants.
+                return Sampled(position, fromSeconds, periodSeconds, samples);
+            }
+
+            total += coefficients[k] * mean;
+        }
+
+        return total;
+    }
+
+    private double? Sampled(in Vec3 position, double fromSeconds, double periodSeconds, int samples)
+    {
+        var total = 0.0;
+
+        for (var j = 0; j < samples; j++)
+        {
+            if (HeldPotentialAt(in position, fromSeconds + (periodSeconds * j / samples)) is not { } value)
+            {
+                return null;
+            }
+
+            total += value;
+        }
+
+        return total / samples;
     }
 
     internal DrivenSolvedField(

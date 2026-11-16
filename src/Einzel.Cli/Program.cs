@@ -1185,6 +1185,57 @@ public static class Program
         return false;
     }
 
+    /// <summary>
+    /// Refuses arguments after the one model a verb takes, naming them: a word after a switch
+    /// such as <c>--no-scale out.png</c> is not the switch's value, and dropping it silently
+    /// would draw a picture somewhere other than the file the caller named.
+    /// </summary>
+    private static bool UnexpectedArguments(List<string> positional, string verb)
+    {
+        if (positional.Count <= 1)
+        {
+            return false;
+        }
+
+        Console.Error.WriteLine(
+            $"{verb} takes one model, and was also given {string.Join(", ", positional.Skip(1).Select(p => $"'{p}'"))}; "
+            + "a file to write is --out <file>, and a switch such as --no-scale takes no value.");
+        return true;
+    }
+
+    /// <summary>
+    /// <c>--samples N</c> along the longer side, or <c>--samples NxM</c> for the longer side and
+    /// then the shorter.
+    /// </summary>
+    private static bool TrySurfaceSamples(CommandLine options, out int samples, out int? deep)
+    {
+        samples = SurfaceCommand.DefaultSamples;
+        deep = null;
+
+        if (MissingValue(options, "a whole number, or NxM for the longer side and then the shorter", "samples"))
+        {
+            return false;
+        }
+
+        if (options.Value("samples") is not { } text)
+        {
+            return true;
+        }
+
+        var parts = text.Split('x');
+
+        if (parts.Length is 1 or 2
+            && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out samples)
+            && (parts.Length == 1 || int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+        {
+            deep = parts.Length == 2 ? int.Parse(parts[1], CultureInfo.InvariantCulture) : null;
+            return true;
+        }
+
+        Console.Error.WriteLine($"--samples takes a whole number, or NxM for the longer side and then the shorter, and '{text}' is neither.");
+        return false;
+    }
+
     /// <summary>The pixel size of a raster picture, from <c>--width-px</c> and <c>--height-px</c>.</summary>
     /// <param name="options">The command line.</param>
     /// <param name="what">What is being drawn, for the message: "a still", "a surface picture".</param>
@@ -1861,6 +1912,15 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
+        // TryParse rather than Parse: "5us" is the caller's mistake, and Parse threw it through
+        // to the handler for defects in the engine, exit 6.
+        if (!TryNumberFlag(options, "at-us", "a time in microseconds", out var sectionAt)
+            || !TryNumberFlag(options, "width-mm", "a width in millimetres", out var sectionWidth)
+            || !TryWholeFlag(options, "equipotentials", 0, out var sectionLevels))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var given = Path.GetFullPath(positional[0]);
 
         // A render spec names its own model (RND-2), so either may be handed in and
@@ -1878,12 +1938,8 @@ public static class Program
                 "PDF" => FigureFormat.Pdf,
                 _ => FigureFormat.Svg,
             },
-            WidthMm = options.Value("width-mm") is { } width
-                ? double.Parse(width, CultureInfo.InvariantCulture)
-                : spec.WidthMm,
-            Equipotentials = options.Value("equipotentials") is { } count
-                ? int.Parse(count, CultureInfo.InvariantCulture)
-                : spec.Equipotentials,
+            WidthMm = sectionWidth ?? spec.WidthMm,
+            Equipotentials = options.Has("equipotentials") ? sectionLevels : spec.Equipotentials,
             Trajectory = !options.Has("no-trajectory") && spec.Trajectory,
             Caption = options.Value("caption") ?? spec.Caption,
 
@@ -1891,10 +1947,11 @@ public static class Program
             // A bare --at would be ambiguous between microseconds and seconds by a
             // factor of a million, and this is the same rule that makes {"energy": 4000}
             // a validation error in a model document.
-            AtSeconds = options.Value("at-us") is { } at
-                ? double.Parse(at, CultureInfo.InvariantCulture) * 1e-6
-                : spec.AtSeconds,
+            AtSeconds = sectionAt is { } at ? at * 1e-6 : spec.AtSeconds,
         };
+
+        // The rule probe and the surface apply, at the same flag: a run's clock starts at zero.
+        ProbeCommand.CheckInstant(sectionAt, "/render/at-us");
 
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
 
@@ -1958,6 +2015,11 @@ public static class Program
             Console.Error.WriteLine(
                 "       [--width-px N] [--height-px N] [--see-through] [--no-scale] [--dry-run] [--json]");
 
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        if (UnexpectedArguments(positional, "render still"))
+        {
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -2028,7 +2090,7 @@ public static class Program
     private const string SurfaceUsage =
         """
         usage: einzel render surface <model.json> [--plane xy|xz|yz] [--offset-mm d]
-               [--box-mm a0,b0,a1,b1] [--samples N] [--mesh-lines N]
+               [--box-mm a0,b0,a1,b1] [--samples N|NxM] [--mesh-lines N]
                [--height potential|energy] [--relief F] [--height-mm-per-v X | --height-mm-per-ev X]
                [--at-us t] [--cycle-mean] [--view iso|side|front|top]
                [--width-px N] [--height-px N] [--out <file.png>] [--csv <file>] [--no-scale] [--dry-run] [--json]
@@ -2038,6 +2100,8 @@ public static class Program
           --offset-mm    how far along the plane's normal; by default the middle of the domain
                          (z = 0 for a 2-D model's own xy plane)
           --box-mm       the rectangle sampled, in the plane's own axis order (for xz: x0,z0,x1,z1)
+          --samples      along the longer side (241), or NxM for the longer side and then the
+                         shorter; by default the shorter gets square cells, and never fewer than 61
           --height       potential (volts, the default) or energy: q*phi for the model's ion, in eV
           --relief       the drawn height of the whole range as a fraction of the longer side (0.35)
           --at-us        the instant to draw a driven or sequenced field at
@@ -2061,6 +2125,11 @@ public static class Program
         if (positional.Count == 0)
         {
             Console.Error.Write(SurfaceUsage);
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        if (UnexpectedArguments(positional, "render surface"))
+        {
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -2091,7 +2160,7 @@ public static class Program
             || !TryNumberFlag(options, "height-mm-per-v", "a number of millimetres per volt", out var perVolt)
             || !TryNumberFlag(options, "height-mm-per-ev", "a number of millimetres per electronvolt", out var perEv)
             || !TryNumberFlag(options, "at-us", "a time in microseconds", out var at)
-            || !TryWholeFlag(options, "samples", SurfaceCommand.DefaultSamples, out var samples)
+            || !TrySurfaceSamples(options, out var samples, out var deepSamples)
             || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, out var meshLines)
             || !TryPictureSize(options, "a surface picture", out var width, out var height))
         {
@@ -2156,7 +2225,8 @@ public static class Program
             relief ?? SurfaceCommand.DefaultRelief,
             perVolt ?? perEv,
             at,
-            options.Has("cycle-mean"));
+            options.Has("cycle-mean"),
+            deepSamples);
 
         var modelPath = positional[0];
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
@@ -2187,7 +2257,7 @@ public static class Program
 
         Console.Out.WriteLine(string.Create(
             invariant,
-            $"{outcome.Height} on the {outcome.Plane} plane at {outcome.OffsetMm:G6} mm: {outcome.AcrossAxis} {outcome.AcrossMm[0]:G6} to {outcome.AcrossMm[1]:G6} mm across, {outcome.DeepAxis} {outcome.DeepMm[0]:G6} to {outcome.DeepMm[1]:G6} mm deep, {outcome.Samples[0]} by {outcome.Samples[1]} samples"));
+            $"{outcome.Height} on the {outcome.Plane} plane at {outcome.OffsetMm:G6} mm: {outcome.AcrossAxis} {outcome.AcrossMm[0]:G6} to {outcome.AcrossMm[1]:G6} mm across, {outcome.DeepAxis} {outcome.DeepMm[0]:G6} to {outcome.DeepMm[1]:G6} mm deep, {outcome.Samples[0]} by {outcome.Samples[1]} samples ({outcome.StepsMm[0]:G4} by {outcome.StepsMm[1]:G4} mm)"));
         var when = outcome.CycleMean
             ? string.Create(invariant, $"; cycle mean over {outcome.CycleMeanWindowUs:G6} us")
             : outcome.InstantUs is { } t ? string.Create(invariant, $"; at t = {t:G6} us") : string.Empty;

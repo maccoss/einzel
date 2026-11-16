@@ -405,7 +405,7 @@ public static class GeometryBuilder3D
             coarsen: Coarsener(geometry));
 
         return (
-            new SolvedField3D(potential, geometry.Electrodes),
+            new SolvedField3D(potential, geometry.Electrodes) { HoldsDeclaredPotentials = true },
             report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) });
     }
 
@@ -898,7 +898,11 @@ public static class GeometryBuilder3D
         if (geometry.Stages.Count == 0)
         {
             return (
-                new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms), worst);
+                new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms)
+                {
+                    ConductorCoefficients = DriveChannels.Coefficients(groups, geometry.Electrodes.Select(e => e.Name)),
+                },
+                worst);
         }
 
         var boundaries = new List<double>(geometry.Stages.Count);
@@ -951,7 +955,10 @@ public static class GeometryBuilder3D
         var sequenced = new DrivenSolvedField(
             channels, direct, harmonics, frequencies, waveforms,
             boundaries, stageDirect, stageHarmonics,
-            anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null);
+            anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null)
+        {
+            ConductorCoefficients = DriveChannels.Coefficients(groups, geometry.Electrodes.Select(e => e.Name)),
+        };
 
         return (sequenced, worst);
     }

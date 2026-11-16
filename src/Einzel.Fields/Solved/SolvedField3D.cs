@@ -11,7 +11,7 @@ namespace Einzel.Fields.Solved;
 /// what a segmented quadrupole, an auxiliary DC wedge or a bent flight tube needs
 /// and what neither of the others can express.
 /// </remarks>
-public sealed class SolvedField3D : IElectrostaticField, IConductorBounded
+public sealed class SolvedField3D : IElectrostaticField, IConductorBounded, IHeldConductors
 {
     private readonly TricubicInterpolant _interpolant;
     private readonly Grid3D _grid;
@@ -114,6 +114,37 @@ public sealed class SolvedField3D : IElectrostaticField, IConductorBounded
         }
 
         return nearest;
+    }
+
+    /// <summary>
+    /// Whether this field is a whole static solve, whose electrodes hold their declared
+    /// potentials; false for a basis channel of a driven solve. Set by the builder.
+    /// </summary>
+    public bool HoldsDeclaredPotentials { get; init; }
+
+    /// <inheritdoc/>
+    public double? HeldPotentialAt(in Vec3 position, double timeSeconds)
+    {
+        if (!HoldsDeclaredPotentials)
+        {
+            return null;
+        }
+
+        CompiledElectrode3D? inside = null;
+        var nearest = 0.0;
+
+        foreach (var conductor in _conductors)
+        {
+            var distance = conductor.SignedDistance(position.X, position.Y, position.Z);
+
+            if (distance <= nearest)
+            {
+                nearest = distance;
+                inside = conductor;
+            }
+        }
+
+        return inside?.Potential;
     }
 
     /// <inheritdoc/>

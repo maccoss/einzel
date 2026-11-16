@@ -24,7 +24,7 @@ namespace Einzel.Fields.Solved;
 /// gets and for the same reason.
 /// </para>
 /// </remarks>
-public sealed class SolvedField2D : IElectrostaticField, IConductorBounded
+public sealed class SolvedField2D : IElectrostaticField, IConductorBounded, IHeldConductors
 {
     private readonly IFieldInterpolant _interpolant;
     private readonly Grid2D _grid;
@@ -106,6 +106,38 @@ public sealed class SolvedField2D : IElectrostaticField, IConductorBounded
         }
 
         return nearest;
+    }
+
+    /// <summary>
+    /// Whether this field is a whole static solve, whose electrodes hold their declared
+    /// potentials; false for a basis channel of a driven solve, whose electrodes hold the
+    /// channel's pattern instead. Set by the builder.
+    /// </summary>
+    public bool HoldsDeclaredPotentials { get; init; }
+
+    /// <inheritdoc/>
+    public double? HeldPotentialAt(in Vec3 position, double timeSeconds)
+    {
+        if (!HoldsDeclaredPotentials)
+        {
+            return null;
+        }
+
+        Core.Model.CompiledElectrode? inside = null;
+        var nearest = 0.0;
+
+        foreach (var conductor in _conductors)
+        {
+            var distance = conductor.SignedDistance(position.X, position.Y);
+
+            if (distance <= nearest)
+            {
+                nearest = distance;
+                inside = conductor;
+            }
+        }
+
+        return inside is null || inside.Shape == Core.Model.ElectrodeShape.EdgeProfile ? null : inside.Potential;
     }
 
     /// <inheritdoc/>

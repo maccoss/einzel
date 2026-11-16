@@ -218,7 +218,7 @@ public static class StillCommand
     internal static RasterLayer Raster(PictureLayer layer) =>
         new(
             [.. layer.Meshes.Select(m => new RasterMesh(m.VerticesMm, m.Normals, m.Triangles, m.R, m.G, m.B, m.Colors))],
-            [.. layer.Lines.Select(l => new RasterLine(l.PointsMm, l.R, l.G, l.B))],
+            [.. layer.Lines.Select(l => new RasterLine(l.PointsMm, l.R, l.G, l.B, l.SegmentColors))],
             layer.Alpha,
             layer.WritesDepth,
             layer.DepthBias);

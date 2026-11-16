@@ -141,6 +141,14 @@ become a feature release without being renamed twice.
 - **A flag that takes a value and is given none is refused**, naming the flag, by `render
   surface`, `render still`, `probe` and `export`. `--at-us --cycle-mean` or `--csv --json` used to
   drop the flag and exit 0.
+- **A switch no longer swallows the argument after it**, in every verb: `einzel run --json
+  model.json` and `render surface --cycle-mean model.json` used to read the model as the switch's
+  value. `render surface` and `render still` refuse a second argument, naming it.
+- **`render surface` draws each conductor at what it holds**, not at what the summed field reads
+  inside it, and says so where the two disagree (`render.plateau-disagrees`); a long thin box is
+  sampled across its width, `--samples NxM` sets both counts, `--out` and `--csv` may not be one
+  file, and a negative or unplaceably late `--at-us` is refused (also by `probe` and `render
+  section`).
 - **A gallery page** reproducing an einzel lens's published voltage and pressure series
   (`docs/gallery-einzel-lens.md`), with every choice the source leaves open listed.
 - **The `paul-trap` template has endcap holes and a stretch.** Three new parameters, all zero by
