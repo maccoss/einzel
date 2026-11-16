@@ -108,6 +108,12 @@ public static class RenderCommand
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(spec);
 
+        // The instant the figure is drawn at, however it arrived - the --at-us flag or the
+        // spec's own atSeconds - under the rule probe and the surface apply: a run's clock
+        // starts at zero. Whether it can be placed in the drive's cycle is asked once the field
+        // is built (SectionRenderer).
+        ProbeCommand.CheckInstant(spec.AtSeconds * 1e6, "/render/at-us");
+
         var absolute = Path.GetFullPath(modelPath);
         var text = File.ReadAllText(absolute);
         var validation = ModelValidator.Validate(

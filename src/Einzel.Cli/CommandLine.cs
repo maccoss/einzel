@@ -27,7 +27,7 @@ public sealed class CommandLine
     /// not itself an option is this option's value". So <c>render surface --cycle-mean
     /// models/q.json</c> read the model as the switch's value and printed the usage, and
     /// <c>--no-scale out.png</c> dropped the file without a word. Every switch any verb reads is
-    /// named here; <c>SwitchesAreDeclaredTests</c> reads the verbs' source and fails when one is
+    /// named here; <c>SwitchesAreDeclaredTests.EverySwitchAVerbReadsIsDeclared</c> reads the verbs' source and fails when one is
     /// read with <c>Has</c> alone and is missing from this list.
     /// </remarks>
     public static readonly IReadOnlySet<string> Switches = new HashSet<string>(StringComparer.Ordinal)

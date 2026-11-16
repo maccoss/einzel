@@ -324,36 +324,20 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
             ? ((IConductorBounded)_elements[index]).ConductorAt(in position)
             : null;
 
-    /// <inheritdoc/>
-    /// <remarks>Asked of the element whose conductor it is, alone, at the same instant.</remarks>
-    public double? HeldPotentialAt(in Vec3 position, double timeSeconds) =>
-        ConductorElementAt(in position) is var index and >= 0 && _elements[index] is IHeldConductors held
-            ? held.HeldPotentialAt(in position, timeSeconds)
-            : null;
-
-    /// <inheritdoc/>
-    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
-        ConductorElementAt(in position) is var index and >= 0 && _elements[index] is IHeldConductors held
-            ? held.HeldCycleMeanAt(in position, fromSeconds, periodSeconds, samples)
-            : null;
-
     /// <summary>
     /// Which of <see cref="Elements"/> holds the conductor <see cref="ConductorAt"/> names: a
     /// name is unique only within one element, so the name alone does not say.
     /// </summary>
     /// <param name="position">Where to look.</param>
-    /// <returns>The element's index in <see cref="Elements"/>, or -1 when the point is in no conductor.</returns>
-    public int ConductorElementAt(in Vec3 position)
-    {
-        for (var i = 0; i < _elements.Length; i++)
-        {
-            if (_elements[i] is IConductorBounded bounded
-                && bounded.SignedDistanceToConductor(in position) <= 0.0)
-            {
-                return i;
-            }
-        }
+    /// <returns>The element's index in <see cref="Elements"/>, or -1 when none has conductors.</returns>
+    public int ConductorElementAt(in Vec3 position) => HeldConductors.Nearest(_elements, in position);
 
-        return -1;
-    }
+    /// <inheritdoc/>
+    /// <remarks>The first member that holds a conductor of that name; names are unique within one element.</remarks>
+    public double? HeldPotentialOf(string conductor, double timeSeconds) =>
+        HeldConductors.FirstHolding(_elements, conductor, timeSeconds);
+
+    /// <inheritdoc/>
+    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
+        HeldConductors.FirstMean(_elements, conductor, fromSeconds, periodSeconds, samples);
 }

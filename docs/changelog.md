@@ -3490,5 +3490,16 @@ Two findings from Stage 1 that bear on the spec:
   surface's sampler, the row sampler and the grid sampler share one core that counts the
   domains a point is outside.
 
+  **A fourth review, smaller.** A plateau was drawn where a declared shape ran past its solve:
+  the held value is now asked of the conductor's element by name, after the probe's own domain
+  test has said the point is where that element was solved. The static and driven sums credited
+  overlapping conductors by different rules; they share one. `render section` checked only its
+  flag's instant; it checks the one it draws at, from the flag or the spec, against both the
+  clock's start and the drive's resolution (`FieldInstants.CheckResolution`, now shared by all
+  three verbs). A bad `--height-mm-per-ev` was reported at `-per-v`. The noise floor's reference
+  counts analytic elements' declared potentials, so an ideal RF quadrupole at its zero is drawn
+  flat. And the surface's sampler walks the conductor list once a sample, not three times - the
+  pictures and `--json` of three templates are identical before and after.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

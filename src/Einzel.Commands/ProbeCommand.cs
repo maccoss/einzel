@@ -160,12 +160,11 @@ public sealed class FieldProbe
 
     private readonly IElectrostaticField _field;
     private readonly ITimeVaryingField? _driven;
-    private readonly IConductorBounded? _bounded;
+    private readonly IReadOnlyList<IElectrostaticField> _members;
     private readonly Einzel.Fields.Magnetic.IMagneticField? _magnetic;
     private readonly CompiledModel _model;
     private readonly RotatedField?[] _tilts;
     private readonly bool _allBounded;
-    private readonly IElectrostaticField _electric;
     private readonly IReadOnlyList<int> _memberElements;
 
     private FieldProbe(
@@ -177,11 +176,10 @@ public sealed class FieldProbe
         string modelHash)
     {
         _memberElements = memberElements;
-        _electric = field is Einzel.Fields.Magnetic.MagnetizedField magnetized ? magnetized.Electric : field;
+        _members = Members(field);
         _model = model;
         _field = field;
         _driven = field as ITimeVaryingField;
-        _bounded = field as IConductorBounded;
         _magnetic = field as Einzel.Fields.Magnetic.IMagneticField;
         Warnings = warnings;
         ModelPath = modelPath;
@@ -220,40 +218,54 @@ public sealed class FieldProbe
     public int? ConductorElementAt(Vec3 positionMm)
     {
         var point = MillimetresToMetres(positionMm);
-        ConductorOf(in point, out _, out var element);
 
-        return element;
+        return Locate(in point, out _) is var member and >= 0 && member < _memberElements.Count
+            ? _memberElements[member]
+            : null;
     }
 
-    // The conductor a point is in or nearest to, and the model element it belongs to, from one
-    // walk of the sum: the composite picks the member, and the member is asked for the name.
-    // The member-to-element map is the assembly's own (FieldAssembly.BuildMapped), since a
-    // magnet and a field-free element are elements and not members.
-    private void ConductorOf(in Vec3 point, out string? name, out int? element)
+    // The members of an electric sum, in the order the assembly summed them: a magnet's
+    // wrapper is looked through, a sum gives its elements, and a single field is its own one
+    // member. Held fields keep the order, so a member index found on the field as built names
+    // the same element on the field held at an operating point.
+    private static IReadOnlyList<IElectrostaticField> Members(IElectrostaticField field)
     {
-        int member;
-        IElectrostaticField? holder;
+        var electric = field is Einzel.Fields.Magnetic.MagnetizedField magnetized ? magnetized.Electric : field;
 
-        switch (_electric)
+        return electric switch
         {
-            case SuperposedField sum:
-                member = sum.ConductorElementAt(in point);
-                holder = member >= 0 ? sum.Elements[member] : null;
-                break;
+            SuperposedField sum => sum.Elements,
+            DrivenSuperposedField sum => sum.Elements,
+            _ => [electric],
+        };
+    }
 
-            case DrivenSuperposedField sum:
-                member = sum.ConductorElementAt(in point);
-                holder = member >= 0 ? sum.Elements[member] : null;
-                break;
+    // ONE WALK of the members' conductors: the nearest member's index and its signed distance,
+    // by the rule every composite uses (HeldConductors.Nearest - the smallest signed distance,
+    // the first on a tie). Everything else about the conductor - its name, its element, what it
+    // holds - is asked of that one member afterwards. A point inside a conductor used to walk
+    // the conductor list three times over: once for the distance, once to pick the member and
+    // name the conductor, and once more to find what it held.
+    private int Locate(in Vec3 point, out double distance)
+    {
+        var index = -1;
+        distance = double.PositiveInfinity;
 
-            default:
-                member = _electric is IConductorBounded ? 0 : -1;
-                holder = _electric;
-                break;
+        for (var i = 0; i < _members.Count; i++)
+        {
+            if (_members[i] is IConductorBounded bounded)
+            {
+                var d = bounded.SignedDistanceToConductor(in point);
+
+                if (d < distance)
+                {
+                    distance = d;
+                    index = i;
+                }
+            }
         }
 
-        name = (holder as IConductorBounded)?.ConductorAt(in point);
-        element = member >= 0 && member < _memberElements.Count ? _memberElements[member] : null;
+        return index;
     }
 
     /// <summary>The model, as an absolute path.</summary>
@@ -449,19 +461,13 @@ public sealed class FieldProbe
         var outside = new List<int>();
 
         var status = SampleCore(
-            in point, atSeconds, cycleMean, outside,
-            out var potential, out var field, out var distance, out var note, out var averaged);
+            in point, atSeconds, cycleMean, outside, Resolve.Nearest,
+            out var potential, out var field, out var distance, out var note, out var averaged,
+            out var conductor, out _, out _);
 
         if (status == ProbeStatus.Refused)
         {
             return new ProbeSample(index, position, null, null, null, status, null, null, outside, note);
-        }
-
-        string? conductor = null;
-
-        if (distance is not null)
-        {
-            ConductorOf(in point, out conductor, out _);
         }
 
         if (averaged)
@@ -527,28 +533,48 @@ public sealed class FieldProbe
     /// <returns>One of the <see cref="ProbeStatus"/> values, the same one <see cref="At(int, Vec3, double)"/> gives.</returns>
     public string Sample(in Vec3 pointMetres, double atSeconds, out double potential, out Vec3 field) =>
         SampleCore(
-            in pointMetres, atSeconds, cycleMean: false, outside: null,
-            out potential, out field, out _, out _, out _);
+            in pointMetres, atSeconds, cycleMean: false, outside: null, Resolve.None,
+            out potential, out field, out _, out _, out _, out _, out _, out _);
 
     // The one evaluation every public sampler goes through: which domains the point is outside
     // (collected into `outside` when a row wants them, counted otherwise), the potential and
     // field or their cycle mean, the conductor distance, and the status. A refused point comes
     // back with NaN potential and field and no distance, so a caller that does not build a row
     // has nothing to remember.
+    // How much a caller wants to know about the conductor at a point.
+    private enum Resolve
+    {
+        // Nothing: a grid of potentials and fields.
+        None,
+
+        // The conductor the point is inside, its element, and what it holds: a surface.
+        Held,
+
+        // The nearest conductor's name, inside or not: a probe row.
+        Nearest,
+    }
+
     private string SampleCore(
         in Vec3 point,
         double atSeconds,
         bool cycleMean,
         List<int>? outside,
+        Resolve resolve,
         out double potential,
         out Vec3 field,
         out double? distance,
         out string? note,
-        out bool averaged)
+        out bool averaged,
+        out string? conductor,
+        out int? element,
+        out double? held)
     {
         distance = null;
         note = null;
         averaged = false;
+        conductor = null;
+        element = null;
+        held = null;
 
         var outsideCount = 0;
 
@@ -593,14 +619,30 @@ public sealed class FieldProbe
             return ProbeStatus.Refused;
         }
 
-        if (_bounded is not null)
-        {
-            var d = _bounded.SignedDistanceToConductor(in point);
+        var member = Locate(in point, out var d);
 
-            if (double.IsFinite(d))
-            {
-                distance = d;
-            }
+        if (double.IsFinite(d))
+        {
+            distance = d;
+        }
+
+        // A conductor counts only where its element was solved: a declared shape runs on past
+        // the edge of its solve - along a cross-section's invariant axis, past a face the shape
+        // was carried over, into a box wider than the domain - and a point out there is in no
+        // conductor of that element, whatever the shape says. The same domain test the outside
+        // count uses.
+        var inMetal = d < 0.0 && member >= 0 && member < _memberElements.Count
+            && !(Elements[_memberElements[member]].HasDomain && !InsideDomain(_memberElements[member], in point));
+
+        if (member >= 0 && (inMetal || (resolve == Resolve.Nearest && distance is not null)))
+        {
+            conductor = (_members[member] as IConductorBounded)?.ConductorAt(in point);
+        }
+
+        if (inMetal && resolve == Resolve.Held && conductor is not null)
+        {
+            element = _memberElements[member];
+            held = HeldOf(member, conductor, atSeconds, cycleMean);
         }
 
         // Outside every domain wins: an electrode's declared shape runs on along a
@@ -611,7 +653,7 @@ public sealed class FieldProbe
         // fills all space, so the point is never outside it.
         var status = _allBounded && outsideCount == Elements.Count
             ? ProbeStatus.OutsideDomain
-            : distance is < 0.0
+            : inMetal
                 ? ProbeStatus.InsideConductor
                 : ProbeStatus.Ok;
 
@@ -683,8 +725,18 @@ public sealed class FieldProbe
     /// </param>
     /// <param name="conductor">The conductor the point is inside; null unless the status is inside-conductor.</param>
     /// <param name="element">The model element that conductor belongs to; null unless the status is inside-conductor.</param>
+    /// <param name="held">
+    /// What that conductor holds - what the solve pinned there, not what the summed field reads
+    /// there - at the instant or as its cycle mean; null unless the status is inside-conductor,
+    /// and null for a conductor with no single potential (an edge-profiled board). See
+    /// <see cref="IHeldConductors"/>.
+    /// </param>
     /// <returns>One of the <see cref="ProbeStatus"/> values, the same one <see cref="At(int, Vec3, double)"/> gives.</returns>
     /// <exception cref="InvalidOperationException">A cycle mean was asked where there is no drive period.</exception>
+    /// <remarks>
+    /// A point inside a declared shape but outside the solve that shape belongs to is not inside
+    /// a conductor: nothing was solved there.
+    /// </remarks>
     public string SamplePotential(
         in Vec3 pointMetres,
         double atSeconds,
@@ -692,60 +744,32 @@ public sealed class FieldProbe
         out double potential,
         out double? conductorDistance,
         out string? conductor,
-        out int? element)
+        out int? element,
+        out double? held)
     {
         RefuseMeanWithoutCycle(atSeconds, cycleMean);
 
-        conductor = null;
-        element = null;
-
-        var status = SampleCore(
-            in pointMetres, atSeconds, cycleMean, outside: null,
-            out potential, out _, out conductorDistance, out _, out _);
-
-        if (status == ProbeStatus.InsideConductor)
-        {
-            ConductorOf(in pointMetres, out conductor, out element);
-        }
-
-        return status;
+        return SampleCore(
+            in pointMetres, atSeconds, cycleMean, outside: null, Resolve.Held,
+            out potential, out _, out conductorDistance, out _, out _, out conductor, out element, out held);
     }
 
-    /// <summary>
-    /// The potential the conductor containing a point holds - what the solve pinned there, not
-    /// what the summed field reads there - at an instant or as its cycle mean.
-    /// </summary>
-    /// <param name="pointMetres">A point inside the conductor, in metres.</param>
-    /// <param name="atSeconds">The instant; for a cycle mean, the operating point.</param>
-    /// <param name="cycleMean">Whether to report the mean over the same window a cycle-mean sample uses.</param>
-    /// <returns>
-    /// Volts; null where no conductor contains the point or the conductor has no single
-    /// potential (an edge-profiled board). See <see cref="IHeldConductors"/>.
-    /// </returns>
-    /// <exception cref="InvalidOperationException">A cycle mean was asked where there is no drive period.</exception>
-    /// <remarks>
-    /// Inside metal the total potential is the conductor's, whatever else the model sums there:
-    /// an analytic element has no conductors and fills all space, so the composite field read
-    /// inside a ring carries the analytic element's potential too, and an interpolant reads a
-    /// thin conductor a per cent or so off. Neither is what the electrode holds.
-    /// </remarks>
-    public double? HeldPotentialAt(in Vec3 pointMetres, double atSeconds, bool cycleMean)
+    // What the conductor a member names holds, at the instant or as its cycle mean - asked of
+    // that member alone and by name: inside metal the potential is the conductor's, whatever
+    // else the model sums there. For a mean, the member of the field held at the operating
+    // point, which is the field the mean is taken on.
+    private double? HeldOf(int member, string conductor, double atSeconds, bool cycleMean)
     {
-        RefuseMeanWithoutCycle(atSeconds, cycleMean);
-
         if (!cycleMean || _driven is null)
         {
-            return ((_driven as IElectrostaticField) ?? _field) is IHeldConductors held
-                ? held.HeldPotentialAt(in pointMetres, atSeconds)
-                : null;
+            return _members[member] is IHeldConductors held ? held.HeldPotentialOf(conductor, atSeconds) : null;
         }
 
         var state = HeldAt(atSeconds);
+        var members = Members(state.Field);
 
-        // The mean of a weighted sum is the weighted sum of the means: taken in closed form from
-        // the channels' mean weights where it can be, as the potential's own cycle mean is.
-        return state.Field is IHeldConductors at && state.Window is { } window
-            ? at.HeldCycleMeanAt(in pointMetres, atSeconds, window, CycleMeanSamples)
+        return member < members.Count && members[member] is IHeldConductors at && state.Window is { } window
+            ? at.HeldCycleMeanOf(conductor, atSeconds, window, CycleMeanSamples)
             : null;
     }
 
@@ -753,7 +777,7 @@ public sealed class FieldProbe
     /// The finest fraction of the fastest drive period an instant must be placeable to: past it,
     /// the instant is so large that a double cannot say where in the cycle it falls.
     /// </summary>
-    public const double InstantResolutionFraction = 1e-3;
+    public const double InstantResolutionFraction = FieldInstants.ResolutionFraction;
 
     /// <summary>
     /// Refuses an instant so late that where it falls in this field's drive cycle is decided by
@@ -769,32 +793,8 @@ public sealed class FieldProbe
     /// at all. A field with no drive has no phase to lose and is never refused here; a negative
     /// or non-finite instant is <see cref="ProbeCommand.CheckInstant"/>'s to refuse.
     /// </remarks>
-    public void CheckInstantResolution(double? atUs, string path)
-    {
-        if (atUs is not { } t || !double.IsFinite(t) || _driven is null
-            || !double.IsFinite(_driven.ShortestPeriodSeconds))
-        {
-            return;
-        }
-
-        var seconds = t * 1e-6;
-        var spacing = Math.Abs(double.BitIncrement(seconds) - seconds);
-        var period = _driven.ShortestPeriodSeconds;
-
-        if (spacing > InstantResolutionFraction * period)
-        {
-            throw new EinzelException(new EinzelError
-            {
-                Code = ErrorCodes.SchemaInvalid,
-                Path = path,
-                Constraint = string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"--at-us {t:G6} is too late to place in the drive's cycle: neighbouring instants there are {spacing * 1e6:G3} us apart, more than {InstantResolutionFraction:G1} of the fastest drive period ({period * 1e6:G6} us), so the phase drawn would be decided by rounding"),
-                Observed = new ObservedValue(t, "us"),
-                Suggestion = "give an earlier instant at the same phase: a driven field repeats every period, so it draws the same field",
-            });
-        }
-    }
+    public void CheckInstantResolution(double? atUs, string path) =>
+        FieldInstants.CheckResolution(atUs * 1e-6, _field, path);
 
     /// <summary>The warning a time-varying field earns when no instant was asked for.</summary>
     /// <param name="requested">The instant asked for, in microseconds, or absent.</param>

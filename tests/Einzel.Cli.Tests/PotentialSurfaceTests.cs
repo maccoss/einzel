@@ -1032,7 +1032,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         {
             var row = probe.At(0, mm, 0.0);
             var metres = FieldProbe.MillimetresToMetres(mm);
-            var status = probe.SamplePotential(in metres, 0.0, cycleMean: false, out var potential, out var distance, out var conductor, out var element);
+            var status = probe.SamplePotential(in metres, 0.0, cycleMean: false, out var potential, out var distance, out var conductor, out var element, out _);
 
             output.WriteLine($"({mm.X}, {mm.Y}) mm: {status}, {potential} V, {conductor}");
 
@@ -1301,40 +1301,200 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>
-    /// Every flag a verb reads with <c>Has</c> alone is a switch, and the parser knows it.
+    /// A point inside a declared shape but outside the solve it belongs to is in no conductor:
+    /// no plateau is drawn there, and the probe does not call it inside.
     /// </summary>
     /// <remarks>
-    /// The parser cannot tell a switch from an option by looking at it, so the list is the
-    /// only thing that stops a switch swallowing the next argument; this reads the verbs' own
-    /// source and fails when a switch is added to a verb and not to the list.
+    /// The slit's upper jaw is declared running 10 mm past the solve's edge, as
+    /// <c>mesh.node-on-shared-face</c> advises carrying a conductor past a face, and the box is
+    /// wider than the domain. The shape alone said the samples out there were inside the jaw,
+    /// and the held value said 40 V, so a plateau was drawn where nothing had been solved. With
+    /// an analytic element summed in, those points are not outside every element, which is the
+    /// case a status of "outside the domain" could not catch.
     /// </remarks>
     [Fact]
-    public void EverySwitchAVerbReadsIsDeclared()
+    public void AConductorPastItsSolveIsNoPlateauThere()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var electrodes = node["fields"]![0]!["solve"]!["electrodes"]!.AsArray();
+        electrodes[0]!["potential"]!["value"] = 40.0;
+        electrodes[0]!["minX"]!["value"] = 10.0;
+        electrodes[0]!["maxX"]!["value"] = 30.0;
 
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Einzel.Cli", "Program.cs")))
+        var alone = Path.Combine(_root, "jaw-past-the-edge.json");
+        File.WriteAllText(alone, node.ToJsonString());
+
+        node["fields"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse(
+            """{ "type": "uniform", "field": { "value": [10.0, 0, 0], "unit": "V/m" } }"""));
+
+        var summed = Path.Combine(_root, "jaw-past-the-edge-summed.json");
+        File.WriteAllText(summed, node.ToJsonString());
+
+        foreach (var path in new[] { alone, summed })
         {
-            directory = directory.Parent;
+            var (surface, probe, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 30, 10], Samples: 101));
+
+            var past = Enumerable.Range(0, surface.Across.Count).Where(i => surface.Across[i] > 20.0)
+                .SelectMany(i => Enumerable.Range(0, surface.Deep.Count).Select(j => surface.Inside[(i * surface.Deep.Count) + j]))
+                .Count(label => label is not null);
+            var within = Enumerable.Range(0, surface.Across.Count).Where(i => surface.Across[i] is > 10.0 and < 20.0)
+                .SelectMany(i => Enumerable.Range(0, surface.Deep.Count).Select(j => surface.Inside[(i * surface.Deep.Count) + j]))
+                .Count(label => label == "slitUpper");
+
+            output.WriteLine($"{Path.GetFileName(path)}: {within} jaw samples inside the solve, {past} past it");
+
+            Assert.True(within > 50, "the control: the jaw is a plateau where it was solved");
+            Assert.Equal(0, past);
+
+            var row = probe.At(0, new Einzel.Core.Geometry.Vec3(25.0, 5.0, 0.0), 0.0);
+            Assert.NotEqual(ProbeStatus.InsideConductor, row.Status);
+            Assert.Equal(ProbeStatus.InsideConductor, probe.At(0, new Einzel.Core.Geometry.Vec3(15.0, 5.0, 0.0), 0.0).Status);
+
+            var metres = FieldProbe.MillimetresToMetres(new Einzel.Core.Geometry.Vec3(25.0, 5.0, 0.0));
+            probe.SamplePotential(in metres, 0.0, cycleMean: false, out _, out _, out var conductor, out _, out var held);
+            Assert.Null(conductor);
+            Assert.Null(held);
+        }
+    }
+
+    /// <summary>
+    /// Which of two overlapping conductors a point is credited to does not change when an RF
+    /// element is added to the model.
+    /// </summary>
+    /// <remarks>
+    /// A static sum took the member whose conductor the point is deepest inside; a driven sum
+    /// took the first member containing it. Here the point is just inside the slit's jaw and
+    /// well inside a block a second solve declares over it, so the static model credited the
+    /// block and, once an ideal RF quadrupole was summed in, the driven one credited the jaw.
+    /// </remarks>
+    [Fact]
+    public void AddingAnRfElementDoesNotChangeWhichConductorIsCredited()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+        var second = fields[0]!.DeepClone();
+        var block = second["solve"]!["electrodes"]!.AsArray();
+        block.RemoveAt(1);
+        block[0]!["name"] = "block";
+        block[0]!["minX"]!["value"] = -2.0;
+        block[0]!["maxX"]!["value"] = 3.0;
+        block[0]!["minY"]!["value"] = 0.5;
+        block[0]!["maxY"]!["value"] = 5.0;
+        block[0]!["potential"]!["value"] = 25.0;
+        fields.Add(second);
+
+        var still = Path.Combine(_root, "overlap-static.json");
+        File.WriteAllText(still, node.ToJsonString());
+
+        fields.Add(System.Text.Json.Nodes.JsonNode.Parse(
+            """
+            { "type": "idealQuadrupoleRf",
+              "directPotential": { "value": 0.0, "unit": "V" },
+              "driveAmplitude": { "value": 50.0, "unit": "V" },
+              "driveFrequency": { "value": 1.0, "unit": "MHz" },
+              "inscribedRadius": { "value": 50.0, "unit": "mm" } }
+            """));
+
+        var driven = Path.Combine(_root, "overlap-driven.json");
+        File.WriteAllText(driven, node.ToJsonString());
+
+        var point = new Einzel.Core.Geometry.Vec3(0.5, 1.05, 0.0);
+        var a = FieldProbe.Open(still);
+        var b = FieldProbe.Open(driven);
+
+        Assert.Equal(1, a.ConductorElementAt(point));
+        Assert.Equal(a.ConductorElementAt(point), b.ConductorElementAt(point));
+        Assert.Equal(a.At(0, point, 0.0).Conductor, b.At(0, point, 0.0).Conductor);
+        Assert.Equal("block", b.At(0, point, 0.0).Conductor);
+
+        // The field-level rule the composites share, asked directly.
+        var (field, _, _) = Einzel.Fields.FieldAssembly.BuildMapped(b.Model);
+        var sum = Assert.IsType<Einzel.Fields.DrivenSuperposedField>(field);
+        var metres = FieldProbe.MillimetresToMetres(point);
+        Assert.Equal(1, sum.ConductorElementAt(in metres));
+        Assert.Equal("block", sum.ConductorAt(in metres));
+    }
+
+    /// <summary>
+    /// <c>render section</c> checks the instant it draws at, whether it came from the flag or
+    /// from the render spec, and refuses one too late to place in the drive's cycle.
+    /// </summary>
+    [Fact]
+    public void ASectionChecksItsInstantHoweverItArrives()
+    {
+        var model = Model("template", "quadrupole-rf");
+
+        string Spec(string name, double atSeconds)
+        {
+            var path = Path.Combine(_root, name + ".render.json");
+            File.WriteAllText(path, string.Create(System.Globalization.CultureInfo.InvariantCulture, $$"""
+            {
+              "renderSpecVersion": "0.1",
+              "model": {{System.Text.Json.JsonSerializer.Serialize(model)}},
+              "atSeconds": {{atSeconds:R}}
+            }
+            """));
+            return path;
         }
 
-        Assert.NotNull(directory);
+        foreach (var args in new[]
+        {
+            new[] { "render", "section", Spec("before-zero", -1e-6), "--dry-run" },
+            new[] { "render", "section", Spec("too-late", 1e294), "--dry-run" },
+            new[] { "render", "section", model, "--at-us", "1e300", "--dry-run" },
+            new[] { "render", "section", model, "--at-us", "-1", "--dry-run" },
+        })
+        {
+            var (code, stdout, stderr) = Cli(args);
+            output.WriteLine($"{Path.GetFileName(args[2])} {string.Join(' ', args[3..])}: exit {code}: {stderr.Trim()}");
 
-        var source = string.Concat(Directory.GetFiles(Path.Combine(directory!.FullName, "src", "Einzel.Cli"), "*.cs").Select(File.ReadAllText));
-        var has = System.Text.RegularExpressions.Regex.Matches(source, @"\.Has\(""([a-z0-9-]+)""\)").Select(m => m.Groups[1].Value).ToHashSet();
-        var valued = System.Text.RegularExpressions.Regex.Matches(source, @"(?:\.Values?\(|(?:TryNumberFlag|TryWholeFlag)\(options, )""([a-z0-9-]+)""").Select(m => m.Groups[1].Value)
-            .Concat(System.Text.RegularExpressions.Regex.Matches(source, @"MissingValue\(options, ""[^""]*"", ([^)]*)\)").SelectMany(m => System.Text.RegularExpressions.Regex.Matches(m.Groups[1].Value, @"""([a-z0-9-]+)""").Select(n => n.Groups[1].Value)))
-            .ToHashSet();
+            Assert.Equal(1, code);
+            Assert.Contains("/render/at-us", stdout + stderr, StringComparison.Ordinal);
+        }
 
-        // Read as a value under a name chosen at run time, or refused by name for having no unit.
-        string[] notSwitches = ["at-mm", "line-mm", "at", "line", "to", "offset", "box", "height-mm"];
+        Assert.Equal(0, Cli("render", "section", Spec("placeable", 2.5e-6), "--dry-run").ExitCode);
+    }
 
-        var switches = has.Except(valued).Except(notSwitches).Order().ToList();
-        output.WriteLine("switches: " + string.Join(", ", switches));
+    /// <summary>A bad explicit height scale is reported at the flag that was given.</summary>
+    [Fact]
+    public void ABadHeightScaleIsReportedAtItsOwnFlag()
+    {
+        var model = Model("template", "quadrupole");
 
-        Assert.True(switches.Count >= 8, "the control: the scan found the switches");
-        Assert.Empty(switches.Except(CommandLine.Switches));
-        Assert.Empty(CommandLine.Switches.Except(switches));
+        var ev = Cli("render", "surface", model, "--height", "energy", "--height-mm-per-ev", "-1", "--samples", "21", "--dry-run");
+        var v = Cli("render", "surface", model, "--height-mm-per-v", "-1", "--samples", "21", "--dry-run");
+
+        Assert.Equal(1, ev.ExitCode);
+        Assert.Contains("/surface/height-mm-per-ev", ev.Stdout + ev.Stderr, StringComparison.Ordinal);
+        Assert.Equal(1, v.ExitCode);
+        Assert.Contains("/surface/height-mm-per-v", v.Stdout + v.Stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An analytic RF quadrupole drawn when its drive is through zero is rounding, said to be,
+    /// because its declared amplitude counts toward what the model deals in.
+    /// </summary>
+    /// <remarks>
+    /// <c>rf-quadrupole-confined</c> declares 200 V of drive and nothing solved, and launches its
+    /// ion at a millivolt. At a quarter period the potential everywhere is the rounding of a
+    /// cosine at its zero; the peak used to count solved electrodes alone, so the reference was
+    /// that millivolt and the rounding was stretched to the full relief.
+    /// </remarks>
+    [Fact]
+    public void AnAnalyticQuadrupoleAtItsZeroIsDrawnFlat()
+    {
+        var model = Model("example", "rf-quadrupole-confined");
+
+        Assert.Equal(200.0, SurfaceCommand.PeakElectrodePotential(FieldProbe.Open(model).Model), 9);
+
+        using var json = Json("render", "surface", model, "--box-mm", "-2,-2,2,2", "--at-us", "0.25", "--samples", "41", "--dry-run");
+        var span = Number(json, "highest") - Math.Min(Number(json, "lowest"), 0.0);
+
+        output.WriteLine($"span {span:G3} V at {Number(json, "heightMmPerUnit"):G4} mm per V");
+
+        Assert.True(span < 1e-9, "the control: at a quarter period the field is rounding");
+        Assert.Contains("render.surface-flat", Codes(json));
+        Assert.True(span * Number(json, "heightMmPerUnit") < 1e-3);
     }
 
     /// <summary>The CSV and the picture may not be one file: refused before anything is drawn.</summary>
@@ -1399,7 +1559,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         double Mean(double at)
         {
-            probe.SamplePotential(in point, at, cycleMean: true, out var v, out _, out _, out _);
+            probe.SamplePotential(in point, at, cycleMean: true, out var v, out _, out _, out _, out _);
             return v;
         }
 

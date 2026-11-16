@@ -127,12 +127,12 @@ public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded, 
     }
 
     /// <inheritdoc/>
-    public double? HeldPotentialAt(in Vec3 position, double timeSeconds) =>
-        _halfPlane is IHeldConductors held ? held.HeldPotentialAt(Sample(in position), timeSeconds) : null;
+    public double? HeldPotentialOf(string conductor, double timeSeconds) =>
+        _halfPlane is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
 
     /// <inheritdoc/>
-    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
-        _halfPlane is IHeldConductors held ? held.HeldCycleMeanAt(Sample(in position), fromSeconds, periodSeconds, samples) : null;
+    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
+        _halfPlane is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
 
     private static Vec3 Sample(in Vec3 position) =>
         new(position.X, Math.Sqrt((position.Y * position.Y) + (position.Z * position.Z)), 0.0);

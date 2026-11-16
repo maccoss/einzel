@@ -116,28 +116,22 @@ public sealed class SolvedField2D : IElectrostaticField, IConductorBounded, IHel
     public bool HoldsDeclaredPotentials { get; init; }
 
     /// <inheritdoc/>
-    public double? HeldPotentialAt(in Vec3 position, double timeSeconds)
+    public double? HeldPotentialOf(string conductor, double timeSeconds)
     {
         if (!HoldsDeclaredPotentials)
         {
             return null;
         }
 
-        Core.Model.CompiledElectrode? inside = null;
-        var nearest = 0.0;
-
-        foreach (var conductor in _conductors)
+        foreach (var inside in _conductors)
         {
-            var distance = conductor.SignedDistance(position.X, position.Y);
-
-            if (distance <= nearest)
+            if (string.Equals(inside.Name, conductor, StringComparison.Ordinal))
             {
-                nearest = distance;
-                inside = conductor;
+                return inside.Shape == Core.Model.ElectrodeShape.EdgeProfile ? null : inside.Potential;
             }
         }
 
-        return inside is null || inside.Shape == Core.Model.ElectrodeShape.EdgeProfile ? null : inside.Potential;
+        return null;
     }
 
     /// <inheritdoc/>

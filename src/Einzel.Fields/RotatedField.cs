@@ -169,10 +169,12 @@ public sealed class RotatedField(
         _inner is IConductorBounded bounded ? bounded.ConductorAt(ToLocal(in position)) : null;
 
     /// <inheritdoc/>
-    public double? HeldPotentialAt(in Vec3 position, double timeSeconds) =>
-        _inner is IHeldConductors held ? held.HeldPotentialAt(ToLocal(in position), timeSeconds) : null;
+    public double? HeldPotentialOf(string conductor, double timeSeconds) =>
+        _inner is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
 
     /// <inheritdoc/>
-    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
-        _inner is IHeldConductors held ? held.HeldCycleMeanAt(ToLocal(in position), fromSeconds, periodSeconds, samples) : null;
+    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
+        _inner is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
+
+
 }

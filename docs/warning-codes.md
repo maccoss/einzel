@@ -1239,7 +1239,7 @@ A potential surface's range is rounding noise, so it is drawn flat.
 
 - **Severity:** Provenance
 - **Raised by:** `render surface` with the automatic height scale
-- **When:** The values on the plane span less than 1e-9 of the potentials the model deals in (the largest any electrode reaches over every state and every generator it taps, the ion's acceleration potential, and the largest value on the plane) - a plane through a field-free drift, say.
+- **When:** The values on the plane span less than 1e-9 of the potentials the model deals in (the largest any electrode reaches over every state and every generator it taps, the potential an analytic element declares in every phase, the ion's acceleration potential, and the largest value on the plane) - a plane through a field-free drift, say.
 - **What to do:** Nothing if a flat picture is the answer. Move the plane or the box to where the field is, or give `--height-mm-per-v` to draw the range at a scale of your own.
 - **Source:** `src/Einzel.Commands/SurfaceCommand.cs`
 

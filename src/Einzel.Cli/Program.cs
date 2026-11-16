@@ -1950,9 +1950,6 @@ public static class Program
             AtSeconds = sectionAt is { } at ? at * 1e-6 : spec.AtSeconds,
         };
 
-        // The rule probe and the surface apply, at the same flag: a run's clock starts at zero.
-        ProbeCommand.CheckInstant(sectionAt, "/render/at-us");
-
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
 
         if (!RenderProgress(options, out var sectionProgress))

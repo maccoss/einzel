@@ -875,7 +875,15 @@ held value. The surface beside such a plateau is the sum, so it steps at the con
 is the honest picture of a model that sums an analytic field over metal, and the warning says so
 rather than either number being reported silently. **An edge-profiled board is not a plateau**: its
 potential varies along it, so there is no one height to draw it at, and it is drawn as the field
-sampled there.
+sampled there. **And a conductor counts only where its element was solved**: a declared shape runs
+on past the edge of its solve - carried past a face, as `mesh.node-on-shared-face` advises, or
+reached by a `--box-mm` wider than the domain - and a point out there is in no conductor, so no
+plateau is drawn and the probe does not call it inside. The test is the probe's own domain test.
+The held value is asked of the conductor's element by name (`IHeldConductors.HeldPotentialOf`)
+once the probe has decided which conductor and which element, so the conductor list is walked
+once per sample, not three times. Which of two overlapping conductors a point is credited to is
+one rule for every sum, static or driven (`HeldConductors.Nearest`: the one the point is deepest
+inside); a driven sum used to take the first, so adding an RF element could change the answer.
 
 What the sweep of every shipped template and example found with the held value: `tims-analyzer`,
 `tims-front-end` and `tims-tandem` warn on every ring (the analytic RF, as above); `astral-3d` and
@@ -992,7 +1000,9 @@ the outcome would otherwise say "cycle mean" over a picture that is not one. **A
 the field can be drawn at**: a negative one is refused, as `probe` and now `render section` refuse it
 (a model's clock starts at zero, and a sequence would answer with its first phase under a time it
 never reaches), and so is one so late that neighbouring doubles there are more than a thousandth of
-the fastest drive period apart (`FieldProbe.CheckInstantResolution`, shared with `probe`) - at
+the fastest drive period apart (`FieldInstants.CheckResolution`, shared with `probe` and `render
+section`, which checks the instant it draws at whether it came from `--at-us` or the spec's
+`atSeconds`) - at
 1e300 us on a 1 MHz drive the phase drawn was whichever the rounding gave, under a 300-digit
 caption. The caption is compact at any size (`t=15 ms`, `t=1e+294 s`). **`--at-us` on a static
 field is the other way round**: the picture is right at every instant, so it is drawn and
@@ -1015,7 +1025,8 @@ an internal error with no picture.
 **A range that is rounding is drawn flat.** The automatic scale stretches the range on the plane to
 `--relief` of the longer side, and a plane through a field-free drift has a "range" that is the
 last bits of the solve: the planar mirror pair's `yz` plane spans 7.9e-15 V and was drawn at
-1.3e15 mm per volt. Below `SurfaceCommand.NoiseFloor`, 1e-9 of the potentials the model deals in -
+1.3e15 mm per volt. Below `SurfaceCommand.NoiseFloor`, 1e-9 of the potentials the model deals in (an analytic element's declared ones included: an ideal
+quadrupole's DC plus drive, a half-space's cap, a bounded uniform field across its region) -
 the largest of what any electrode holds, the ion's acceleration potential and the largest value on
 the plane - the scale is the one that floor would get, the surface is flat, and
 `render.surface-flat` says so with both numbers. An explicit `--height-mm-per-v` is honoured as

@@ -108,11 +108,9 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// so a stage, a ramp and every generator a conductor taps are all in it, and held at an
     /// operating point exactly as the potential is.
     /// </remarks>
-    public double? HeldPotentialAt(in Vec3 position, double timeSeconds)
+    public double? HeldPotentialOf(string conductor, double timeSeconds)
     {
-        if (ConductorCoefficients is null || !(SignedDistanceToConductor(in position) <= 0.0)
-            || ConductorAt(in position) is not { } name
-            || !ConductorCoefficients.TryGetValue(name, out var coefficients))
+        if (ConductorCoefficients is null || !ConductorCoefficients.TryGetValue(conductor, out var coefficients))
         {
             return null;
         }
@@ -131,11 +129,9 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     }
 
     /// <inheritdoc/>
-    public double? HeldCycleMeanAt(in Vec3 position, double fromSeconds, double periodSeconds, int samples)
+    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples)
     {
-        if (ConductorCoefficients is null || !(SignedDistanceToConductor(in position) <= 0.0)
-            || ConductorAt(in position) is not { } name
-            || !ConductorCoefficients.TryGetValue(name, out var coefficients))
+        if (ConductorCoefficients is null || !ConductorCoefficients.TryGetValue(conductor, out var coefficients))
         {
             return null;
         }
@@ -153,30 +149,13 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
                 || CycleMeanWeight(k, fromSeconds, periodSeconds) is not { } mean)
             {
                 // Not a whole number of cycles, or a sequence not held: average the instants.
-                return Sampled(position, fromSeconds, periodSeconds, samples);
+                return HeldConductors.SampledMean(this, conductor, fromSeconds, periodSeconds, samples);
             }
 
             total += coefficients[k] * mean;
         }
 
         return total;
-    }
-
-    private double? Sampled(in Vec3 position, double fromSeconds, double periodSeconds, int samples)
-    {
-        var total = 0.0;
-
-        for (var j = 0; j < samples; j++)
-        {
-            if (HeldPotentialAt(in position, fromSeconds + (periodSeconds * j / samples)) is not { } value)
-            {
-                return null;
-            }
-
-            total += value;
-        }
-
-        return total / samples;
     }
 
     internal DrivenSolvedField(

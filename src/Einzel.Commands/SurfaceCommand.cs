@@ -590,7 +590,7 @@ public static class SurfaceCommand
                 var k = (i * nv) + j;
                 var point = FieldProbe.MillimetresToMetres(Point(across, deep, n, us[i], vs[j], offset));
                 var status = probe.SamplePotential(
-                    in point, at, cycleMean, out raw[k], out var distance, out var conductor, out var element);
+                    in point, at, cycleMean, out raw[k], out var distance, out var conductor, out var element, out var volts);
 
                 if (status == ProbeStatus.Refused)
                 {
@@ -604,12 +604,12 @@ public static class SurfaceCommand
                 {
                     // Only a conductor with one potential is a plateau: an edge-profiled board's
                     // varies along it, so it is drawn as the field sampled there.
-                    if (probe.HeldPotentialAt(in point, at, cycleMean) is { } volts)
+                    if (volts is { } holds)
                     {
                         names[k] = conductor ?? "conductor";
                         elements[k] = element;
                         depth[k] = distance ?? 0.0;
-                        held[k] = volts;
+                        held[k] = holds;
                     }
                 }
             }
@@ -1672,7 +1672,8 @@ public static class SurfaceCommand
     /// <summary>
     /// The largest potential any electrode of a model reaches, in volts: over every state a
     /// sequence puts it in (a ramp's end included), its DC plus the amplitude of every generator
-    /// it taps, and for an edge-profiled board the largest value on its profile.
+    /// it taps, and for an edge-profiled board the largest value on its profile - and for an
+    /// analytic element, the potential it declares, in every phase.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <returns>Volts; zero for a model with no electrodes.</returns>
@@ -1714,10 +1715,41 @@ public static class SurfaceCommand
                     }
                 }
             }
+
+            // An analytic element has no electrodes, but it declares the potentials it stands
+            // for, in its base state and in every phase of a sequence.
+            foreach (var state in element.Phases.Prepend(element))
+            {
+                peak = Math.Max(peak, AnalyticPeak(state));
+            }
         }
 
         return peak;
     }
+
+    /// <summary>The largest potential an analytic element declares, in volts.</summary>
+    /// <param name="element">The element, in one state.</param>
+    /// <returns>Volts; zero for a kind that declares none.</returns>
+    /// <remarks>
+    /// An ideal quadrupole's rods hold its DC plus its drive amplitude; a half-space's cap holds
+    /// its gradient times its turning depth; a uniform field bounded by a region spans its field
+    /// times the region's diagonal. A uniform field filling all space, and the orbital trap's
+    /// quadro-logarithmic potential, have no applied potential to name - their size is on the
+    /// plane, and the plane's own range is in the reference too.
+    /// </remarks>
+    private static double AnalyticPeak(Core.Model.CompiledField element) => element.Kind switch
+    {
+        Core.Model.CompiledFieldKind.IdealQuadrupoleRf =>
+            Math.Abs(element.DirectPotentialSi) + Math.Abs(element.DriveAmplitudeSi),
+        Core.Model.CompiledFieldKind.HalfSpaceUniform =>
+            Math.Abs(element.PotentialGradientSi * element.TurningDepthSi),
+        Core.Model.CompiledFieldKind.Uniform when element.Region is { } box =>
+            element.Field.Length * Math.Sqrt(
+                ((box.MaxX - box.MinX) * (box.MaxX - box.MinX))
+                + ((box.MaxY - box.MinY) * (box.MaxY - box.MinY))
+                + ((box.MaxZ - box.MinZ) * (box.MaxZ - box.MinZ))),
+        _ => 0.0,
+    };
 
     /// <summary>A CSV field, quoted per RFC 4180 where it holds a comma, a quote or a line break.</summary>
     private static string CsvField(string? field) =>
@@ -1883,7 +1915,10 @@ public static class SurfaceCommand
 
         if (request.HeightMmPerUnit is { } scale && (!(scale > 0.0) || !double.IsFinite(scale)))
         {
-            throw Refusal("/surface/height-mm-per-v", "the height scale must be a positive, finite number of millimetres per unit");
+            // Located at the flag that was given: the energy's scale is per electronvolt.
+            throw Refusal(
+                request.Height == SurfaceHeight.Energy ? "/surface/height-mm-per-ev" : "/surface/height-mm-per-v",
+                "the height scale must be a positive, finite number of millimetres per unit");
         }
 
         // The rule probe and render section apply: a model's clock starts at zero, so a negative
