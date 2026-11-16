@@ -1435,7 +1435,8 @@ miss: 43.88 against 43.87 on the thin grid, 135.41 against 135.25 on four rods a
 the interval is also read from the build alone - its grid arrays followed by weak handles, and
 what its own thread allocated outside them - so another thread allocating beside it moves
 neither end, and an edge the interval still straddles fails as inconclusive rather than as a
-finding. What the thread allocated between two readings without reporting it bounds how
+finding. A collection is forced only where an upper bound on the live set could pass what has
+already been read, which reads 32 of a plane build's 385 arrays and changes the least by nothing. What the thread allocated between two readings without reporting it bounds how
 much higher the peak can have been, and the upper edge is asserted on that bound, so a per-node
 array allocated any other way fails as slack - and fails `GridArraySourceTests`, which reads the
 source of `Einzel.Fields` for one, first. The figures in the table's third column that came

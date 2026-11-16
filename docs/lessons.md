@@ -5889,3 +5889,10 @@ is contaminated by the process, look for a measurement of the subject instead** 
 subject announces every allocation that matters, so it can be followed one array at a time.
 And when even that cannot decide, the test should say so by name: a disturbed measurement and
 a defect are different findings, and only one of them is about the code.
+
+**A result is only as good as the run that produced it, and that has to be checked before the
+result is read, not after.** The child measured each case and then checked its own tier once
+more; the parent read the cases first, and a child that failed its last check had its numbers
+used anyway. A check that runs after the work it vouches for has to be able to withdraw the
+work - so the work counts only once the run says it finished, with an explicit end marker, and
+everything else, however much of it arrived, is a failure of the run.

@@ -487,7 +487,7 @@ public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper ou
     /// <summary>One build's reading in bytes a node, with what bounds it.</summary>
     internal static string Describe(LivePeak peak, long nodes) =>
         $"{peak.Least / nodes:F2} to {peak.Bound / nodes:F2} B/node "
-        + $"({peak.Readings} readings; process read {peak.Held / nodes:F2}, grid arrays {peak.Tracked / nodes:F2}; "
+        + $"({peak.Readings} grid arrays, {peak.Collections} read; process read {peak.Held / nodes:F2}, grid arrays {peak.Tracked / nodes:F2}; "
         + $"{peak.Silent:N0} B allocated outside GridArrays, at most {peak.Unreported:N0} between two readings; "
         + $"{peak.Foreign:N0} B by other threads)";
 

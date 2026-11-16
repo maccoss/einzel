@@ -43,9 +43,17 @@ internal sealed record DirectCase(Func<double, Geometry3D> Geometry, int Cycles,
 /// here, and whatever of that is live at a reading is read as the build's. That is the likeliest
 /// account of the reading "100 to 300 kB high, once a process" that the sampling thread used to
 /// return and a middle-of-three used to outvote. A process started for the measurement has
-/// nothing else in it, and <see cref="LiveSet"/> checks that: it counts what other threads
-/// allocated between readings - a few hundred bytes a collection, in a child - and takes the
-/// measurement again if much more than that arrives at once.
+/// nothing else in it. <see cref="LiveSet"/> also counts what other threads allocate - a few
+/// hundred bytes a collection, in a child - and reads each end of its interval from the build
+/// alone as well, so that what they do cannot move it.
+/// </para>
+/// <para>
+/// <b>Nothing a child says counts unless the whole child succeeded.</b> It writes a line naming
+/// its runtime, a <c>BEGIN</c> and a <c>CASE</c> line for each case, and an <c>END</c> line
+/// after the last. A run that exits non-zero, writes anything to its error stream, stops before
+/// <c>END</c>, runs a different runtime or times out fails every test that asked it for
+/// anything, with what it wrote - including a case it measured before it went wrong, since the
+/// check that went wrong (its tier, read again after the last build) is about all of them.
 /// </para>
 /// <para>
 /// <b>Every case is built once before it is measured</b>, itself, at its own size, so that what
@@ -90,33 +98,61 @@ internal static class MemoryCases
     {
         string[] arguments = [.. cases.Select(c => Key(c.Kind, c.Size))];
 
-        var (failure, stdout, text) = MeasuringChild.Run([Command, tier.Name, .. arguments], tier);
+        var exited = MeasuringChild.Run([Command, tier.Name, .. arguments], tier);
+
+        return Interpret(arguments, exited, Environment.Version.ToString());
+    }
+
+    /// <summary>What a child's run comes to: its cases, and whether any of them can be trusted.</summary>
+    /// <param name="arguments">The cases it was asked for, in order.</param>
+    /// <param name="exited">How it ended and what it wrote.</param>
+    /// <param name="expectedRuntime">The runtime version it must have run on.</param>
+    internal static ChildRun Interpret(IReadOnlyList<string> arguments, ChildExit exited, string expectedRuntime)
+    {
         var results = new Dictionary<string, CaseResult>();
         var runtime = (string?)null;
+        var begun = (string?)null;
+        var ended = false;
 
-        foreach (var line in stdout)
+        foreach (var line in exited.Lines)
         {
             if (line.StartsWith(RuntimeLine, StringComparison.Ordinal))
             {
                 runtime = line[RuntimeLine.Length..];
             }
+            else if (line.StartsWith(BeginLine, StringComparison.Ordinal))
+            {
+                begun = line[BeginLine.Length..];
+            }
             else if (line.StartsWith(CaseLine, StringComparison.Ordinal))
             {
                 var result = JsonSerializer.Deserialize<CaseResult>(line[CaseLine.Length..])!;
                 results[result.Key] = result;
+                begun = null;
+            }
+            else if (line == EndLine)
+            {
+                ended = true;
             }
         }
 
-        var expected = Environment.Version.ToString();
+        var inProgress = begun is null ? "" : $" It was building {begun} at the time.";
 
-        failure ??= runtime is null
-            ? "the measuring child did not say which runtime it ran on"
-            : runtime != expected
-                ? $"the measuring child ran on .NET {runtime} and this test process on {expected}: the two would not "
-                    + "be running the same code, so what one measured is not about the other"
-                : arguments.FirstOrDefault(a => !results.ContainsKey(a)) is { } missing
-                    ? $"the measuring child stopped before it reported {missing}"
-                    : null;
+        var failure =
+            exited.Problem is { } problem ? problem + inProgress
+            : exited.ExitCode != 0 ? $"the measuring child exited {exited.ExitCode}.{inProgress}"
+            : exited.Errors.Trim().Length > 0 ? "the measuring child wrote to its error stream"
+            : runtime is null ? "the measuring child did not say which runtime it ran on"
+            : runtime != expectedRuntime
+                ? $"the measuring child ran on .NET {runtime} and this test process on {expectedRuntime}: the two would "
+                    + "not be running the same code, so what one measured is not about the other"
+            : !ended ? $"the measuring child stopped without saying it had finished.{inProgress}"
+            : arguments.FirstOrDefault(a => !results.ContainsKey(a)) is { } missing
+                ? $"the measuring child finished without reporting {missing}"
+            : null;
+
+        var text = $"exit {exited.ExitCode}{Environment.NewLine}{string.Join(Environment.NewLine, exited.Lines)}"
+            + $"{Environment.NewLine}{exited.Errors}";
 
         return new ChildRun(failure, results, text);
     }
@@ -126,6 +162,12 @@ internal static class MemoryCases
 
     /// <summary>The prefix of a line reporting one case.</summary>
     internal const string CaseLine = "CASE ";
+
+    /// <summary>The prefix of the line saying a case is about to be built.</summary>
+    internal const string BeginLine = "BEGIN ";
+
+    /// <summary>The line the child writes once it has finished, and checked its tier again.</summary>
+    internal const string EndLine = "END";
 
     /// <summary>
     /// Fails a measurement during which other threads allocated a large part of what the build
@@ -163,15 +205,19 @@ internal static class MemoryCases
 
         foreach (var item in cases)
         {
+            Console.WriteLine(BeginLine + item);
             Console.WriteLine(CaseLine + JsonSerializer.Serialize(Case(item)));
         }
 
-        // And still, after every build has run twice: a warm-up is what promotes code.
+        // And still, after every build has run twice: a warm-up is what promotes code. Every case
+        // above was measured in this tier, so a refusal here is about all of them.
         if (JitTier.Refusal(tier) is { } late)
         {
             Console.Error.WriteLine("after the builds: " + late);
             return 2;
         }
+
+        Console.WriteLine(EndLine);
 
         return 0;
     }
@@ -190,7 +236,11 @@ internal static class MemoryCases
 
             build();
 
-            var peak = LiveSet.Peak(build);
+            // Forty small fields, read at every one, with room made for `size` of them before the
+            // baseline: GridArraysTests compares a build that outgrows its room with one that does not.
+            var peak = kind == "fields"
+                ? LiveSet.Peak(build, collectEveryArray: true, capacity: (int)size)
+                : LiveSet.Peak(build);
 
             return new CaseResult(
                 item,
@@ -222,6 +272,21 @@ internal static class MemoryCases
             "sphere" => () => GeometryBuilder3D.BuildField(SolveMemoryTests.Sphere(size)).Field,
             "rods" => () => GeometryBuilder.Build(SolveMemoryTests.Rods(size)).Field,
             "driven-rods" => () => GeometryBuilder.Build(SolveMemoryTests.Rods(size, driven: true)).Field,
+            "fields" => () => Enumerable.Range(0, 40)
+                .Select(_ => new ScalarField3D(new Grid3D(0, 0, 0, 1, 1, 1, 9, 9, 9)))
+                .ToArray(),
+
+            // For ChildProtocolTests: a child that dies part way, and one that never finishes.
+            "test-exit" => () =>
+            {
+                Environment.Exit(3);
+                return new object();
+            },
+            "test-hang" => () =>
+            {
+                Thread.Sleep(Timeout.Infinite);
+                return new object();
+            },
             _ => throw new ArgumentException($"no build is called '{kind}'", nameof(kind)),
         };
     }
@@ -276,6 +341,7 @@ public sealed class MeasuredBuilds
         ("ball-one-level", 0.016), ("ball-one-level", 0.032),
         ("thin", 4.096), ("thin", 8.192),
         ("rods", 0.0001), ("rods", 0.00005), ("driven-rods", 0.0001),
+        ("fields", LiveSet.InitialCapacity), ("fields", 1),
     ];
 
     // Small, because first-tier code is slow.
@@ -295,39 +361,52 @@ public sealed class MeasuredBuilds
     internal MeasuredBuild FirstTier(ITestOutputHelper output, string kind, double size) =>
         Find(_first.Value, "first-tier", output, kind, size);
 
-    private static MeasuredBuild Find(ChildRun run, string tier, ITestOutputHelper output, string kind, double size)
+    private static MeasuredBuild Find(ChildRun run, string tier, ITestOutputHelper output, string kind, double size) =>
+        Find(run, tier, output, MemoryCases.Key(kind, size));
+
+    /// <summary>A case's measurement, or a failure naming why there is none to trust.</summary>
+    /// <remarks>
+    /// The child as a whole first: a case it measured counts only if every check the child makes
+    /// about itself passed, some of which it makes after its last case.
+    /// </remarks>
+    internal static MeasuredBuild Find(ChildRun run, string tier, ITestOutputHelper output, string key)
     {
-        var key = MemoryCases.Key(kind, size);
-
-        if (run.Cases.TryGetValue(key, out var result) && result.Build is { } build)
+        if (run.Failure is { } child)
         {
-            output.WriteLine($"{key}: {JsonSerializer.Serialize(build)}");
-
-            // The specific failure first: grid arrays allocated off the measuring thread are named
-            // as such, before the count of other threads' bytes they also inflate.
-            MemoryVerdict.Covered(key, build.Peak);
-            MemoryCases.AssertTheBuildsOwn(key, build.Peak);
-
-            return build;
+            Assert.Fail(
+                $"the {tier} measuring child failed as a whole, so no case it measured can be used: {child}"
+                + $"{Environment.NewLine}{run.Text}");
         }
 
-        if (result?.Failure is { } failure)
+        if (!run.Cases.TryGetValue(key, out var result))
+        {
+            Assert.Fail($"{key} is not among the builds the {tier} child measures: add it to the list");
+        }
+
+        if (result.Failure is { } failure)
         {
             Assert.Fail($"{key} failed in the {tier} measuring child, and only this case did: {failure}");
         }
 
-        if (run.Failure is { } child)
-        {
-            Assert.Fail(
-                $"the {tier} measuring child failed as a whole, so no case it was to measure has a result: {child}"
-                + $"{Environment.NewLine}{run.Text}");
-        }
+        var build = result.Build!;
 
-        Assert.Fail($"{key} is not among the builds the {tier} child measures: add it to the list");
+        output.WriteLine($"{key}: {JsonSerializer.Serialize(build)}");
 
-        return null!;
+        // The specific failure first: grid arrays allocated off the measuring thread are named
+        // as such, before the count of other threads' bytes they also inflate.
+        MemoryVerdict.Covered(key, build.Peak);
+        MemoryCases.AssertTheBuildsOwn(key, build.Peak);
+
+        return build;
     }
 }
+
+/// <summary>How a child process ended.</summary>
+/// <param name="ExitCode">Its exit code; -1 if it was killed or never started.</param>
+/// <param name="Lines">The non-empty lines of its standard output, as far as it got.</param>
+/// <param name="Errors">Its error stream.</param>
+/// <param name="Problem">What went wrong in running it - it did not start, it ran out of time - or null.</param>
+internal sealed record ChildExit(int ExitCode, IReadOnlyList<string> Lines, string Errors, string? Problem);
 
 /// <summary>Runs this test assembly's entry point as a child process and returns what it printed.</summary>
 internal static class MeasuringChild
@@ -335,15 +414,14 @@ internal static class MeasuringChild
     /// <summary>Runs the child.</summary>
     /// <param name="arguments">The entry point's arguments.</param>
     /// <param name="tier">The tier of JIT code the child is to run as.</param>
-    /// <returns>
-    /// Why it failed as a whole, or null; the non-empty lines of its standard output; and both
-    /// its streams, for a message.
-    /// </returns>
-    internal static (string? Failure, string[] Lines, string Text) Run(IReadOnlyList<string> arguments, JitTier tier)
+    /// <param name="timeout">How long it may take; twenty minutes unless a test says otherwise.</param>
+    /// <returns>How it ended and everything it wrote, however it ended.</returns>
+    internal static ChildExit Run(IReadOnlyList<string> arguments, JitTier tier, TimeSpan? timeout = null)
     {
         if (Host() is not { } host)
         {
-            return ($"no dotnet host was found to run the measuring child: looked for {string.Join(", ", HostCandidates())}", [], "");
+            return new ChildExit(
+                -1, [], "", $"no dotnet host was found to run the measuring child: looked for {string.Join(", ", HostCandidates())}");
         }
 
         var start = new ProcessStartInfo(host)
@@ -379,24 +457,29 @@ internal static class MeasuringChild
 
         if (child is null)
         {
-            return ($"the measuring child did not start: {host}", [], "");
+            return new ChildExit(-1, [], "", $"the measuring child did not start: {host}");
         }
 
         var stdout = child.StandardOutput.ReadToEndAsync();
         var stderr = child.StandardError.ReadToEndAsync();
+        var limit = timeout ?? TimeSpan.FromMinutes(20);
+        var finished = child.WaitForExit(limit);
 
-        if (!child.WaitForExit(TimeSpan.FromMinutes(20)))
+        if (!finished)
         {
             child.Kill(entireProcessTree: true);
-            return ("the measuring child did not finish in twenty minutes", [], "");
+            child.WaitForExit();
         }
 
+        // Read whatever arrived in either case: a killed child's streams close, and what it had
+        // written before is what says how far it got.
         var output = stdout.GetAwaiter().GetResult();
         var errors = stderr.GetAwaiter().GetResult();
-        var text = $"{host} exited {child.ExitCode}{Environment.NewLine}{output}{Environment.NewLine}{errors}";
         var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        return (child.ExitCode == 0 ? null : $"the measuring child exited {child.ExitCode}: {errors.Trim()}", lines, text);
+        return finished
+            ? new ChildExit(child.ExitCode, lines, errors, null)
+            : new ChildExit(-1, lines, errors, $"the measuring child did not finish in {limit.TotalMinutes:0.#} minutes and was stopped.");
     }
 
     /// <summary>

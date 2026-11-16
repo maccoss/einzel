@@ -3576,3 +3576,39 @@ Two findings from Stage 1 that bear on the spec:
   enumerator, a skipped electrode, a direct `new double[n]`, an allocation on a pool thread, the
   Debug-only span) each fail. Full suite, 2,024 tests, passes in Debug and in Release; the
   memory, probe and source tests take about 40 s in Release and 3.5 minutes in Debug.
+
+  **A fifth review found the child's own checks were not enforced**, which is the real bug of
+  the round. A case's measurement was handed to its test before anything looked at whether the
+  child as a whole had succeeded, so a child that refused its tier after its last build - the
+  check that exists because a warm-up is what promotes first-tier code - still had every number
+  it printed used, and so did one that ran on another runtime or died part way. A case now
+  counts only if the whole child succeeded: it writes `BEGIN` and `CASE` for each case and `END`
+  after its last check, and a non-zero exit, anything on its error stream, a missing `END`, a
+  different runtime or a timeout fails every test that asked it for anything, with what it
+  wrote and the case it was building. A child that runs out of time is stopped and its output
+  kept. Forcing the late tier check to fail now fails every dependent test.
+
+  The rest, each verified first:
+  - **A target-typed `new` is typed by the compiler.** The source scan built a compilation of
+    every `Einzel.Fields` file against the running framework and Einzel.Core and asks the
+    semantic model what each `new(...)` creates, so an assignment to a field, a return or an
+    argument is read like a declaration; one whose type cannot be resolved is caught if it has a
+    non-literal argument.
+  - **An excuse names the member it is in and how many times.** `(file, type.member, expression,
+    count, reason)`, so the same expression written a second time in a listed member, or moved
+    to another, is caught; adding a second `new List<double>(drives.Count)` to the member that
+    has one fails the test.
+  - **A watcher that throws cannot make an allocation throw.** The exception is recorded, the
+    watcher is not called again, and the measurement fails by name - the 16,384-array cap of the
+    last round was such an exception. There is no cap now: the storage for following arrays
+    grows, outside what is charged to the build.
+  - **A full collection only where it could matter.** A reading at an array is skipped when an
+    upper bound on the live set there - the last reading plus everything allocated since, or the
+    build's grid arrays plus everything outside them - is already no more than the least read
+    so far: such a reading cannot raise the least, and the upper bound goes into the bound.
+    Proved rather than tuned, and measured: the least is the same to the byte, from 32 readings
+    of 385 arrays on the plane and 63 of 129 on the sphere.
+  - `SPEC.md`'s GRD-8 row states current figures only; the history is here.
+
+  Full suite, 2,045 tests, passes in Debug and in Release; the memory, probe, protocol and source
+  tests take about 70 s in Release, 20 of them the test that waits for a child to run out of time.

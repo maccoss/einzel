@@ -12,16 +12,20 @@ namespace Einzel.Fields.Tests;
 /// <param name="Bound">The most the build can have held at any instant, in the same terms.</param>
 /// <param name="Held">The largest live set of the process read during the build, above the baseline.</param>
 /// <param name="Tracked">The most the build's own grid arrays came to at a reading, in bytes.</param>
-/// <param name="Readings">How many grid arrays the build allocated, each one a reading.</param>
+/// <param name="Readings">How many grid arrays the build allocated.</param>
+/// <param name="Collections">
+/// How many of them were read: at the others the live set could not have passed what had
+/// already been read.
+/// </param>
 /// <param name="Unreported">
 /// The most the build thread allocated between two readings other than through
 /// <see cref="GridArrays"/>, in bytes.
 /// </param>
 /// <param name="Silent">Everything the build thread allocated other than through <see cref="GridArrays"/>.</param>
 /// <param name="Foreign">Bytes other threads allocated while the measurement ran.</param>
-/// <param name="OffThread">
-/// What <see cref="GridArrays"/> allocated on other threads during the measurement, or null.
-/// A measurement with this set does not cover the build, and is a failure by name.
+/// <param name="Invalid">
+/// Why the measurement does not cover the build - grid arrays allocated on other threads, or
+/// the watcher itself failing - or null. A measurement with this set is a failure by name.
 /// </param>
 internal sealed record LivePeak(
     double Least,
@@ -29,10 +33,11 @@ internal sealed record LivePeak(
     double Held,
     double Tracked,
     int Readings,
+    int Collections,
     long Unreported,
     long Silent,
     long Foreign,
-    string? OffThread);
+    string? Invalid);
 
 /// <summary>
 /// The most a build holds reachable at once, read on the build's own thread at each allocation.
@@ -41,8 +46,9 @@ internal sealed record LivePeak(
 /// <para>
 /// <b>A build's live set can only rise at an allocation, so its peak is held just after one.</b>
 /// Every per-node array a solve allocates comes from <see cref="GridArrays"/>, which tells
-/// whoever is watching; here each one forces a full blocking collection and reads what
-/// survived. Nothing is sampled, so there is no window to miss, no second thread whose
+/// whoever is watching; here each one that could raise the peak forces a full blocking
+/// collection and reads what survived, and one that provably could not is passed over. Nothing
+/// is sampled, so there is no window to miss, no second thread whose
 /// priority matters, and nothing that depends on how long the solve runs.
 /// </para>
 /// <para>
@@ -92,34 +98,40 @@ internal sealed record LivePeak(
 /// </remarks>
 internal static class LiveSet
 {
-    /// <summary>The most grid arrays one build may allocate.</summary>
-    internal const int Capacity = 1 << 14;
+    /// <summary>How many grid arrays the storage for following them starts with.</summary>
+    internal const int InitialCapacity = 1 << 14;
 
     /// <summary>Measures one build.</summary>
     /// <param name="build">The build; what it returns is held until the measurement ends.</param>
+    /// <param name="collectEveryArray">
+    /// Read at every grid array rather than only where the live set could pass what has
+    /// already been read; for the test that the two give the same least.
+    /// </param>
+    /// <param name="capacity">How many arrays to make room for before the baseline.</param>
     /// <returns>What it held.</returns>
-    internal static LivePeak Peak(Func<object> build)
+    internal static LivePeak Peak(Func<object> build, bool collectEveryArray = false, int capacity = InitialCapacity)
     {
         // Allocated before the baseline, so that following the build's arrays is not in a
         // reading. A weak handle is a slot in the runtime's handle table, not an object.
-        var handles = new GCHandle[Capacity];
-        var sizes = new long[Capacity];
-        var count = 0;
+        var followed = new Followed(capacity);
+
+        // Grown once, and dropped, before the baseline: what growing costs the first time - the
+        // runtime loading the generic instantiations it uses - is then in the baseline, and what
+        // growing during the build keeps is only the storage itself, which Own takes off.
+        var warm = new Followed(1);
+        warm.Grow();
 
         try
         {
-            return Measure(build, handles, sizes, ref count);
+            return Measure(build, followed, collectEveryArray);
         }
         finally
         {
-            for (var at = 0; at < count; at++)
-            {
-                handles[at].Free();
-            }
+            followed.Free();
         }
     }
 
-    private static LivePeak Measure(Func<object> build, GCHandle[] handles, long[] sizes, ref int counted)
+    private static LivePeak Measure(Func<object> build, Followed followed, bool collectEveryArray)
     {
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
@@ -131,10 +143,10 @@ internal static class LiveSet
 
         var baseline = Survived();
 
-        var count = 0;
         double least = 0, bound = 0, held = 0, tracked = 0;
         double previous = 0, trackedPrevious = 0;
-        long unreported = 0, silent = 0, foreign = 0;
+        long unreported = 0, silent = 0, foreign = 0, pending = 0;
+        var collections = 0;
         var threadAtPrevious = GC.GetAllocatedBytesForCurrentThread();
 
         // What other threads allocated since this was last asked: the process's count less
@@ -150,38 +162,56 @@ internal static class LiveSet
             threadAtOthers = thread;
         }
 
-        // Up to and including the instant before the array arrived: the live set then was at most
-        // the last reading plus what the thread allocated since, and at most the grid arrays alive
-        // at the last reading plus everything the thread has allocated outside GridArrays.
-        void Stretch(long since)
-        {
-            silent += since;
-            unreported = Math.Max(unreported, since);
-            bound = Math.Max(bound, Math.Min(previous + since, trackedPrevious + silent));
-        }
-
         void Read(Array array, long bytes)
         {
-            if (count == handles.Length)
+            // Room to follow it, made outside what is charged to the build: the thread's counter
+            // is moved past what growing the storage allocated.
+            if (followed.Full)
             {
-                throw new InvalidOperationException($"a build allocated more than {handles.Length:N0} grid arrays");
+                var before = GC.GetAllocatedBytesForCurrentThread();
+                followed.Grow();
+                threadAtPrevious += GC.GetAllocatedBytesForCurrentThread() - before;
             }
 
-            // An array carries a header, so this is never negative.
-            Stretch(Math.Max(0L, GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious - bytes));
+            followed.Add(array, bytes);
 
-            handles[count] = GCHandle.Alloc(array, GCHandleType.Weak);
-            sizes[count] = bytes;
-            count++;
+            // Everything the thread allocated since the last reading. Of that, `pending` and this
+            // array went through GridArrays; the rest, `since`, did not. An array carries a header,
+            // so `since` is never negative.
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious;
+            var since = Math.Max(0L, allocated - pending - bytes);
+
+            // The most live at any instant from the last reading to now, this array included:
+            // the last reading plus everything allocated since; or the grid arrays alive at the
+            // last reading, plus those allocated since, plus everything ever allocated outside
+            // GridArrays.
+            var most = Math.Min(previous + allocated, trackedPrevious + pending + bytes + silent + since);
+
+            // Read only where the live set could pass the least already read. Where it could
+            // not, a reading here could not raise the least, which is a maximum of readings each
+            // no more than the live set; and `most` covers this instant in the bound. So skipping
+            // changes neither end that matters - the least is the same, and the bound is still
+            // a bound - and it is proved, not assumed: `most` is an upper bound on the live set.
+            if (!collectEveryArray && most <= least)
+            {
+                bound = Math.Max(bound, most);
+                pending += bytes;
+                return;
+            }
+
+            silent += since;
+            unreported = Math.Max(unreported, since);
+            bound = Math.Max(bound, Math.Min(previous + allocated - bytes, trackedPrevious + pending + silent));
 
             GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
+            collections++;
 
             // After the collection: whatever of another thread's is in the reading was allocated
             // by now.
             Others();
 
-            var reading = Survived() - baseline;
-            var alive = Alive(handles, sizes, count);
+            var reading = Survived() - baseline - followed.Own;
+            var alive = followed.Alive();
 
             held = Math.Max(held, reading);
             tracked = Math.Max(tracked, alive);
@@ -190,13 +220,14 @@ internal static class LiveSet
 
             previous = reading;
             trackedPrevious = alive;
+            pending = 0;
 
             // Read last, so that what this reading allocated for itself is not charged to the build.
             threadAtPrevious = GC.GetAllocatedBytesForCurrentThread();
         }
 
         object? built = null;
-        string? offThread;
+        string? invalid;
 
         GridArrays.StartWatching(Read);
 
@@ -206,17 +237,70 @@ internal static class LiveSet
         }
         finally
         {
-            offThread = GridArrays.StopWatching();
-            counted = count;
+            invalid = GridArrays.StopWatching();
         }
 
         // The stretch after the last array, which has no reading of its own.
-        Stretch(Math.Max(0L, GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious));
+        var tail = GC.GetAllocatedBytesForCurrentThread() - threadAtPrevious;
+        var tailSilent = Math.Max(0L, tail - pending);
+
+        silent += tailSilent;
+        unreported = Math.Max(unreported, tailSilent);
+        bound = Math.Max(bound, Math.Min(previous + tail, trackedPrevious + pending + silent));
         Others();
 
         GC.KeepAlive(built);
 
-        return new LivePeak(least, Math.Max(bound, least), held, tracked, count, unreported, silent, foreign, offThread);
+        return new LivePeak(
+            least, Math.Max(bound, least), held, tracked, followed.Count, collections, unreported, silent, foreign, invalid);
+    }
+
+    /// <summary>The grid arrays a build allocated, each followed by a weak handle.</summary>
+    /// <remarks>
+    /// Storage made before the baseline is in it and so in no reading; storage grown during
+    /// the build is, and <see cref="Own"/> says how much to take off a reading for it.
+    /// </remarks>
+    private sealed class Followed(int capacity)
+    {
+        private GCHandle[] _handles = new GCHandle[capacity];
+        private long[] _sizes = new long[capacity];
+        private bool _grown;
+
+        public int Count { get; private set; }
+
+        public bool Full => Count == _handles.Length;
+
+        /// <summary>Bytes of this storage allocated after the baseline and still held, headers included.</summary>
+        public long Own => _grown
+            ? Buffer.ByteLength(_sizes) + ((long)Unsafe.SizeOf<GCHandle>() * _handles.Length) + (2 * ArrayHeader)
+            : 0;
+
+        /// <summary>An array's header and length on a 64-bit runtime.</summary>
+        private const long ArrayHeader = 24;
+
+        public void Grow()
+        {
+            Array.Resize(ref _handles, 2 * _handles.Length);
+            Array.Resize(ref _sizes, 2 * _sizes.Length);
+            _grown = true;
+        }
+
+        public void Add(Array array, long bytes)
+        {
+            _handles[Count] = GCHandle.Alloc(array, GCHandleType.Weak);
+            _sizes[Count] = bytes;
+            Count++;
+        }
+
+        public double Alive() => LiveSet.Alive(_handles, _sizes, Count);
+
+        public void Free()
+        {
+            for (var at = 0; at < Count; at++)
+            {
+                _handles[at].Free();
+            }
+        }
     }
 
     /// <summary>What the followed arrays still alive come to, in bytes.</summary>
@@ -313,9 +397,9 @@ internal static class MemoryVerdict
     /// <summary>Fails a measurement that does not cover the build, by name.</summary>
     internal static void Covered(string what, LivePeak peak)
     {
-        if (peak.OffThread is { } offThread)
+        if (peak.Invalid is { } invalid)
         {
-            Assert.Fail($"{what}: {offThread}");
+            Assert.Fail($"{what}: {invalid}");
         }
     }
 }

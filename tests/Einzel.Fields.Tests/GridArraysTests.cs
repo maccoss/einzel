@@ -18,7 +18,7 @@ namespace Einzel.Fields.Tests;
 /// throw because something is.
 /// </remarks>
 [Collection(nameof(MemoryMeasurement))]
-public sealed class GridArraysTests(ITestOutputHelper output)
+public sealed class GridArraysTests(MeasuredBuilds builds, ITestOutputHelper output)
 {
     /// <summary>
     /// Each kind of solve, watched with a full collection forced at every array, gives the
@@ -178,13 +178,114 @@ public sealed class GridArraysTests(ITestOutputHelper output)
 
         Assert.Null(onWorker);
         Assert.NotNull(allocated);
-        Assert.NotNull(peak.OffThread);
-        Assert.Contains("1 grid array(s), 5,832 bytes", peak.OffThread, StringComparison.Ordinal);
+        Assert.NotNull(peak.Invalid);
+        Assert.Contains("1 grid array(s), 5,832 bytes", peak.Invalid, StringComparison.Ordinal);
         Assert.Equal(1, peak.Readings);
         Assert.False(GridArrays.Watched);
 
         var named = Assert.Throws<FailException>(() => MemoryVerdict.Covered("a build", peak));
         Assert.Contains("while thread", named.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A watcher that throws does not make an allocation throw: the array is allocated, the
+    /// failure is recorded, the watcher is not called again, and the watch reports it.
+    /// </summary>
+    [Fact]
+    public void AWatcherThatThrowsDoesNotReachTheAllocation()
+    {
+        var calls = 0;
+
+        GridArrays.StartWatching((_, _) =>
+        {
+            calls++;
+            throw new InvalidOperationException("the watcher's own failure");
+        });
+
+        double[] first, second;
+        string? invalid;
+
+        try
+        {
+            first = GridArrays.New<double>(10);
+            second = GridArrays.New<double>(20);
+        }
+        finally
+        {
+            invalid = GridArrays.StopWatching();
+        }
+
+        Assert.Equal(10, first.Length);
+        Assert.Equal(20, second.Length);
+        Assert.Equal(1, calls);
+        Assert.NotNull(invalid);
+        Assert.Contains("the watcher's own failure", invalid, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A build that allocates more grid arrays than the measurement made room for is measured
+    /// all the same: the storage for following them grows, outside what is charged to the build.
+    /// </summary>
+    /// <remarks>
+    /// Measured in the child, where nothing else allocates, because what is compared is the
+    /// process's own reading: in this test host other threads move it by more than the storage
+    /// is worth.
+    /// </remarks>
+    [Fact]
+    public void MoreArraysThanTheRoomMadeForThemAreMeasuredAllTheSame()
+    {
+        var roomy = builds.Optimized(output, "fields", LiveSet.InitialCapacity).Peak;
+        var cramped = builds.Optimized(output, "fields", 1).Peak;
+
+        Assert.Equal(40, cramped.Readings);
+        Assert.Equal(40, cramped.Collections);
+        Assert.Equal(roomy.Tracked, cramped.Tracked);
+
+        // Grown six times to 64, the storage holds 1,072 bytes the build did not.
+        Assert.InRange(cramped.Held, roomy.Held - 256, roomy.Held + 256);
+        Assert.InRange(cramped.Bound, roomy.Bound - 256, roomy.Bound + 256);
+    }
+
+    /// <summary>
+    /// Reading only where the live set could pass what has been read gives the same least as
+    /// reading at every array, on each kind of solve, with far fewer collections.
+    /// </summary>
+    /// <remarks>
+    /// A reading passed over is one at which an upper bound on the live set was already no
+    /// more than the least, so it could not have raised the least; the bound stays a bound
+    /// because that upper bound is folded into it. This is the check that the argument holds in
+    /// practice: the same least, to the byte, from many fewer full collections.
+    /// </remarks>
+    [Fact]
+    public void PassingOverReadingsThatCannotRaiseThePeakChangesNothing()
+    {
+        (string Name, Func<object> Build)[] builds =
+        [
+            ("volume, rediscretized", () => GeometryBuilder3D.BuildField(SolveMemoryTests.Sphere(0.000625)).Field),
+            ("volume, galerkin", () => GeometryBuilder3D.BuildField(SolveMemoryTests.Plates(0.0005)).Field),
+            ("plane", () => GeometryBuilder.Build(SolveMemoryTests.Rods(0.0002)).Field),
+        ];
+
+        foreach (var (name, build) in builds)
+        {
+            build();
+
+            var every = LiveSet.Peak(build, collectEveryArray: true);
+            var some = LiveSet.Peak(build);
+
+            output.WriteLine($"{name}, every array: {SolveMemoryTests.Describe(every, 1)}");
+            output.WriteLine($"{name}, where it could matter: {SolveMemoryTests.Describe(some, 1)}");
+
+            Assert.Equal(every.Readings, some.Readings);
+            Assert.Equal(every.Readings, every.Collections);
+            Assert.True(some.Collections < every.Collections, $"{name}: no reading was passed over");
+            Assert.Equal(every.Tracked, some.Tracked);
+
+            // The process's own readings move by what the test host's other threads hold at each
+            // instant, so the least is compared through the part only the build moves.
+            Assert.InRange(some.Least, every.Least - 32_768, every.Least + 32_768);
+            Assert.True(some.Bound >= some.Least, $"{name}: the bound is under the least");
+        }
     }
 
     /// <summary>

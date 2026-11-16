@@ -30,12 +30,14 @@ internal delegate void GridArrayWatcher(Array array, long bytes);
 /// which forms it reads.
 /// </para>
 /// <para>
-/// <b>A watch belongs to the thread that started it, and never makes anything throw.</b> The
-/// watcher runs on the allocating thread, and what it does there - force a collection, read the
-/// live set and that thread's allocation counter - measures the build only if the build is on
-/// that thread. An array allocated here on any other thread while a watch is on is therefore not
-/// shown to the watcher; it is recorded, and <see cref="StopWatching"/> hands the record back to
-/// the measurement, which fails by name. Code that allocates goes on exactly as it would have.
+/// <b>A watch belongs to the thread that started it, and never makes an allocation throw.</b>
+/// The watcher runs on the allocating thread, and what it does there - force a collection, read
+/// the live set and that thread's allocation counter - measures the build only if the build is
+/// on that thread. An array allocated here on any other thread while a watch is on is therefore
+/// not shown to the watcher; it is recorded. And whatever the watcher itself throws is caught
+/// and recorded too, and the watcher is not called again. <see cref="StopWatching"/> hands both
+/// records back to the measurement, which fails by name. Code that allocates goes on exactly as
+/// it would have, watched or not.
 /// </para>
 /// <para>
 /// Nothing is watching outside the memory tests, which watch only in a child process started
@@ -115,14 +117,14 @@ internal static class GridArrays
 
     /// <summary>Stops the watch.</summary>
     /// <returns>
-    /// What was allocated here on other threads while it was on, or null if nothing was: such
-    /// arrays were not shown to the watcher, so whatever it measured does not include them.
+    /// Why what the watcher measured does not cover what was allocated - arrays allocated on
+    /// other threads, which it was not shown, or an exception from the watcher itself - or null.
     /// </returns>
     internal static string? StopWatching()
     {
         var stopped = Interlocked.Exchange(ref watch, null);
 
-        return stopped?.OffThread;
+        return stopped?.Invalid;
     }
 
     private sealed class Watch(int thread, GridArrayWatcher watcher)
@@ -131,7 +133,17 @@ internal static class GridArrays
         private long _offThreadBytes;
         private int _firstThread;
 
-        public string? OffThread => Interlocked.Read(ref _offThreadArrays) == 0
+        private string? _watcherFailed;
+
+        public string? Invalid => (OffThread, Volatile.Read(ref _watcherFailed)) switch
+        {
+            (null, null) => null,
+            (var offThread, null) => offThread,
+            (null, var failed) => $"the watcher failed, so the measurement stopped there: {failed}",
+            (var offThread, var failed) => $"{offThread} And the watcher failed: {failed}",
+        };
+
+        private string? OffThread => Interlocked.Read(ref _offThreadArrays) == 0
             ? null
             : $"{Interlocked.Read(ref _offThreadArrays):N0} grid array(s), {Interlocked.Read(ref _offThreadBytes):N0} bytes, "
                 + $"were allocated on thread {Volatile.Read(ref _firstThread)} (and perhaps others) while thread {thread} "
@@ -143,7 +155,24 @@ internal static class GridArrays
         {
             if (Environment.CurrentManagedThreadId == thread)
             {
-                watcher(array, bytes);
+                if (Volatile.Read(ref _watcherFailed) is not null)
+                {
+                    return;
+                }
+
+                // Whatever a test does at an allocation, the solver's allocation must not fail
+                // because of it: recorded, and reported when the watch stops.
+#pragma warning disable CA1031 // Any exception: the point is that none reaches the allocating code.
+                try
+                {
+                    watcher(array, bytes);
+                }
+                catch (Exception failed)
+                {
+                    Volatile.Write(ref _watcherFailed, failed.ToString());
+                }
+#pragma warning restore CA1031
+
                 return;
             }
 
