@@ -142,6 +142,11 @@ public sealed class SolvedField3D : IElectrostaticField, IConductorBounded, IHel
     }
 
     /// <inheritdoc/>
+    /// <remarks>A static solve holds the same potential at every instant, so its mean is that potential.</remarks>
+    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
+        HeldPotentialOf(conductor, fromSeconds);
+
+    /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position)
     {
         string? nearestName = null;

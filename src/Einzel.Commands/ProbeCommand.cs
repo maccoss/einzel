@@ -43,10 +43,14 @@ public static class ProbeStatus
 /// <param name="FieldVPerM">The electric field vector in volts per metre, or absent where refused.</param>
 /// <param name="FieldMagnitudeVPerM">The field's magnitude in volts per metre, or absent where refused.</param>
 /// <param name="Status">One of the <see cref="ProbeStatus"/> values.</param>
-/// <param name="Conductor">The nearest conductor's name where the field knows conductors, else absent.</param>
+/// <param name="Conductor">
+/// The nearest conductor's name, among the conductors of elements solved at the point where there
+/// are any (outside every domain, among all declared conductors); absent where the field knows none.
+/// </param>
 /// <param name="ConductorDistanceMm">
-/// Signed distance to the nearest conductor surface in millimetres, negative inside; absent where
-/// the field declares no conductors.
+/// Signed distance to that conductor's surface in millimetres, negative inside - so negative only
+/// with the status inside-conductor where any element was solved at the point; absent where the
+/// field declares no conductors.
 /// </param>
 /// <param name="OutsideElements">
 /// Field elements whose declared domain does not contain this point, by element index. An element
@@ -227,13 +231,30 @@ public sealed class FieldProbe
     public int? ConductorElementAt(Vec3 positionMm)
     {
         var point = MillimetresToMetres(positionMm);
-        Span<bool> inside = stackalloc bool[Math.Min(Elements.Count, 256)];
-        var solved = Elements.Count <= 256 ? Solved(in point, inside) : default;
+        var count = Elements.Count;
+        bool[]? rented = count > StackElements ? System.Buffers.ArrayPool<bool>.Shared.Rent(count) : null;
 
-        Locate(in point, solved, out _, out _, out var held, out _);
+        try
+        {
+            Span<bool> inside = rented is null ? stackalloc bool[StackElements] : rented;
+            Solved(in point, inside[..count]);
+            Locate(in point, inside[..count], out _, out _, out var held, out var depth);
 
-        return held >= 0 ? _leafElements[held] : null;
+            // In metal only: near a conductor is not in one.
+            return held >= 0 && depth < 0.0 ? _leafElements[held] : null;
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                System.Buffers.ArrayPool<bool>.Shared.Return(rented);
+            }
+        }
     }
+
+    // How many elements' domain flags live on the stack; a model with more borrows a buffer, so
+    // the rule that a conductor counts only where its element was solved holds at any size.
+    private const int StackElements = 256;
 
     // THE ONE PLACE the electric sum is taken apart, recording for every leaf the element it
     // came from. The assembly's sum holds one member per element that adds one
@@ -292,14 +313,12 @@ public sealed class FieldProbe
 
     // Which elements' solves (or regions) contain a point: true for an element with no domain
     // to check, which fills all space. The same test the outside count reports.
-    private Span<bool> Solved(in Vec3 point, Span<bool> inside)
+    private void Solved(in Vec3 point, Span<bool> inside)
     {
-        for (var i = 0; i < Elements.Count; i++)
+        for (var i = 0; i < inside.Length; i++)
         {
             inside[i] = !(Elements[i].HasDomain && !InsideDomain(i, in point));
         }
-
-        return inside;
     }
 
     // ONE WALK of the leaves' conductors, giving two answers: the nearest conductor of any leaf
@@ -332,7 +351,7 @@ public sealed class FieldProbe
 
             var element = _leafElements[i];
 
-            if (d < heldDistance && (element < 0 || solved.IsEmpty || solved[element]))
+            if (d < heldDistance && (element < 0 || solved[element]))
             {
                 heldDistance = d;
                 held = i;
@@ -543,14 +562,14 @@ public sealed class FieldProbe
         {
             return new ProbeSample(
                 index, position, potential, null, null, status, conductor, distance * 1e3, outside,
-                "cycle mean: potential only");
+                note is null ? "cycle mean: potential only" : "cycle mean: potential only; " + note);
         }
 
         var magnitude = Math.Sqrt((field.X * field.X) + (field.Y * field.Y) + (field.Z * field.Z));
 
         return new ProbeSample(
             index, position, potential, [field.X, field.Y, field.Z], magnitude, status,
-            conductor, distance * 1e3, outside, null)
+            conductor, distance * 1e3, outside, note)
         {
             FluxDensityT = _magnetic is null ? null : FluxDensityAt(in point) is var b ? [b.X, b.Y, b.Z] : null,
         };
@@ -645,11 +664,58 @@ public sealed class FieldProbe
         element = null;
         held = null;
 
+        // Each element's domain once: the outside count, the outside list and which elements'
+        // conductors may compete all come from these flags.
+        var count = Elements.Count;
+        bool[]? rented = count > StackElements ? System.Buffers.ArrayPool<bool>.Shared.Rent(count) : null;
+
+        try
+        {
+            Span<bool> inside = rented is null ? stackalloc bool[StackElements] : rented;
+            inside = inside[..count];
+            Solved(in point, inside);
+
+            return SampleSolved(
+                in point, inside, atSeconds, cycleMean, outside, resolve,
+                out potential, out field, out distance, out note, out averaged, out conductor, out element, out held);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                System.Buffers.ArrayPool<bool>.Shared.Return(rented);
+            }
+        }
+    }
+
+    private string SampleSolved(
+        in Vec3 point,
+        ReadOnlySpan<bool> inside,
+        double atSeconds,
+        bool cycleMean,
+        List<int>? outside,
+        Resolve resolve,
+        out double potential,
+        out Vec3 field,
+        out double? distance,
+        out string? note,
+        out bool averaged,
+        out string? conductor,
+        out int? element,
+        out double? held)
+    {
+        distance = null;
+        note = null;
+        averaged = false;
+        conductor = null;
+        element = null;
+        held = null;
+
         var outsideCount = 0;
 
-        for (var i = 0; i < _model.Fields.Count; i++)
+        for (var i = 0; i < inside.Length; i++)
         {
-            if (Elements[i].HasDomain && !InsideDomain(i, in point))
+            if (!inside[i])
             {
                 outsideCount++;
                 outside?.Add(i);
@@ -688,15 +754,9 @@ public sealed class FieldProbe
             return ProbeStatus.Refused;
         }
 
-        Span<bool> inside = stackalloc bool[Math.Min(Elements.Count, 256)];
-        var solved = Elements.Count <= 256 ? Solved(in point, inside) : default;
+        Locate(in point, inside, out var nearest, out var d, out var member, out var depth);
 
-        Locate(in point, solved, out var nearest, out var d, out var member, out var depth);
-
-        if (double.IsFinite(d))
-        {
-            distance = d;
-        }
+        var allOutside = _allBounded && outsideCount == Elements.Count;
 
         // A conductor counts only where its element was solved: a declared shape runs on past
         // the edge of its solve - along a cross-section's invariant axis, past a face the shape
@@ -704,13 +764,35 @@ public sealed class FieldProbe
         // conductor of that element, whatever the shape says. Locate has already left those out.
         var inMetal = depth < 0.0 && member >= 0;
 
+        // What the row says about conductors agrees with its status. Where any element was
+        // solved at the point, the distance and the name are of the nearest conductor among
+        // those elements' - so a point inside a shape that runs past its solve does not read
+        // "ok" beside a negative distance to a conductor it is "in". Outside every domain there
+        // is no such conductor, and the row reports the nearest declared one, as it always has.
+        var (reported, reportedDistance) = allOutside ? (nearest, d) : (member, depth);
+
+        if (double.IsFinite(reportedDistance))
+        {
+            distance = reportedDistance;
+        }
+
         if (inMetal)
         {
             conductor = (_members[member] as IConductorBounded)?.ConductorAt(in point);
         }
-        else if (resolve == Resolve.Nearest && nearest >= 0 && distance is not null)
+        else if (resolve == Resolve.Nearest && reported >= 0 && distance is not null)
         {
-            conductor = (_members[nearest] as IConductorBounded)?.ConductorAt(in point);
+            conductor = (_members[reported] as IConductorBounded)?.ConductorAt(in point);
+        }
+
+        // And it says so where the point is inside a declared shape whose element was not solved
+        // there, rather than leaving the shape unmentioned.
+        if (resolve == Resolve.Nearest && !inMetal && d < 0.0 && nearest >= 0
+            && (_members[nearest] as IConductorBounded)?.ConductorAt(in point) is { } past)
+        {
+            note = string.Create(
+                CultureInfo.InvariantCulture,
+                $"inside the declared shape of '{past}' (element {_leafElements[nearest]}), which runs past the edge of its solve: nothing was solved for it here");
         }
 
         if (inMetal && resolve == Resolve.Held && conductor is not null)
@@ -725,7 +807,7 @@ public sealed class FieldProbe
         // answer outside its domain, not the electrode's potential. Outside every element only
         // when every element is one whose domain can be checked: an unbounded analytic element
         // fills all space, so the point is never outside it.
-        var status = _allBounded && outsideCount == Elements.Count
+        var status = allOutside
             ? ProbeStatus.OutsideDomain
             : inMetal
                 ? ProbeStatus.InsideConductor
@@ -764,13 +846,13 @@ public sealed class FieldProbe
                 ? null
                 : double.IsFinite(shortest) ? shortest : null;
 
-        var state = new HeldState(atSeconds, held, window);
+        var state = new HeldState(atSeconds, held, window, Leaves(held, _memberElements).Leaves);
         Volatile.Write(ref _held, state);
 
         return state;
     }
 
-    private sealed record HeldState(double At, ITimeVaryingField Field, double? Window);
+    private sealed record HeldState(double At, ITimeVaryingField Field, double? Window, IReadOnlyList<IElectrostaticField> Leaves);
 
     private HeldState? _held;
 
@@ -840,7 +922,7 @@ public sealed class FieldProbe
         }
 
         var state = HeldAt(atSeconds);
-        var (members, _) = Leaves(state.Field, _memberElements);
+        var members = state.Leaves;
 
         return member < members.Count && members[member] is IHeldConductors at && state.Window is { } window
             ? at.HeldCycleMeanOf(conductor, atSeconds, window, CycleMeanSamples)

@@ -821,7 +821,12 @@ tilts and the axisymmetric mapping are all honoured and the assembly's warnings 
   point, for example the quadro-logarithmic field's singular axis). A refused point is a row with a note,
   never a failure of the profile; only that refusal is caught, so any other error in the field stack is
   one error, not a column of refused rows. Warnings summarise the counts (`probe.inside-conductor`,
-  `probe.outside-domain`, `probe.refused`).
+  `probe.outside-domain`, `probe.refused`). **A conductor counts only where its own element was
+  solved**: where any element was solved at the point, `conductor` and `conductorDistanceMm` describe
+  the nearest conductor among those elements', so a negative distance always comes with
+  `inside-conductor`; a point inside a declared shape that runs past its own solve, in another
+  element's domain, is `ok` with a `note` saying whose shape it is in. Outside every domain the row
+  names the nearest declared conductor, as before.
 - **A point on a domain face is in the domain.** A face node holds a solved value, so the declared faces
   are inside, and the solved fields agree: a grid's last node is `min + (max - min)` in floating point and
   can land an ulp short of the declared face, so a grid built over a box counts as reaching the declared

@@ -3518,5 +3518,17 @@ Two findings from Stage 1 that bear on the spec:
   conductors hold, on the instrument's clock, with a reflection test holding every
   conductor-bounded field in the assembly to the same.
 
+  **A sixth review.** `ConductorElementAt` answered for a point near a conductor, not only in
+  one. A field sum answered "what does `plate` hold" with its first member's `plate`, though two
+  elements may each have one: it now answers only where its members agree, which is what a
+  reflected solve's two halves do and two elements' plates do not. A probe row could report `ok`
+  beside a negative distance to a conductor it was "in", where the point was inside a shape
+  declared past its solve: the row's conductor and distance are now among the elements solved at
+  the point, with a note naming the shape it is in. Above 256 elements the domain rule silently
+  stopped applying (the flags lived on the stack); they are borrowed from a pool past that. And
+  three per-sample costs went: each element's domain is tested once, the held field's pieces are
+  found once per operating point rather than per sample, and a static solve answers a cycle mean
+  without sampling 64 instants.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

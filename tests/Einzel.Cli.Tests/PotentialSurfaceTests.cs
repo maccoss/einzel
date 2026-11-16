@@ -1421,6 +1421,173 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         }
     }
 
+    /// <summary>The element a point's conductor belongs to is given only for a point in metal.</summary>
+    /// <remarks>
+    /// It used to answer for any point near a conductor - the vacuum on the axis of the einzel
+    /// lens's centre tube had element 0, against the method's own documentation.
+    /// </remarks>
+    [Fact]
+    public void AnElementIsGivenOnlyForAPointInMetal()
+    {
+        var probe = FieldProbe.Open(Model("example", "einzel-lens"));
+
+        Assert.Null(probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(0.0, 0.0, 0.0)));
+        Assert.Equal(ProbeStatus.Ok, probe.At(0, new Einzel.Core.Geometry.Vec3(0.0, 0.0, 0.0), 0.0).Status);
+        Assert.Equal(0, probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(0.0, 6.5, 0.0)));
+    }
+
+    /// <summary>
+    /// A field sum says what a named conductor holds only where the name cannot mean two
+    /// things.
+    /// </summary>
+    /// <remarks>
+    /// Names are unique within one element. Two elements each with a <c>plate</c>, at +100 V and
+    /// -100 V, both read +100 V when the sum answered with its first member's; a wrapper round
+    /// the sum would have carried that onward. A reflected solve - one element seen twice - is
+    /// the case where the halves agree, and there the sum answers.
+    /// </remarks>
+    [Fact]
+    public void ASumDoesNotAnswerForANameTwoElementsShare()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+        var first = fields[0]!["solve"]!["electrodes"]!.AsArray();
+        first.RemoveAt(1);
+        first[0]!["name"] = "plate";
+        first[0]!["potential"]!["value"] = 100.0;
+
+        var second = fields[0]!.DeepClone();
+        second["solve"]!["minX"]!["value"] = 20.0;
+        second["solve"]!["maxX"]!["value"] = 60.0;
+        second["solve"]!["electrodes"]![0]!["minX"]!["value"] = 40.0;
+        second["solve"]!["electrodes"]![0]!["maxX"]!["value"] = 41.0;
+        second["solve"]!["electrodes"]![0]!["potential"]!["value"] = -100.0;
+        fields.Add(second);
+        node["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[59, 0, 0]");
+
+        var path = Path.Combine(_root, "two-plates.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var probe = FieldProbe.Open(path);
+        var (field, _, _) = Einzel.Fields.FieldAssembly.BuildMapped(probe.Model);
+        var sum = Assert.IsType<Einzel.Fields.SuperposedField>(field);
+
+        Assert.Null(sum.HeldPotentialOf("plate", 0.0));
+        Assert.Null(sum.HeldCycleMeanOf("plate", 0.0, 1e-6, 8));
+
+        // Each element still says what its own holds, which is how the probe and the surface ask.
+        Assert.Equal([100.0, -100.0], sum.Elements.Select(e => ((Einzel.Fields.IHeldConductors)e).HeldPotentialOf("plate", 0.0) ?? double.NaN));
+        Assert.Equal(-100.0, probe.At(0, new Einzel.Core.Geometry.Vec3(40.5, 5.0, 0.0), 0.0).Status == ProbeStatus.InsideConductor
+            ? SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 60, 10], Samples: 161)).Surface.Plateaus.Single(p => p.Element == 1).PotentialV
+            : double.NaN);
+
+        // A reflected solve is one element seen twice: its halves agree, and the sum answers.
+        var reflected = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        reflected["fields"]![0]!["solve"]!["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "value": 20, "unit": "mm" }""");
+        reflected["fields"]![0]!["solve"]!["electrodes"]![0]!["potential"]!["value"] = 40.0;
+        reflected["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[59, 0, 0]");
+        var mirrored = Path.Combine(_root, "mirrored-plate.json");
+        File.WriteAllText(mirrored, reflected.ToJsonString());
+
+        var (pair, _, _) = Einzel.Fields.FieldAssembly.BuildMapped(FieldProbe.Open(mirrored).Model);
+        Assert.Equal(40.0, Assert.IsType<Einzel.Fields.SuperposedField>(pair).HeldPotentialOf("slitUpper", 0.0));
+    }
+
+    /// <summary>
+    /// The rule that a conductor counts only where its element was solved holds in a model of
+    /// any size.
+    /// </summary>
+    /// <remarks>
+    /// The per-element domain flags lived on the stack up to 256 elements, and above that the
+    /// rule was skipped and every conductor counted everywhere. Here the slit's jaw runs past
+    /// its solve, and 300 bounded analytic elements of no field take the model past the cap.
+    /// </remarks>
+    [Fact]
+    public void TheDomainRuleHoldsPastTwoHundredAndFiftySixElements()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+        var jaw = fields[0]!["solve"]!["electrodes"]!.AsArray();
+        jaw[0]!["maxX"]!["value"] = 30.0;
+        jaw[0]!["minX"]!["value"] = 10.0;
+
+        for (var i = 0; i < 300; i++)
+        {
+            fields.Add(System.Text.Json.Nodes.JsonNode.Parse(string.Create(System.Globalization.CultureInfo.InvariantCulture, $$"""
+            { "type": "uniform", "field": { "value": [0, 0, 0], "unit": "V/m" },
+              "region": { "minX": { "value": {{1000 + (2 * i)}}, "unit": "mm" }, "maxX": { "value": {{1001 + (2 * i)}}, "unit": "mm" },
+                          "minY": { "value": 0, "unit": "mm" }, "maxY": { "value": 1, "unit": "mm" },
+                          "minZ": { "value": 0, "unit": "mm" }, "maxZ": { "value": 1, "unit": "mm" } } }
+            """)));
+        }
+
+        // And one unbounded element, so a point past the solve is not outside every element.
+        fields.Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "uniform", "field": { "value": [0, 0, 0], "unit": "V/m" } }"""));
+
+        var path = Path.Combine(_root, "many-elements.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var probe = FieldProbe.Open(path);
+        Assert.True(probe.Elements.Count > 256);
+
+        var past = probe.At(0, new Einzel.Core.Geometry.Vec3(25.0, 5.0, 0.0), 0.0);
+        var within = probe.At(0, new Einzel.Core.Geometry.Vec3(15.0, 5.0, 0.0), 0.0);
+
+        output.WriteLine($"past the solve: {past.Status} ({past.Note}); within: {within.Status} {within.Conductor}");
+
+        Assert.Equal(ProbeStatus.Ok, past.Status);
+        Assert.Null(probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(25.0, 5.0, 0.0)));
+        Assert.Equal(ProbeStatus.InsideConductor, within.Status);
+    }
+
+    /// <summary>
+    /// A probe row's status, distance and conductor agree: a point inside a shape declared past
+    /// its own solve, in another solve's domain, is not reported "ok" beside a negative distance
+    /// to the shape it is "in".
+    /// </summary>
+    [Fact]
+    public void AProbeRowsStatusDistanceAndConductorAgree()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+        var jaw = fields[0]!["solve"]!["electrodes"]!.AsArray();
+        jaw[0]!["minX"]!["value"] = 10.0;
+        jaw[0]!["maxX"]!["value"] = 60.0;
+
+        var second = fields[0]!.DeepClone();
+        second["solve"]!["minX"]!["value"] = 20.0;
+        second["solve"]!["maxX"]!["value"] = 60.0;
+        var block = second["solve"]!["electrodes"]!.AsArray();
+        block.RemoveAt(1);
+        block[0]!["name"] = "block";
+        block[0]!["minX"]!["value"] = 30.0;
+        block[0]!["maxX"]!["value"] = 40.0;
+        block[0]!["minY"]!["value"] = 4.0;
+        block[0]!["maxY"]!["value"] = 6.0;
+        fields.Add(second);
+        node["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[59, 0, 0]");
+
+        var path = Path.Combine(_root, "row-agrees.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        using var json = Json("probe", path, "--at-mm", "25,5,0");
+        var row = json.RootElement.GetProperty("samples")[0];
+
+        output.WriteLine(row.ToString());
+
+        Assert.Equal("ok", row.GetProperty("status").GetString());
+        Assert.Equal("block", row.GetProperty("conductor").GetString());
+        Assert.True(row.GetProperty("conductorDistanceMm").GetDouble() >= 0.0);
+        Assert.Contains("'slitUpper'", row.GetProperty("note").GetString(), StringComparison.Ordinal);
+
+        // In the block, everything says so; in vacuum, no note.
+        var probe = FieldProbe.Open(path);
+        var inBlock = probe.At(0, new Einzel.Core.Geometry.Vec3(35.0, 5.0, 0.0), 0.0);
+        Assert.Equal(ProbeStatus.InsideConductor, inBlock.Status);
+        Assert.True(inBlock.ConductorDistanceMm < 0.0);
+        Assert.Null(probe.At(0, new Einzel.Core.Geometry.Vec3(25.0, -0.5, 0.0), 0.0).Note);
+    }
+
     /// <summary>
     /// A conductor one element declares past its own solve does not hide the conductor another
     /// element really has at that point.

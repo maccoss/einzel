@@ -104,46 +104,71 @@ public static class HeldConductors
         IElectrostaticField inner, string conductor, double fromSeconds, double periodSeconds, int samples) =>
         inner is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
 
-    /// <summary>The first member of a sum that holds a conductor of this name.</summary>
+    /// <summary>
+    /// What a sum's members say a conductor of this name holds, when they agree; null when no
+    /// member holds one or when two hold different values.
+    /// </summary>
     /// <param name="members">The members.</param>
     /// <param name="conductor">The name.</param>
     /// <param name="timeSeconds">The instant.</param>
-    /// <returns>Its held potential, or null where none does.</returns>
-    public static double? FirstHolding(IReadOnlyList<IElectrostaticField> members, string conductor, double timeSeconds)
+    /// <returns>The one value every member holding the name gives, or null.</returns>
+    /// <remarks>
+    /// A name is unique within one element and no further, so two elements may each have a
+    /// <c>plate</c>, one at +100 V and one at -100 V. Answering with the first member that has
+    /// the name gave both +100 V to anything asking the sum. A sum answers only where the name
+    /// cannot mean two things: one member has it, or every member that has it agrees - which is
+    /// the case a reflected solve makes, its one element seen twice. A caller that knows which
+    /// element it means asks that element, as the probe does.
+    /// </remarks>
+    public static double? Agreed(IReadOnlyList<IElectrostaticField> members, string conductor, double timeSeconds)
     {
         ArgumentNullException.ThrowIfNull(members);
+
+        double? agreed = null;
 
         foreach (var member in members)
         {
             if (member is IHeldConductors held && held.HeldPotentialOf(conductor, timeSeconds) is { } value)
             {
-                return value;
+                if (agreed is { } other && other != value)
+                {
+                    return null;
+                }
+
+                agreed = value;
             }
         }
 
-        return null;
+        return agreed;
     }
 
-    /// <summary>The first member of a sum whose cycle mean for a conductor of this name exists.</summary>
+    /// <summary>The same as <see cref="Agreed"/>, for a cycle mean.</summary>
     /// <param name="members">The members.</param>
     /// <param name="conductor">The name.</param>
     /// <param name="fromSeconds">Where the window opens.</param>
     /// <param name="periodSeconds">How long it is.</param>
     /// <param name="samples">How many instants, where sampled.</param>
-    /// <returns>The mean, or null where no member holds the conductor.</returns>
-    public static double? FirstMean(
+    /// <returns>The one mean every member holding the name gives, or null.</returns>
+    public static double? AgreedMean(
         IReadOnlyList<IElectrostaticField> members, string conductor, double fromSeconds, double periodSeconds, int samples)
     {
         ArgumentNullException.ThrowIfNull(members);
+
+        double? agreed = null;
 
         foreach (var member in members)
         {
             if (member is IHeldConductors held && held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) is { } value)
             {
-                return value;
+                if (agreed is { } other && other != value)
+                {
+                    return null;
+                }
+
+                agreed = value;
             }
         }
 
-        return null;
+        return agreed;
     }
 }
