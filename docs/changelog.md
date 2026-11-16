@@ -3530,5 +3530,24 @@ Two findings from Stage 1 that bear on the spec:
   found once per operating point rather than per sample, and a static solve answers a cycle mean
   without sampling 64 instants.
 
+  **A seventh review.** The sixth's probe-row rule asked "is the point outside every element",
+  which a model summing an unbounded analytic field never lets it be - so outside the solve the row
+  lost the nearest conductor and its distance that main reports. It now asks whether an element
+  with conductors was solved at the point, and otherwise names the nearest declared one, as main
+  does (checked against main's build: `slitUpper` at 29 mm, both). A sweep of every shipped
+  model, as shipped and with an unbounded analytic field added, on a line running half the box
+  past each end, against main's build: status and distance identical on every row, and the only
+  difference is a conductor name where main gave none - in a driven sum, whose own `ConductorAt`
+  names a conductor only for a point inside one, while main's static sums named the nearest. The
+  row now names the nearest whatever the sum, as main does for a static model. The held field at an operating
+  point is built piece by piece from the pieces as built, not trusted to keep the composite's
+  order. **The refusals of a valueless flag and of a stray argument moved into one check for every
+  verb**; they had been per-verb, so `render section m.json --out --json` still dropped `--out`.
+  A dry run no longer rasterizes a picture it will not write, and reports exactly what a run does.
+  Points in metal no longer look up a conductor name for callers that never read it.
+  `ConductorElementAt` is gone; the element comes from the sampler. The mesh-line counts reported
+  are the drawn ones. The instant check looks through a magnet's wrapper for a drive. And a value
+  that is not finite has no label rather than the label 0.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

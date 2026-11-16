@@ -33,7 +33,12 @@ public static class FieldInstants
     {
         ArgumentNullException.ThrowIfNull(field);
 
-        if (atSeconds is not { } seconds || !double.IsFinite(seconds) || field is not ITimeVaryingField driven
+        // Through a magnet's wrapper to the electric field it carries: a drive inside is still a
+        // drive whatever answers for the sum.
+        var electric = field is Magnetic.MagnetizedField magnetized ? magnetized.Electric : field;
+
+        if (atSeconds is not { } seconds || !double.IsFinite(seconds)
+            || (field as ITimeVaryingField ?? electric as ITimeVaryingField) is not { } driven
             || !double.IsFinite(driven.ShortestPeriodSeconds))
         {
             return;

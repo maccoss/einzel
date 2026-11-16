@@ -887,7 +887,20 @@ public static class SurfaceCommand
     /// the picture is a rotation of the model and not its mirror image.
     /// </para>
     /// </remarks>
-    public static IReadOnlyList<PictureLayer> Compose(PotentialSurface surface, double mmPerUnit, int meshLines)
+    public static IReadOnlyList<PictureLayer> Compose(PotentialSurface surface, double mmPerUnit, int meshLines) =>
+        Compose(surface, mmPerUnit, meshLines, out _);
+
+    /// <summary>Composes the surface, and says how many mesh lines it drew along each axis.</summary>
+    /// <param name="surface">The sampled surface.</param>
+    /// <param name="mmPerUnit">The height scale.</param>
+    /// <param name="meshLines">Mesh lines along the longer side.</param>
+    /// <param name="drawn">
+    /// The mesh-line positions the wire mesh was drawn at along each axis, across then deep -
+    /// the numbers an outcome reports, taken from the drawing rather than worked out again.
+    /// </param>
+    /// <returns>The layers, as <see cref="Compose(PotentialSurface, double, int)"/>.</returns>
+    public static IReadOnlyList<PictureLayer> Compose(
+        PotentialSurface surface, double mmPerUnit, int meshLines, out IReadOnlyList<int> drawn)
     {
         ArgumentNullException.ThrowIfNull(surface);
 
@@ -996,7 +1009,7 @@ public static class SurfaceCommand
 
         meshes.AddRange(Skirts(surface, mmPerUnit, Ramp));
 
-        var lines = WireMesh(surface, mmPerUnit, meshLines, Ramp);
+        var lines = WireMesh(surface, mmPerUnit, meshLines, Ramp, out drawn);
 
         // The plane itself at earth, so a reader can see where zero is drawn.
         var (fr, fg, fb) = (0.55, 0.55, 0.58);
@@ -1084,7 +1097,7 @@ public static class SurfaceCommand
         var (surface, probe, warnings) = Sample(absolute, modelText ?? File.ReadAllText(absolute), request, maxParallelism);
         var hash = probe.ModelHash;
         var mmPerUnit = Scale(surface, request);
-        var layers = Compose(surface, mmPerUnit, request.MeshLines);
+        var layers = Compose(surface, mmPerUnit, request.MeshLines, out var meshDrawn);
 
         var (low, high) = Range(surface);
         var bar = Bar(surface, mmPerUnit, angles, low, high);
@@ -1107,6 +1120,7 @@ public static class SurfaceCommand
             // is fitted again until the scale stops moving, not once.
             var textHeight = ScaleIndicator.TextHeightFor(width, height);
             var widest = new[] { low, high, 0.0 }.Concat(surface.Plateaus.Select(p => p.Height))
+                .Where(double.IsFinite)
                 .Max(v => StrokeFont.Width($"{Format(v, high - low)} {surface.Unit}", textHeight));
             var reachPx = Math.Max(StrokeFont.Width("cycle mean", textHeight), widest) + (1.6 * textHeight) + 8.0;
             var liftPx = 3.0 * textHeight;
@@ -1163,17 +1177,21 @@ public static class SurfaceCommand
         var bias = MeshDepthBias(matrix, width);
         layers = [.. layers.Select(layer => layer.Name == "mesh" ? layer with { DepthBias = bias } : layer)];
 
-        var rgb = Rasterizer.Draw(
-            [.. layers.Select(StillCommand.Raster)],
-            matrix,
-            new RasterLighting(Brightness, 1.0),
-            ColorRamp.Ground,
-            width,
-            height,
-            lineWidth: 1.2,
-            overlay: overlay);
+        // Under --dry-run nothing is written, so nothing is drawn: every number in the outcome is
+        // settled above, and the raster is what costs.
+        var rgb = dryRun
+            ? null
+            : Rasterizer.Draw(
+                [.. layers.Select(StillCommand.Raster)],
+                matrix,
+                new RasterLighting(Brightness, 1.0),
+                ColorRamp.Ground,
+                width,
+                height,
+                lineWidth: 1.2,
+                overlay: overlay);
 
-        if (tainted)
+        if (tainted && rgb is not null)
         {
             Rasterizer.Hatch(rgb, width, height);
         }
@@ -1204,8 +1222,7 @@ public static class SurfaceCommand
             AcrossMm = [surface.Across[0], surface.Across[^1]],
             DeepMm = [surface.Deep[0], surface.Deep[^1]],
             Samples = [surface.Across.Count, surface.Deep.Count],
-            MeshLines = [MeshIndices(surface.Across.Count, Strides(surface, request.MeshLines).Across).Count,
-                MeshIndices(surface.Deep.Count, Strides(surface, request.MeshLines).Deep).Count],
+            MeshLines = meshDrawn,
             StepsMm = [
                 (surface.Across[^1] - surface.Across[0]) / (surface.Across.Count - 1),
                 (surface.Deep[^1] - surface.Deep[0]) / (surface.Deep.Count - 1)],
@@ -1230,7 +1247,7 @@ public static class SurfaceCommand
         if (!dryRun)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllBytes(path, PngWriter.Write(rgb, width, height, Provenance(outcome, warnings)));
+            File.WriteAllBytes(path, PngWriter.Write(rgb!, width, height, Provenance(outcome, warnings)));
 
             if (csv is not null)
             {
@@ -1291,10 +1308,16 @@ public static class SurfaceCommand
     /// The range the value is read against, or zero to use the value's own size: labels on one
     /// scale share a resolution, so a rounding residue of -0.0002 V beside a 20 V range reads 0.
     /// </param>
-    /// <returns>Its text, using only characters the stroke font draws.</returns>
+    /// <returns>Its text, using only characters the stroke font draws; empty for a value that is not finite.</returns>
     public static string Format(double value, double span = 0.0)
     {
-        if (value == 0.0 || !double.IsFinite(value))
+        // Not a number is no label at all: "0" beside a NaN would state a value nothing measured.
+        if (!double.IsFinite(value))
+        {
+            return string.Empty;
+        }
+
+        if (value == 0.0)
         {
             return "0";
         }
@@ -1406,7 +1429,8 @@ public static class SurfaceCommand
         PotentialSurface surface,
         double mmPerUnit,
         int meshLines,
-        Func<double, (double R, double G, double B)> ramp)
+        Func<double, (double R, double G, double B)> ramp,
+        out IReadOnlyList<int> drawn)
     {
         var nu = surface.Across.Count;
         var nv = surface.Deep.Count;
@@ -1453,7 +1477,11 @@ public static class SurfaceCommand
             colors!.AddRange([r * 0.8, g * 0.8, b * 0.8]);
         }
 
-        foreach (var j in MeshIndices(nv, strideV))
+        var rows = MeshIndices(nv, strideV);
+        var columns = MeshIndices(nu, strideU);
+        drawn = [columns.Count, rows.Count];
+
+        foreach (var j in rows)
         {
             for (var i = 0; i + 1 < nu; i++)
             {
@@ -1463,7 +1491,7 @@ public static class SurfaceCommand
             Flush();
         }
 
-        foreach (var i in MeshIndices(nu, strideU))
+        foreach (var i in columns)
         {
             for (var j = 0; j + 1 < nv; j++)
             {
@@ -1595,6 +1623,11 @@ public static class SurfaceCommand
 
         void Tick(double value, bool force)
         {
+            if (!double.IsFinite(value))
+            {
+                return;
+            }
+
             var (px, py) = Pixel(bar.X, value * mmPerUnit, bar.Z);
 
             if (!force && placed.Any(p => Math.Abs(p - py) < 1.5 * textHeight))

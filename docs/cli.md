@@ -885,6 +885,12 @@ and `--at-us` is refused below zero and where the drive's phase cannot be placed
 --at-us`, `--width-mm` and `--equipotentials` are read without `Parse`, so a typo is exit 1 rather
 than exit 6, and a negative instant is refused at `/render/at-us`.
 
+**Every verb refuses a malformed command line, before it does anything** (`Program.Malformed`): a
+flag that is not a switch and was given no value, and more positional arguments than the verb takes
+(one table, `Program.MaximumPositionals`; `render`, `ext` and `agents` count their sub-verb). Both
+used to be per-verb, so `render section m.json --out --json` or `--no-trajectory out.svg` still
+dropped the flag or the file at exit 0.
+
 **A flag that takes a value and is given none is a validation failure naming the flag** - `--at-us
 --cycle-mean`, `--csv --json`. This is in the shared flag readers, so it also holds for `render
 still` (`--width-px`, `--height-px`, `--view`, `--out`), `probe` (`--at-us`, `--samples`, `--csv`)

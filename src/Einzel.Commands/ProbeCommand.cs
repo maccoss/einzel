@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
@@ -219,37 +220,6 @@ public sealed class FieldProbe
         ];
 
         _allBounded = Elements.Count > 0 && Elements.All(e => e.HasDomain);
-    }
-
-    /// <summary>
-    /// Which field element holds the conductor a point is in, by its index in the model: a
-    /// conductor's name is unique only within one solve, so two elements may each have a
-    /// "plate" and the name alone does not say which this is.
-    /// </summary>
-    /// <param name="positionMm">Where, in millimetres.</param>
-    /// <returns>The element's index, or null where the field knows no conductor there.</returns>
-    public int? ConductorElementAt(Vec3 positionMm)
-    {
-        var point = MillimetresToMetres(positionMm);
-        var count = Elements.Count;
-        bool[]? rented = count > StackElements ? System.Buffers.ArrayPool<bool>.Shared.Rent(count) : null;
-
-        try
-        {
-            Span<bool> inside = rented is null ? stackalloc bool[StackElements] : rented;
-            Solved(in point, inside[..count]);
-            Locate(in point, inside[..count], out _, out _, out var held, out var depth);
-
-            // In metal only: near a conductor is not in one.
-            return held >= 0 && depth < 0.0 ? _leafElements[held] : null;
-        }
-        finally
-        {
-            if (rented is not null)
-            {
-                System.Buffers.ArrayPool<bool>.Shared.Return(rented);
-            }
-        }
     }
 
     // How many elements' domain flags live on the stack; a model with more borrows a buffer, so
@@ -764,19 +734,21 @@ public sealed class FieldProbe
         // conductor of that element, whatever the shape says. Locate has already left those out.
         var inMetal = depth < 0.0 && member >= 0;
 
-        // What the row says about conductors agrees with its status. Where any element was
-        // solved at the point, the distance and the name are of the nearest conductor among
-        // those elements' - so a point inside a shape that runs past its solve does not read
-        // "ok" beside a negative distance to a conductor it is "in". Outside every domain there
-        // is no such conductor, and the row reports the nearest declared one, as it always has.
-        var (reported, reportedDistance) = allOutside ? (nearest, d) : (member, depth);
+        // What the row says about conductors agrees with its status. Where an element that has
+        // conductors was solved at the point, the distance and the name are of the nearest
+        // conductor among those elements' - so a point inside a shape that runs past its solve
+        // does not read "ok" beside a negative distance to a conductor it is "in". Where none
+        // was - outside every solve, whether or not an unbounded analytic element (which has no
+        // conductors) fills all space - the row reports the nearest declared conductor, as it
+        // always has.
+        var (reported, reportedDistance) = member >= 0 ? (member, depth) : (nearest, d);
 
         if (double.IsFinite(reportedDistance))
         {
             distance = reportedDistance;
         }
 
-        if (inMetal)
+        if (inMetal && resolve != Resolve.None)
         {
             conductor = (_members[member] as IConductorBounded)?.ConductorAt(in point);
         }
@@ -846,7 +818,17 @@ public sealed class FieldProbe
                 ? null
                 : double.IsFinite(shortest) ? shortest : null;
 
-        var state = new HeldState(atSeconds, held, window, Leaves(held, _memberElements).Leaves);
+        // The pieces held one by one from the pieces as built, so piece k of the held field is
+        // piece k held - by construction, not by trusting the composite's own operating point
+        // to keep its members in order.
+        var pieces = new IElectrostaticField[_members.Count];
+
+        for (var k = 0; k < pieces.Length; k++)
+        {
+            pieces[k] = _members[k] is ITimeVaryingField timed ? timed.AtOperatingPoint(atSeconds) : _members[k];
+        }
+
+        var state = new HeldState(atSeconds, held, window, pieces);
         Volatile.Write(ref _held, state);
 
         return state;
@@ -924,7 +906,9 @@ public sealed class FieldProbe
         var state = HeldAt(atSeconds);
         var members = state.Leaves;
 
-        return member < members.Count && members[member] is IHeldConductors at && state.Window is { } window
+        Debug.Assert(members.Count == _members.Count, "the held pieces are the built pieces, held");
+
+        return members[member] is IHeldConductors at && state.Window is { } window
             ? at.HeldCycleMeanOf(conductor, atSeconds, window, CycleMeanSamples)
             : null;
     }

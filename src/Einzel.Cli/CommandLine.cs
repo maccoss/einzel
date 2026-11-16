@@ -48,6 +48,18 @@ public sealed class CommandLine
     /// <summary>Positional arguments, excluding the verb.</summary>
     public IReadOnlyList<string> Positional => _positional;
 
+    /// <summary>
+    /// The flags given with no value that are not switches, in the order given: each one takes a
+    /// value and was not handed one - followed by another flag, or by nothing.
+    /// </summary>
+    /// <remarks>
+    /// Read as "absent", such a flag was dropped without a word: <c>--at-us --cycle-mean</c>,
+    /// <c>--out --json</c>. Every verb refuses them, before it does anything (see
+    /// <c>Program.Malformed</c>).
+    /// </remarks>
+    public IReadOnlyList<string> MissingValues =>
+        [.. _all.Where(o => o.Value is null && !Switches.Contains(o.Name)).Select(o => o.Name).Distinct()];
+
     /// <summary>Whether a flag was supplied.</summary>
     /// <param name="name">The flag name, without dashes.</param>
     /// <returns><see langword="true"/> when present.</returns>
@@ -111,6 +123,7 @@ public sealed class CommandLine
             else
             {
                 parsed._options[name] = null;
+                parsed._all.Add((name, null));
             }
         }
 

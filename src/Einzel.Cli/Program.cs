@@ -109,6 +109,11 @@ public static class Program
 
         var options = CommandLine.Parse(args);
 
+        if (Malformed(args[0], options))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         return args[0] switch
         {
             "init" => Init(options),
@@ -140,6 +145,53 @@ public static class Program
             "doctor" => Doctor(options),
             _ => Unknown(args[0]),
         };
+    }
+
+    /// <summary>
+    /// How many positional arguments each verb takes at most, its sub-verb included: a verb
+    /// that is not listed is not checked.
+    /// </summary>
+    /// <remarks>
+    /// One table, so every verb refuses a stray argument the same way. A word after a switch -
+    /// <c>--no-scale out.png</c>, <c>--no-trajectory out.svg</c> - is not the switch's value,
+    /// and a verb that read only its first positional dropped it silently and wrote somewhere
+    /// other than the file named.
+    /// </remarks>
+    private static readonly Dictionary<string, int> MaximumPositionals = new(StringComparer.Ordinal)
+    {
+        ["init"] = 1, ["new"] = 1, ["validate"] = 1, ["outline"] = 1, ["project"] = 1, ["estimate"] = 1,
+        ["solve"] = 1, ["probe"] = 1, ["run"] = 1, ["sweep"] = 1, ["optimise"] = 1, ["optimize"] = 1,
+        ["scan"] = 1, ["boundary"] = 1, ["preview"] = 1, ["test"] = 1, ["verify"] = 1, ["report"] = 1,
+        ["export"] = 1, ["compare"] = 1, ["schema"] = 0, ["templates"] = 1, ["examples"] = 1,
+        ["agents-md"] = 1, ["doctor"] = 1,
+        ["render"] = 2, ["ext"] = 2, ["agents"] = 3,
+    };
+
+    /// <summary>
+    /// Refuses, for every verb and before it does anything, a flag that takes a value and was
+    /// given none, and more positional arguments than the verb takes - naming each.
+    /// </summary>
+    /// <param name="verb">The verb.</param>
+    /// <param name="options">The parsed command line.</param>
+    /// <returns>True when the command line was refused; the reason is on stderr.</returns>
+    private static bool Malformed(string verb, CommandLine options)
+    {
+        foreach (var flag in options.MissingValues)
+        {
+            Console.Error.WriteLine(
+                $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none).");
+            return true;
+        }
+
+        if (MaximumPositionals.TryGetValue(verb, out var most) && options.Positional.Count > most)
+        {
+            Console.Error.WriteLine(
+                $"{verb} was given {string.Join(", ", options.Positional.Skip(most).Select(p => $"'{p}'"))}, which it does not take; "
+                + "a file to write is --out <file>, and a switch such as --json or --no-scale takes no value.");
+            return true;
+        }
+
+        return false;
     }
 
     private static int Unknown(string verb)
@@ -1099,33 +1151,6 @@ public static class Program
     }
 
     /// <summary>
-    /// Whether any of these value-taking flags was given with no value, saying which on stderr.
-    /// </summary>
-    /// <param name="options">The command line.</param>
-    /// <param name="what">What the flags take, as the message says it: "a file", "a number".</param>
-    /// <param name="flags">The flags, without their dashes.</param>
-    /// <remarks>
-    /// The command line records a flag followed by another flag, or by nothing, as present with
-    /// no value - which is what <c>--json</c> is. Read with <c>Value</c> alone, a value-taking
-    /// flag in that state is indistinguishable from one never typed, so
-    /// <c>--at-us --cycle-mean</c> or <c>--csv --json</c> dropped the flag and exited 0 having
-    /// done something other than what was asked.
-    /// </remarks>
-    private static bool MissingValue(CommandLine options, string what, params string[] flags)
-    {
-        foreach (var flag in flags)
-        {
-            if (options.Has(flag) && options.Value(flag) is null)
-            {
-                Console.Error.WriteLine($"--{flag} takes {what}, and none was given.");
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
     /// Reads an optional numeric flag. False, with the reason on stderr, when it was given and
     /// is not a number, or given with no value; true with a null value when it was not given.
     /// </summary>
@@ -1136,11 +1161,6 @@ public static class Program
     private static bool TryNumberFlag(CommandLine options, string flag, string what, out double? value)
     {
         value = null;
-
-        if (MissingValue(options, what, flag))
-        {
-            return false;
-        }
 
         if (options.Value(flag) is not { } text)
         {
@@ -1166,11 +1186,6 @@ public static class Program
     {
         value = otherwise;
 
-        if (MissingValue(options, what, flag))
-        {
-            return false;
-        }
-
         if (options.Value(flag) is not { } text)
         {
             return true;
@@ -1186,24 +1201,6 @@ public static class Program
     }
 
     /// <summary>
-    /// Refuses arguments after the one model a verb takes, naming them: a word after a switch
-    /// such as <c>--no-scale out.png</c> is not the switch's value, and dropping it silently
-    /// would draw a picture somewhere other than the file the caller named.
-    /// </summary>
-    private static bool UnexpectedArguments(List<string> positional, string verb)
-    {
-        if (positional.Count <= 1)
-        {
-            return false;
-        }
-
-        Console.Error.WriteLine(
-            $"{verb} takes one model, and was also given {string.Join(", ", positional.Skip(1).Select(p => $"'{p}'"))}; "
-            + "a file to write is --out <file>, and a switch such as --no-scale takes no value.");
-        return true;
-    }
-
-    /// <summary>
     /// <c>--samples N</c> along the longer side, or <c>--samples NxM</c> for the longer side and
     /// then the shorter.
     /// </summary>
@@ -1211,11 +1208,6 @@ public static class Program
     {
         samples = SurfaceCommand.DefaultSamples;
         deep = null;
-
-        if (MissingValue(options, "a whole number, or NxM for the longer side and then the shorter", "samples"))
-        {
-            return false;
-        }
 
         if (options.Value("samples") is not { } text)
         {
@@ -1225,11 +1217,18 @@ public static class Program
         var parts = text.Split('x');
 
         if (parts.Length is 1 or 2
-            && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out samples)
-            && (parts.Length == 1 || int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+            && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out samples))
         {
-            deep = parts.Length == 2 ? int.Parse(parts[1], CultureInfo.InvariantCulture) : null;
-            return true;
+            if (parts.Length == 1)
+            {
+                return true;
+            }
+
+            if (int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var shorter))
+            {
+                deep = shorter;
+                return true;
+            }
         }
 
         Console.Error.WriteLine($"--samples takes a whole number, or NxM for the longer side and then the shorter, and '{text}' is neither.");
@@ -1274,11 +1273,6 @@ public static class Program
                     $"--{bare} has no unit. Say it in the flag's name: --{bare}-mm x,y,z (millimetres).");
                 return (int)ExitCode.ValidationFailure;
             }
-        }
-
-        if (MissingValue(options, "a file", "csv"))
-        {
-            return (int)ExitCode.ValidationFailure;
         }
 
         var invariant = CultureInfo.InvariantCulture;
@@ -1793,13 +1787,6 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        if (MissingValue(options, "six numbers, x0,y0,z0,x1,y1,z1", "box-mm")
-            || MissingValue(options, "a file", "out")
-            || MissingValue(options, "a directory", "project"))
-        {
-            return (int)ExitCode.ValidationFailure;
-        }
-
         var modelPath = Path.GetFullPath(options.Positional[0]);
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
         var layout = new ProjectLayout(root);
@@ -2015,18 +2002,6 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        if (UnexpectedArguments(positional, "render still"))
-        {
-            return (int)ExitCode.ValidationFailure;
-        }
-
-        if (MissingValue(options, "a view's name", "view")
-            || MissingValue(options, "a file", "out")
-            || MissingValue(options, "a directory", "project"))
-        {
-            return (int)ExitCode.ValidationFailure;
-        }
-
         var modelPath = positional[0];
         var view = options.Value("view") ?? "iso";
 
@@ -2125,11 +2100,6 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        if (UnexpectedArguments(positional, "render surface"))
-        {
-            return (int)ExitCode.ValidationFailure;
-        }
-
         foreach (var bare in new[] { "offset", "box", "at", "height-mm" })
         {
             if (options.Has(bare))
@@ -2141,16 +2111,6 @@ public static class Program
         }
 
         var invariant = CultureInfo.InvariantCulture;
-
-        if (MissingValue(options, "a plane, xy, xz or yz", "plane")
-            || MissingValue(options, "four numbers, a0,b0,a1,b1", "box-mm")
-            || MissingValue(options, "potential or energy", "height")
-            || MissingValue(options, "a view's name", "view")
-            || MissingValue(options, "a file", "out", "csv")
-            || MissingValue(options, "a directory", "project"))
-        {
-            return (int)ExitCode.ValidationFailure;
-        }
 
         if (!TryNumberFlag(options, "offset-mm", "a number of millimetres", out var offset)
             || !TryNumberFlag(options, "relief", "a number", out var relief)

@@ -760,9 +760,9 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
             surface.Plateaus.Select(p => p.Conductor));
 
         // The probe's own lookup, at a point inside each slit's upper jaw.
-        Assert.Equal(1, probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(0.5, 5.0, 0.0)));
-        Assert.Equal(2, probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(40.5, 5.0, 0.0)));
-        Assert.Null(FieldProbe.Open(Model("example", "accelerating-gap")).ConductorElementAt(new Einzel.Core.Geometry.Vec3(0, 0, 0)));
+        Assert.Equal(1, ElementAt(probe, new Einzel.Core.Geometry.Vec3(0.5, 5.0, 0.0)));
+        Assert.Equal(2, ElementAt(probe, new Einzel.Core.Geometry.Vec3(40.5, 5.0, 0.0)));
+        Assert.Null(ElementAt(FieldProbe.Open(Model("example", "accelerating-gap")), new Einzel.Core.Geometry.Vec3(0, 0, 0)));
     }
 
     /// <summary>
@@ -1406,7 +1406,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
                 Assert.Equal(ProbeStatus.InsideConductor, row.Status);
                 Assert.Equal(name, row.Conductor);
-                Assert.Equal(0, probe.ConductorElementAt(point));
+                Assert.Equal(0, ElementAt(probe, point));
             }
 
             var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: planeName, BoxMm: box, Samples: 121));
@@ -1431,9 +1431,9 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     {
         var probe = FieldProbe.Open(Model("example", "einzel-lens"));
 
-        Assert.Null(probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(0.0, 0.0, 0.0)));
+        Assert.Null(ElementAt(probe, new Einzel.Core.Geometry.Vec3(0.0, 0.0, 0.0)));
         Assert.Equal(ProbeStatus.Ok, probe.At(0, new Einzel.Core.Geometry.Vec3(0.0, 0.0, 0.0), 0.0).Status);
-        Assert.Equal(0, probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(0.0, 6.5, 0.0)));
+        Assert.Equal(0, ElementAt(probe, new Einzel.Core.Geometry.Vec3(0.0, 6.5, 0.0)));
     }
 
     /// <summary>
@@ -1536,7 +1536,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         output.WriteLine($"past the solve: {past.Status} ({past.Note}); within: {within.Status} {within.Conductor}");
 
         Assert.Equal(ProbeStatus.Ok, past.Status);
-        Assert.Null(probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(25.0, 5.0, 0.0)));
+        Assert.Null(ElementAt(probe, new Einzel.Core.Geometry.Vec3(25.0, 5.0, 0.0)));
         Assert.Equal(ProbeStatus.InsideConductor, within.Status);
     }
 
@@ -1632,7 +1632,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         Assert.Equal(ProbeStatus.InsideConductor, row.Status);
         Assert.Equal("block", row.Conductor);
-        Assert.Equal(1, probe.ConductorElementAt(new Einzel.Core.Geometry.Vec3(35.0, 5.0, 0.0)));
+        Assert.Equal(1, ElementAt(probe, new Einzel.Core.Geometry.Vec3(35.0, 5.0, 0.0)));
 
         var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 60, 10], Samples: 161));
         var plateau = surface.Plateaus.Single(p => p.Name == "block");
@@ -1719,8 +1719,8 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         var a = FieldProbe.Open(still);
         var b = FieldProbe.Open(driven);
 
-        Assert.Equal(1, a.ConductorElementAt(point));
-        Assert.Equal(a.ConductorElementAt(point), b.ConductorElementAt(point));
+        Assert.Equal(1, ElementAt(a, point));
+        Assert.Equal(ElementAt(a, point), ElementAt(b, point));
         Assert.Equal(a.At(0, point, 0.0).Conductor, b.At(0, point, 0.0).Conductor);
         Assert.Equal("block", b.At(0, point, 0.0).Conductor);
 
@@ -1731,6 +1731,14 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         var sum = Assert.IsType<Einzel.Fields.DrivenSuperposedField>(field);
         var metres = FieldProbe.MillimetresToMetres(point);
         Assert.Equal("slitUpper", sum.ConductorAt(in metres));
+
+        // Under a cycle mean the held value comes from the field held at the operating point,
+        // piece by piece, and each piece is still the element it was: the slit's jaws, the block
+        // and the RF quadrupole are three pieces, and a held field whose pieces came out in
+        // another order would ask the RF quadrupole what the block holds.
+        var (mean, _, _) = SurfaceCommand.Sample(driven, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 20, 10], Samples: 81, CycleMean: true));
+        Assert.Equal(25.0, mean.Plateaus.Single(p => p.Name == "block").PotentialV, 12);
+        Assert.Equal(0.0, mean.Plateaus.Single(p => p.Name == "slitLower").PotentialV, 12);
     }
 
     /// <summary>
@@ -1929,6 +1937,81 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         var polylines = Draw([.. mesh.Select(l => new Einzel.Render.RasterLine(l.PointsMm, l.R, l.G, l.B, l.SegmentColors))]);
         Assert.Equal(Draw(segments), polylines);
         Assert.Contains(polylines, b => b < 200);
+    }
+
+    // The element the conductor a point is in belongs to, as the surface asks the probe for it.
+    private static int? ElementAt(FieldProbe probe, Einzel.Core.Geometry.Vec3 positionMm)
+    {
+        var metres = FieldProbe.MillimetresToMetres(positionMm);
+        probe.SamplePotential(in metres, 0.0, cycleMean: false, out _, out _, out _, out var element, out _);
+
+        return element;
+    }
+
+    /// <summary>
+    /// Outside every solve, in a model that also sums an unbounded analytic field, a probe row
+    /// names the nearest declared conductor and its distance, as main does.
+    /// </summary>
+    /// <remarks>
+    /// An analytic element has no conductors, so it does not make a point "inside a domain"
+    /// for the purpose of naming one. The sixth review's rule asked "is the point outside every
+    /// element", which an unbounded analytic element never lets it be, and the row came back
+    /// with no conductor and no distance.
+    /// </remarks>
+    [Fact]
+    public void OutsideTheSolveARowStillNamesTheNearestConductor()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        node["fields"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "uniform", "field": { "value": [100.0, 0, 0], "unit": "V/m" } }"""));
+        var path = Path.Combine(_root, "slit-plus-field.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        using var json = Json("probe", path, "--at-mm", "30,5,0");
+        var row = json.RootElement.GetProperty("samples")[0];
+
+        Assert.Equal("ok", row.GetProperty("status").GetString());
+        Assert.Equal("slitUpper", row.GetProperty("conductor").GetString());
+        Assert.Equal(29.0, row.GetProperty("conductorDistanceMm").GetDouble(), 9);
+    }
+
+    /// <summary>A dry run reports exactly what a real run does, without drawing the picture.</summary>
+    [Fact]
+    public void ADryRunReportsWhatARunDoes()
+    {
+        foreach (var (name, request) in new[] { ("quadrupole", new SurfaceRequest(Samples: 81)), ("quadrupole-rf", new SurfaceRequest(Samples: 81, CycleMean: true)) })
+        {
+            var model = Model("template", name);
+            var png = Path.Combine(_root, name + "-dry.png");
+            var dry = SurfaceCommand.Execute(model, new Einzel.Project.ProjectLayout(_root), request, width: 300, height: 200, outputPath: png, dryRun: true);
+            var wet = SurfaceCommand.Execute(model, new Einzel.Project.ProjectLayout(_root), request, width: 300, height: 200, outputPath: png);
+
+            Assert.False(dry.Written);
+            Assert.Equal(CommandJson.Write(wet with { Written = false }), CommandJson.Write(dry));
+        }
+    }
+
+    /// <summary>A value that is not a number has no label, rather than the label 0.</summary>
+    [Fact]
+    public void ANonFiniteValueHasNoLabel()
+    {
+        Assert.Equal(string.Empty, SurfaceCommand.Format(double.NaN));
+        Assert.Equal(string.Empty, SurfaceCommand.Format(double.PositiveInfinity, 20.0));
+        Assert.Equal("0", SurfaceCommand.Format(0.0));
+        Assert.Equal("2.5", SurfaceCommand.Format(2.5));
+    }
+
+    /// <summary>The mesh-line counts reported are those of the mesh drawn.</summary>
+    [Fact]
+    public void TheReportedMeshLinesAreTheOnesDrawn()
+    {
+        var model = Model("template", "planar-mirror-pair");
+        var request = new SurfaceRequest(Samples: 121, MeshLines: 30);
+        var outcome = SurfaceCommand.Execute(model, new Einzel.Project.ProjectLayout(_root), request, width: 300, height: 200, dryRun: true);
+        var (surface, _, _) = SurfaceCommand.Sample(model, request);
+        SurfaceCommand.Compose(surface, outcome.HeightMmPerUnit, request.MeshLines, out var drawn);
+
+        Assert.Equal(drawn, outcome.MeshLines);
+        Assert.True(drawn[1] > 1, "the shorter side has mesh lines of its own");
     }
 
     private static IEnumerable<(double X, double Y, double Z)> Triples(IReadOnlyList<double> flat)
