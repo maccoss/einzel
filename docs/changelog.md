@@ -3346,3 +3346,59 @@ Two findings from Stage 1 that bear on the spec:
   141.34 and 69.30 kHz. Not built: the resonance-ejection scan through the exit hole. Not
   sourced: the hole size and the stretch, so nothing here predicts a named instrument. Details
   in `docs/device-templates.md`, `docs/literature-targets.md` section 9, `docs/lessons.md`.
+
+- **`einzel render surface`: the potential drawn as height, and a gallery page that found a
+  defect by drawing it.** SIMION's potential-energy view: one coordinate plane through the model,
+  the potential on it as a wire mesh over a shaded surface, each conductor the plane cuts a flat
+  plateau at its own potential, written as a PNG with the scale on the picture (SPEC.md R4, RND-4).
+  **Every height is `FieldProbe.At`**, so the surface is the composite field a run flies through
+  and the assembly's warnings come with it; points the field refuses are holes counted by
+  `probe.refused`. Composed in `SurfaceCommand` in the command layer and rasterized by
+  `Einzel.Render`, the split `render still` makes; the rasterizer gained a color per vertex and a
+  per-layer depth bias, both general, and the stroke font the letters the scale needs.
+
+  **A height with no scale is a shape**, so the scale is stated three ways: `heightMmPerUnit`,
+  `unitsPerMm`, `lowest` and `highest` in `--json`, a text chunk in the PNG, and a labelled bar on
+  the picture. Earth is drawn at the plane itself. `--height energy` draws q·phi for the model's
+  ion in electronvolts; `--csv` writes the sampled grid with the conductor named on each row.
+
+  **`--cycle-mean` draws the part of a driven field that does not oscillate**, taken in closed
+  form where the field is linear in its channel weights (`ITimeVaryingField.CycleMeanPotentialAt`,
+  which the diffusive pseudopotential already used). On `linear-ion-trap-3d` that is the picture
+  an instant cannot give - the RF is 257 V and the axial DC three - and the well reads off the
+  data at about **3.85 V deep** at the end sections' middles where the end rods hold 3 V, because
+  the 20 V end lenses reach in through their apertures. `render.cycle-mean` says what was
+  averaged on every such picture: a rectangular wave's mean is not zero and is included, and with
+  two frequencies the window is the faster one's period.
+
+  **Three things drawing it found.** The plateau was first drawn at the single deepest sample
+  inside a conductor, which put an end rod written as two halves at 2.89 V; it is the median of
+  the deeper half of the samples now. A plane lying exactly on the seam of such a rod shows
+  stripes, not plateaus, so where the plane goes is a modelling decision (`docs/rendering.md`).
+  And the shared `Framing` with a positive elevation looks from *below* the plane, invisible for
+  closed conductors and fatal for a height field; the surface has its own views, and whether the
+  viewport's iso is meant to look from below is not settled.
+
+  Tests are closed forms the surface has no part in (`PotentialSurfaceTests`, nine): a uniform
+  field is a plane of the right tilt, an ideal quadrupole a saddle with its symmetries, a
+  conductor a plateau at its declared volts, a negative ion's energy surface the mirror image,
+  the cycle mean of a driven geometry its DC, and pixels read out of the file where the test
+  projects them for itself. **The tests were first written over `RenderSurfaceTests.cs`, which
+  already held seven tests of `render section`** - "surface" there meaning the CLI's surface -
+  and replaced them; they are in their own file here and the seven are kept.
+
+  **The gallery** (`docs/gallery-einzel-lens.md`) reproduces the behaviour of a public teaching
+  page's einzel lens: a center-voltage series at 0 to +42 V on a 50 eV beam with a 20 degree
+  cone, and the +42 V case in nitrogen at 5e-4 to 2e-3 Torr. Qualitative: the source gives no
+  dimensions, mass or gas, every one is a stated choice, and none of its images is used. The
+  voltage series reproduces the published sequence (diverging, collimated near +30 V, a crossing
+  that moves in from 14.1 to 7.0 mm). **The pressure figures show vacuum rays**: the viewport and
+  `render still` hand the integrator no collision sampler, so a model in gas is drawn in vacuum
+  while `einzel run` collides - the figure-of-merit path's old defect in a third consumer. Not
+  fixed here; the page says so beside the figures and its tables are from `einzel run`. The same
+  page found that the detector plane has no aperture (ions scattered out through a gap count as
+  arrived at tens of millimeters) and reproduced `ENERGY_DRIFT_EXCEEDS_BUDGET` firing in gas. All
+  three are in SPEC.md's review list, and the gas statistics carry the correlated-streams caveat
+  already recorded there.
+
+  Not built: the surface in the interactive window, arbitrary planes, free camera angles.

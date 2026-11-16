@@ -119,6 +119,10 @@ Reading it against the source:
 
 ![Pressure series, hard-sphere collisions](figures/gallery-einzel-lens-pressure.png)
 
+**Read the tables, not the rays, in this section.** The rays in both pressure figures are drawn
+without collisions (see "The pressure pictures do not show the scattering" below); only the
+numbers are for the beam in gas.
+
 What the engine reports for each pressure (`einzel run --json`, the `regime` block and the
 ensemble). "Collisions per flight" is the engine's figure for the nominal on-axis ion; the
 ensemble totals are over all 100 rays. Hard-sphere series, 80 square angstroms:
@@ -164,10 +168,13 @@ Reading it against the source:
 - **A lighter gas.** One run with helium (Langevin, polarizability 0.205 cubic angstroms, mass 4)
   at 1e-3 Torr, 60 rays: 4 collisions in total and 32 of 60 reach the exit plane against 33 of 60
   in vacuum, so helium shows no visible degradation here. Not tabulated further.
-- **Scattering shows less in the pictures than in the numbers.** An m/z 100 ion hitting a 28 Da
-  molecule is deflected by at most about 16 degrees, usually much less; most of the damage is rays
-  pushed into a tube wall (the loss columns), not a smeared focus. The pictures show thinner
-  bundles and a ragged crossing, less dramatic than a lighter ion or a heavier gas would give.
+- **The pressure pictures do not show the scattering; the tables do.** In this build `render
+  still` and the viewport fly every ray in vacuum, whatever gas the model declares: they hand the
+  integrator no collision sampler, while `einzel run` on the same model collides. So the rays
+  drawn in the two pressure figures are the vacuum rays of the +42 V panel, and the panels look
+  almost alike. Every number in the pressure tables is from `einzel run` and is for the scattered
+  beam. This is a defect in the drawing path, recorded in SPEC.md's 2026-11-14 review, and not a
+  statement that scattering is hard to see.
 
 ## Warnings the engine printed, verbatim codes
 
@@ -203,6 +210,9 @@ noise on these runs.
 - **Ions "still in flight at the time limit".** 10 to 12 of 100 rays at 1e-3 and 2e-3 Torr (hard
   spheres) are neither lost nor arrived after 1 ms. Not investigated; the cause is not
   established.
+- **`render still` and the viewport draw a model in gas as though it were in vacuum.** Found by
+  this page: the pressure panels came out nearly identical to the vacuum panel. Not fixed in this
+  build.
 - **`render section` draws one ion.** Use `render still` for a bundle.
 - **The regime numbers (mean free path, Knudsen, collisions per flight) are in `--json` only**,
   not in the terminal summary of `einzel run`.

@@ -1444,7 +1444,7 @@ Some probed points lie inside a conductor.
 Some probed points lie outside every element's domain.
 
 - **Severity:** Qualified
-- **Raised by:** `probe`, `export --composite`
+- **Raised by:** `probe`, `export --composite`, `render surface`
 - **When:** At least one sample has status `outside-domain`: outside every solve (a reflected solve's mirror image and a tilted cross-section's rotated extent included) and every bounded analytic element's region. The value reported there is what the field returns outside what was solved or declared - not a solved value, not a measurement of vacuum, and not necessarily zero. It wins over `inside-conductor`, since a declared electrode can run on past its solve.
 - **What to do:** Probe inside a solve domain or an analytic element's region, or enlarge the domain.
 - **Source:** `Einzel.Commands/ProbeCommand.cs:714`
@@ -1454,7 +1454,7 @@ Some probed points lie outside every element's domain.
 The field refused some probed points.
 
 - **Severity:** Qualified
-- **Raised by:** `probe`
+- **Raised by:** `probe`, `render surface`
 - **When:** At least one sample has status `refused` (the field declined to answer, for example on a singular axis); the row's note says why.
 - **What to do:** Read the row's note; move the point off the singular place.
 - **Source:** `Einzel.Commands/ProbeCommand.cs:724`

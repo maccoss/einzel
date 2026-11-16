@@ -495,8 +495,9 @@ public static class SurfaceCommand
         {
             warnings.Add(new ValidityWarning(
                 "probe.outside-domain",
-                $"{outside} of {raw.Length} surface point(s) lie outside every element's declared "
-                + "domain: zero there is the model's answer, not a measurement of vacuum",
+                $"{outside} of {raw.Length} surface point(s) lie outside every element's domain: "
+                + "the height there is what the field returns outside what was solved or declared "
+                + "(not necessarily zero), not a solved value and not a measurement of vacuum",
                 WarningSeverity.Qualified));
         }
 

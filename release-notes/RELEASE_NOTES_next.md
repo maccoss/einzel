@@ -127,6 +127,14 @@ become a feature release without being renamed twice.
   and there is no periodic re-check, so an agent running `einzel` sees one version throughout. The
   command line, the MCP server, the portable archives and a source build never check. See
   `docs/install.md`.
+- **`einzel render surface`** draws the potential over a plane as a height - SIMION's
+  potential-energy view - to a PNG with its color scale on the picture: conductors are flat
+  plateaus at their potential, a trap's well is a valley. `--cycle-mean` shows a driven field's
+  cycle average rather than one instant, `--height energy` the potential energy of the model's
+  ion, and `--csv` writes the numbers. Coordinate planes at an offset only, and not yet a view in
+  the window. See `docs/rendering.md`.
+- **A gallery page** reproducing an einzel lens's published voltage and pressure series
+  (`docs/gallery-einzel-lens.md`), with every choice the source leaves open listed.
 - **The `paul-trap` template has endcap holes and a stretch.** Three new parameters, all zero by
   default, and at zero the template solves to the field it always had, to the bit:
   `endcapEntranceHoleFraction` and `endcapExitHoleFraction` cut a bore on the axis of each endcap,
@@ -292,6 +300,9 @@ Carried forward from v26.1.0 until they change:
 - **The shell is partial**: nine of the eleven views in the specification exist. The
   figure composer and scrubbing on the animation timeline are not built. There is one
   shell now - the Windows-only one has been removed - and it runs where the engine runs.
+- **A still or the viewport of a model in gas shows vacuum rays.** `render still` and the window
+  fly the drawn bundle with no collisions, whatever gas the model declares; `einzel run` on the
+  same model collides. The numbers are right and the picture is not.
 - **A still cannot check the window's own GPU path**, and it does not draw the name of a
   validity violation as text: the codes are in the file's text chunks and on stderr.
 - **No installer and no updater.** The assets are portable: unpack and run.
