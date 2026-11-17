@@ -710,6 +710,12 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
     [InlineData("ext register made --project {root} --kind analysis --dry-run")]
     [InlineData("agents tasks")]
     [InlineData("agents")]
+    [InlineData("ext --json list --project {root}")]
+    [InlineData("ext --project {root} list")]
+    [InlineData("ext --project {root} --json list")]
+    [InlineData("agents --json tasks")]
+    [InlineData("render --dry-run section {model}")]
+    [InlineData("render --dry-run --width-px 64 --height-px 64 still {model}")]
     public void EachSubVerbTakesItsOwnFlags(string line)
     {
         Project();
@@ -739,6 +745,13 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
     [InlineData("render surface {model} --box-mm 0,0,10,10 --samples 21 --out {root}", "/args/--out")]
     [InlineData("render surface {model} --box-mm 0,0,10,10 --samples 21 --out {model}", "/args/--out")]
     [InlineData("render still {model} --width-px 32 --height-px 32 --out {root}", "/args/--out")]
+    [InlineData("render still {model} --dry-run --out {root}", "/args/--out")]
+    [InlineData("render section {model} --dry-run --out {root}", "/args/--out")]
+    [InlineData("render section {film} --dry-run --out {film}", "/args/--out")]
+    [InlineData("render animation {film} --dry-run --out {model}", "/args/--out")]
+    [InlineData("render animation {film} --dry-run --out {film}", "/args/--out")]
+    [InlineData("probe {model} --at-mm 0,0,0 --dry-run --csv {model}", "/args/--csv")]
+    [InlineData("probe {model} --at-mm 0,0,0 --dry-run --csv {root}", "/args/--csv")]
     [InlineData("render section {model} --at-us -1 --dry-run", "/render/at-us")]
     [InlineData("probe {model} --at-mm 0,0,0 --at-us -1", "/probe/at-us")]
     [InlineData("new {root}/models/made.json --from-example no-such-example", null)]
@@ -767,6 +780,49 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
         // And without --json, stdout is left alone, as it was.
         Assert.Equal(string.Empty, Run(Words(line)).Stdout);
+    }
+
+    /// <summary>
+    /// No figure is written over a file the command reads - the render spec it was handed as well
+    /// as the model - and a frame folder holding the spec under the manifest's name is refused
+    /// before a frame is drawn.
+    /// </summary>
+    /// <remarks>
+    /// The guard covered only the model, so <c>render section fig.json --out fig.json</c> drew the
+    /// figure and wrote it over the spec that described it; and an animation's folder was checked
+    /// against nothing, so a spec called <c>frames.json</c> beside the frames was replaced by the
+    /// manifest.
+    /// </remarks>
+    [Fact]
+    public void NoFigureIsWrittenOverTheSpecItWasDrawnFrom()
+    {
+        Project();
+
+        var film = Path.Combine(_root, "figures", "film.json");
+        var before = File.ReadAllText(film);
+
+        var (code, _, stderr) = Run(Words("render section {film} --out {film}"));
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+        Assert.Contains(" at /args/--out:", stderr, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllText(film));
+
+        // A spec named as the manifest is named, in the folder the frames go to.
+        var frames = Path.Combine(_root, "figures", "frames.json");
+        File.Copy(film, frames);
+
+        var (filmCode, _, filmError) = Run(Words("render animation {root}/figures/frames.json --out {root}/figures"));
+        output.WriteLine(filmError);
+
+        Assert.Equal(1, filmCode);
+        Assert.Contains(" at /args/--out:", filmError, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllText(frames));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, "figures"), "frame-*"));
+
+        // The control: the same spec, frames into a folder of their own.
+        Assert.Equal(0, Run(Words("render animation {root}/figures/frames.json --out {root}/films")).ExitCode);
+        Assert.Equal(before, File.ReadAllText(frames));
     }
 
     /// <summary>

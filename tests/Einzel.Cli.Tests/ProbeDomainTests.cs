@@ -67,11 +67,16 @@ public sealed class ProbeDomainTests : IDisposable
     /// the declared face. A 100 V plate inside makes the field at every face non-zero; a 50 V plate
     /// runs out through the top face, past the domain.
     /// </summary>
-    private string FaceModel(string name = "faces", double tiltHalfTurns = 0.0)
+    private string FaceModel(string name = "faces", double tiltHalfTurns = 0.0, bool everywhere = false)
     {
         Directory.CreateDirectory(_root);
         var path = Path.Combine(_root, $"{name}.json");
         var tilt = tiltHalfTurns != 0.0 ? $"\"tiltHalfTurns\": {Q(tiltHalfTurns, "1")}," : string.Empty;
+
+        // A field-free element that fills all space, so no point is outside every element.
+        var free = everywhere
+            ? ", { \"type\": \"uniform\", \"field\": { \"value\": [0, 0, 0], \"unit\": \"V/m\" } }"
+            : string.Empty;
 
         File.WriteAllText(path, $$"""
         {
@@ -108,7 +113,7 @@ public sealed class ProbeDomainTests : IDisposable
                   }
                 ]
               }
-            }
+            }{{free}}
           ],
           "detector": {
             "planePoint": { "value": [0.2, 0, 0], "unit": "mm" },
@@ -359,6 +364,43 @@ public sealed class ProbeDomainTests : IDisposable
             .Single(w => w.GetProperty("code").GetString() == "probe.outside-domain")
             .GetProperty("message").GetString()!;
         Assert.Contains("not necessarily zero", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A point in a conductor's declared shape past the edge of its solve is outside the domain
+    /// even where another element fills all space - never ok - and says which shape it is in,
+    /// through the probe, a surface and the composite export alike.
+    /// </summary>
+    /// <remarks>
+    /// The post runs out through the solve's grounded top face. With an unbounded element beside
+    /// the solve, no point is outside every element, so the rule that a conductor counts only
+    /// where its solve holds it made the point inside the post's declared shape plain "ok", with
+    /// the note only on a probe row: a surface or the export counted metal as free space.
+    /// </remarks>
+    [Fact]
+    public void ADeclaredConductorPastItsSolveIsOutsideTheDomainWhateverElseCoversIt()
+    {
+        var model = FaceModel("past", everywhere: true);
+
+        using var document = Probe(model, "--at-mm", "-1.5,11,0");
+        var row = Row(document);
+
+        Assert.Equal("outside-domain", row.GetProperty("status").GetString());
+        Assert.Contains("runs past the edge of its solve", row.GetProperty("note").GetString(), StringComparison.Ordinal);
+
+        // Free space beside it, in the same unbounded element and past the same face, is ok.
+        using var beside = Probe(model, "--at-mm", "-6,11,0");
+        Assert.Equal("ok", Row(beside).GetProperty("status").GetString());
+
+        // A surface's path, which asks for no name.
+        var probe = FieldProbe.Open(model);
+        var point = FieldProbe.MillimetresToMetres(new Vec3(-1.5, 11.0, 0.0));
+        Assert.Equal(ProbeStatus.OutsideDomain, probe.SamplePotential(in point, 0.0, false, out _, out _, out _, out _, out _));
+        Assert.Equal(ProbeStatus.OutsideDomain, probe.Sample(in point, 0.0, out _, out _));
+
+        // The export over a box reaching past the face counts those nodes as outside.
+        var vti = Export(model, "--box-mm", "-3,8,0,0,12,0", "--step-mm", "0.5");
+        Assert.Contains("probe.outside-domain", vti, StringComparison.Ordinal);
     }
 
     [Fact]

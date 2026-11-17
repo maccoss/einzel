@@ -825,9 +825,15 @@ tilts and the axisymmetric mapping are all honoured and the assembly's warnings 
   `probe.outside-domain`, `probe.refused`). **A conductor counts only where its own element was
   solved**: where any element was solved at the point, `conductor` and `conductorDistanceMm` describe
   the nearest conductor among those elements', so a negative distance always comes with
-  `inside-conductor`; a point inside a declared shape that runs past its own solve, in another
-  element's domain, is `ok` with a `note` saying whose shape it is in. Outside every domain the row
-  names the nearest declared conductor, as before.
+  `inside-conductor`. **A point inside a declared shape that runs past its own solve is
+  `outside-domain`**, with a `note` saying whose shape it is in, even where another element's
+  domain covers it: what the solves hold there is not that metal, and it is never `ok`. (A shape
+  declared past a mirror plane, in its own element's image half, is that solve's vacuum and stays
+  `ok`.) That is a
+  change of status for such points (they were `ok` beside a covering element, and `inside-conductor`
+  before conductors were tied to their solves), and it reaches every caller of the probe:
+  `export --composite` counts them under `probe.outside-domain`, and `render surface` draws no
+  plateau there. Outside every domain the row names the nearest declared conductor, as before.
 - **A point on a domain face is in the domain.** A face node holds a solved value, so the declared faces
   are inside, and the solved fields agree: a grid's last node is `min + (max - min)` in floating point and
   can land an ulp short of the declared face, so a grid built over a box counts as reaching the declared
@@ -858,6 +864,9 @@ states the scale - `heightMmPerUnit`, `unitsPerMm`, `lowest`, `highest` - which 
 text and on the picture as a labelled bar. `--cycle-mean` draws the part of a driven field that does
 not oscillate (exactly the DC for a sinusoid; `render.cycle-mean` says what was averaged); with no
 instant and no cycle mean, a driven field is drawn at t = 0 and `render.field-at-instant` says so.
+Under `--cycle-mean`, `--at-us` picks only the operating point (which phase of a sequence, how far
+along a ramp): no instant of the drive is drawn, so an instant too late to place in the cycle is not
+refused there, and the mean's window opens at zero where it cannot be opened at the instant itself.
 **A field with no drive has no cycle to average**, so `--cycle-mean` on a static model, or on a
 sequence whose states are all static, is refused at `/surface/cycle-mean` (exit 1) rather than
 drawn as an instant under the mean's name; `--at-us` on a static model is drawn, with
@@ -932,12 +941,26 @@ said "see 'einzel schema --units'" for as long as it has existed and nothing rea
 now lists the unit registry. **A file a command is told to write is written whole or not at
 all**, and one that cannot be written is refused at its flag, exit 1 (`ArtifactFiles`, used by
 `render surface`, `render still`, `render section`, `render animation`, `probe --csv`, `report
---out` and `export`).
+--out` and `export`). A file the user named no flag for - a default figure, the report page with
+no `--out`, an export in the project's `.einzel/` folder - is refused at `/` with the file in the
+message, not at a flag that did not name it. **Each file is replaced in one rename**, so a
+process killed mid-write leaves the old file or the new one, never neither; a destination that is
+a symbolic link is written through to the file it names, and a read-only one is refused. Several
+files are put in place one after another with the replaced ones kept as backups until the last is
+in, and put back if one fails; a kill between the first rename and the last is the one window
+left, and then each replaced file is beside its destination under a `.bak` name. **Every
+destination is checked before the work**: a directory, a folder that is a file, or one of the
+files the command reads - the model, and the render spec when one was given - is refused before
+anything is solved, with or without `--dry-run`. An animation's folder is checked for the spec or
+the model under a name a frame or `frames.json` would take.
 
 **Under `--json` every refusal is JSON on stdout**, `{"ran": false, "errors": [...]}`, whichever
 layer raised it: the command line's own, and one thrown from a command (a relief of zero, a box
 written backwards, a destination that cannot be written). A verb that has already written its own
-answer is left with that one document. **A sub-verb's flags are its own**: `ext list`, `ext test`
+answer is left with that one document. **A sub-verb is the first word that is not a flag or a
+flag's value**, wherever the flags stand: `einzel ext --json list`, `einzel ext --project p list` and
+`einzel agents --json tasks` are `ext list` and `agents tasks`, as they were before the registry.
+**A sub-verb's flags are its own**: `ext list`, `ext test`
 and `ext register`, and `agents tasks`, `agents setup` and `agents score`, are keyed separately
 in the registry as `render`'s kinds are, so `ext list --kind y` is an unknown flag and not a flag
 nothing read. **No destination may be a file the command reads, or another destination**:

@@ -134,6 +134,15 @@ public static class StillCommand
         }
 
         var absolute = Path.GetFullPath(modelPath);
+        var path = outputPath is { } named
+            ? Path.GetFullPath(named)
+            : Path.Combine(project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".still.png");
+        var outFlag = outputPath is null ? null : "out";
+
+        // Before the model is drawn: a destination that is a directory, or the model itself, is
+        // known without rasterizing anything.
+        ArtifactFiles.CheckAll([(outFlag, path)], absolute);
+
         var hash = ContentHash.OfText(File.ReadAllText(absolute));
 
         var outcome = ViewportCommand.Execute(absolute);
@@ -170,13 +179,9 @@ public static class StillCommand
             Rasterizer.Hatch(rgb, width, height);
         }
 
-        var path = outputPath is { } named
-            ? Path.GetFullPath(named)
-            : Path.Combine(project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".still.png");
-
         if (!dryRun)
         {
-            ArtifactFiles.Write("out", path, PngWriter.Write(rgb, width, height, Provenance(
+            ArtifactFiles.Write(outFlag, path, PngWriter.Write(rgb, width, height, Provenance(
                 absolute, hash, view, angles, width, height, seeThrough, outcome, ruler)), absolute);
         }
 

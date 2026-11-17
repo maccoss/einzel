@@ -3652,5 +3652,26 @@ Two findings from Stage 1 that bear on the spec:
   sample; the surface's limits were stated in the CLI and again in `SurfaceCommand.Check`, with
   different paths - `Check` owns them and the CLI maps `/surface/x` to `/args/--x`.
 
+  **A thirteenth review found the twelfth's mirror fix judged on the wrong coordinate.** It gave
+  the image nothing where `x == planeX`, on the argument that a point one rounding off the plane
+  has its image outside the declared half. One ulp below a power-of-two plane, `2p - x` is half an
+  ulp above it and rounds back onto it, so both halves answered and the sum doubled there - 9 of 24
+  ulp-neighbour cases at planes of 0.125, 0.25 and 0.5 m, every one with the declared half below, and
+  six nodes of the shipped planar mirror pair's composite export, whose grid lands an ulp off its plane.
+  **The side of the plane a point is on is exact; its reflection is a rounded sum**, so the image
+  now answers strictly on its own side, judged on the point, and the declared half on its side and
+  the plane. Also: **a point in a conductor's declared shape past its solve was `ok` wherever
+  another element covered it** - it is `outside-domain` now, with its note in every resolve mode,
+  not only on a probe row; `ArtifactFiles` moved a file aside and then moved the new one in, so a
+  kill between the two left no file, a symbolic link became an ordinary file, and a read-only file
+  was replaced - it renames once, writes through a link and refuses a read-only file, and a file no
+  flag named is refused at its own path, not at `--project`; `render section` checked only the
+  model against `--out`, so a spec given as the positional was written over by its own figure, and
+  every destination is now checked before the work, `--dry-run` included; a flag before a sub-verb
+  (`ext --json list`) made the bare parent's registry entry refuse the sub-verb as a stray argument;
+  `--cycle-mean` refused an instant too late to place in the cycle, though it draws none; the
+  surface evaluated the field vector at every node to drop it, and asked each solve's domain twice;
+  and `SolvedField2D`/`3D` walked their conductors three times over in three copies of one loop.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

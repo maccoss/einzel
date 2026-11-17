@@ -1084,7 +1084,7 @@ public static class GeometryBuilder
             // The reflected half is the same solve seen backwards, so the two are
             // identical by construction and no difference between them can come
             // from their having been meshed differently.
-            field = new SuperposedField([field, new ReflectedField(field, plane)]);
+            field = new SuperposedField([field, new ReflectedField(field, plane, ReflectedField.ImageAbove(solve.MinX, solve.MaxX, plane))]);
         }
 
         return (field, report, leaves);
@@ -1167,7 +1167,7 @@ public static class GeometryBuilder
 
             if (solve.ReflectAboutX is { } plane)
             {
-                basis = new SuperposedField([basis, new ReflectedField(basis, plane)]);
+                basis = new SuperposedField([basis, new ReflectedField(basis, plane, ReflectedField.ImageAbove(solve.MinX, solve.MaxX, plane))]);
             }
 
             channels.Add(basis);

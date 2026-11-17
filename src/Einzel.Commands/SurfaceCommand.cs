@@ -222,7 +222,7 @@ public sealed record PotentialSurface
     /// <summary>The ion's charge in units of e, used for the energy; absent for a potential.</summary>
     public double? ChargeNumber { get; init; }
 
-    /// <summary>Points outside every element's domain.</summary>
+    /// <summary>Points outside every element's domain, or in a conductor's declared shape past its solve.</summary>
     public required int OutsideDomain { get; init; }
 
     /// <summary>Points the field refused.</summary>
@@ -597,7 +597,13 @@ public static class SurfaceCommand
         var probe = FieldProbe.Open(modelPath, modelText);
         var model = probe.Model;
 
-        Einzel.Fields.FieldInstants.CheckResolution(request.AtUs * 1e-6, probe.Field, "/surface/at-us");
+        // Under --cycle-mean no phase is drawn: the instant picks the operating point and the mean
+        // is over a whole period wherever it starts, so how finely a double can place the instant
+        // in the cycle does not matter (the probe opens the window at zero where it cannot).
+        if (!request.CycleMean)
+        {
+            Einzel.Fields.FieldInstants.CheckResolution(request.AtUs * 1e-6, probe.Field, "/surface/at-us");
+        }
 
         // A mean over a cycle that does not exist is not a number this can draw, and drawing the
         // instant under that name would be a picture captioned with something it is not.
@@ -990,7 +996,8 @@ public static class SurfaceCommand
         {
             warnings.Add(new ValidityWarning(
                 "probe.outside-domain",
-                string.Create(CultureInfo.InvariantCulture, $"{outside} of {raw.Length} surface point(s) lie outside every element's domain: ")
+                string.Create(CultureInfo.InvariantCulture, $"{outside} of {raw.Length} surface point(s) lie outside every element's domain ")
+                + "or inside a conductor's declared shape past the edge of its solve: "
                 + "the height there is what the field returns outside what was solved or declared "
                 + "(not necessarily zero), not a solved value and not a measurement of vacuum",
                 WarningSeverity.Qualified));
@@ -1326,7 +1333,8 @@ public static class SurfaceCommand
         // the model itself, or that is the other destination is known at once. Written in turn to
         // one file the table would replace the picture, and written to the model either would
         // replace what it is a picture of.
-        ArtifactFiles.CheckAll(csv is null ? [("out", path)] : [("out", path), ("csv", csv)], absolute);
+        var outFlag = outputPath is null ? null : "out";
+        ArtifactFiles.CheckAll(csv is null ? [(outFlag, path)] : [(outFlag, path), ("csv", csv)], absolute);
 
         // One read (PRJ-3): the hash is the probe's, of the very text the field was built from.
         var (surface, probe, warnings) = Sample(absolute, modelText ?? File.ReadAllText(absolute), request, maxParallelism);
@@ -1514,9 +1522,9 @@ public static class SurfaceCommand
         {
             // The picture and the table together, or neither: the picture used to be written
             // before the table was tried.
-            var files = new List<(string Flag, string Path, byte[] Content)>
+            var files = new List<(string? Flag, string Path, byte[] Content)>
             {
-                ("out", path, PngWriter.Write(rgb!, width, height, Provenance(outcome, warnings))),
+                (outFlag, path, PngWriter.Write(rgb!, width, height, Provenance(outcome, warnings))),
             };
 
             if (csv is not null)

@@ -887,9 +887,9 @@ public static class Program
     /// </remarks>
     private static int Agents(string[] args, CommandLine options)
     {
-        var action = args.Length > 1 && !args[1].StartsWith("--", StringComparison.Ordinal)
-            ? args[1]
-            : "tasks";
+        // The sub-verb is the first word that is not a flag or a flag's value, wherever the
+        // flags are: `agents --json tasks` is `agents tasks`, as VerbFlags.For reads it.
+        var action = VerbFlags.SubVerb(args) ?? "tasks";
 
         return action switch
         {
@@ -1583,6 +1583,13 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
+        // The table's destination before the field is built: a directory, or the model itself, is
+        // known without solving anything.
+        if (options.Value("csv") is { } csvFirst)
+        {
+            ArtifactFiles.CheckAll([("csv", csvFirst)], options.Positional[0]);
+        }
+
         var outcome = ProbeCommand.Execute(options.Positional[0], new ProbeRequest(from, to, samples, at));
 
         if (options.Value("csv") is { } csv)
@@ -1977,7 +1984,7 @@ public static class Program
         // A named directory is created rather than refused, since `--out reports/tonight.html`
         // is the obvious way to keep a series of them and failing on the first is a poor
         // answer. The default target's directory is the project root and always exists.
-        ArtifactFiles.WriteText("out", target, page);
+        ArtifactFiles.WriteText(options.Value("out") is null ? null : "out", target, page);
 
         foreach (var run in outcome.Runs)
         {
@@ -2118,7 +2125,13 @@ public static class Program
     /// </remarks>
     private static int Render(string[] args, CommandLine options)
     {
-        var kind = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : null;
+        // The kind wherever the flags are (`render --dry-run surface m.json`), as VerbFlags.For
+        // reads it. A first word that is no kind, after flags, is the model of an implicit
+        // section, as it always was: `render --out x.svg m.json`.
+        var kind = VerbFlags.SubVerb(args) is { } word
+            && (word is "section" or "still" or "animation" or "surface" || !args[1].StartsWith('-'))
+            ? word
+            : null;
 
         if (kind is "still")
         {
@@ -2200,7 +2213,7 @@ public static class Program
 
         var outcome = RenderCommand.Section(
             modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
-            sectionProgress);
+            sectionProgress, isSpec ? given : null);
 
         if (options.Has("json"))
         {
@@ -2589,7 +2602,7 @@ public static class Program
 
         var outcome = RenderCommand.Animation(
             modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
-            animationProgress);
+            animationProgress, given);
 
         if (options.Has("json"))
         {
@@ -2643,7 +2656,9 @@ public static class Program
     /// <summary>The extension authoring loop: list, test, register.</summary>
     private static int Ext(string[] args, CommandLine options)
     {
-        var action = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : "list";
+        // The sub-verb wherever the flags are: `ext --json list` and `ext --project p list` are
+        // `ext list`, as VerbFlags.For reads them.
+        var action = VerbFlags.SubVerb(args) ?? "list";
 
         // Each action is a handler of its own, as each of render's kinds is: the flags one reads
         // are its own, and the registry is keyed by the action.

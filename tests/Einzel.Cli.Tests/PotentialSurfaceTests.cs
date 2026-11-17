@@ -203,6 +203,47 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>
+    /// Under <c>--cycle-mean</c> no phase is drawn, so an instant too late to place in the cycle
+    /// is not refused: it picks the operating point, and the mean is the same as at any other.
+    /// </summary>
+    /// <remarks>
+    /// The resolution check asks whether a double can say where in the drive cycle an instant
+    /// falls - the right question for a picture of one phase, and none at all for the mean over
+    /// all of them. It refused <c>--at-us 1e300 --cycle-mean</c>, naming a phase nothing drew.
+    /// </remarks>
+    [Fact]
+    public void ALateInstantIsNotRefusedForACycleMean()
+    {
+        var text = File.ReadAllText(Model("template", "quadrupole-rf"));
+        var model = Path.Combine(_root, "late-mean.json");
+        File.WriteAllText(model, SetParameter(text, "dcPotential", 10.0));
+
+        var request = new SurfaceRequest(Plane: "xy", BoxMm: [-3, -3, 3, 3], Samples: 21, CycleMean: true);
+        var (early, _, _) = SurfaceCommand.Sample(model, request with { AtUs = 0.0 });
+        var (late, _, _) = SurfaceCommand.Sample(model, request with { AtUs = 1e300 });
+
+        Assert.Equal(early.Values, late.Values);
+        Assert.True(early.Values.Max() > 1.0, "the DC saddle is there to compare");
+
+        Assert.Equal(0, Cli("render", "surface", model, "--at-us", "1e300", "--cycle-mean", "--samples", "21", "--dry-run").ExitCode);
+
+        // The instant drawn as itself is still refused: there the phase is the picture.
+        Assert.Equal(1, Cli("render", "surface", model, "--at-us", "1e300", "--samples", "21", "--dry-run").ExitCode);
+
+        // An analytic drive, whose mean is sampled across the window rather than taken in closed
+        // form: a window opened at 1e300 us would sample one rounded phase sixty-four times and
+        // draw the instant under the mean's name. Opened where the cycle can be resolved, it is
+        // the pure sinusoid's mean - zero - as at t = 0.
+        var analytic = Model("example", "rf-quadrupole-confined");
+        var box = request with { BoxMm = [-1, -1, 1, 1] };
+        var (atZero, _, _) = SurfaceCommand.Sample(analytic, box with { AtUs = 0.0 });
+        var (atLate, _, _) = SurfaceCommand.Sample(analytic, box with { AtUs = 1e300 });
+
+        Assert.All(atZero.Values, v => Assert.True(Math.Abs(v) < 1e-9, $"{v}"));
+        Assert.Equal(atZero.Values, atLate.Values);
+    }
+
+    /// <summary>
     /// The picture has the surface where the test projects it, the plateaus in their own color,
     /// and its scale in the outcome and the file.
     /// </summary>
@@ -2269,7 +2310,9 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         output.WriteLine($"past the solve: {past.Status} ({past.Note}); within: {within.Status} {within.Conductor}");
 
-        Assert.Equal(ProbeStatus.Ok, past.Status);
+        // In the jaw's declared shape past its solve: outside what any solve holds for that metal,
+        // whatever the other elements cover - never ok.
+        Assert.Equal(ProbeStatus.OutsideDomain, past.Status);
         Assert.Null(ElementAt(probe, new Einzel.Core.Geometry.Vec3(25.0, 5.0, 0.0)));
         Assert.Equal(ProbeStatus.InsideConductor, within.Status);
     }
@@ -2309,7 +2352,9 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         output.WriteLine(row.ToString());
 
-        Assert.Equal("ok", row.GetProperty("status").GetString());
+        // Inside the jaw's declared shape past its own solve, in the other solve's domain: not ok,
+        // and the note says whose shape it is.
+        Assert.Equal("outside-domain", row.GetProperty("status").GetString());
         Assert.Equal("block", row.GetProperty("conductor").GetString());
         Assert.True(row.GetProperty("conductorDistanceMm").GetDouble() >= 0.0);
         Assert.Contains("'slitUpper'", row.GetProperty("note").GetString(), StringComparison.Ordinal);

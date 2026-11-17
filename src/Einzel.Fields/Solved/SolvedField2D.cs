@@ -91,22 +91,7 @@ public sealed class SolvedField2D : IElectrostaticField, IConductorBounded, IHel
     }
 
     /// <inheritdoc/>
-    public double SignedDistanceToConductor(in Vec3 position)
-    {
-        var nearest = double.PositiveInfinity;
-
-        foreach (var conductor in _conductors)
-        {
-            var distance = conductor.SignedDistance(position.X, position.Y);
-
-            if (distance < nearest)
-            {
-                nearest = distance;
-            }
-        }
-
-        return nearest;
-    }
+    public double SignedDistanceToConductor(in Vec3 position) => NearestConductor(in position, out _);
 
     /// <summary>
     /// Whether this field is a whole static solve, whose electrodes hold their declared
@@ -127,7 +112,7 @@ public sealed class SolvedField2D : IElectrostaticField, IConductorBounded, IHel
         {
             if (string.Equals(inside.Name, conductor, StringComparison.Ordinal))
             {
-                return inside.Shape == Core.Model.ElectrodeShape.EdgeProfile ? null : inside.Potential;
+                return inside.Potential;
             }
         }
 
@@ -142,25 +127,15 @@ public sealed class SolvedField2D : IElectrostaticField, IConductorBounded, IHel
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position)
     {
-        string? nearestName = null;
-        var nearest = double.PositiveInfinity;
-
-        foreach (var conductor in _conductors)
-        {
-            var distance = conductor.SignedDistance(position.X, position.Y);
-
-            if (distance < nearest)
-            {
-                nearest = distance;
-                nearestName = conductor.Name;
-            }
-        }
-
-        return nearestName;
+        NearestConductor(in position, out var name);
+        return name;
     }
 
     /// <inheritdoc/>
-    /// <remarks>One pass: the same minimum the two members above each take, and whose it is.</remarks>
+    /// <remarks>
+    /// The one walk of the conductors: <see cref="SignedDistanceToConductor"/> is its distance and
+    /// <see cref="ConductorAt"/> its name, so the three cannot disagree about which is nearest.
+    /// </remarks>
     public double NearestConductor(in Vec3 position, out string? name)
     {
         name = null;

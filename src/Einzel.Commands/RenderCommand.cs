@@ -95,14 +95,19 @@ public static class RenderCommand
     /// <returns>The outcome.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="modelPath"/> is null or blank.</exception>
-    /// <exception cref="EinzelException">The model does not validate.</exception>
+    /// <param name="specPath">
+    /// The render spec the command was handed, where it was handed one rather than the model: a
+    /// file the command reads, which the figure may not be written over.
+    /// </param>
+    /// <exception cref="EinzelException">The model does not validate, or the destination is refused.</exception>
     public static RenderOutcome Section(
         string modelPath,
         ProjectLayout project,
         RenderSpec spec,
         string? outputPath = null,
         bool dryRun = false,
-        RunProgress? progress = null)
+        RunProgress? progress = null,
+        string? specPath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentNullException.ThrowIfNull(project);
@@ -129,6 +134,21 @@ public static class RenderCommand
         }
 
         var absolute = Path.GetFullPath(modelPath);
+        var spec0 = specPath is null ? null : Path.GetFullPath(specPath);
+        var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
+
+        var path = outputPath is { } named
+            ? Path.GetFullPath(named)
+            : Path.Combine(
+                project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".section" + extension);
+        var outFlag = outputPath is null ? null : "out";
+
+        // Before anything is solved or drawn: a destination that is a directory, or one of the
+        // files this reads - the model, or the spec that named it - is known at once. The guard
+        // covered only the model, so `render section fig.json --out fig.json` drew the figure and
+        // wrote it over its own spec.
+        ArtifactFiles.CheckAll([(outFlag, path)], absolute, spec0);
+
         var text = File.ReadAllText(absolute);
         var validation = ModelValidator.Validate(
             ModelJson.Parse(text), null, Path.GetDirectoryName(absolute));
@@ -322,20 +342,14 @@ public static class RenderCommand
             gas: renderGas,
             transportWarnings: TransportWarnings(validation.Model!, renderGas));
 
-        var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
-
-        var path = outputPath is { } named
-            ? Path.GetFullPath(named)
-            : Path.Combine(
-                project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".section" + extension);
-
         if (!dryRun)
         {
             ArtifactFiles.Write(
-                "out",
+                outFlag,
                 path,
                 spec.Format == FigureFormat.Pdf ? PdfWriter.Write(figure.Scene) : ArtifactFiles.Utf8(SvgWriter.Write(figure.Scene)),
-                absolute);
+                absolute,
+                spec0);
         }
 
         var byLayer = new SortedDictionary<string, int>(StringComparer.Ordinal);
@@ -445,13 +459,15 @@ public static class RenderCommand
     /// to tell, or null for silence. For a sequenced model this is the whole run, so it is
     /// the difference between a film and hours with nothing on the diagnostic stream.
     /// </param>
+    /// <param name="specPath">The render spec the command read, which no frame and no manifest may be written over.</param>
     public static RenderOutcome Animation(
         string modelPath,
         ProjectLayout project,
         RenderSpec spec,
         string? outputDirectory = null,
         bool dryRun = false,
-        RunProgress? progress = null)
+        RunProgress? progress = null,
+        string? specPath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentNullException.ThrowIfNull(project);
@@ -474,6 +490,21 @@ public static class RenderCommand
         }
 
         var absolute = Path.GetFullPath(modelPath);
+        var spec0 = specPath is null ? null : Path.GetFullPath(specPath);
+        var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
+        var name = Path.GetFileNameWithoutExtension(absolute);
+
+        var directory = outputDirectory is { } named
+            ? Path.GetFullPath(named)
+            : Path.Combine(project.Figures, name + ".animation");
+        var outFlag = outputDirectory is null ? null : "out";
+
+        // Before the run behind the frames, which for a sequenced model is the whole run: a
+        // folder that is a file, or one holding the spec or the model under a name a frame or the
+        // manifest would take, is known at once. `--out figures` beside figures/frames.json wrote
+        // the manifest over the spec it was drawn from.
+        ArtifactFiles.CheckFrames(outFlag, directory, extension, absolute, spec0);
+
         var text = File.ReadAllText(absolute);
         var validation = ModelValidator.Validate(
             ModelJson.Parse(text), null, Path.GetDirectoryName(absolute));
@@ -573,12 +604,6 @@ public static class RenderCommand
             validation.Model!, spec, animation, provenance, densities,
             gas: animationGas);
 
-        var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
-        var name = Path.GetFileNameWithoutExtension(absolute);
-
-        var directory = outputDirectory is { } named
-            ? Path.GetFullPath(named)
-            : Path.Combine(project.Figures, name + ".animation");
 
         var artifacts = new List<string>(frames.Count + 1);
 
@@ -598,14 +623,16 @@ public static class RenderCommand
             for (var i = 0; i < frames.Count; i++)
             {
                 ArtifactFiles.Write(
-                    "out",
+                    outFlag,
                     artifacts[i],
                     spec.Format == FigureFormat.Pdf
                         ? PdfWriter.Write(frames[i].Figure.Scene)
-                        : ArtifactFiles.Utf8(SvgWriter.Write(frames[i].Figure.Scene)));
+                        : ArtifactFiles.Utf8(SvgWriter.Write(frames[i].Figure.Scene)),
+                    absolute,
+                    spec0);
             }
 
-            ArtifactFiles.WriteText("out", manifest, CommandJson.Write(new AnimationManifest
+            ArtifactFiles.WriteText(outFlag, manifest, CommandJson.Write(new AnimationManifest
             {
                 Model = Path.GetFileName(absolute),
                 ModelHash = hash,

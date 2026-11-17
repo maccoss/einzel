@@ -245,4 +245,23 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
             Console.SetError(previousError);
         }
     }
+    /// <summary>
+    /// The sub-verb is the first word that is neither a flag nor a flag's value, wherever the flags
+    /// stand: <c>ext --json list</c> is <c>ext list</c>, as it was before the registry.
+    /// </summary>
+    [Theory]
+    [InlineData("ext --json list", "ext list")]
+    [InlineData("ext --project p list", "ext list")]
+    [InlineData("ext --project=p list", "ext list")]
+    [InlineData("ext --project p", "ext")]
+    [InlineData("agents --json tasks", "agents tasks")]
+    [InlineData("agents --dry-run setup t d", "agents setup")]
+    [InlineData("render --dry-run surface m.json", "render surface")]
+    [InlineData("render --out x.png still m.json", "render still")]
+    [InlineData("render --cycle-mean --at-us 1 surface m.json", "render surface")]
+    [InlineData("ext list", "ext list")]
+    public void TheSubVerbIsTheFirstWordThatIsNoFlag(string line, string key)
+    {
+        Assert.Equal(key, VerbFlags.For(line.Split(' '))?.Key);
+    }
 }

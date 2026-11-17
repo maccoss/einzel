@@ -26,10 +26,14 @@ public static class ProbeStatus
 
     /// <summary>
     /// The point lies outside the domain of every element (a reflected solve's mirror image and a
-    /// tilted cross-section's rotated extent included). The value reported is what the field
-    /// returns there - a solve's value outside its grid, nothing from a bounded analytic element -
-    /// which is not a solved or declared value and need not be zero. This wins over
-    /// <see cref="InsideConductor"/>: an electrode's declared shape can run on past the solve.
+    /// tilted cross-section's rotated extent included), or inside a conductor's declared shape
+    /// where the shape runs on past the edge of its own solve - metal in the document that no
+    /// solve holds at this point, whatever other element covers it (its own element's mirror image
+    /// does hold it, as vacuum). The value reported is what the field
+    /// returns there - a solve's value outside its grid, nothing from a bounded analytic element,
+    /// another element's answer - which is not that conductor's and need not be zero. This wins
+    /// over <see cref="InsideConductor"/> and is never <see cref="Ok"/>; a sample naming its
+    /// conductor says which shape in its note.
     /// </summary>
     public const string OutsideDomain = "outside-domain";
 
@@ -259,6 +263,7 @@ public sealed class FieldProbe
     // that wants no name - a grid of potentials - is not charged for one.
     private void Locate(
         in Vec3 point,
+        ReadOnlySpan<bool> inside,
         bool named,
         out int nearest,
         out double nearestDistance,
@@ -285,7 +290,12 @@ public sealed class FieldProbe
                 nearestName = name;
             }
 
-            if (d < heldDistance && InsideLeaf(_leaves[i], in point))
+            // Whether this leaf's own half was solved at the point, from the element's answer
+            // already taken (Solved): the same test for an unreflected element, so it is not made
+            // twice per point. A reflected element's answer covers both halves, and only then is
+            // the leaf's own half asked.
+            if (d < heldDistance && inside[_leaves[i].Element]
+                && (!Reflected(_leaves[i].Element) || InsideLeaf(_leaves[i], in point)))
             {
                 heldDistance = d;
                 held = i;
@@ -293,6 +303,9 @@ public sealed class FieldProbe
             }
         }
     }
+
+    private bool Reflected(int element) =>
+        _model.Fields[element] is var e && ((e.Solve?.ReflectAboutX ?? e.Solve3D?.ReflectAboutX) is not null);
 
     // How near zero a signed distance is "on the surface", in metres: far below any cell and far
     // above the rounding of a coordinate.
@@ -615,8 +628,9 @@ public sealed class FieldProbe
     /// <param name="index">The row number.</param>
     /// <param name="positionMm">Where, in millimetres.</param>
     /// <param name="atSeconds">
-    /// The instant; for a cycle mean, the operating point the mean is taken at and the opening of
-    /// its window.
+    /// The instant; for a cycle mean, the operating point the mean is taken at, and the opening of
+    /// its window where a double can place the instant in the cycle (zero otherwise - a whole
+    /// period has the same mean wherever it opens).
     /// </param>
     /// <param name="cycleMean">
     /// Whether to report the potential averaged over one period of the fastest drive, held at the
@@ -639,7 +653,7 @@ public sealed class FieldProbe
         var outside = new List<int>();
 
         var status = SampleCore(
-            in point, atSeconds, cycleMean, outside, Resolve.Nearest,
+            in point, atSeconds, cycleMean, outside, Resolve.Nearest, wantField: true,
             out var potential, out var field, out var distance, out var note, out var averaged,
             out var conductor, out _, out _);
 
@@ -711,7 +725,7 @@ public sealed class FieldProbe
     /// <returns>One of the <see cref="ProbeStatus"/> values, the same one <see cref="At(int, Vec3, double)"/> gives.</returns>
     public string Sample(in Vec3 pointMetres, double atSeconds, out double potential, out Vec3 field) =>
         SampleCore(
-            in pointMetres, atSeconds, cycleMean: false, outside: null, Resolve.None,
+            in pointMetres, atSeconds, cycleMean: false, outside: null, Resolve.None, wantField: true,
             out potential, out field, out _, out _, out _, out _, out _, out _);
 
     // The one evaluation every public sampler goes through: which domains the point is outside
@@ -738,6 +752,7 @@ public sealed class FieldProbe
         bool cycleMean,
         List<int>? outside,
         Resolve resolve,
+        bool wantField,
         out double potential,
         out Vec3 field,
         out double? distance,
@@ -747,13 +762,6 @@ public sealed class FieldProbe
         out int? element,
         out double? held)
     {
-        distance = null;
-        note = null;
-        averaged = false;
-        conductor = null;
-        element = null;
-        held = null;
-
         // Each element's domain once: the outside count, the outside list and which elements'
         // conductors may compete all come from these flags.
         var count = Elements.Count;
@@ -766,7 +774,7 @@ public sealed class FieldProbe
             Solved(in point, inside);
 
             return SampleSolved(
-                in point, inside, atSeconds, cycleMean, outside, resolve,
+                in point, inside, atSeconds, cycleMean, outside, resolve, wantField,
                 out potential, out field, out distance, out note, out averaged, out conductor, out element, out held);
         }
         finally
@@ -785,6 +793,7 @@ public sealed class FieldProbe
         bool cycleMean,
         List<int>? outside,
         Resolve resolve,
+        bool wantField,
         out double potential,
         out Vec3 field,
         out double? distance,
@@ -816,19 +825,20 @@ public sealed class FieldProbe
         {
             if (cycleMean && _driven is not null && HeldAt(atSeconds) is { Window: { } window } at)
             {
-                potential = at.Field.CycleMeanPotentialAt(in point, atSeconds, window, CycleMeanSamples);
+                potential = at.Field.CycleMeanPotentialAt(in point, at.From, window, CycleMeanSamples);
                 field = default;
                 averaged = true;
             }
             else if (_driven is not null)
             {
+                // A surface wants the potential alone: the field is not evaluated to be dropped.
                 potential = _driven.PotentialAt(in point, atSeconds);
-                field = _driven.ElectricFieldAt(in point, atSeconds);
+                field = wantField ? _driven.ElectricFieldAt(in point, atSeconds) : default;
             }
             else
             {
                 potential = _field.PotentialAt(in point);
-                field = _field.ElectricFieldAt(in point);
+                field = wantField ? _field.ElectricFieldAt(in point) : default;
             }
         }
         catch (PointRefusedException refusal)
@@ -845,7 +855,7 @@ public sealed class FieldProbe
         }
 
         Locate(
-            in point, resolve != Resolve.None,
+            in point, inside, resolve != Resolve.None,
             out var nearest, out var d, out var nearestName, out var member, out var depth, out var memberName);
 
         var allOutside = _allBounded && outsideCount == Elements.Count;
@@ -884,10 +894,20 @@ public sealed class FieldProbe
             conductor = member >= 0 ? memberName : nearestName;
         }
 
-        // And it says so where the point is inside a declared shape whose element was not solved
-        // there, rather than leaving the shape unmentioned.
-        if (resolve == Resolve.Nearest && !inMetal && d < 0.0 && nearest >= 0 && nearestName is { } past)
+        // A point inside a declared shape whose element was not solved there: metal in the
+        // document and nothing in the solve. It is outside what that solve holds, so its status
+        // is outside-domain and never ok - ok beside "inside the shape of an electrode" is a
+        // reading of a field nobody solved for that metal - and it says so whoever is asking: a
+        // surface or a grid of potentials is told as well as a probe row. The name is asked for
+        // here when the walk did not fetch it, which is only on this path. Its own element must not
+        // have been solved here: a shape declared past a mirror plane lies in its image's half,
+        // which that element's solve does hold - as vacuum, the image of the declared side.
+        var pastShape = !inMetal && d < 0.0 && nearest >= 0 && !inside[_leaves[nearest].Element];
+
+        if (pastShape)
         {
+            var past = nearestName ?? _leaves[nearest].Shape.ConductorAt(in point) ?? "a conductor";
+
             note = string.Create(
                 CultureInfo.InvariantCulture,
                 $"inside the declared shape of '{past}' (element {_leaves[nearest].Element}), which runs past the edge of its solve: nothing was solved for it here");
@@ -904,8 +924,10 @@ public sealed class FieldProbe
         // be "inside" a shape nothing was solved for, and the value reported is the field's
         // answer outside its domain, not the electrode's potential. Outside every element only
         // when every element is one whose domain can be checked: an unbounded analytic element
-        // fills all space, so the point is never outside it.
-        var status = allOutside
+        // fills all space, so the point is never outside it. And outside the domain, too, where
+        // the point is in a declared shape past its own solve even though another element covers
+        // it: what the solves hold there is not that metal, and "ok" would say it is free space.
+        var status = allOutside || pastShape
             ? ProbeStatus.OutsideDomain
             : inMetal
                 ? ProbeStatus.InsideConductor
@@ -955,13 +977,19 @@ public sealed class FieldProbe
                 : _leaves[k].Held;
         }
 
-        var state = new HeldState(atSeconds, held, window, pieces);
+        var from = window is { } w && FieldInstants.Resolvable(atSeconds, w) ? atSeconds : 0.0;
+        var state = new HeldState(atSeconds, held, window, pieces, from);
         Volatile.Write(ref _held, state);
 
         return state;
     }
 
-    private sealed record HeldState(double At, ITimeVaryingField Field, double? Window, IReadOnlyList<IHeldConductors> Leaves);
+    // `From` is where a cycle mean's window opens: the instant itself where a double can place it in
+    // the cycle, otherwise zero. The held field keeps the operating point whatever instant it is
+    // asked at, and a whole period of a periodic drive has the same mean wherever it starts, so
+    // the instant only picks the operating point; a window opened at an instant too late to
+    // resolve would sample one rounded phase over and over.
+    private sealed record HeldState(double At, ITimeVaryingField Field, double? Window, IReadOnlyList<IHeldConductors> Leaves, double From);
 
     private HeldState? _held;
 
@@ -1015,7 +1043,7 @@ public sealed class FieldProbe
         RefuseMeanWithoutCycle(atSeconds, cycleMean);
 
         return SampleCore(
-            in pointMetres, atSeconds, cycleMean, outside: null, Resolve.Held,
+            in pointMetres, atSeconds, cycleMean, outside: null, Resolve.Held, wantField: false,
             out potential, out _, out conductorDistance, out _, out _, out conductor, out element, out held);
     }
 
@@ -1033,7 +1061,7 @@ public sealed class FieldProbe
         var state = HeldAt(atSeconds);
 
         return state.Window is { } window
-            ? state.Leaves[member].HeldCycleMeanOf(conductor, atSeconds, window, CycleMeanSamples)
+            ? state.Leaves[member].HeldCycleMeanOf(conductor, state.From, window, CycleMeanSamples)
             : null;
     }
 
@@ -1333,7 +1361,8 @@ public static class ProbeCommand
         {
             yield return new ValidityWarning(
                 "probe.outside-domain",
-                $"{outside} of {samples.Count} point(s) lie outside every element's domain: the "
+                $"{outside} of {samples.Count} point(s) lie outside every element's domain or inside a conductor's "
+                + "declared shape past the edge of its solve (the row's note names it): the "
                 + "value reported there is what the field returns outside what was solved or "
                 + "declared (not necessarily zero), not a solved value and not a measurement of vacuum",
                 WarningSeverity.Qualified);

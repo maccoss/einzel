@@ -272,7 +272,7 @@ public static class ExportCommand
         }
 
         Count(inside, "probe.inside-conductor", "are inside a conductor, where the field is the interpolant's and not a physical one");
-        Count(outside, "probe.outside-domain", "lie outside every element's domain, where the value is what the field returns outside what was solved or declared (not necessarily zero), not a solved value");
+        Count(outside, "probe.outside-domain", "lie outside every element's domain or inside a conductor's declared shape past the edge of its solve, where the value is what the field returns outside what was solved or declared (not necessarily zero), not a solved value");
         Count(refused, "probe.refused", "were refused by the field; they are written as nan and marked 0 in the valid array");
 
         var elements = string.Join(
@@ -443,7 +443,7 @@ public static class ExportCommand
         if (!dryRun)
         {
             ArtifactFiles.WriteText(
-                "project",
+                null,
                 path,
                 ObjWriter.Write(
                     parts,
@@ -747,7 +747,7 @@ public static class ExportCommand
             // engine saying the numbers may not describe the document (GRD-3).
             provenance.AddRange(found.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
 
-            ArtifactFiles.WriteText("project", channelPath, channel.Write(array, provenance));
+            ArtifactFiles.WriteText(null, channelPath, channel.Write(array, provenance));
         }
 
         return written;

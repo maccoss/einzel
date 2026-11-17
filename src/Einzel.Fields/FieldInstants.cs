@@ -13,6 +13,16 @@ public static class FieldInstants
     /// </summary>
     public const double ResolutionFraction = 1e-3;
 
+    /// <summary>Whether a double can place an instant in a cycle of the given period.</summary>
+    /// <param name="seconds">The instant.</param>
+    /// <param name="periodSeconds">The period.</param>
+    /// <returns>
+    /// True where neighbouring doubles at the instant are no further apart than
+    /// <see cref="ResolutionFraction"/> of the period.
+    /// </returns>
+    public static bool Resolvable(double seconds, double periodSeconds) =>
+        Math.Abs(double.BitIncrement(seconds) - seconds) <= ResolutionFraction * periodSeconds;
+
     /// <summary>
     /// Refuses an instant so late that where it falls in a field's drive cycle is decided by
     /// rounding.
@@ -27,7 +37,8 @@ public static class FieldInstants
     /// whichever one the rounding lands on - at 1e300 microseconds on a 1 MHz drive, any phase
     /// at all. A field with no drive has no phase to lose and is never refused here. One check
     /// for every verb that draws or samples a field at an instant, so the rule cannot differ
-    /// between them.
+    /// between them - except a cycle mean, which draws no phase: there the instant only picks
+    /// the operating point, and the caller does not ask.
     /// </remarks>
     public static void CheckResolution(double? atSeconds, IElectrostaticField field, string path)
     {
@@ -48,7 +59,7 @@ public static class FieldInstants
         var spacing = Math.Abs(double.BitIncrement(seconds) - seconds);
         var period = driven.ShortestPeriodSeconds;
 
-        if (spacing > ResolutionFraction * period)
+        if (!Resolvable(seconds, period))
         {
             var us = seconds * 1e6;
 

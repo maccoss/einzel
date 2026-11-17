@@ -193,6 +193,21 @@ become a feature release without being renamed twice.
   `agents` flags are checked per sub-verb (`ext list --kind y` is refused). A destination that is
   the model itself, or another destination, is refused; a failed write restores the file that
   was there.
+- **A point in a conductor's declared shape past the edge of its solve is `outside-domain`**, with
+  a note naming the shape, even where another element covers it; it was `ok` there. This changes
+  `probe` rows, the `probe.outside-domain` count of `export --composite`, and where `render surface`
+  counts outside points.
+- **A reflected solve is counted once on its mirror plane to the last bit**: one ulp below a
+  power-of-two plane the image's reflected coordinate rounded back onto the plane and the sum
+  doubled there. The plane and the declared side are the declared half's, the other side the
+  image's, judged on the point itself.
+- **Files are replaced in one rename**, written through a symbolic link, and a read-only
+  destination is refused; every destination - including the render spec a figure was drawn from -
+  is checked before the work, `--dry-run` included. A file no flag named is refused with its own
+  path rather than at `--project` or `--out`.
+- **Flags may come before a sub-verb** again: `einzel ext --json list`, `einzel agents --json
+  tasks`. `render surface --cycle-mean` no longer refuses an `--at-us` too late to place in the
+  drive cycle, since no instant of the drive is drawn.
 - **`einzel schema --units`** lists every unit symbol with its dimension and SI factor - the
   command an unknown unit's error has always named.
 - **A file that cannot be written is exit 1 at its flag**, not an internal error: `--out` or

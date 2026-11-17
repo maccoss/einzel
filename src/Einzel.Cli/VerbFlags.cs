@@ -113,11 +113,67 @@ public sealed record VerbFlags(
         // given a word that is none of its sub-verbs is left to its own usage, as it always was;
         // one given none at all is itself - `ext` alone lists, `agents` alone shows the tasks,
         // and `render` alone has no entry and prints what it takes.
-        var key = args[0] is "render" or "ext" or "agents" && args.Count > 1 && !args[1].StartsWith('-')
-            ? args[0] + " " + args[1]
-            : args[0];
+        var key = SubVerb(args) is { } sub ? args[0] + " " + sub : args[0];
 
         return ByVerb.TryGetValue(key, out var flags) ? (key, flags) : null;
+    }
+
+    /// <summary>The sub-verb a command line names, for a verb that has them.</summary>
+    /// <param name="args">The raw arguments, verb first.</param>
+    /// <returns>
+    /// For <c>render</c>, <c>ext</c> and <c>agents</c>, the first argument that is neither a flag
+    /// nor the value of one; null for any other verb, or where there is none.
+    /// </returns>
+    /// <remarks>
+    /// The first word after the verb, flags and their values skipped - not the word in second
+    /// place. Reading the second place made <c>einzel ext --json list</c> the bare <c>ext</c>,
+    /// whose registry entry takes no positional, so <c>list</c> was refused as a stray argument,
+    /// where it had always worked. A flag takes the next word as its value unless it is a switch
+    /// in some sub-verb of this verb (or <c>--json</c>, <c>--help</c>), or is written
+    /// <c>--flag=value</c> - the rule <see cref="CommandLine.Parse"/> applies once the sub-verb is
+    /// known.
+    /// </remarks>
+    public static string? SubVerb(IReadOnlyList<string> args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        if (args.Count < 2 || args[0] is not ("render" or "ext" or "agents"))
+        {
+            return null;
+        }
+
+        var prefix = args[0] + " ";
+        var switches = ByVerb
+            .Where(e => e.Key == args[0] || e.Key.StartsWith(prefix, StringComparison.Ordinal))
+            .SelectMany(e => e.Value.Switches)
+            .ToHashSet(StringComparer.Ordinal);
+
+        for (var i = 1; i < args.Count; i++)
+        {
+            var argument = args[i];
+
+            if (!argument.StartsWith("--", StringComparison.Ordinal))
+            {
+                // A single dash is not a flag here and never was a sub-verb: it is left to the
+                // verb's usage, as `ext -x` always was.
+                return argument.StartsWith('-') ? null : argument;
+            }
+
+            var name = argument[2..];
+
+            if (name.Contains('=', StringComparison.Ordinal) || name is "json" or "help" || switches.Contains(name))
+            {
+                continue;
+            }
+
+            // A flag that takes a value consumes the next word, unless that word is a flag.
+            if (i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                i++;
+            }
+        }
+
+        return null;
     }
 
     private static VerbFlags Of(
