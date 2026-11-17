@@ -1230,7 +1230,7 @@ Samples of a potential surface read outside the range its conductors hold.
 - **Severity:** Qualified
 - **Raised by:** `render surface`
 - **When:** Every field element is a solved geometry, so the potential is bounded by what its conductors hold (earth included), and a sample is outside that range by more than rounding. A field with no charge in it obeys the maximum principle, so the excess is the cubic interpolant overshooting beside a step on the boundary - typically where a conductor's edge meets the earthed edge of its solve - by a few percent of the step, and by an amount that depends on where the samples fall.
-- **What to do:** Nothing for the numbers: `lowest`, `highest`, the height scale and the scale bar are the conductors' range, and `sampledLowest` and `sampledHighest` carry what was read. The surface is drawn as sampled, so it stands past the bar by the amount the message gives, where it says. A finer `cellSize` narrows where it happens and not how far.
+- **What to do:** Nothing: `lowest`, `highest`, the height scale, the scale bar and the drawing itself are held to the conductors' range, and `sampledLowest`, `sampledHighest` and the CSV carry what was read. A finer `cellSize` narrows where it happens and not how far.
 - **Source:** `src/Einzel.Commands/SurfaceCommand.cs`
 
 ### render.plateau-disagrees

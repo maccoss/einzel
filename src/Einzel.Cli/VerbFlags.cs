@@ -36,7 +36,9 @@ public sealed record VerbFlags(
 
     /// <summary>
     /// Every verb's flags, keyed by the verb - or, where it has sub-verbs that read different
-    /// flags, by the verb and the sub-verb (<c>render surface</c>).
+    /// flags, by the verb and the sub-verb (<c>render surface</c>, <c>ext test</c>,
+    /// <c>agents setup</c>). One flag set for all of a verb's sub-verbs accepted
+    /// <c>ext list --kind y</c> and <c>agents tasks --dry-run</c>, flags nothing read.
     /// </summary>
     /// <remarks>
     /// The one statement of which flags a verb reads. <c>VerbFlagsTests</c> reads each handler's
@@ -71,9 +73,15 @@ public sealed record VerbFlags(
         ["templates"] = Of([], [], 1),
         ["examples"] = Of([], [], 1),
         ["agents-md"] = Of(["dry-run"], ["project"], 1),
-        ["agents"] = Of(["dry-run"], [], 3),
+        ["agents"] = Of([], [], 0),
+        ["agents tasks"] = Of([], [], 2),
+        ["agents setup"] = Of(["dry-run"], [], 3),
+        ["agents score"] = Of([], [], 3),
         ["doctor"] = Of([], ["project"], 1),
-        ["ext"] = Of(["dry-run"], ["input", "kind", "project"], 2),
+        ["ext"] = Of([], ["project"], 0),
+        ["ext list"] = Of([], ["project"], 1),
+        ["ext test"] = Of([], ["input", "project"], 2),
+        ["ext register"] = Of(["dry-run"], ["kind", "project"], 2),
         ["render section"] = Of(
             ["dry-run", "no-trajectory"],
             ["at-us", "caption", "equipotentials", "format", "out", "project", "width-mm"],
@@ -101,10 +109,12 @@ public sealed record VerbFlags(
             return null;
         }
 
-        // A sub-verb that reads its own flags. `render` alone, or with a word that is no
-        // sub-verb, is left to the verb's own usage, as it always was.
-        var key = args[0] == "render" && args.Count > 1 && !args[1].StartsWith('-')
-            ? "render " + args[1]
+        // A sub-verb reads its own flags: render's kinds, ext's and agents' actions. A verb
+        // given a word that is none of its sub-verbs is left to its own usage, as it always was;
+        // one given none at all is itself - `ext` alone lists, `agents` alone shows the tasks,
+        // and `render` alone has no entry and prints what it takes.
+        var key = args[0] is "render" or "ext" or "agents" && args.Count > 1 && !args[1].StartsWith('-')
+            ? args[0] + " " + args[1]
             : args[0];
 
         return ByVerb.TryGetValue(key, out var flags) ? (key, flags) : null;

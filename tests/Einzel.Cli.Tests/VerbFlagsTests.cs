@@ -20,7 +20,11 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         ["scan"] = ("Scan", []), ["boundary"] = ("Boundary", []), ["preview"] = ("Preview", []), ["test"] = ("Test", []),
         ["verify"] = ("Verify", []), ["report"] = ("Report", []), ["export"] = ("Export", []), ["compare"] = ("Compare", []),
         ["schema"] = ("Schema", []), ["templates"] = ("Catalog", []), ["examples"] = ("Catalog", []),
-        ["agents-md"] = ("AgentsMd", []), ["agents"] = ("Agents", []), ["doctor"] = ("Doctor", []), ["ext"] = ("Ext", []),
+        ["agents-md"] = ("AgentsMd", []), ["doctor"] = ("Doctor", []),
+        ["agents"] = ("AgentTasks", []), ["agents tasks"] = ("AgentTasks", []),
+        ["agents setup"] = ("AgentSetup", []), ["agents score"] = ("AgentScore", []),
+        ["ext"] = ("ExtList", []), ["ext list"] = ("ExtList", []),
+        ["ext test"] = ("ExtTest", []), ["ext register"] = ("ExtRegister", []),
         ["render section"] = ("Render", ["Still", "Surface", "Animation"]),
         ["render still"] = ("Still", []), ["render surface"] = ("Surface", []), ["render animation"] = ("Animation", []),
     };

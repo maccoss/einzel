@@ -51,4 +51,21 @@ public interface IConductorBounded
     /// reports and what a model author wrote.
     /// </remarks>
     string? ConductorAt(in Vec3 position);
+
+    /// <summary>
+    /// The signed distance to the nearest conductor surface and that conductor's name, together.
+    /// </summary>
+    /// <param name="position">Where to measure from.</param>
+    /// <param name="name">The nearest conductor's name, or null when there are no conductors.</param>
+    /// <returns>What <see cref="SignedDistanceToConductor"/> returns.</returns>
+    /// <remarks>
+    /// One walk of the conductors where a caller wants both - a surface asks at every node of a
+    /// grid - against one for the distance and a second for the name. Answered by default with
+    /// the two members above; a field that holds the conductors answers in one pass.
+    /// </remarks>
+    double NearestConductor(in Vec3 position, out string? name)
+    {
+        name = ConductorAt(in position);
+        return SignedDistanceToConductor(in position);
+    }
 }

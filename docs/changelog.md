@@ -3634,5 +3634,23 @@ Two findings from Stage 1 that bear on the spec:
   registry, and a test reads every `einzel ...` command line in the source and the docs against
   the verbs' registry - 529 of them.
 
+  **A twelfth review found a reflected solve doubled on its own mirror plane**, which is a
+  defect in the field and older than the surface: a point on the plane is its own image, the
+  declared half's domain includes its edge, and `SuperposedField([half, ReflectedField(half)])`
+  summed both - 999.5 V on the plane of a 500 V half lens, in `probe`, on the surface, and for any
+  ion whose step landed there. The plane belongs to the declared half: on it the image is nothing,
+  so the sum is continuous across it, in the plane and in a volume. The same review reversed a
+  decision of the round before: the surface's range, ramp and bar were held to the conductors'
+  range and its vertices were not, so the mesh stood past its own scale - **the drawing is
+  clamped too**, and the raw samples stay in the CSV. Also: a failed write deleted a file that
+  was there before the call, where undoing means putting it back; a refusal thrown from the
+  command layer left stdout empty under `--json`, so the top-level handler writes the same
+  `{"ran": false, "errors": [...]}` the command line does, once; `--out` naming the model
+  overwrote it; `ext` and `agents` shared one flag set across their sub-verbs, so `ext list
+  --kind y` was read by nothing; a failure inside the parallel sampling loop came out as an
+  aggregate and exit 6; a conductor's name was looked up by a second walk of the conductors per
+  sample; the surface's limits were stated in the CLI and again in `SurfaceCommand.Check`, with
+  different paths - `Check` owns them and the CLI maps `/surface/x` to `/args/--x`.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

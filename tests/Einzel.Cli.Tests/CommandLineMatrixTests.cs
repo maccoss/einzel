@@ -64,9 +64,15 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         ["templates"] = [],
         ["examples"] = [],
         ["agents-md"] = ["--project", "{root}", "--dry-run"],
-        ["agents"] = ["tasks"],
+        ["agents"] = [],
+        ["agents tasks"] = [],
+        ["agents setup"] = ["no-such-task", "{fresh}", "--dry-run"],
+        ["agents score"] = ["no-such-task", "{root}"],
         ["doctor"] = ["--project", "{root}"],
-        ["ext"] = ["list", "--project", "{root}"],
+        ["ext"] = ["--project", "{root}"],
+        ["ext list"] = ["--project", "{root}"],
+        ["ext test"] = ["made", "--project", "{root}"],
+        ["ext register"] = ["made", "--project", "{root}", "--dry-run"],
         ["render section"] = [Model, "--dry-run"],
         ["render still"] = [Model, "--dry-run"],
         ["render surface"] = [Model, "--dry-run", "--box-mm", "0,0,10,10"],
@@ -131,9 +137,10 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         [("export", "box-mm")] = [Model, "--dry-run", "--composite"],
         [("export", "step-mm")] = [Model, "--dry-run", "--composite"],
         [("export", "at-us")] = [Model, "--dry-run", "--composite"],
-        [("ext", "kind")] = ["register", "made", "--project", "{root}", "--dry-run"],
-        [("ext", "input")] = ["test", "made", "--project", "{root}"],
-        [("ext", "project")] = ["list"],
+        [("ext", "project")] = [],
+        [("ext list", "project")] = [],
+        [("ext test", "project")] = ["made"],
+        [("ext register", "project")] = ["made", "--dry-run"],
         [("test", "project")] = [],
         [("verify", "project")] = [],
         [("report", "project")] = ["--dry-run"],
@@ -261,7 +268,9 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
             foreach (var flag in flags.Switches.Order(StringComparer.Ordinal))
             {
-                if (!given.Contains("--" + flag))
+                // A switch the scratch model cannot be asked for is refused by the command, at
+                // the switch, and that refusal is its own test: a cycle mean of a static field.
+                if (!given.Contains("--" + flag) && (verb, flag) != ("render surface", "cycle-mean"))
                 {
                     yield return new Case(verb, "valid", [.. words, .. given, "--" + flag], null);
                 }
@@ -287,6 +296,13 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
             }
 
             yield return new Case(verb, "unknown", [.. words, .. given, "--no-such-flag"], "/args/--no-such-flag");
+
+            // A verb with sub-verbs, given none: its first argument is read as the sub-verb, and
+            // one that is none is the verb's own "unknown action", not an argument too many.
+            if (verb is "ext" or "agents")
+            {
+                continue;
+            }
 
             // One more positional argument than the verb takes, whatever the base already gives.
             var positional = CommandLine.Parse([.. words, .. given]).Positional.Count;
@@ -614,7 +630,7 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         Assert.Contains("a file to write is --csv <file>", probe, StringComparison.Ordinal);
 
         // Every flag a suggestion names is one the verb reads.
-        foreach (var (verb, flags) in VerbFlags.ByVerb)
+        foreach (var (verb, flags) in VerbFlags.ByVerb.Where(v => v.Key is not ("ext" or "agents")))
         {
             foreach (System.Text.RegularExpressions.Match named in Regex.Matches(Program.CommandLineProblem([.. verb.Split(' '), .. Enumerable.Repeat("x", flags.Positionals + 1)])!.Suggestion!, @"--([a-z0-9-]+)"))
             {
@@ -657,6 +673,124 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         var unknown = Assert.Throws<Einzel.Core.Errors.EinzelException>(() => Einzel.Core.Units.UnitRegistry.Resolve("furlong"));
         Assert.Contains("'einzel schema --units'", unknown.Error.Suggestion, StringComparison.Ordinal);
         Assert.Null(Program.CommandLineProblem(["schema", "--units"]));
+    }
+
+    /// <summary>
+    /// A flag belongs to the sub-verb that reads it: one sub-verb's flag given to another is
+    /// refused, where it was accepted and read by nothing.
+    /// </summary>
+    /// <param name="line">The command line.</param>
+    /// <param name="flag">The flag refused.</param>
+    [Theory]
+    [InlineData("ext list --project {root} --kind objective", "kind")]
+    [InlineData("ext list --project {root} --input {root}/input.json", "input")]
+    [InlineData("ext --project {root} --dry-run", "dry-run")]
+    [InlineData("ext test made --project {root} --kind objective", "kind")]
+    [InlineData("ext test made --project {root} --dry-run", "dry-run")]
+    [InlineData("ext register made --project {root} --dry-run --input {root}/input.json", "input")]
+    [InlineData("agents tasks --dry-run", "dry-run")]
+    [InlineData("agents --dry-run", "dry-run")]
+    [InlineData("agents score no-such-task {root} --dry-run", "dry-run")]
+    public void AFlagBelongsToTheSubVerbThatReadsIt(string line, string flag)
+    {
+        Project();
+
+        var (code, _, stderr) = Run(Words(line));
+
+        Assert.Equal(1, code);
+        Assert.Contains($" at /args/--{flag}:", stderr, StringComparison.Ordinal);
+        Assert.Contains("unknown flag", stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>The control for the theory above: each sub-verb takes its own flags.</summary>
+    /// <param name="line">The command line.</param>
+    [Theory]
+    [InlineData("ext list --project {root}")]
+    [InlineData("ext --project {root} --json")]
+    [InlineData("ext register made --project {root} --kind analysis --dry-run")]
+    [InlineData("agents tasks")]
+    [InlineData("agents")]
+    public void EachSubVerbTakesItsOwnFlags(string line)
+    {
+        Project();
+
+        var (code, _, stderr) = Run(Words(line));
+
+        Assert.True(code == 0, stderr);
+    }
+
+    /// <summary>
+    /// Under <c>--json</c> every refusal is JSON on stdout, whichever layer raised it - and one
+    /// document, never two.
+    /// </summary>
+    /// <param name="line">The command line, refused by the command and not by the command line.</param>
+    /// <param name="path">Where the first error is located.</param>
+    /// <remarks>
+    /// A refusal made in the command line was JSON; one thrown from a command - a relief of
+    /// zero, a box written backwards, a cycle mean of a static field, a destination that cannot
+    /// be written - left stdout empty, so an agent had an exit code and nothing to parse.
+    /// </remarks>
+    [Theory]
+    [InlineData("render surface {model} --dry-run --box-mm 0,0,10,10 --relief 0", "/args/--relief")]
+    [InlineData("render surface {model} --dry-run --box-mm 10,10,0,0", "/args/--box-mm")]
+    [InlineData("render surface {model} --dry-run --box-mm 0,0,10,10 --cycle-mean", "/args/--cycle-mean")]
+    [InlineData("render surface {model} --dry-run --box-mm 0,0,10,10 --plane zz", "/args/--plane")]
+    [InlineData("render surface {model} --dry-run", "/args/--box-mm")]
+    [InlineData("render surface {model} --box-mm 0,0,10,10 --samples 21 --out {root}", "/args/--out")]
+    [InlineData("render surface {model} --box-mm 0,0,10,10 --samples 21 --out {model}", "/args/--out")]
+    [InlineData("render still {model} --width-px 32 --height-px 32 --out {root}", "/args/--out")]
+    [InlineData("render section {model} --at-us -1 --dry-run", "/render/at-us")]
+    [InlineData("probe {model} --at-mm 0,0,0 --at-us -1", "/probe/at-us")]
+    [InlineData("new {root}/models/made.json --from-example no-such-example", null)]
+    public void EveryRefusalUnderJsonIsOneJsonDocument(string line, string? path)
+    {
+        Project();
+
+        var (code, stdout, stderr) = Run([.. Words(line), "--json"]);
+
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+
+        // One document: a second one after it would not parse.
+        using var document = JsonDocument.Parse(stdout);
+        var errors = document.RootElement.GetProperty("errors");
+
+        Assert.False(document.RootElement.GetProperty("ran").GetBoolean());
+        Assert.True(errors.GetArrayLength() > 0);
+        Assert.False(string.IsNullOrEmpty(errors[0].GetProperty("code").GetString()));
+
+        if (path is not null)
+        {
+            Assert.Equal(path, errors[0].GetProperty("path").GetString());
+        }
+
+        // And without --json, stdout is left alone, as it was.
+        Assert.Equal(string.Empty, Run(Words(line)).Stdout);
+    }
+
+    /// <summary>
+    /// A verb that writes its own answer under <c>--json</c> writes one document, whether the
+    /// answer is a result or a list of what is wrong.
+    /// </summary>
+    [Fact]
+    public void AVerbThatAnswersForItselfWritesOneDocument()
+    {
+        Project();
+
+        var broken = Path.Combine(_root, "models", "broken.json");
+        File.WriteAllText(broken, File.ReadAllText(Path.Combine(_root, "models", "reflectron.json")).Replace("\"kV\"", "\"furlong\"", StringComparison.Ordinal));
+
+        foreach (var verb in new[] { "validate", "run", "solve", "preview" })
+        {
+            var (code, stdout, _) = Run([verb, broken, "--json"]);
+
+            Assert.NotEqual(0, code);
+            Assert.NotEqual(6, code);
+
+            using var document = JsonDocument.Parse(stdout);
+            Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        }
     }
 
     private static string[] Words(string line) =>

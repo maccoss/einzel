@@ -159,6 +159,27 @@ public sealed class SolvedField2D : IElectrostaticField, IConductorBounded, IHel
         return nearestName;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>One pass: the same minimum the two members above each take, and whose it is.</remarks>
+    public double NearestConductor(in Vec3 position, out string? name)
+    {
+        name = null;
+        var nearest = double.PositiveInfinity;
+
+        foreach (var conductor in _conductors)
+        {
+            var distance = conductor.SignedDistance(position.X, position.Y);
+
+            if (distance < nearest)
+            {
+                nearest = distance;
+                name = conductor.Name;
+            }
+        }
+
+        return nearest;
+    }
+
     /// <summary>The grid the potential was solved on.</summary>
     public Grid2D Grid => _grid;
 

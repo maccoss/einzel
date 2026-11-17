@@ -233,6 +233,26 @@ public sealed record PotentialSurface
     /// <param name="j">Index along <see cref="Deep"/>.</param>
     /// <returns>The drawn quantity there.</returns>
     public double At(int i, int j) => Values[(i * Deep.Count) + j];
+
+    /// <summary>
+    /// The value a node is drawn at: what was sampled, held to what the conductors hold where
+    /// that is known (<see cref="AppliedLowest"/>, <see cref="AppliedHighest"/>).
+    /// </summary>
+    /// <param name="i">Index along <see cref="Across"/>.</param>
+    /// <param name="j">Index along <see cref="Deep"/>.</param>
+    /// <returns>The value the picture's height and color stand for there; NaN at a hole.</returns>
+    /// <remarks>
+    /// The scale and the bar are made from the conductors' range, so a surface drawn from the
+    /// raw samples stood past its own bar wherever the interpolant overshot - the einzel lens
+    /// dipped 32 V below an earth it cannot go below. The drawing agrees with its scale; the
+    /// raw value is <see cref="At"/>, which is what the CSV carries.
+    /// </remarks>
+    public double Drawn(int i, int j)
+    {
+        var value = At(i, j);
+
+        return AppliedLowest is { } low && AppliedHighest is { } high ? Math.Clamp(value, low, high) : value;
+    }
 }
 
 /// <summary>What <c>einzel render surface</c> drew and where it put it.</summary>
@@ -677,7 +697,7 @@ public static class SurfaceCommand
         // safe to share, and the counts are kept per row and summed after, so the result is the
         // same whatever the order the rows finish in - asserted byte for byte against a serial
         // pass.
-        Parallel.For(0, nu, new ParallelOptions { MaxDegreeOfParallelism = maxParallelism ?? -1 }, i =>
+        ForEachRow(nu, maxParallelism, i =>
         {
             for (var j = 0; j < nv; j++)
             {
@@ -893,7 +913,7 @@ public static class SurfaceCommand
                     "render.interpolant-overshoot",
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"the samples reach {values[worst]:G6} {unit} at {Name(across)} = {us[worst / nv]:G6} mm, {Name(deep)} = {vs[worst % nv]:G6} mm, {over:G4} {unit} outside the {bound.Low:G6} to {bound.High:G6} {unit} the conductors hold: a field with no charge in it is nowhere outside what its boundary holds, so that is the interpolant overshooting beside a step in what the boundary holds - at a conductor's face, and most where its edge meets the earthed edge of its solve - and not the field. The range stated, the height scale and the scale bar are the conductors' range; the surface is drawn as sampled, so it stands that far past the bar there"),
+                        $"the samples reach {values[worst]:G6} {unit} at {Name(across)} = {us[worst / nv]:G6} mm, {Name(deep)} = {vs[worst % nv]:G6} mm, {over:G4} {unit} outside the {bound.Low:G6} to {bound.High:G6} {unit} the conductors hold: a field with no charge in it is nowhere outside what its boundary holds, so that is the interpolant overshooting beside a step in what the boundary holds - at a conductor's face, and most where its edge meets the earthed edge of its solve - and not the field. The range stated, the height scale and the scale bar are the conductors' range, and the drawing is held to it: the surface is drawn no further than its bar. The raw readings are in the CSV and in sampledLowest and sampledHighest"),
                     WarningSeverity.Qualified));
             }
         }
@@ -1012,6 +1032,33 @@ public static class SurfaceCommand
         return (surface, probe, warnings);
     }
 
+    /// <summary>
+    /// Runs a body for every row, across the processors, and lets a failure out as itself.
+    /// </summary>
+    /// <param name="rows">How many rows.</param>
+    /// <param name="maxParallelism">The most rows at once; null for one per processor.</param>
+    /// <param name="body">What to do for a row.</param>
+    /// <remarks>
+    /// A parallel loop gathers what its bodies throw into an <see cref="AggregateException"/>,
+    /// which is not the exception anybody threw: a refusal raised while sampling - an
+    /// <see cref="EinzelException"/>, exit 1 - reached the command line as an unknown failure,
+    /// exit 6, "a defect in einzel". The first failure is thrown again as what it is, with its
+    /// own stack.
+    /// </remarks>
+    public static void ForEachRow(int rows, int? maxParallelism, Action<int> body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        try
+        {
+            Parallel.For(0, rows, new ParallelOptions { MaxDegreeOfParallelism = maxParallelism ?? -1 }, body);
+        }
+        catch (AggregateException failures) when (failures.InnerExceptions.Count > 0)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures.Flatten().InnerExceptions[0]).Throw();
+        }
+    }
+
     /// <summary>The height scale a surface is drawn at.</summary>
     /// <param name="surface">The sampled surface.</param>
     /// <param name="request">The request, for the relief or an explicit scale.</param>
@@ -1089,7 +1136,7 @@ public static class SurfaceCommand
         (double R, double G, double B) Ramp(double value) =>
             ColorRamp.Diverging(span > 0.0 ? 0.5 + (0.5 * Math.Clamp(value / span, -1.0, 1.0)) : 0.5);
 
-        double Y(int i, int j) => surface.At(i, j) * mmPerUnit;
+        double Y(int i, int j) => surface.Drawn(i, j) * mmPerUnit;
 
         // The surface mesh: one vertex per node, colored by its value and tinted toward white.
         var vertices = new double[3 * nu * nv];
@@ -1120,7 +1167,7 @@ public static class SurfaceCommand
                 normals[(3 * k) + 1] = 1.0;
                 normals[(3 * k) + 2] = -dydv * surface.DeepSign;
 
-                var (r, g, b) = Ramp(surface.At(i, j));
+                var (r, g, b) = Ramp(surface.Drawn(i, j));
                 colors[3 * k] = r + ((1.0 - r) * SurfaceTint);
                 colors[(3 * k) + 1] = g + ((1.0 - g) * SurfaceTint);
                 colors[(3 * k) + 2] = b + ((1.0 - b) * SurfaceTint);
@@ -1275,26 +1322,11 @@ public static class SurfaceCommand
             : Path.Combine(project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".surface.png");
         var csv = csvPath is null ? null : Path.GetFullPath(csvPath);
 
-        // Before anything is sampled: written in turn to one file, the table would replace the
-        // picture, with exit 0 and the file named as both.
-        if (csv is not null && string.Equals(
-            Path.TrimEndingDirectorySeparator(csv),
-            Path.TrimEndingDirectorySeparator(path),
-            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-        {
-            throw Refusal(
-                "/surface/csv",
-                $"--csv and the picture are the same file, {path}: the table would be written over the picture",
-                "give --csv a file of its own, such as one ending in .csv");
-        }
-
-        // Before anything is solved: a destination that is a directory is known at once.
-        ArtifactFiles.Check("out", path);
-
-        if (csv is not null)
-        {
-            ArtifactFiles.Check("csv", csv);
-        }
+        // Before anything is read, let alone solved: a destination that is a directory, that is
+        // the model itself, or that is the other destination is known at once. Written in turn to
+        // one file the table would replace the picture, and written to the model either would
+        // replace what it is a picture of.
+        ArtifactFiles.CheckAll(csv is null ? [("out", path)] : [("out", path), ("csv", csv)], absolute);
 
         // One read (PRJ-3): the hash is the probe's, of the very text the field was built from.
         var (surface, probe, warnings) = Sample(absolute, modelText ?? File.ReadAllText(absolute), request, maxParallelism);
@@ -1492,7 +1524,7 @@ public static class SurfaceCommand
                 files.Add(("csv", csv, ArtifactFiles.Utf8(ToCsv(surface, warnings))));
             }
 
-            ArtifactFiles.WriteAll(files);
+            ArtifactFiles.WriteAll(files, absolute);
         }
 
         return outcome;
@@ -1773,8 +1805,8 @@ public static class SurfaceCommand
 
         void Segment(int i0, int j0, int i1, int j1)
         {
-            var va = surface.At(i0, j0);
-            var vb = surface.At(i1, j1);
+            var va = surface.Drawn(i0, j0);
+            var vb = surface.Drawn(i1, j1);
 
             var na = surface.Inside[(i0 * nv) + j0];
             var nb = surface.Inside[(i1 * nv) + j1];
@@ -1848,7 +1880,7 @@ public static class SurfaceCommand
             {
                 var (i0, j0) = nodes[e];
                 var (i1, j1) = nodes[e + 1];
-                var (va, vb) = (surface.At(i0, j0), surface.At(i1, j1));
+                var (va, vb) = (surface.Drawn(i0, j0), surface.Drawn(i1, j1));
 
                 if (!double.IsFinite(va) || !double.IsFinite(vb))
                 {
@@ -1868,7 +1900,7 @@ public static class SurfaceCommand
 
                 foreach (var (i, j, top) in new[] { (i0, j0, true), (i1, j1, true), (i1, j1, false), (i0, j0, false) })
                 {
-                    vertices.AddRange([surface.Across[i], top ? surface.At(i, j) * mmPerUnit : 0.0, surface.DeepSign * surface.Deep[j]]);
+                    vertices.AddRange([surface.Across[i], top ? surface.Drawn(i, j) * mmPerUnit : 0.0, surface.DeepSign * surface.Deep[j]]);
                     normals.AddRange([nx, 0.0, nz * surface.DeepSign]);
                     colors.AddRange([r, g, b]);
                 }

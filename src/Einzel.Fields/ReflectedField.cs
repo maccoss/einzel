@@ -31,13 +31,38 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX)
     public string? ConductorAt(in Vec3 position) =>
         inner is IConductorBounded bounded ? bounded.ConductorAt(Reflect(in position)) : null;
 
+    /// <inheritdoc/>
+    public double NearestConductor(in Vec3 position, out string? name)
+    {
+        name = null;
+
+        return inner is IConductorBounded bounded
+            ? bounded.NearestConductor(Reflect(in position), out name)
+            : double.PositiveInfinity;
+    }
+
     private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
 
     private Vec3 Reflect(in Vec3 position) => new((2.0 * planeX) - position.X, position.Y, position.Z);
 
+    // THE PLANE BELONGS TO THE DECLARED HALF. This field is summed with the one it mirrors, and
+    // a point on the plane is its own image: where the declared half reaches the plane - a solve
+    // whose edge is the mirror, which is how a reflected solve is written - both answered for
+    // it, and the sum there was twice the potential and twice the field along the plane. A half
+    // einzel lens read 999.5 V on the plane of a 500 V electrode. Either side of the plane
+    // exactly one of the two answers, so on it exactly one does too: the image is nothing there.
+    // Exactly on it and nowhere else - a point one rounding away is on one side or the other,
+    // and its image is outside the declared half's domain, which contributes nothing there.
+    private bool OnPlane(in Vec3 position) => position.X == planeX;
+
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)
     {
+        if (OnPlane(in position))
+        {
+            return default;
+        }
+
         var mirrored = Reflect(in position);
         var field = _inner.ElectricFieldAt(in mirrored);
 
@@ -48,6 +73,11 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX)
     /// <inheritdoc/>
     public double PotentialAt(in Vec3 position)
     {
+        if (OnPlane(in position))
+        {
+            return 0.0;
+        }
+
         var mirrored = Reflect(in position);
         return _inner.PotentialAt(in mirrored);
     }

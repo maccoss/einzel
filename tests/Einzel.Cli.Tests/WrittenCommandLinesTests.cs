@@ -112,7 +112,9 @@ public sealed class WrittenCommandLinesTests(ITestOutputHelper output)
         foreach (Match match in Regex.Matches(text, @"(?<![\w/.\\-])einzel ([a-z][a-z-]*(?: [^'""`\n]*?)?)(?=</c>|['""`\n])"))
         {
             var words = match.Groups[1].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            var verb = words[0] == "render" && words.Length > 1 ? "render " + words[1] : words[0];
+            var verb = words[0] is "render" or "ext" or "agents" && words.Length > 1 && VerbFlags.ByVerb.ContainsKey(words[0] + " " + words[1])
+                ? words[0] + " " + words[1]
+                : words[0];
 
             if (!VerbFlags.ByVerb.ContainsKey(verb))
             {

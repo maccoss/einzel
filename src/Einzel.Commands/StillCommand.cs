@@ -177,7 +177,7 @@ public static class StillCommand
         if (!dryRun)
         {
             ArtifactFiles.Write("out", path, PngWriter.Write(rgb, width, height, Provenance(
-                absolute, hash, view, angles, width, height, seeThrough, outcome, ruler)));
+                absolute, hash, view, angles, width, height, seeThrough, outcome, ruler)), absolute);
         }
 
         return new StillOutcome

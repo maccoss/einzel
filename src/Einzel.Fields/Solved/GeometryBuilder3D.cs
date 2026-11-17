@@ -921,11 +921,14 @@ public static class GeometryBuilder3D
             throw new InvalidOperationException("a driven geometry decomposed into no channel at all");
         }
 
+        // What each conductor holds in each channel's pattern, said once for both fields below.
+        var coefficients = DriveChannels.Coefficients(groups, geometry.Electrodes.Select(e => e.Name));
+
         if (geometry.Stages.Count == 0)
         {
             var driven = new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms)
             {
-                ConductorCoefficients = DriveChannels.Coefficients(groups, geometry.Electrodes.Select(e => e.Name)),
+                ConductorCoefficients = coefficients,
             };
 
             return (driven, worst, ConductorLeaf.Of(metal, geometry.ReflectAboutX, driven));
@@ -983,7 +986,7 @@ public static class GeometryBuilder3D
             boundaries, stageDirect, stageHarmonics,
             anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null)
         {
-            ConductorCoefficients = DriveChannels.Coefficients(groups, geometry.Electrodes.Select(e => e.Name)),
+            ConductorCoefficients = coefficients,
         };
 
         return (sequenced, worst, ConductorLeaf.Of(metal, geometry.ReflectAboutX, sequenced));

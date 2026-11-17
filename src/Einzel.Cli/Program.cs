@@ -28,6 +28,12 @@ public static class Program
     /// <returns>A process exit code (CLI-3).</returns>
     public static int Main(string[] args)
     {
+        // Whether anything has been written to stdout, so that a refusal raised after a verb wrote
+        // its own result does not add a second document to it.
+        var stdout = Console.Out;
+        var tally = new StdoutTally(stdout);
+        Console.SetOut(tally);
+
         try
         {
             return Dispatch(args);
@@ -40,6 +46,15 @@ public static class Program
             foreach (var error in failure.Errors)
             {
                 Console.Error.WriteLine(error.ToString());
+            }
+
+            // And under --json the same errors on stdout (AGT-3), whichever layer raised them.
+            // A refusal made here in the command line was already JSON; one thrown from a command
+            // - a relief of zero, a box written backwards, a destination that cannot be written -
+            // left an agent an empty stream and an exit code.
+            if (args.Contains("--json") && !tally.Written)
+            {
+                tally.Write(CommandJson.Write(new CommandLineRefusal { Errors = [.. failure.Errors] }));
             }
 
             // CLI-3 wants a distinct exit code per failure class, and the class is
@@ -91,6 +106,38 @@ public static class Program
             Console.Error.WriteLine(failure.StackTrace);
             return (int)ExitCode.InternalError;
         }
+        finally
+        {
+            Console.SetOut(stdout);
+        }
+    }
+
+    /// <summary>Standard output, with a note of whether anything has been written to it.</summary>
+    private sealed class StdoutTally(TextWriter inner) : TextWriter
+    {
+        public bool Written { get; private set; }
+
+        public override System.Text.Encoding Encoding => inner.Encoding;
+
+        public override void Write(char value)
+        {
+            Written = true;
+            inner.Write(value);
+        }
+
+        public override void Write(string? value)
+        {
+            Written |= !string.IsNullOrEmpty(value);
+            inner.Write(value);
+        }
+
+        public override void Write(char[] buffer, int index, int count)
+        {
+            Written |= count > 0;
+            inner.Write(buffer, index, count);
+        }
+
+        public override void Flush() => inner.Flush();
     }
 
     private static int Dispatch(string[] args)
@@ -1431,8 +1478,10 @@ public static class Program
 
         var parts = text.Split('x');
 
+        // How it is written, and no more: how many samples a surface may have is the surface's
+        // own rule (SurfaceCommand.Check), stated there once.
         if (parts.Length is 1 or 2
-            && TryWhole(parts[0], 3, SurfaceCommand.MaximumSamples, out var longer))
+            && TryWhole(parts[0], 0, int.MaxValue, out var longer))
         {
             samples = longer;
 
@@ -1441,7 +1490,7 @@ public static class Program
                 return true;
             }
 
-            if (TryWhole(parts[1], 2, SurfaceCommand.MaximumSamples, out var shorter))
+            if (TryWhole(parts[1], 0, int.MaxValue, out var shorter))
             {
                 deep = shorter;
                 return true;
@@ -1451,7 +1500,7 @@ public static class Program
         return Refuse(
             options,
             "samples",
-            $"--samples takes a whole number {WholeRange(3, SurfaceCommand.MaximumSamples)}, or NxM for the longer side and then the shorter ({WholeRange(2, SurfaceCommand.MaximumSamples)}), written as digits alone, and '{text}' is neither.");
+            $"--samples takes a whole number, or NxM for the longer side and then the shorter, written as digits alone, and '{text}' is neither.");
     }
 
     /// <summary>The pixel size of a raster picture, from <c>--width-px</c> and <c>--height-px</c>.</summary>
@@ -1542,7 +1591,7 @@ public static class Program
 
             if (!options.Has("dry-run"))
             {
-                ArtifactFiles.WriteText("csv", target, ProbeCommand.ToCsv(outcome));
+                ArtifactFiles.WriteText("csv", target, ProbeCommand.ToCsv(outcome), options.Positional[0]);
             }
 
             Console.Error.WriteLine(options.Has("dry-run") ? $"would write {target}" : $"wrote {target}");
@@ -2319,10 +2368,9 @@ public static class Program
             || !TryNumberFlag(options, "height-mm-per-ev", "a number of millimetres per electronvolt", out var perEv)
             || !TryNumberFlag(options, "at-us", "a time in microseconds", out var at)
             || !TrySurfaceSamples(options, out var samples, out var deepSamples)
-            || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, 1, SurfaceCommand.MaximumSamples, out var meshLines, "a whole number of mesh lines")
+            || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, 0, int.MaxValue, out var meshLines, "a whole number of mesh lines")
             || !TryPictureSize(options, "a surface picture", out var width, out var height)
             || !TryChoiceFlag(options, "height", SurfaceHeight.Spellings, out var heightGiven, exact: true)
-            || !TryChoiceFlag(options, "plane", SurfaceCommand.Planes, out var plane, exact: true)
             || !TryChoiceFlag(options, "view", SurfaceCommand.Views.Keys, out var named, exact: true))
         {
             return (int)ExitCode.ValidationFailure;
@@ -2372,7 +2420,7 @@ public static class Program
         var view = named ?? "iso";
 
         var request = new SurfaceRequest(
-            plane,
+            options.Value("plane"),
             offset,
             box,
             samples,
@@ -2387,17 +2435,34 @@ public static class Program
         var modelPath = positional[0];
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
 
-        var outcome = SurfaceCommand.Execute(
-            modelPath,
-            new ProjectLayout(root),
-            request,
-            view,
-            width,
-            height,
-            options.Value("out"),
-            options.Has("dry-run"),
-            scale: !options.Has("no-scale"),
-            csvPath: options.Value("csv"));
+        SurfaceOutcome outcome;
+
+        try
+        {
+            outcome = SurfaceCommand.Execute(
+                modelPath,
+                new ProjectLayout(root),
+                request,
+                view,
+                width,
+                height,
+                options.Value("out"),
+                options.Has("dry-run"),
+                scale: !options.Has("no-scale"),
+                csvPath: options.Value("csv"));
+        }
+        catch (EinzelException refused) when (refused.Errors.Any(e => e.Path.StartsWith("/surface/", StringComparison.Ordinal)))
+        {
+            // What a surface may be asked for is the surface's own rule, stated once, in
+            // SurfaceCommand; here it is located at the flag that asked: /surface/relief is
+            // --relief.
+            throw new EinzelException(
+            [
+                .. refused.Errors.Select(e => e.Path.StartsWith("/surface/", StringComparison.Ordinal)
+                    ? e with { Path = "/args/--" + e.Path["/surface/".Length..] }
+                    : e),
+            ]);
+        }
 
         if (options.Has("json"))
         {
@@ -2579,144 +2644,164 @@ public static class Program
     private static int Ext(string[] args, CommandLine options)
     {
         var action = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : "list";
+
+        // Each action is a handler of its own, as each of render's kinds is: the flags one reads
+        // are its own, and the registry is keyed by the action.
+        if (action == "list")
+        {
+            return ExtList(options);
+        }
+
+        if (action == "test")
+        {
+            return ExtTest(options);
+        }
+
+        if (action == "register")
+        {
+            return ExtRegister(options);
+        }
+
+        Console.Error.WriteLine($"unknown 'ext' action '{action}'");
+        Console.Error.WriteLine("usage: einzel ext list | test <name> | register <name>");
+        return (int)ExitCode.ValidationFailure;
+    }
+
+    private static ProjectLayout ExtProject(CommandLine options) =>
+        new(options.Value("project") ?? InferProjectRoot(Directory.GetCurrentDirectory()));
+
+    private static int ExtList(CommandLine options)
+    {
+        var project = ExtProject(options);
+
+        var outcome = ExtensionCommand.List(project);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(
+            $"engine {outcome.EngineVersion}, interpreter {outcome.Interpreter ?? "NOT FOUND"}");
+
+        if (outcome.Extensions.Count == 0)
+        {
+            Console.Out.WriteLine("no extensions installed");
+        }
+
+        foreach (var entry in outcome.Extensions)
+        {
+            // LIC-2. An extension is third-party code run against this engine,
+            // and a missing licence is printed as MISSING rather than left off the
+            // line: the one extension worth asking about must not look like the
+            // ones that answered.
+            Console.Out.WriteLine(
+                $"  {entry.Name} {entry.Version}  {entry.Kind}/{entry.Trust}"
+                + $"  licence {entry.Licence ?? "NOT DECLARED"}"
+                + $"{(entry.Incompatibility is null ? string.Empty : "  INCOMPATIBLE: " + entry.Incompatibility)}");
+        }
+
+        // EXT-3 asks for OS-level isolation this build does not apply, and
+        // somebody deciding whether to run agent-authored code needs to know
+        // that before they run it rather than after.
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("the subprocess runner does NOT enforce:");
+
+        foreach (var gap in outcome.UnenforcedContainment)
+        {
+            Console.Error.WriteLine($"  - {gap}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int ExtTest(CommandLine options)
+    {
+        var project = ExtProject(options);
         var rest = options.Positional.Skip(1).ToList();
 
-        var root = options.Value("project") ?? InferProjectRoot(Directory.GetCurrentDirectory());
-        var project = new ProjectLayout(root);
-
-        switch (action)
+        if (rest.Count == 0)
         {
-            case "list":
-            {
-                var outcome = ExtensionCommand.List(project);
-
-                if (options.Has("json"))
-                {
-                    return Emit(outcome);
-                }
-
-                Console.Out.WriteLine(
-                    $"engine {outcome.EngineVersion}, interpreter {outcome.Interpreter ?? "NOT FOUND"}");
-
-                if (outcome.Extensions.Count == 0)
-                {
-                    Console.Out.WriteLine("no extensions installed");
-                }
-
-                foreach (var entry in outcome.Extensions)
-                {
-                    // LIC-2. An extension is third-party code run against this engine,
-                    // and a missing licence is printed as MISSING rather than left off the
-                    // line: the one extension worth asking about must not look like the
-                    // ones that answered.
-                    Console.Out.WriteLine(
-                        $"  {entry.Name} {entry.Version}  {entry.Kind}/{entry.Trust}"
-                        + $"  licence {entry.Licence ?? "NOT DECLARED"}"
-                        + $"{(entry.Incompatibility is null ? string.Empty : "  INCOMPATIBLE: " + entry.Incompatibility)}");
-                }
-
-                // EXT-3 asks for OS-level isolation this build does not apply, and
-                // somebody deciding whether to run agent-authored code needs to know
-                // that before they run it rather than after.
-                Console.Error.WriteLine();
-                Console.Error.WriteLine("the subprocess runner does NOT enforce:");
-
-                foreach (var gap in outcome.UnenforcedContainment)
-                {
-                    Console.Error.WriteLine($"  - {gap}");
-                }
-
-                return (int)ExitCode.Success;
-            }
-
-            case "test":
-            {
-                if (rest.Count == 0)
-                {
-                    Console.Error.WriteLine(
-                        "usage: einzel ext test <name> [--input <file.json>] [--project <dir>] [--json]");
-                    return (int)ExitCode.ValidationFailure;
-                }
-
-                System.Text.Json.Nodes.JsonNode? payload = new System.Text.Json.Nodes.JsonObject();
-
-                if (options.Value("input") is { } file)
-                {
-                    var text = File.ReadAllText(Path.GetFullPath(file));
-
-                    try
-                    {
-                        payload = System.Text.Json.Nodes.JsonNode.Parse(text);
-                    }
-                    catch (System.Text.Json.JsonException malformed)
-                    {
-                        // The caller's file, not a defect in the engine: it was exit 6.
-                        Refuse(options, "input", $"--input takes a JSON file, and '{file}' does not read as JSON: {malformed.Message}");
-                        return (int)ExitCode.ValidationFailure;
-                    }
-                }
-
-                var outcome = ExtensionCommand.Test(project, rest[0], payload);
-
-                if (options.Has("json"))
-                {
-                    return Emit(outcome);
-                }
-
-                Console.Out.WriteLine(
-                    $"{outcome.Name} {outcome.Version} returned in {outcome.ElapsedMs:F0} ms:");
-
-                Console.Out.WriteLine(outcome.Output?.ToJsonString() ?? "null");
-
-                if (outcome.Diagnostics is { } diagnostics)
-                {
-                    Console.Error.Write(diagnostics);
-                }
-
-                foreach (var warning in outcome.Warnings)
-                {
-                    Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
-                }
-
-                return (int)ExitCode.Success;
-            }
-
-            case "register":
-            {
-                if (rest.Count == 0)
-                {
-                    Console.Error.WriteLine(
-                        "usage: einzel ext register <name> [--kind objective|analysis|geometry|"
-                        + "sequence|interchange] [--project <dir>] [--dry-run] [--json]");
-                    return (int)ExitCode.ValidationFailure;
-                }
-
-                var kinds = Enum.GetValues<Einzel.Extensions.ExtensionKind>();
-
-                if (!TryChoiceFlag(options, "kind", kinds.Select(k => k.ToString().ToLowerInvariant()), out var kindName))
-                {
-                    return (int)ExitCode.ValidationFailure;
-                }
-
-                var kind = kindName is null
-                    ? Einzel.Extensions.ExtensionKind.Objective
-                    : kinds.First(k => string.Equals(k.ToString(), kindName, StringComparison.OrdinalIgnoreCase));
-
-                var created = ExtensionCommand.Register(project, rest[0], kind, options.Has("dry-run"));
-
-                foreach (var file in created)
-                {
-                    Console.Out.WriteLine(options.Has("dry-run") ? $"would write {file}" : $"wrote {file}");
-                }
-
-                return (int)ExitCode.Success;
-            }
-
-            default:
-                Console.Error.WriteLine($"unknown 'ext' action '{action}'");
-                Console.Error.WriteLine("usage: einzel ext list | test <name> | register <name>");
-                return (int)ExitCode.ValidationFailure;
+            Console.Error.WriteLine(
+                "usage: einzel ext test <name> [--input <file.json>] [--project <dir>] [--json]");
+            return (int)ExitCode.ValidationFailure;
         }
+
+        System.Text.Json.Nodes.JsonNode? payload = new System.Text.Json.Nodes.JsonObject();
+
+        if (options.Value("input") is { } file)
+        {
+            var text = File.ReadAllText(Path.GetFullPath(file));
+
+            try
+            {
+                payload = System.Text.Json.Nodes.JsonNode.Parse(text);
+            }
+            catch (System.Text.Json.JsonException malformed)
+            {
+                // The caller's file, not a defect in the engine: it was exit 6.
+                Refuse(options, "input", $"--input takes a JSON file, and '{file}' does not read as JSON: {malformed.Message}");
+                return (int)ExitCode.ValidationFailure;
+            }
+        }
+
+        var outcome = ExtensionCommand.Test(project, rest[0], payload);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(
+            $"{outcome.Name} {outcome.Version} returned in {outcome.ElapsedMs:F0} ms:");
+
+        Console.Out.WriteLine(outcome.Output?.ToJsonString() ?? "null");
+
+        if (outcome.Diagnostics is { } diagnostics)
+        {
+            Console.Error.Write(diagnostics);
+        }
+
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int ExtRegister(CommandLine options)
+    {
+        var project = ExtProject(options);
+        var rest = options.Positional.Skip(1).ToList();
+
+        if (rest.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel ext register <name> [--kind objective|analysis|geometry|"
+                + "sequence|interchange] [--project <dir>] [--dry-run] [--json]");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var kinds = Enum.GetValues<Einzel.Extensions.ExtensionKind>();
+
+        if (!TryChoiceFlag(options, "kind", kinds.Select(k => k.ToString().ToLowerInvariant()), out var kindName))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var kind = kindName is null
+            ? Einzel.Extensions.ExtensionKind.Objective
+            : kinds.First(k => string.Equals(k.ToString(), kindName, StringComparison.OrdinalIgnoreCase));
+
+        var created = ExtensionCommand.Register(project, rest[0], kind, options.Has("dry-run"));
+
+        foreach (var file in created)
+        {
+            Console.Out.WriteLine(options.Has("dry-run") ? $"would write {file}" : $"wrote {file}");
+        }
+
+        return (int)ExitCode.Success;
     }
 
     /// <summary>

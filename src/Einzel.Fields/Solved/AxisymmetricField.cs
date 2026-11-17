@@ -126,6 +126,20 @@ public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded
         return bounded.ConductorAt(in sample);
     }
 
+    /// <inheritdoc/>
+    public double NearestConductor(in Vec3 position, out string? name)
+    {
+        name = null;
+
+        if (_halfPlane is not IConductorBounded bounded)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var sample = Sample(in position);
+        return bounded.NearestConductor(in sample, out name);
+    }
+
     private static Vec3 Sample(in Vec3 position) =>
         new(position.X, Math.Sqrt((position.Y * position.Y) + (position.Z * position.Z)), 0.0);
 }

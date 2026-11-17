@@ -253,26 +253,43 @@ public sealed class FieldProbe
     // the second: a declared shape running past its solve would otherwise win wherever it was
     // nearest, and hide a conductor another element really has there. The rule is the
     // smallest signed distance, the first on a tie.
+    //
+    // The names come with the distances, from the same walk of each leaf's conductors: asking
+    // the leaf again for the name walked them a second time for every sample in metal. A caller
+    // that wants no name - a grid of potentials - is not charged for one.
     private void Locate(
-        in Vec3 point, out int nearest, out double nearestDistance, out int held, out double heldDistance)
+        in Vec3 point,
+        bool named,
+        out int nearest,
+        out double nearestDistance,
+        out string? nearestName,
+        out int held,
+        out double heldDistance,
+        out string? heldName)
     {
         nearest = held = -1;
         nearestDistance = heldDistance = double.PositiveInfinity;
+        nearestName = heldName = null;
 
         for (var i = 0; i < _leaves.Count; i++)
         {
-            var d = _leaves[i].Shape.SignedDistanceToConductor(in point);
+            string? name = null;
+            var d = named
+                ? _leaves[i].Shape.NearestConductor(in point, out name)
+                : _leaves[i].Shape.SignedDistanceToConductor(in point);
 
             if (d < nearestDistance)
             {
                 nearestDistance = d;
                 nearest = i;
+                nearestName = name;
             }
 
             if (d < heldDistance && InsideLeaf(_leaves[i], in point))
             {
                 heldDistance = d;
                 held = i;
+                heldName = name;
             }
         }
     }
@@ -827,7 +844,9 @@ public sealed class FieldProbe
             return ProbeStatus.Refused;
         }
 
-        Locate(in point, out var nearest, out var d, out var member, out var depth);
+        Locate(
+            in point, resolve != Resolve.None,
+            out var nearest, out var d, out var nearestName, out var member, out var depth, out var memberName);
 
         var allOutside = _allBounded && outsideCount == Elements.Count;
 
@@ -858,17 +877,16 @@ public sealed class FieldProbe
 
         if (inMetal && resolve != Resolve.None)
         {
-            conductor = _leaves[member].Shape.ConductorAt(in point);
+            conductor = memberName;
         }
         else if (resolve == Resolve.Nearest && reported >= 0 && distance is not null)
         {
-            conductor = _leaves[reported].Shape.ConductorAt(in point);
+            conductor = member >= 0 ? memberName : nearestName;
         }
 
         // And it says so where the point is inside a declared shape whose element was not solved
         // there, rather than leaving the shape unmentioned.
-        if (resolve == Resolve.Nearest && !inMetal && d < 0.0 && nearest >= 0
-            && _leaves[nearest].Shape.ConductorAt(in point) is { } past)
+        if (resolve == Resolve.Nearest && !inMetal && d < 0.0 && nearest >= 0 && nearestName is { } past)
         {
             note = string.Create(
                 CultureInfo.InvariantCulture,

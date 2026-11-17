@@ -1196,12 +1196,16 @@ public static class GeometryBuilder
             throw new InvalidOperationException("a driven geometry decomposed into no channel at all");
         }
 
+        // What each conductor holds in each channel's pattern: the same for the field with stages
+        // and the one without, so said once. An edge-profiled board has no single coefficient.
+        var coefficients = DriveChannels.Coefficients(
+            groups, solve.Electrodes.Where(e => e.Shape != ElectrodeShape.EdgeProfile).Select(e => e.Name));
+
         if (solve.Stages.Count == 0)
         {
             var driven = new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms)
             {
-                ConductorCoefficients = DriveChannels.Coefficients(
-                    groups, solve.Electrodes.Where(e => e.Shape != ElectrodeShape.EdgeProfile).Select(e => e.Name)),
+                ConductorCoefficients = coefficients,
             };
 
             return (driven, worst, ConductorLeaf.Of(metal, solve.ReflectAboutX, driven));
@@ -1263,8 +1267,7 @@ public static class GeometryBuilder
             boundaries, stageDirect, stageHarmonics,
             anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null)
         {
-            ConductorCoefficients = DriveChannels.Coefficients(
-                groups, solve.Electrodes.Where(e => e.Shape != ElectrodeShape.EdgeProfile).Select(e => e.Name)),
+            ConductorCoefficients = coefficients,
         };
 
         return (sequenced, worst, ConductorLeaf.Of(metal, solve.ReflectAboutX, sequenced));

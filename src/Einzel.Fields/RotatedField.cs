@@ -167,4 +167,14 @@ public sealed class RotatedField(
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position) =>
         _inner is IConductorBounded bounded ? bounded.ConductorAt(ToLocal(in position)) : null;
+
+    /// <inheritdoc/>
+    public double NearestConductor(in Vec3 position, out string? name)
+    {
+        name = null;
+
+        return _inner is IConductorBounded bounded
+            ? bounded.NearestConductor(ToLocal(in position), out name)
+            : double.PositiveInfinity;
+    }
 }

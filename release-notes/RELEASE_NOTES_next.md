@@ -183,6 +183,16 @@ become a feature release without being renamed twice.
   `appliedHighest`, and `render.interpolant-overshoot` says how far past and where. Earth is
   always labelled on the bar. `--relief` is at most 10 and is refused together with an explicit
   scale; a scale that makes the heights infinite is refused where it drew a picture.
+- **A reflected solve is no longer doubled on its mirror plane.** A point exactly on the plane
+  of a `reflectAboutX` solve read twice the potential and twice the field along the plane, in a
+  run as in `probe`; either side of it was right. A flight is unchanged unless a step lands
+  exactly on the plane.
+- **`render surface` is drawn no further than its scale**: heights and colors are held to the
+  range the conductors hold, as the bar already was; the CSV keeps the raw samples.
+- **Under `--json` every refusal is JSON on stdout**, whichever layer raised it. `ext` and
+  `agents` flags are checked per sub-verb (`ext list --kind y` is refused). A destination that is
+  the model itself, or another destination, is refused; a failed write restores the file that
+  was there.
 - **`einzel schema --units`** lists every unit symbol with its dimension and SI factor - the
   command an unknown unit's error has always named.
 - **A file that cannot be written is exit 1 at its flag**, not an internal error: `--out` or

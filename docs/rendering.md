@@ -901,8 +901,13 @@ zero the sample was "not inside" and drawn at whatever the interpolant read (the
 the samples still read past the conductors' range is reported, not stated**: `lowest` and
 `highest` in the outcome, the height scale and the scale bar are the sampled range held to the
 conductors' (`appliedLowest`, `appliedHighest`); `sampledLowest` and `sampledHighest` carry the raw
-extremes; and `render.interpolant-overshoot` says how far past and where. Nothing is clamped in
-the drawing - the surface is drawn as sampled and stands past the bar by the stated amount. Where
+extremes; and `render.interpolant-overshoot` says how far past and where. **The drawing is held
+to the same range** (`PotentialSurface.Drawn`): heights and colors are the samples clamped to
+what the conductors hold, so the surface ends where its bar does - drawn from the raw samples the
+einzel lens dipped 32 V below the earth its own bar stopped at. The CSV carries the raw samples.
+**The mirror plane of a reflected solve is counted once**: a point on it is its own image, and
+the declared half and its image both answered there, so a half lens with a 500 V electrode read
+999.5 V on the plane; the plane belongs to the declared half (`ReflectedField`). Where
 an element is analytic there is no such bound (it fills all space), the applied range is absent,
 and the range is the sampled one as before. **Earth is always labelled on the bar**, an end that
 would sit on it giving way. **`--relief` is more than 0 and at most 10**, it and an explicit

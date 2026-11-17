@@ -380,7 +380,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         output.WriteLine(stderr);
 
         Assert.Equal(1, code);
-        Assert.Contains("/surface/cycle-mean", stderr, StringComparison.Ordinal);
+        Assert.Contains("/args/--cycle-mean", stderr, StringComparison.Ordinal);
         Assert.Contains("drop --cycle-mean", stderr, StringComparison.Ordinal);
         Assert.DoesNotContain("INTERNAL_ERROR", stdout + stderr, StringComparison.Ordinal);
 
@@ -1730,6 +1730,225 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>
+    /// On the mirror plane of a reflected solve the potential is the field's, once: a half
+    /// einzel lens reads what its electrode holds there, through the probe and on the surface.
+    /// </summary>
+    /// <remarks>
+    /// A point on the plane is its own image, and both halves of the solve answered for it: the
+    /// 500 V centre tube of a lens written as one half and its mirror read 999.5 V on the plane,
+    /// in <c>probe</c> and at the middle column of a surface's default sampling.
+    /// </remarks>
+    [Fact]
+    public void TheMirrorPlaneOfAReflectedSolveIsCountedOnce()
+    {
+        // The slit, mirrored about its domain's edge at x = 20 mm, that edge a mirror, and an
+        // electrode at 40 V reaching the plane.
+        var plane = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var solve = plane["fields"]![0]!["solve"]!;
+        solve["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "value": 20, "unit": "mm" }""");
+        solve["rightEdge"] = "neumann";
+        solve["electrodes"]![0]!["minX"]!["value"] = 15.0;
+        solve["electrodes"]![0]!["maxX"]!["value"] = 20.0;
+        solve["electrodes"]![0]!["potential"]!["value"] = 40.0;
+        plane["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[59, 0, 0]");
+        var path = Path.Combine(_root, "half-and-mirror.json");
+        File.WriteAllText(path, plane.ToJsonString());
+
+        var probe = FieldProbe.Open(path);
+
+        // In the gap, on the plane and a hair either side of it.
+        var before = probe.At(0, new Einzel.Core.Geometry.Vec3(20.0 - 1e-6, 0.0, 0.0), 0.0);
+        var on = probe.At(0, new Einzel.Core.Geometry.Vec3(20.0, 0.0, 0.0), 0.0);
+        var after = probe.At(0, new Einzel.Core.Geometry.Vec3(20.0 + 1e-6, 0.0, 0.0), 0.0);
+
+        output.WriteLine($"{before.PotentialV!.Value:F6} V before, {on.PotentialV!.Value:F6} V on, {after.PotentialV!.Value:F6} V after the plane");
+
+        Assert.InRange(on.PotentialV!.Value, 1.0, 40.0);
+        Assert.Equal(before.PotentialV!.Value, on.PotentialV!.Value, 3);
+        Assert.Equal(after.PotentialV!.Value, on.PotentialV!.Value, 3);
+
+        // And nowhere on a surface across the plane does a sample read past what is held.
+        var (surface, _, warnings) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [0, -10, 40, 10], Samples: 241));
+
+        Assert.Contains(20.0, surface.Across);
+        Assert.InRange(surface.SampledHighest, 39.0, 40.0 * 1.05);
+        Assert.Equal(40.0, surface.AppliedHighest);
+    }
+
+    /// <summary>
+    /// The surface is drawn no further than its scale: where the samples overshoot what the
+    /// conductors hold, the drawn height and color are held to that range, and the raw readings
+    /// stay in the table.
+    /// </summary>
+    /// <remarks>
+    /// The range, the ramp and the bar were held to the conductors' range and the vertices were
+    /// not, so the einzel lens's surface dipped 32 V below the earth its own bar ended at.
+    /// </remarks>
+    [Fact]
+    public void TheSurfaceIsDrawnNoFurtherThanItsScale()
+    {
+        var (surface, _, warnings) = SurfaceCommand.Sample(Model("template", "einzel-lens"), new SurfaceRequest(Samples: 241));
+        var scale = SurfaceCommand.Scale(surface, new SurfaceRequest(Samples: 241));
+
+        Assert.True(surface.SampledLowest < -1.0, "the control: the samples do overshoot");
+
+        var heights = SurfaceCommand.Compose(surface, scale, 40)
+            .SelectMany(layer => layer.Meshes.SelectMany(m => Triples(m.VerticesMm)).Concat(layer.Lines.SelectMany(l => Triples(l.PointsMm))))
+            .Select(p => p.Y)
+            .Where(double.IsFinite)
+            .ToList();
+
+        output.WriteLine($"drawn from {heights.Min() / scale:G6} to {heights.Max() / scale:G6} V; sampled from {surface.SampledLowest:G6} V");
+
+        Assert.NotEmpty(heights);
+        Assert.True(heights.Min() >= 0.0, $"the surface is drawn down to {heights.Min() / scale:G6} V, below the foot of its bar");
+        Assert.True(heights.Max() <= (500.0 * scale) + 1e-9);
+
+        // Node by node: the drawn value is the sampled one held to the range.
+        var lowest = Enumerable.Range(0, surface.Values.Count).MinBy(k => surface.Values[k]);
+        var (i, j) = (lowest / surface.Deep.Count, lowest % surface.Deep.Count);
+
+        Assert.Equal(surface.SampledLowest, surface.At(i, j));
+        Assert.Equal(0.0, surface.Drawn(i, j));
+
+        // The table keeps what was read, and the warning says the drawing is held.
+        Assert.Contains(surface.SampledLowest.ToString("G17", System.Globalization.CultureInfo.InvariantCulture), SurfaceCommand.ToCsv(surface, warnings), StringComparison.Ordinal);
+        Assert.Contains("the drawing is held to it", warnings.Single(w => w.Code == "render.interpolant-overshoot").Message, StringComparison.Ordinal);
+
+        // Where nothing bounds the field, the drawing is the samples.
+        var (analytic, _, _) = SurfaceCommand.Sample(
+            Model("example", "accelerating-gap"), new SurfaceRequest(Plane: "xy", BoxMm: [0, -5, 10, 5], Samples: 21));
+
+        Assert.Null(analytic.AppliedLowest);
+        Assert.Equal(analytic.At(3, 3), analytic.Drawn(3, 3));
+    }
+
+    /// <summary>
+    /// A failure while sampling comes out of the parallel loop as itself, not wrapped: a refusal
+    /// stays a refusal.
+    /// </summary>
+    /// <remarks>
+    /// A parallel loop gathers what its bodies throw into an aggregate, which the command line
+    /// reports as an unknown failure - exit 6, "a defect in einzel" - whatever was thrown.
+    /// </remarks>
+    [Fact]
+    public void AFailureWhileSamplingComesOutAsItself()
+    {
+        var refusal = new Einzel.Core.Errors.EinzelException(new Einzel.Core.Errors.EinzelError
+        {
+            Code = Einzel.Core.Errors.ErrorCodes.RegimeInvalid,
+            Path = "/fields/0",
+            Constraint = "the field refuses this row",
+        });
+
+        var thrown = Assert.Throws<Einzel.Core.Errors.EinzelException>(
+            () => SurfaceCommand.ForEachRow(64, null, row =>
+            {
+                if (row == 17)
+                {
+                    throw refusal;
+                }
+            }));
+
+        Assert.Same(refusal, thrown);
+
+        // Any other failure too, as what it is.
+        Assert.Throws<InvalidOperationException>(
+            () => SurfaceCommand.ForEachRow(8, 1, _ => throw new InvalidOperationException("a defect")));
+
+        // The control: with nothing thrown, every row is visited.
+        var visited = new int[64];
+        SurfaceCommand.ForEachRow(64, null, row => visited[row]++);
+        Assert.All(visited, count => Assert.Equal(1, count));
+    }
+
+    /// <summary>
+    /// A destination that is the model, or the other destination, is refused: nothing a command
+    /// reads is written over.
+    /// </summary>
+    /// <remarks>
+    /// <c>--out model.json</c> was accepted and the picture replaced the model it was a picture
+    /// of.
+    /// </remarks>
+    [Fact]
+    public void NothingIsWrittenOverTheModel()
+    {
+        var lens = Path.Combine(_root, "lens.json");
+        Directory.CreateDirectory(_root);
+        File.Copy(Model("template", "einzel-lens"), lens);
+        var before = File.ReadAllText(lens);
+
+        foreach (var args in new[]
+        {
+            new[] { "render", "surface", lens, "--samples", "21", "--out", lens },
+            ["render", "surface", lens, "--samples", "21", "--out", Path.Combine(_root, "p.png"), "--csv", lens],
+            ["render", "still", lens, "--width-px", "32", "--height-px", "32", "--out", lens],
+            ["render", "section", lens, "--out", lens],
+            ["probe", lens, "--line-mm", "0,0,0", "--to-mm", "1,0,0", "--csv", lens],
+        })
+        {
+            var (code, _, stderr) = Cli(args);
+            output.WriteLine($"{string.Join(' ', args[..2])}: exit {code}: {stderr.Trim().Split('\n')[0]}");
+
+            Assert.Equal(1, code);
+            Assert.Contains("/args/--" + args[^2][2..], stderr, StringComparison.Ordinal);
+            Assert.Contains("the file this command reads", stderr, StringComparison.Ordinal);
+            Assert.Equal(before, File.ReadAllText(lens));
+        }
+
+        Assert.False(File.Exists(Path.Combine(_root, "p.png")));
+
+        // Compared as the file system compares names.
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(1, Cli("render", "surface", lens, "--samples", "21", "--out", lens.ToUpperInvariant()).ExitCode);
+            Assert.Equal(before, File.ReadAllText(lens));
+        }
+    }
+
+    /// <summary>
+    /// A write that fails part way leaves everything as it was: a file that was there before is
+    /// still there, with what it held.
+    /// </summary>
+    /// <remarks>
+    /// Undoing a write by deleting what was put in place deleted the picture of an earlier run
+    /// when the table beside the new one could not be written.
+    /// </remarks>
+    [Fact]
+    public void AFailedWriteLeavesAnEarlierFileAsItWas()
+    {
+        Directory.CreateDirectory(_root);
+        var picture = Path.Combine(_root, "keep.png");
+        var table = Path.Combine(_root, "keep.csv");
+
+        File.WriteAllBytes(picture, [1, 2, 3]);
+        File.WriteAllBytes(table, [4, 5]);
+
+        // The second destination cannot be replaced: held open by a reader that shares nothing.
+        // A lock on Windows; elsewhere a move replaces an open file and there is no failure to undo.
+        if (OperatingSystem.IsWindows())
+        {
+            using (new FileStream(table, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var refusal = Assert.Throws<Einzel.Core.Errors.EinzelException>(
+                    () => ArtifactFiles.WriteAll([("out", picture, [9]), ("csv", table, [9])]));
+
+                Assert.Equal("/args/--csv", refusal.Error.Path);
+            }
+
+            Assert.Equal([1, 2, 3], File.ReadAllBytes(picture));
+            Assert.Equal([4, 5], File.ReadAllBytes(table));
+        }
+
+        // The control: with nothing in the way, both are replaced and nothing else is left.
+        ArtifactFiles.WriteAll([("out", picture, [7]), ("csv", table, [8])]);
+
+        Assert.Equal([7], File.ReadAllBytes(picture));
+        Assert.Equal([8], File.ReadAllBytes(table));
+        Assert.Equal(["keep.csv", "keep.png"], Directory.GetFiles(_root, "keep.*").Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
     /// Earth is always labelled on the scale; an end that would sit on top of it gives way.
     /// </summary>
     /// <remarks>
@@ -1767,11 +1986,11 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     /// scale in the JSON and a PNG drawn from heights that were not numbers.
     /// </remarks>
     [Theory]
-    [InlineData("--relief", "1e308", "/surface/relief")]
-    [InlineData("--relief", "11", "/surface/relief")]
-    [InlineData("--relief", "0", "/surface/relief")]
-    [InlineData("--height-mm-per-v", "1e300", "/surface/height-mm-per-v")]
-    [InlineData("--height-mm-per-v", "1000", "/surface/height-mm-per-v")]
+    [InlineData("--relief", "1e308", "/args/--relief")]
+    [InlineData("--relief", "11", "/args/--relief")]
+    [InlineData("--relief", "0", "/args/--relief")]
+    [InlineData("--height-mm-per-v", "1e300", "/args/--height-mm-per-v")]
+    [InlineData("--height-mm-per-v", "1000", "/args/--height-mm-per-v")]
     public void AHeightScaleThatCannotBeDrawnIsRefused(string flag, string value, string path)
     {
         var target = Path.Combine(_root, "tall.png");
@@ -2310,9 +2529,9 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         var v = Cli("render", "surface", model, "--height-mm-per-v", "-1", "--samples", "21", "--dry-run");
 
         Assert.Equal(1, ev.ExitCode);
-        Assert.Contains("/surface/height-mm-per-ev", ev.Stdout + ev.Stderr, StringComparison.Ordinal);
+        Assert.Contains("/args/--height-mm-per-ev", ev.Stdout + ev.Stderr, StringComparison.Ordinal);
         Assert.Equal(1, v.ExitCode);
-        Assert.Contains("/surface/height-mm-per-v", v.Stdout + v.Stderr, StringComparison.Ordinal);
+        Assert.Contains("/args/--height-mm-per-v", v.Stdout + v.Stderr, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -2353,7 +2572,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         output.WriteLine(stderr);
 
         Assert.Equal(1, code);
-        Assert.Contains("/surface/csv", stderr, StringComparison.Ordinal);
+        Assert.Contains("/args/--csv", stderr, StringComparison.Ordinal);
         Assert.False(File.Exists(target));
 
         var other = Cli("render", "surface", model, "--samples", "21", "--out", target, "--csv", Path.Combine(_root, "BOTH.csv"));
@@ -2372,10 +2591,10 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         foreach (var (args, path) in new (string[] Args, string Path)[]
         {
-            (["render", "surface", sequenced, "--at-us", "-1", "--samples", "21", "--dry-run"], "/surface/at-us"),
+            (["render", "surface", sequenced, "--at-us", "-1", "--samples", "21", "--dry-run"], "/args/--at-us"),
             (["render", "section", sequenced, "--at-us", "-1", "--dry-run"], "/render/at-us"),
             (["probe", sequenced, "--at-mm", "0,0,0", "--at-us", "-1"], "/probe/at-us"),
-            (["render", "surface", quadrupole, "--at-us", "1e300", "--samples", "21", "--dry-run"], "/surface/at-us"),
+            (["render", "surface", quadrupole, "--at-us", "1e300", "--samples", "21", "--dry-run"], "/args/--at-us"),
             (["probe", quadrupole, "--at-mm", "0,0,0", "--at-us", "1e300"], "/probe/at-us"),
         })
         {

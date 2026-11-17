@@ -934,6 +934,16 @@ all**, and one that cannot be written is refused at its flag, exit 1 (`ArtifactF
 `render surface`, `render still`, `render section`, `render animation`, `probe --csv`, `report
 --out` and `export`).
 
+**Under `--json` every refusal is JSON on stdout**, `{"ran": false, "errors": [...]}`, whichever
+layer raised it: the command line's own, and one thrown from a command (a relief of zero, a box
+written backwards, a destination that cannot be written). A verb that has already written its own
+answer is left with that one document. **A sub-verb's flags are its own**: `ext list`, `ext test`
+and `ext register`, and `agents tasks`, `agents setup` and `agents score`, are keyed separately
+in the registry as `render`'s kinds are, so `ext list --kind y` is an unknown flag and not a flag
+nothing read. **No destination may be a file the command reads, or another destination**:
+`--out model.json` used to replace the model with its own picture. **And a write that fails part
+way puts back what was there**, where it used to delete it.
+
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
 unless turned off, so the flag alone is the default interval, as it always was. Every other flag that
 takes a value is refused bare; before this they were read as though absent.
@@ -971,9 +981,13 @@ command line and a sample.
 | `templates` | - | - | 1 |
 | `examples` | - | - | 1 |
 | `agents-md` | `--dry-run` | `--project` | 1 |
-| `agents` | `--dry-run` | - | 3 |
+| `agents`, `agents tasks` | - | - | 0, 2 |
+| `agents setup` | `--dry-run` | - | 3 |
+| `agents score` | - | - | 3 |
 | `doctor` | - | `--project` | 1 |
-| `ext` | `--dry-run` | `--input`, `--kind`, `--project` | 2 |
+| `ext`, `ext list` | - | `--project` | 0, 1 |
+| `ext test` | - | `--input`, `--project` | 2 |
+| `ext register` | `--dry-run` | `--kind`, `--project` | 2 |
 | `render section` | `--dry-run`, `--no-trajectory` | `--at-us`, `--caption`, `--equipotentials`, `--format`, `--out`, `--progress` (value optional), `--project`, `--width-mm` | 2 |
 | `render still` | `--dry-run`, `--no-scale`, `--see-through` | `--height-px`, `--out`, `--project`, `--view`, `--width-px` | 2 |
 | `render surface` | `--cycle-mean`, `--dry-run`, `--no-scale` | `--at-us`, `--box-mm`, `--csv`, `--height`, `--height-mm-per-ev`, `--height-mm-per-v`, `--height-px`, `--mesh-lines`, `--offset-mm`, `--out`, `--plane`, `--project`, `--relief`, `--samples`, `--view`, `--width-px` | 2 |

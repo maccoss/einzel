@@ -334,7 +334,8 @@ public static class RenderCommand
             ArtifactFiles.Write(
                 "out",
                 path,
-                spec.Format == FigureFormat.Pdf ? PdfWriter.Write(figure.Scene) : ArtifactFiles.Utf8(SvgWriter.Write(figure.Scene)));
+                spec.Format == FigureFormat.Pdf ? PdfWriter.Write(figure.Scene) : ArtifactFiles.Utf8(SvgWriter.Write(figure.Scene)),
+                absolute);
         }
 
         var byLayer = new SortedDictionary<string, int>(StringComparer.Ordinal);
