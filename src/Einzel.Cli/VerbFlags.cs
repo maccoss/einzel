@@ -67,7 +67,7 @@ public sealed record VerbFlags(
         ["report"] = Of(["dry-run"], ["out", "project"], 1),
         ["export"] = Of(["composite", "dry-run", "mesh"], ["at-us", "box-mm", "project", "step-mm"], 1),
         ["compare"] = Of([], ["ions"], 1),
-        ["schema"] = Of(["study"], [], 0),
+        ["schema"] = Of(["study", "units"], [], 0),
         ["templates"] = Of([], [], 1),
         ["examples"] = Of([], [], 1),
         ["agents-md"] = Of(["dry-run"], ["project"], 1),

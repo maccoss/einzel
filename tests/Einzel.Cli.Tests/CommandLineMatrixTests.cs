@@ -558,6 +558,107 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         Assert.Equal("/args/--" + flag, document.RootElement.GetProperty("errors")[0].GetProperty("path").GetString());
     }
 
+    /// <summary>
+    /// <c>--relief</c> and an explicit height scale are two ways of saying how tall, and giving
+    /// both is refused: the relief used to be ignored without a word.
+    /// </summary>
+    /// <param name="scale">The explicit scale's flag and what else it needs.</param>
+    [Theory]
+    [InlineData("--height-mm-per-v 1")]
+    [InlineData("--height energy --height-mm-per-ev 1")]
+    public void ReliefAndAnExplicitScaleAreNotGivenTogether(string scale)
+    {
+        Project();
+
+        var (code, _, stderr) = Run(Words($"render surface {{model}} --dry-run --box-mm 0,0,10,10 --relief 0.2 {scale}"));
+
+        Assert.Equal(1, code);
+        Assert.Contains(" at /args/--relief:", stderr, StringComparison.Ordinal);
+        Assert.Contains(scale.Split(' ')[^2], stderr, StringComparison.Ordinal);
+
+        // The control: each alone is taken.
+        Assert.Equal(0, Run(Words("render surface {model} --dry-run --box-mm 0,0,10,10 --relief 0.2")).ExitCode);
+        Assert.Equal(0, Run(Words($"render surface {{model}} --dry-run --box-mm 0,0,10,10 {scale}")).ExitCode);
+    }
+
+    /// <summary>
+    /// The suggestion for an argument a verb does not take is made from that verb's own flags.
+    /// </summary>
+    /// <remarks>
+    /// Every verb was told "a file to write is --out &lt;file&gt;, and a switch such as --json or
+    /// --no-scale takes no value": <c>einzel run m.json --vtu out.vtu</c> was sent to
+    /// <c>--out</c>, which <c>run</c> then refused.
+    /// </remarks>
+    [Fact]
+    public void TheSuggestionForAStrayArgumentNamesTheVerbsOwnFlags()
+    {
+        Project();
+
+        var (code, _, stderr) = Run(Words("run {model} --vtu out.vtu"));
+
+        Assert.Equal(1, code);
+        Assert.Contains("'out.vtu'", stderr, StringComparison.Ordinal);
+        Assert.Contains("--vtu", stderr, StringComparison.Ordinal);
+        Assert.Contains("--progress", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("--out", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("--no-scale", stderr, StringComparison.Ordinal);
+
+        // Where the verb does write a file where it is told, the suggestion says with which flag.
+        var (_, _, surface) = Run(Words("render surface {model} --dry-run --no-scale out.png"));
+
+        Assert.Contains("a file to write is --out <file>", surface, StringComparison.Ordinal);
+        Assert.Contains("--no-scale", surface, StringComparison.Ordinal);
+
+        var (_, _, probe) = Run(Words("probe {model} --at-mm 0,0,0 extra"));
+
+        Assert.Contains("a file to write is --csv <file>", probe, StringComparison.Ordinal);
+
+        // Every flag a suggestion names is one the verb reads.
+        foreach (var (verb, flags) in VerbFlags.ByVerb)
+        {
+            foreach (System.Text.RegularExpressions.Match named in Regex.Matches(Program.CommandLineProblem([.. verb.Split(' '), .. Enumerable.Repeat("x", flags.Positionals + 1)])!.Suggestion!, @"--([a-z0-9-]+)"))
+            {
+                Assert.True(flags.Knows(named.Groups[1].Value), $"{verb}: the suggestion names --{named.Groups[1].Value}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// <c>einzel schema --units</c> lists the unit symbols a document may use, from the registry
+    /// that reads them - which is what an unknown unit's error has always told its reader to run.
+    /// </summary>
+    [Fact]
+    public void SchemaUnitsListsTheUnitRegistry()
+    {
+        Project();
+
+        var (code, stdout, stderr) = Run(["schema", "--units"]);
+
+        Assert.True(code == 0, stderr);
+        Assert.Matches(@"(?m)^mm\s+m\s+0\.001\s*$", stdout);
+        Assert.Matches(@"(?m)^kV\s", stdout);
+
+        var (jsonCode, json, _) = Run(["schema", "--units", "--json"]);
+
+        Assert.Equal(0, jsonCode);
+        using var document = JsonDocument.Parse(json);
+        var units = document.RootElement.GetProperty("units").EnumerateArray().ToList();
+
+        // Every symbol the registry knows, and nothing else.
+        Assert.Equal(
+            Einzel.Core.Units.UnitRegistry.KnownSymbols.Order(StringComparer.Ordinal),
+            units.Select(u => u.GetProperty("symbol").GetString()!).Order(StringComparer.Ordinal));
+
+        var mm = units.Single(u => u.GetProperty("symbol").GetString() == "mm");
+        Assert.Equal("m", mm.GetProperty("dimension").GetString());
+        Assert.Equal(1e-3, mm.GetProperty("siFactor").GetDouble());
+
+        // And the suggestion that names it is a command line the CLI takes.
+        var unknown = Assert.Throws<Einzel.Core.Errors.EinzelException>(() => Einzel.Core.Units.UnitRegistry.Resolve("furlong"));
+        Assert.Contains("'einzel schema --units'", unknown.Error.Suggestion, StringComparison.Ordinal);
+        Assert.Null(Program.CommandLineProblem(["schema", "--units"]));
+    }
+
     private static string[] Words(string line) =>
         [
             .. line

@@ -176,6 +176,22 @@ public sealed record PotentialSurface
     /// </summary>
     public double ReferenceScale { get; init; }
 
+    /// <summary>The lowest value sampled, plateaus at what they hold, in <see cref="Unit"/>.</summary>
+    public double SampledLowest { get; init; }
+
+    /// <summary>The highest value sampled, in <see cref="Unit"/>.</summary>
+    public double SampledHighest { get; init; }
+
+    /// <summary>
+    /// The lowest value the field can take, from what the conductors hold (earth included), in
+    /// <see cref="Unit"/>; null where that is not known - a model with an analytic element, which
+    /// fills all space and has no such bound. See <c>FieldProbe.AppliedRange</c>.
+    /// </summary>
+    public double? AppliedLowest { get; init; }
+
+    /// <summary>The highest value the field can take, as <see cref="AppliedLowest"/> is the lowest.</summary>
+    public double? AppliedHighest { get; init; }
+
     /// <summary>Sample positions along <see cref="AcrossAxis"/>, in millimetres.</summary>
     public required IReadOnlyList<double> Across { get; init; }
 
@@ -292,11 +308,37 @@ public sealed record SurfaceOutcome
     /// <summary>The same scale the other way up: volts (or electronvolts) per drawn millimetre.</summary>
     public required double UnitsPerMm { get; init; }
 
-    /// <summary>The lowest value drawn, in <see cref="Unit"/>.</summary>
+    /// <summary>
+    /// The lowest value of the surface, in <see cref="Unit"/>: the lowest sampled, held to the
+    /// lowest the conductors hold where that is known (<see cref="AppliedLowest"/>). What the
+    /// height scale and the scale bar are made from.
+    /// </summary>
+    /// <remarks>
+    /// Not the raw extreme of the samples, which is <see cref="SampledLowest"/>: beside a step
+    /// on the boundary a cubic interpolant overshoots by a few percent, and by an amount that
+    /// changes with where the samples fall, so the raw extreme of a 0 to 500 V lens read -25 V
+    /// at 61 samples and -32 V at 241. A field with no charge in it is nowhere outside what its
+    /// boundary holds; where the samples are, <c>render.interpolant-overshoot</c> says by how much.
+    /// </remarks>
     public required double Lowest { get; init; }
 
-    /// <summary>The highest value drawn, in <see cref="Unit"/>.</summary>
+    /// <summary>The highest value of the surface, as <see cref="Lowest"/> is the lowest.</summary>
     public required double Highest { get; init; }
+
+    /// <summary>The lowest value sampled, in <see cref="Unit"/>, overshoot included.</summary>
+    public required double SampledLowest { get; init; }
+
+    /// <summary>The highest value sampled, in <see cref="Unit"/>, overshoot included.</summary>
+    public required double SampledHighest { get; init; }
+
+    /// <summary>
+    /// The lowest value the conductors hold, earth included, in <see cref="Unit"/>; absent where
+    /// the model has an analytic element, which has no such bound.
+    /// </summary>
+    public required double? AppliedLowest { get; init; }
+
+    /// <summary>The highest value the conductors hold, as <see cref="AppliedLowest"/> is the lowest.</summary>
+    public required double? AppliedHighest { get; init; }
 
     /// <summary>Whether the field varies with time.</summary>
     public required bool TimeVarying { get; init; }
@@ -379,6 +421,16 @@ public static class SurfaceCommand
 
     /// <summary>The drawn height of the whole range, as a fraction of the longer side.</summary>
     public const double DefaultRelief = 0.35;
+
+    /// <summary>The largest relief: a surface ten times taller than it is wide is already a spike.</summary>
+    public const double MaximumRelief = 10.0;
+
+    /// <summary>
+    /// The tallest a surface may be drawn, as a multiple of its longer side, whatever scale asks
+    /// for it. Past this the picture is one vertical line, and far enough past it the heights
+    /// are not numbers at all.
+    /// </summary>
+    public const double MaximumDrawnHeight = 1000.0;
 
     /// <summary>The planes a surface may be asked for by name.</summary>
     public static readonly IReadOnlyList<string> Planes = ["xy", "xz", "yz"];
@@ -671,6 +723,7 @@ public static class SurfaceCommand
         // at a potential neither holds. Where a name does repeat, the label says which element.
         var plateaus = new List<SurfacePlateau>();
         var level = new Dictionary<string, double>(StringComparer.Ordinal);
+        var onFaceOnly = new HashSet<string>(StringComparer.Ordinal);
 
         var repeated = Enumerable.Range(0, raw.Length)
             .Where(k => names[k] is not null)
@@ -681,11 +734,33 @@ public static class SurfaceCommand
 
         var inside = new string?[nu * nv];
 
+        // One label for each conductor, made once and shared by every sample inside it: a
+        // repeated name's label is built from the name and the element, and building it per
+        // sample was a new string for each of up to a million nodes, compared by value after.
+        var labels = new Dictionary<(string Name, int? Element), string>();
+
         for (var k = 0; k < raw.Length; k++)
         {
-            inside[k] = names[k] is { } name && repeated.Contains(name)
-                ? string.Create(CultureInfo.InvariantCulture, $"{name} (element {elements[k]?.ToString(CultureInfo.InvariantCulture) ?? "?"})")
-                : names[k];
+            if (names[k] is not { } name)
+            {
+                continue;
+            }
+
+            if (!repeated.Contains(name))
+            {
+                inside[k] = name;
+                continue;
+            }
+
+            if (!labels.TryGetValue((name, elements[k]), out var label))
+            {
+                label = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{name} (element {elements[k]?.ToString(CultureInfo.InvariantCulture) ?? "?"})");
+                labels[(name, elements[k])] = label;
+            }
+
+            inside[k] = label;
         }
 
         foreach (var group in Enumerable.Range(0, raw.Length)
@@ -697,7 +772,20 @@ public static class SurfaceCommand
             // conductor written as two halves meeting on a line, where a plane beside the seam is
             // never more than its offset deep and the "deepest" sample is any of them, including
             // one beside a face where the interpolant overshoots.
-            var ordered = group.OrderBy(k => depth[k]).ToList();
+            //
+            // And of the samples properly inside, where there are any: one on the conductor's
+            // face at the edge of its solve is drawn at what the conductor holds, but what the
+            // interpolant reads there is a reading of the step and says nothing about what is
+            // summed inside the metal.
+            var within = group.Where(k => depth[k] < 0.0).ToList();
+            var read = within.Count > 0 ? within : [.. group];
+
+            if (within.Count == 0)
+            {
+                // Met only on its face: nothing was read inside it to disagree with what it holds.
+                onFaceOnly.Add(group.Key);
+            }
+            var ordered = read.OrderBy(k => depth[k]).ToList();
             var deeper = ordered.Take(Math.Max(1, ordered.Count / 2)).Select(k => raw[k]).Order().ToList();
             var sampled = deeper[deeper.Count / 2];
             var potential = held[ordered[0]];
@@ -708,8 +796,8 @@ public static class SurfaceCommand
                 potential,
                 factor * potential,
                 group.Count(),
-                group.Min(k => raw[k]),
-                group.Max(k => raw[k]),
+                read.Min(k => raw[k]),
+                read.Max(k => raw[k]),
                 elements[group.First()],
                 names[group.First()])
             {
@@ -750,7 +838,8 @@ public static class SurfaceCommand
         {
             var stray = Math.Max(Math.Abs(plateau.LowestV - plateau.PotentialV), Math.Abs(plateau.HighestV - plateau.PotentialV));
 
-            if (Math.Abs(plateau.SampledV - plateau.PotentialV) > PlateauTolerance * referenceVolts && stray > 0.0)
+            if (Math.Abs(plateau.SampledV - plateau.PotentialV) > PlateauTolerance * referenceVolts && stray > 0.0
+                && !onFaceOnly.Contains(plateau.Conductor))
             {
                 warnings.Add(new ValidityWarning(
                     "render.plateau-disagrees",
@@ -761,7 +850,54 @@ public static class SurfaceCommand
             }
         }
 
-        var (lowest, highest) = Range(values);
+        // What the conductors hold bounds what the field can be, where every element is a solve:
+        // no charge, so nowhere above the highest potential on the boundary or below the lowest.
+        var (sampledLow, sampledHigh) = Range(values);
+        (double Low, double High)? applied = null;
+
+        if (probe.AppliedRange(at, cycleMean) is { } volts)
+        {
+            applied = factor >= 0.0 ? (factor * volts.Low, factor * volts.High) : (factor * volts.High, factor * volts.Low);
+        }
+
+        var (lowest, highest) = Stated(sampledLow, sampledHigh, applied);
+
+        if (applied is { } bound)
+        {
+            // Past the bound by more than rounding: not the field, the interpolant.
+            var slack = 1e-9 * Math.Max(reference, Math.Max(Math.Abs(bound.Low), Math.Abs(bound.High)));
+            var worst = -1;
+            var over = 0.0;
+
+            for (var k = 0; k < values.Length; k++)
+            {
+                if (!double.IsFinite(values[k]))
+                {
+                    continue;
+                }
+
+                var excess = Math.Max(values[k] - bound.High, bound.Low - values[k]);
+
+                if (excess > over)
+                {
+                    over = excess;
+                    worst = k;
+                }
+            }
+
+            if (worst >= 0 && over > slack)
+            {
+                var unit = energy ? "eV" : "V";
+
+                warnings.Add(new ValidityWarning(
+                    "render.interpolant-overshoot",
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"the samples reach {values[worst]:G6} {unit} at {Name(across)} = {us[worst / nv]:G6} mm, {Name(deep)} = {vs[worst % nv]:G6} mm, {over:G4} {unit} outside the {bound.Low:G6} to {bound.High:G6} {unit} the conductors hold: a field with no charge in it is nowhere outside what its boundary holds, so that is the interpolant overshooting beside a step in what the boundary holds - at a conductor's face, and most where its edge meets the earthed edge of its solve - and not the field. The range stated, the height scale and the scale bar are the conductors' range; the surface is drawn as sampled, so it stands that far past the bar there"),
+                    WarningSeverity.Qualified));
+            }
+        }
+
         var span = Math.Max(highest, 0.0) - Math.Min(lowest, 0.0);
 
         if (request.HeightMmPerUnit is null && span > 0.0 && span < NoiseFloor * reference)
@@ -867,6 +1003,10 @@ public static class SurfaceCommand
             ChargeNumber = energy ? charge : null,
             OutsideDomain = outside,
             Refused = refused,
+            SampledLowest = sampledLow,
+            SampledHighest = sampledHigh,
+            AppliedLowest = applied?.Low,
+            AppliedHighest = applied?.High,
         };
 
         return (surface, probe, warnings);
@@ -1148,13 +1288,42 @@ public static class SurfaceCommand
                 "give --csv a file of its own, such as one ending in .csv");
         }
 
+        // Before anything is solved: a destination that is a directory is known at once.
+        ArtifactFiles.Check("out", path);
+
+        if (csv is not null)
+        {
+            ArtifactFiles.Check("csv", csv);
+        }
+
         // One read (PRJ-3): the hash is the probe's, of the very text the field was built from.
         var (surface, probe, warnings) = Sample(absolute, modelText ?? File.ReadAllText(absolute), request, maxParallelism);
         var hash = probe.ModelHash;
         var mmPerUnit = Scale(surface, request);
-        var layers = Compose(surface, mmPerUnit, request.MeshLines, out var meshDrawn);
-
         var (low, high) = Range(surface);
+
+        // Before anything is composed: a scale that makes the heights infinite, or a surface a
+        // thousand times taller than it is wide, is refused by the flag that asked for it. It
+        // used to be drawn - from heights that were not numbers - and reported as written.
+        var longest = Math.Max(surface.Across[^1] - surface.Across[0], surface.Deep[^1] - surface.Deep[0]);
+        var tallest = mmPerUnit * Math.Max(
+            Math.Max(Math.Abs(surface.SampledLowest), Math.Abs(surface.SampledHighest)), Math.Max(Math.Abs(low), Math.Abs(high)));
+
+        if (!double.IsFinite(mmPerUnit) || !(mmPerUnit > 0.0) || !double.IsFinite(tallest) || tallest > MaximumDrawnHeight * longest)
+        {
+            var flag = request.HeightMmPerUnit is null
+                ? "relief"
+                : surface.Height == SurfaceHeight.Energy ? "height-mm-per-ev" : "height-mm-per-v";
+
+            throw Refusal(
+                "/surface/" + flag,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"at {mmPerUnit:G6} mm per {surface.Unit} the surface would stand {tallest:G6} mm tall over a plane {longest:G6} mm long, more than {MaximumDrawnHeight:G} times its length"),
+                $"give a smaller --{flag}");
+        }
+
+        var layers = Compose(surface, mmPerUnit, request.MeshLines, out var meshDrawn);
         var bar = Bar(surface, mmPerUnit, angles, low, high);
 
         // Measured once: the frame is refitted below for the scale's labels, and every refit
@@ -1294,6 +1463,10 @@ public static class SurfaceCommand
             UnitsPerMm = 1.0 / mmPerUnit,
             Lowest = low,
             Highest = high,
+            SampledLowest = surface.SampledLowest,
+            SampledHighest = surface.SampledHighest,
+            AppliedLowest = surface.AppliedLowest,
+            AppliedHighest = surface.AppliedHighest,
             TimeVarying = probe.TimeVarying,
             InstantUs = instantUs,
             CycleMean = cycleMean,
@@ -1307,14 +1480,19 @@ public static class SurfaceCommand
 
         if (!dryRun)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllBytes(path, PngWriter.Write(rgb!, width, height, Provenance(outcome, warnings)));
+            // The picture and the table together, or neither: the picture used to be written
+            // before the table was tried.
+            var files = new List<(string Flag, string Path, byte[] Content)>
+            {
+                ("out", path, PngWriter.Write(rgb!, width, height, Provenance(outcome, warnings))),
+            };
 
             if (csv is not null)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(csv)!);
-                File.WriteAllText(csv, ToCsv(surface, warnings));
+                files.Add(("csv", csv, ArtifactFiles.Utf8(ToCsv(surface, warnings))));
             }
+
+            ArtifactFiles.WriteAll(files);
         }
 
         return outcome;
@@ -1471,13 +1649,33 @@ public static class SurfaceCommand
     }
 
     /// <summary>The lowest and highest finite values on a surface.</summary>
-    private static (double Low, double High) Range(PotentialSurface surface) => Range(surface.Values);
+    /// <summary>
+    /// The range a surface is stated and scaled by: what was sampled, held to what the conductors
+    /// hold where that is known.
+    /// </summary>
+    private static (double Low, double High) Range(PotentialSurface surface) => Stated(
+        surface.SampledLowest,
+        surface.SampledHighest,
+        surface.AppliedLowest is { } low && surface.AppliedHighest is { } high ? (low, high) : null);
 
-    private static (double Low, double High) Range(IReadOnlyList<double> values)
+    private static (double Low, double High) Stated(double sampledLow, double sampledHigh, (double Low, double High)? applied)
+    {
+        if (applied is not { } bound)
+        {
+            return (sampledLow, sampledHigh);
+        }
+
+        var low = Math.Clamp(sampledLow, bound.Low, bound.High);
+        var high = Math.Clamp(sampledHigh, bound.Low, bound.High);
+
+        return (low, high);
+    }
+
+    private static (double Low, double High) Range(double[] values)
     {
         var (low, high) = (double.PositiveInfinity, double.NegativeInfinity);
 
-        for (var k = 0; k < values.Count; k++)
+        for (var k = 0; k < values.Length; k++)
         {
             var v = values[k];
 
@@ -1811,17 +2009,14 @@ public static class SurfaceCommand
             texts.Add(new OverlayText(label, px - tick - (0.4 * textHeight) - (0.5 * labelWidth), py, textHeight, ir, ig, ib));
         }
 
-        Tick(Math.Max(high, 0.0), force: true);
-        Tick(Math.Min(low, 0.0), force: true);
-
-        if (low < 0.0 && high > 0.0)
+        foreach (var value in ScaleTicks(
+            low,
+            high,
+            surface.Plateaus.OrderByDescending(p => p.Samples).Select(p => p.Height),
+            v => Pixel(bar.X, v * mmPerUnit, bar.Z).Y,
+            textHeight))
         {
-            Tick(0.0, force: false);
-        }
-
-        foreach (var plateau in surface.Plateaus.OrderByDescending(p => p.Samples))
-        {
-            Tick(plateau.Height, force: false);
+            Tick(value, force: true);
         }
 
         // What instant the heights are, above the bar: a picture of a driven field is a frame.
@@ -1835,6 +2030,53 @@ public static class SurfaceCommand
         }
 
         return new RasterOverlay(strokes, texts, ScaleIndicator.LineWidthPx);
+    }
+
+    /// <summary>
+    /// The values labelled on the vertical scale, in the order they are chosen: earth, the two
+    /// ends, then the plateaus by size - each kept only where its label has room.
+    /// </summary>
+    /// <param name="low">The lowest value of the surface.</param>
+    /// <param name="high">The highest value of the surface.</param>
+    /// <param name="plateaus">The plateaus' heights, the largest plateau first.</param>
+    /// <param name="rowOf">Where a value sits on the bar, in pixels down the picture.</param>
+    /// <param name="textHeightPx">The height of a label's text, in pixels.</param>
+    /// <returns>The values to label.</returns>
+    /// <remarks>
+    /// <b>Earth first, always.</b> The bar runs from the lower of the lowest value and zero to
+    /// the higher of the highest and zero, so zero is on it; it is the level the picture is
+    /// drawn about and the one a reader looks for. Both ends used to be labelled whatever they
+    /// collided with and earth only if it had room, so a minimum a hair below zero took the
+    /// foot's label and left <c>0 V</c> out. An end that would sit on top of earth gives way.
+    /// </remarks>
+    public static IReadOnlyList<double> ScaleTicks(
+        double low, double high, IEnumerable<double> plateaus, Func<double, double> rowOf, double textHeightPx)
+    {
+        ArgumentNullException.ThrowIfNull(plateaus);
+        ArgumentNullException.ThrowIfNull(rowOf);
+
+        var labelled = new List<double>();
+        var rows = new List<double>();
+
+        foreach (var value in new[] { 0.0, Math.Max(high, 0.0), Math.Min(low, 0.0) }.Concat(plateaus))
+        {
+            if (!double.IsFinite(value))
+            {
+                continue;
+            }
+
+            var row = rowOf(value);
+
+            if (rows.Any(r => Math.Abs(r - row) < 1.5 * textHeightPx))
+            {
+                continue;
+            }
+
+            rows.Add(row);
+            labelled.Add(value);
+        }
+
+        return labelled;
     }
 
     /// <summary>
@@ -2120,9 +2362,13 @@ public static class SurfaceCommand
             throw Refusal("/surface/height", $"the height is potential or energy; got '{request.Height}'");
         }
 
-        if (!(request.Relief > 0.0) || !double.IsFinite(request.Relief))
+        if (!(request.Relief > 0.0) || !(request.Relief <= MaximumRelief))
         {
-            throw Refusal("/surface/relief", "the relief is a positive fraction of the longer side");
+            throw Refusal(
+                "/surface/relief",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"the relief is the drawn height of the whole range as a fraction of the longer side, more than 0 and at most {MaximumRelief:G}; got {request.Relief:G6}"));
         }
 
         if (request.HeightMmPerUnit is { } scale && (!(scale > 0.0) || !double.IsFinite(scale)))

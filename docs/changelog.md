@@ -3610,5 +3610,29 @@ Two findings from Stage 1 that bear on the spec:
   closed form; and a driven field made with no channel answers without an index out of range (the
   builders always make one, which a test now states).
 
+  **An eleventh review measured the surface's stated range moving with `--samples`.** The
+  shipped einzel lens holds 0 and 500 V and reported -25 to 500 V at 61 samples, -32 to 500 at
+  241 and -14.8 to 537 at 1001: the range, the relief and the scale bar were the raw extremes of
+  a cubic interpolant, which overshoots beside a step. A solve has no charge in it, so the
+  maximum principle bounds it by what its conductors hold, and that is now what is stated
+  (`FieldProbe.AppliedRange`): `lowest`, `highest`, the scale and the bar are the sampled range
+  held to the conductors', the raw extremes are kept beside them, and
+  `render.interpolant-overshoot` says how far past and where. **Nothing is clamped in the
+  drawing**, which would be the silent version of the same fix. A sample on the face of a
+  conductor carried to its solve's edge is the conductor's - at distance zero it was "not
+  inside", which was the 537 V. Where an element is analytic there is no bound to state. Also:
+  earth is always labelled on the bar; `--out` and `--csv` naming a directory were exit 6 and
+  the picture was written before the table was tried - one helper checks destinations before any
+  work, writes all or none, and refuses at the flag; `--relief 1e308` drew a picture from
+  heights that were not numbers and called it written; `--relief` with an explicit scale was
+  silently ignored; the stray-argument suggestion named `--out` and `--no-scale` to verbs that
+  have neither; a repeated conductor name built its label per sample; and the leaf check inside
+  `BuildMapped` could have failed every run for metadata only the probe reads, so it moved to
+  the probe. **And an error's suggestion named a flag that did not exist**: "see the unit list
+  from 'einzel schema --units'" has been in `UnitRegistry` from the start, `schema` never read
+  it, and refusing unknown flags turned it into a second error. `schema --units` now lists the
+  registry, and a test reads every `einzel ...` command line in the source and the docs against
+  the verbs' registry - 529 of them.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

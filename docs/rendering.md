@@ -889,6 +889,29 @@ field sums keep their own `ConductorAt` exactly as it was, because that names th
 strikes in a loss itemisation (ACC-5): a static sum names the nearest member's conductor and a
 driven one the first member containing the point, and a drawing is no place to change that.
 
+**The range a surface states is what its conductors hold**, where every field element is a solved
+geometry (`FieldProbe.AppliedRange`). A solve has no charge in it, so its potential is nowhere above
+the highest potential on its boundary or below the lowest, and the boundary is the conductors and
+the earthed edge; a reading outside that is the cubic interpolant overshooting beside a step, by an
+amount that moves with the sampling. The shipped einzel lens, 0 and 500 V, read -25 to 500 V at 61
+samples, -32 to 500 at 241 and -14.8 to 537 at 1001, and the relief and the scale bar followed. Two
+layers fix it. **A sample on the face of a conductor carried to the edge of its solve is the
+conductor's**: the face lies on the last row of nodes, which hold what it holds, and at distance
+zero the sample was "not inside" and drawn at whatever the interpolant read (the 537 V). **And what
+the samples still read past the conductors' range is reported, not stated**: `lowest` and
+`highest` in the outcome, the height scale and the scale bar are the sampled range held to the
+conductors' (`appliedLowest`, `appliedHighest`); `sampledLowest` and `sampledHighest` carry the raw
+extremes; and `render.interpolant-overshoot` says how far past and where. Nothing is clamped in
+the drawing - the surface is drawn as sampled and stands past the bar by the stated amount. Where
+an element is analytic there is no such bound (it fills all space), the applied range is absent,
+and the range is the sampled one as before. **Earth is always labelled on the bar**, an end that
+would sit on it giving way. **`--relief` is more than 0 and at most 10**, it and an explicit
+`--height-mm-per-v` are alternatives and are refused together, and a scale that would draw the
+surface more than a thousand times taller than the plane is long is refused by its flag.
+**`--out` and `--csv` are checked before anything is solved and written together or not at all**
+(`ArtifactFiles`): a destination that is a directory is exit 1 at the flag, where it was an
+internal error, and a picture is never left without its table.
+
 **A reflected solve is one element with two halves, and each half is metal only on its own side
 of the mirror.** The assembly hands out the field's conductor-bearing leaves as it builds it
 (`FieldAssembly.BuildMapped` returns a `FieldLeaf` for each: where the metal is, the solve that

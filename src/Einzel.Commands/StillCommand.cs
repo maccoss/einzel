@@ -176,8 +176,7 @@ public static class StillCommand
 
         if (!dryRun)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllBytes(path, PngWriter.Write(rgb, width, height, Provenance(
+            ArtifactFiles.Write("out", path, PngWriter.Write(rgb, width, height, Provenance(
                 absolute, hash, view, angles, width, height, seeThrough, outcome, ruler)));
         }
 

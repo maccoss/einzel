@@ -275,10 +275,6 @@ public static class FieldAssembly
     /// <param name="model">The validated model.</param>
     /// <returns>The assembled field, its warnings, and its leaves in element order.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// An element added a field that has conductors and no leaf for them: a defect in this
-    /// method, raised here so that a new kind of element cannot be drawn with its metal missing.
-    /// </exception>
     /// <remarks>
     /// <para>
     /// Only the loop that builds the field knows what each piece is: which element it came from
@@ -293,6 +289,12 @@ public static class FieldAssembly
     /// <para>
     /// So the leaves are made here, by the builders, as the field is. Whatever wraps the sum
     /// afterwards - a magnet's field around it - changes nothing about them.
+    /// </para>
+    /// <para>
+    /// <b>The leaves are metadata, and nothing here checks them.</b> <see cref="BuildReported"/>
+    /// goes through this method, so a check here would be one every run, sweep and test could
+    /// fail on for something only a probe or a drawing reads. Whoever consumes the leaves checks
+    /// that every solved element has them (<c>FieldProbe</c> does, as it opens).
     /// </para>
     /// </remarks>
     public static (IElectrostaticField Field, IReadOnlyList<Core.Results.ValidityWarning> Warnings, IReadOnlyList<FieldLeaf> Leaves)
@@ -335,8 +337,6 @@ public static class FieldAssembly
 
                 continue;
             }
-
-            var before = elements.Count;
 
             if (element.Region is { } bounded)
             {
@@ -441,14 +441,6 @@ public static class FieldAssembly
                         nameof(model), element.Kind, "unhandled field element kind");
             }
 
-            // Every field that has conductors has a leaf saying where and what they hold. An
-            // element kind added above without one would otherwise be drawn and probed with its
-            // metal missing, and nothing would fail.
-            if (elements.Count > before && elements[^1] is IConductorBounded && !leaves.Exists(l => l.Element == index))
-            {
-                throw new InvalidOperationException(
-                    $"field element {index} ({element.Kind}) has conductors and contributed no leaf for them");
-            }
         }
 
         // Chosen by what the sum contains, not by what the caller asks for. A

@@ -1495,6 +1495,18 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         // Each element's leaf says what its own holds, which is how the probe and the surface ask.
         Assert.Equal([0, 1], leaves.Select(l => l.Element));
         Assert.Equal([100.0, -100.0], leaves.Select(l => l.Held.HeldPotentialOf("plate", 0.0) ?? double.NaN));
+
+        // Each conductor's label is one string, shared by every sample inside it: a name two
+        // elements share is labelled with its element, and that label was built per sample.
+        var (labelled, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 60, 10], Samples: 161));
+
+        foreach (var label in new[] { "plate (element 0)", "plate (element 1)" })
+        {
+            var inside = labelled.Inside.Where(l => l == label).ToList();
+
+            Assert.True(inside.Count > 1, $"{label}: {inside.Count} samples");
+            Assert.All(inside, l => Assert.Same(inside[0], l));
+        }
         Assert.Equal(-100.0, probe.At(0, new Einzel.Core.Geometry.Vec3(40.5, 5.0, 0.0), 0.0).Status == ProbeStatus.InsideConductor
             ? SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 60, 10], Samples: 161)).Surface.Plateaus.Single(p => p.Element == 1).PotentialV
             : double.NaN);
@@ -1588,6 +1600,301 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
             Assert.InRange(reach, edge - 1.0, edge + 0.5);
         }
+    }
+
+    /// <summary>
+    /// The range a surface states is what its conductors hold, whatever the sampling: the
+    /// shipped einzel lens, 0 and 500 V, is 0 to 500 V at three sample counts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The range came from the raw samples, and beside a step on the boundary a cubic
+    /// interpolant overshoots by an amount that depends on where the samples fall: the lens
+    /// read -25 to 500 V at 61 samples, -32 to 500 at 241 and -14.8 to 537 at 1001, and the
+    /// relief and the scale bar followed it. A field with no charge in it is nowhere outside
+    /// what its boundary holds.
+    /// </para>
+    /// <para>
+    /// Two layers. A sample on the face of a conductor carried to the edge of its solve is the
+    /// conductor's - which is what removed the 537 V. And what the samples still read past the
+    /// conductors' range, on the earthed edge beside the tube's end, is reported as overshoot
+    /// and not as the field: the stated range, the scale and the bar are the conductors'.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheStatedRangeIsWhatTheConductorsHoldAtAnySampling()
+    {
+        var lens = Model("template", "einzel-lens");
+        var scales = new List<double>();
+
+        foreach (var samples in new[] { 61, 241, 1001 })
+        {
+            using var document = Json("render", "surface", lens, "--samples", samples.ToString(System.Globalization.CultureInfo.InvariantCulture), "--dry-run");
+            var root = document.RootElement;
+
+            output.WriteLine(
+                $"{samples}: stated {Number(document, "lowest")} to {Number(document, "highest")} V, "
+                + $"sampled {Number(document, "sampledLowest")} to {Number(document, "sampledHighest")} V");
+
+            Assert.Equal(0.0, Number(document, "lowest"));
+            Assert.Equal(500.0, Number(document, "highest"));
+            Assert.Equal(0.0, Number(document, "appliedLowest"));
+            Assert.Equal(500.0, Number(document, "appliedHighest"));
+
+            // The face on the domain's edge is the tube's: nothing reads above what it holds.
+            Assert.Equal(500.0, Number(document, "sampledHighest"));
+
+            // What is left is said, with how much and where.
+            Assert.True(Number(document, "sampledLowest") < -1.0, "the control: this sampling does overshoot");
+
+            var warning = root.GetProperty("warnings").EnumerateArray()
+                .Single(w => w.GetProperty("code").GetString() == "render.interpolant-overshoot");
+
+            Assert.Contains("0 to 500 V the conductors hold", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
+            Assert.Contains("y = -12 mm", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
+
+            scales.Add(Number(document, "heightMmPerUnit"));
+        }
+
+        // The same picture height at every sampling: the scale is made from the stated range.
+        Assert.All(scales, scale => Assert.Equal(scales[0], scale, 12));
+
+        // A sample on the centre tube's face at the domain's edge is the tube's.
+        var (surface, probe, _) = SurfaceCommand.Sample(lens, new SurfaceRequest(Samples: 241));
+        var onFace = Enumerable.Range(0, surface.Across.Count)
+            .Where(i => surface.Inside[i * surface.Deep.Count] == "centre")
+            .ToList();
+
+        Assert.Equal(-12.0, surface.Deep[0], 9);
+        Assert.NotEmpty(onFace);
+        Assert.All(onFace, i => Assert.Equal(500.0, surface.At(i, 0)));
+
+        // No such range where an element fills all space: an analytic field has no boundary to
+        // be bounded by, and nothing is stated or warned.
+        Assert.Null(FieldProbe.Open(Model("example", "accelerating-gap")).AppliedRange(0.0, cycleMean: false));
+        Assert.NotNull(probe.AppliedRange(0.0, cycleMean: false));
+    }
+
+    /// <summary>
+    /// Every kind of field element that solves a geometry hands out leaves for its conductors,
+    /// and a run does not depend on them.
+    /// </summary>
+    /// <remarks>
+    /// The check that every conductor-bearing element has a leaf was inside the assembly, which
+    /// builds every run's field: metadata only a probe and a drawing read could have failed a
+    /// run, a sweep or a test. It is the probe's now, made as it opens.
+    /// </remarks>
+    [Fact]
+    public void EverySolvedElementKindHandsOutLeavesAndARunDoesNotReadThem()
+    {
+        // Every kind there is, each said to solve a geometry or not: a new kind fails here until
+        // it is on one side or the other.
+        var solving = new[] { Einzel.Core.Model.CompiledFieldKind.Solved2D, Einzel.Core.Model.CompiledFieldKind.Solved3D };
+        var analytic = new[]
+        {
+            Einzel.Core.Model.CompiledFieldKind.FieldFree, Einzel.Core.Model.CompiledFieldKind.Uniform, Einzel.Core.Model.CompiledFieldKind.HalfSpaceUniform,
+            Einzel.Core.Model.CompiledFieldKind.IdealQuadrupoleRf, Einzel.Core.Model.CompiledFieldKind.QuadroLogarithmic, Einzel.Core.Model.CompiledFieldKind.UniformMagnetic,
+        };
+
+        Assert.Equal(Enum.GetValues<Einzel.Core.Model.CompiledFieldKind>().Order(), solving.Concat(analytic).Order());
+
+        var seen = new HashSet<Einzel.Core.Model.CompiledFieldKind>();
+
+        foreach (var (kind, name) in new[]
+        {
+            ("example", "slit-transmission"), ("example", "parallel-plate-gap-3d"), ("example", "accelerating-gap"),
+            ("example", "rf-quadrupole-confined"), ("template", "quadrupole-rf"),
+        })
+        {
+            var model = FieldProbe.Open(Model(kind, name)).Model;
+            var (_, _, leaves) = Einzel.Fields.FieldAssembly.BuildMapped(model);
+
+            for (var index = 0; index < model.Fields.Count; index++)
+            {
+                var element = model.Fields[index].Kind;
+                seen.Add(element);
+
+                Assert.Equal(solving.Contains(element), leaves.Any(l => l.Element == index));
+            }
+        }
+
+        // The control: both solving kinds were among the models looked at.
+        Assert.Subset(seen, solving.ToHashSet());
+
+        // And a run is a run: the volume example flies, reading no leaf.
+        var project = Path.Combine(_root, "run");
+        Assert.Equal(0, Cli("init", project).ExitCode);
+        var flown = Path.Combine(project, "models", "plates.json");
+        Assert.Equal(0, Cli("new", flown, "--from-example", "parallel-plate-gap-3d").ExitCode);
+        Assert.Equal(0, Cli("run", flown, "--progress", "0").ExitCode);
+    }
+
+    /// <summary>
+    /// Earth is always labelled on the scale; an end that would sit on top of it gives way.
+    /// </summary>
+    /// <remarks>
+    /// Both ends were labelled whatever they collided with and earth only if it had room, so a
+    /// minimum a hair below zero took the foot's label and <c>0 V</c> was left out.
+    /// </remarks>
+    [Fact]
+    public void EarthIsAlwaysLabelledOnTheScale()
+    {
+        // 500 V over 500 pixels, text 20 pixels tall.
+        static double Row(double volts) => 600.0 - volts;
+
+        // A minimum a hair below earth: earth is labelled, the minimum is not.
+        Assert.Equal([0.0, 500.0], SurfaceCommand.ScaleTicks(-0.4, 500.0, [], Row, 20.0));
+
+        // The control: a minimum clear of earth is labelled with it.
+        Assert.Equal([0.0, 500.0, -200.0], SurfaceCommand.ScaleTicks(-200.0, 500.0, [], Row, 20.0));
+
+        // A surface wholly above earth still has earth at its foot, and a plateau where it fits.
+        Assert.Equal([0.0, 500.0, 250.0], SurfaceCommand.ScaleTicks(100.0, 500.0, [250.0, 495.0, 10.0], Row, 20.0));
+
+        // A flat surface has the one label.
+        Assert.Equal([0.0], SurfaceCommand.ScaleTicks(0.0, 0.0, [], Row, 20.0));
+    }
+
+    /// <summary>
+    /// A height scale that makes the surface infinitely tall, or a thousand times taller than it
+    /// is wide, is refused by the flag that asked for it, and nothing is written.
+    /// </summary>
+    /// <param name="flag">The flag.</param>
+    /// <param name="value">Its value.</param>
+    /// <param name="path">Where the refusal is located.</param>
+    /// <remarks>
+    /// <c>--relief 1e308</c> gave "height Infinity mm per V", <c>"written": true</c>, a null
+    /// scale in the JSON and a PNG drawn from heights that were not numbers.
+    /// </remarks>
+    [Theory]
+    [InlineData("--relief", "1e308", "/surface/relief")]
+    [InlineData("--relief", "11", "/surface/relief")]
+    [InlineData("--relief", "0", "/surface/relief")]
+    [InlineData("--height-mm-per-v", "1e300", "/surface/height-mm-per-v")]
+    [InlineData("--height-mm-per-v", "1000", "/surface/height-mm-per-v")]
+    public void AHeightScaleThatCannotBeDrawnIsRefused(string flag, string value, string path)
+    {
+        var target = Path.Combine(_root, "tall.png");
+        var (code, stdout, stderr) = Cli("render", "surface", Model("template", "einzel-lens"), flag, value, "--samples", "21", "--out", target, "--json");
+
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+        Assert.Contains(path, stderr, StringComparison.Ordinal);
+        Assert.False(File.Exists(target));
+        Assert.DoesNotContain("Infinity", stdout + stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>The control for the theory above: the largest relief, and an ordinary explicit scale, are drawn.</summary>
+    [Fact]
+    public void TheLargestReliefIsDrawn()
+    {
+        using var relief = Json("render", "surface", Model("template", "einzel-lens"), "--relief", "10", "--samples", "21", "--dry-run");
+        using var scale = Json("render", "surface", Model("template", "einzel-lens"), "--height-mm-per-v", "0.01", "--samples", "21", "--dry-run");
+
+        Assert.True(double.IsFinite(Number(relief, "heightMmPerUnit")));
+        Assert.Equal(0.01, Number(scale, "heightMmPerUnit"));
+    }
+
+    /// <summary>
+    /// A destination that cannot be written is refused by the flag that named it, exit 1, before
+    /// anything is solved - and a picture is never left behind without its table.
+    /// </summary>
+    /// <remarks>
+    /// <c>--out</c> or <c>--csv</c> naming a directory came out of the write as an access
+    /// exception: exit 6, a stack trace, a request to report a bug. And the picture was written
+    /// before the table was tried.
+    /// </remarks>
+    [Fact]
+    public void ADestinationThatCannotBeWrittenIsRefusedByItsFlag()
+    {
+        var lens = Model("template", "einzel-lens");
+        var folder = Path.Combine(_root, "a-folder");
+        Directory.CreateDirectory(folder);
+        var picture = Path.Combine(_root, "picture.png");
+
+        // --csv is a directory: refused at --csv, and the picture is not written either.
+        var (code, _, stderr) = Cli("render", "surface", lens, "--samples", "21", "--out", picture, "--csv", folder);
+
+        Assert.Equal(1, code);
+        Assert.Contains("/args/--csv", stderr, StringComparison.Ordinal);
+        Assert.Contains("is a directory", stderr, StringComparison.Ordinal);
+        Assert.False(File.Exists(picture));
+
+        // --out is a directory.
+        (code, _, stderr) = Cli("render", "surface", lens, "--samples", "21", "--out", folder);
+        Assert.Equal(1, code);
+        Assert.Contains("/args/--out", stderr, StringComparison.Ordinal);
+
+        // Before anything is read, let alone solved: with no model there at all, it is still the
+        // destination that is refused.
+        (code, _, stderr) = Cli("render", "surface", Path.Combine(_root, "no-such-model.json"), "--out", folder);
+        Assert.Equal(1, code);
+        Assert.Contains("/args/--out", stderr, StringComparison.Ordinal);
+
+        // A folder on the way is a file.
+        var blocked = Path.Combine(picture + ".txt", "table.csv");
+        File.WriteAllText(picture + ".txt", "in the way");
+        (code, _, stderr) = Cli("render", "surface", lens, "--samples", "21", "--out", picture, "--csv", blocked);
+        Assert.Equal(1, code);
+        Assert.Contains("/args/--csv", stderr, StringComparison.Ordinal);
+        Assert.False(File.Exists(picture));
+
+        // The other verbs that write where they are told.
+        foreach (var args in new[]
+        {
+            new[] { "render", "still", lens, "--width-px", "32", "--height-px", "32", "--out", folder },
+            ["render", "section", lens, "--out", folder],
+            ["probe", lens, "--line-mm", "0,0,0", "--to-mm", "1,0,0", "--csv", folder],
+        })
+        {
+            (code, _, stderr) = Cli(args);
+            output.WriteLine($"{string.Join(' ', args[..2])}: exit {code}: {stderr.Trim().Split('\n')[0]}");
+
+            Assert.Equal(1, code);
+            Assert.Contains("/args/--" + args[^2][2..], stderr, StringComparison.Ordinal);
+        }
+
+        // The control: with somewhere to write, both are written.
+        var table = Path.Combine(_root, "table.csv");
+        Assert.Equal(0, Cli("render", "surface", lens, "--samples", "21", "--out", picture, "--csv", table).ExitCode);
+        Assert.True(File.Exists(picture) && File.Exists(table));
+        Assert.Empty(Directory.GetFiles(_root, "*.tmp"));
+    }
+
+    /// <summary>Several files are written all together or not at all, and no temporary file is left.</summary>
+    [Fact]
+    public void SeveralFilesAreWrittenTogetherOrNotAtAll()
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first.bin");
+        var second = Path.Combine(_root, "second.bin");
+
+        ArtifactFiles.WriteAll([("out", first, [1, 2, 3]), ("csv", second, [4, 5])]);
+
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(first));
+        Assert.Equal([4, 5], File.ReadAllBytes(second));
+
+        // The second cannot be put in place: a file held open by another reader that shares
+        // nothing. That is a lock on Windows; elsewhere a move replaces an open file, so there
+        // the refusal is exercised by the directory cases above.
+        if (OperatingSystem.IsWindows())
+        {
+            File.Delete(first);
+
+            using (new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var refusal = Assert.Throws<Einzel.Core.Errors.EinzelException>(
+                    () => ArtifactFiles.WriteAll([("out", first, [9]), ("csv", second, [9])]));
+
+                Assert.Equal("/args/--csv", refusal.Error.Path);
+            }
+
+            Assert.False(File.Exists(first), "the first file was put in place and must be taken away again");
+            Assert.Equal([4, 5], File.ReadAllBytes(second));
+        }
+
+        Assert.Empty(Directory.GetFiles(_root, "*.tmp"));
     }
 
     /// <summary>

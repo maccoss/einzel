@@ -176,6 +176,19 @@ become a feature release without being renamed twice.
   field's picture is written finely enough to tell phases apart (`t=100.25 µs`, where both it and
   `t=100 µs` were captioned alike), and the scale no longer stands on the surface's edge in
   `--view front`.
+- **`render surface` states the range its conductors hold.** `lowest`, `highest`, the height
+  scale and the scale bar no longer follow interpolant overshoot, which changed with `--samples`
+  (the shipped einzel lens read -25, -32 or -14.8 V for its 0 V floor); the raw extremes are
+  `sampledLowest` and `sampledHighest`, the conductors' range `appliedLowest` and
+  `appliedHighest`, and `render.interpolant-overshoot` says how far past and where. Earth is
+  always labelled on the bar. `--relief` is at most 10 and is refused together with an explicit
+  scale; a scale that makes the heights infinite is refused where it drew a picture.
+- **`einzel schema --units`** lists every unit symbol with its dimension and SI factor - the
+  command an unknown unit's error has always named.
+- **A file that cannot be written is exit 1 at its flag**, not an internal error: `--out` or
+  `--csv` naming a directory, on `render surface`, `render still`, `render section`, `render
+  animation`, `probe` and `report`. `render surface` writes its picture and its table together or
+  neither.
 - **A gallery page** reproducing an einzel lens's published voltage and pressure series
   (`docs/gallery-einzel-lens.md`), with every choice the source leaves open listed.
 - **The `paul-trap` template has endcap holes and a stretch.** Three new parameters, all zero by

@@ -183,6 +183,19 @@ public sealed class FieldProbe
         string modelPath,
         string modelHash)
     {
+        // Checked here, where the leaves are used, and not where they are made: the assembly
+        // builds every run's field, and a run reads no leaf. An element kind that solves a
+        // geometry and hands out no leaf would be probed and drawn with its metal missing.
+        for (var index = 0; index < model.Fields.Count; index++)
+        {
+            if ((model.Fields[index].Solve is not null || model.Fields[index].Solve3D is not null)
+                && !leaves.Any(l => l.Element == index))
+            {
+                throw new InvalidOperationException(
+                    $"field element {index} ({model.Fields[index].Kind}) is a solved geometry and the assembly handed out no leaf for its conductors");
+            }
+        }
+
         _leaves = leaves;
 
         // Once: asking a sequenced field for its operating point allocates a held copy of it.
@@ -262,6 +275,134 @@ public sealed class FieldProbe
                 held = i;
             }
         }
+    }
+
+    // How near zero a signed distance is "on the surface", in metres: far below any cell and far
+    // above the rounding of a coordinate.
+    private const double SurfaceTolerance = 1e-12;
+
+    // Whether a point lies on the edge of a leaf's own half of its solve.
+    private bool OnDomainEdge(FieldLeaf leaf, in Vec3 p)
+    {
+        static bool At(double value, double face) => Math.Abs(value - face) <= SurfaceTolerance;
+
+        var element = _model.Fields[leaf.Element];
+
+        if (element.Solve is { } plane)
+        {
+            var q = _tilts[leaf.Element] is { } tilt ? tilt.ToLocal(in p) : p;
+            var x = leaf.Mirrored && plane.ReflectAboutX is { } mirror ? (2.0 * mirror) - q.X : q.X;
+            var second = plane.Symmetry == SolveSymmetry.Cylindrical ? Math.Sqrt((q.Y * q.Y) + (q.Z * q.Z)) : q.Y;
+
+            return At(x, plane.MinX) || At(x, plane.MaxX) || At(second, plane.MinY) || At(second, plane.MaxY);
+        }
+
+        if (element.Solve3D is { } volume)
+        {
+            var x = leaf.Mirrored && volume.ReflectAboutX is { } mirror ? (2.0 * mirror) - p.X : p.X;
+
+            return At(x, volume.MinX) || At(x, volume.MaxX) || At(p.Y, volume.MinY) || At(p.Y, volume.MaxY)
+                || At(p.Z, volume.MinZ) || At(p.Z, volume.MaxZ);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The range the potential can take anywhere, from what the conductors hold: for a model
+    /// whose every field element is a solved geometry, the sum over elements of the lowest and
+    /// highest potential any of its conductors holds, earth included.
+    /// </summary>
+    /// <param name="atSeconds">The instant; for a cycle mean, the operating point.</param>
+    /// <param name="cycleMean">Whether the range is of the mean over one drive cycle.</param>
+    /// <returns>
+    /// The range in volts, or null where it cannot be stated: an analytic element fills all space
+    /// and has no such bound, and a driven edge-profiled board has no single potential to take
+    /// it from.
+    /// </returns>
+    /// <remarks>
+    /// A solved field has no charge in it, so it obeys the maximum principle: nowhere in the
+    /// domain is it above the highest potential on its boundary or below the lowest, and the
+    /// boundary is the conductors and the earthed edge. A reading outside that range is not the
+    /// field's - it is the interpolant overshooting beside a step, which a cubic does by a few
+    /// percent - so this is what a picture's scale and its stated range are held to.
+    /// </remarks>
+    public (double Low, double High)? AppliedRange(double atSeconds, bool cycleMean)
+    {
+        RefuseMeanWithoutCycle(atSeconds, cycleMean);
+
+        double low = 0.0, high = 0.0;
+
+        for (var index = 0; index < _model.Fields.Count; index++)
+        {
+            var element = _model.Fields[index];
+
+            if (element.Kind is CompiledFieldKind.FieldFree or CompiledFieldKind.UniformMagnetic)
+            {
+                continue;
+            }
+
+            IEnumerable<(string Name, bool Profiled, IEnumerable<double> Profile)> electrodes;
+            bool isStatic;
+
+            if (element.Solve is { } plane)
+            {
+                electrodes = plane.Electrodes.Select(e => (
+                    e.Name, e.Shape == ElectrodeShape.EdgeProfile, e.Profile.Select(point => point.Potential)));
+                isStatic = plane.Drives.Count == 0 && plane.Stages.Count == 0;
+            }
+            else if (element.Solve3D is { } volume)
+            {
+                electrodes = volume.Electrodes.Select(e => (e.Name, false, Enumerable.Empty<double>()));
+                isStatic = volume.Drives.Count == 0 && volume.Stages.Count == 0;
+            }
+            else
+            {
+                return null;
+            }
+
+            var member = -1;
+
+            for (var k = 0; k < _leaves.Count && member < 0; k++)
+            {
+                member = _leaves[k].Element == index ? k : -1;
+            }
+
+            // Earth is on every solve's boundary, or may be: including it can only widen the range.
+            double elementLow = 0.0, elementHigh = 0.0;
+
+            foreach (var (name, profiled, profile) in electrodes)
+            {
+                if (profiled)
+                {
+                    if (!isStatic)
+                    {
+                        return null;
+                    }
+
+                    foreach (var volts in profile)
+                    {
+                        elementLow = Math.Min(elementLow, volts);
+                        elementHigh = Math.Max(elementHigh, volts);
+                    }
+
+                    continue;
+                }
+
+                if (member < 0 || HeldOf(member, name, atSeconds, cycleMean) is not { } holds || !double.IsFinite(holds))
+                {
+                    return null;
+                }
+
+                elementLow = Math.Min(elementLow, holds);
+                elementHigh = Math.Max(elementHigh, holds);
+            }
+
+            low += elementLow;
+            high += elementHigh;
+        }
+
+        return (low, high);
     }
 
     // Whether a leaf's own half of its solve holds the point. The declared half is solved in
@@ -694,7 +835,12 @@ public sealed class FieldProbe
         // the edge of its solve - along a cross-section's invariant axis, past a face the shape
         // was carried over, into a box wider than the domain - and a point out there is in no
         // conductor of that element, whatever the shape says. Locate has already left those out.
-        var inMetal = depth < 0.0 && member >= 0;
+        // Or on its surface, where the surface is the edge of the solve: a conductor carried to
+        // the domain's edge has its face on the last row of nodes, which hold what the conductor
+        // holds, and a sample there is at distance zero - "not inside" by a strict test, so it
+        // was drawn at whatever the interpolant read beside the step.
+        var inMetal = member >= 0
+            && (depth < 0.0 || (depth <= SurfaceTolerance && OnDomainEdge(_leaves[member], in point)));
 
         // What the row says about conductors agrees with its status. Where an element that has
         // conductors was solved at the point, the distance and the name are of the nearest

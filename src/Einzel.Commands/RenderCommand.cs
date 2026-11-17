@@ -331,16 +331,10 @@ public static class RenderCommand
 
         if (!dryRun)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-
-            if (spec.Format == FigureFormat.Pdf)
-            {
-                File.WriteAllBytes(path, PdfWriter.Write(figure.Scene));
-            }
-            else
-            {
-                File.WriteAllText(path, SvgWriter.Write(figure.Scene));
-            }
+            ArtifactFiles.Write(
+                "out",
+                path,
+                spec.Format == FigureFormat.Pdf ? PdfWriter.Write(figure.Scene) : ArtifactFiles.Utf8(SvgWriter.Write(figure.Scene)));
         }
 
         var byLayer = new SortedDictionary<string, int>(StringComparer.Ordinal);
@@ -600,21 +594,17 @@ public static class RenderCommand
 
         if (!dryRun)
         {
-            Directory.CreateDirectory(directory);
-
             for (var i = 0; i < frames.Count; i++)
             {
-                if (spec.Format == FigureFormat.Pdf)
-                {
-                    File.WriteAllBytes(artifacts[i], PdfWriter.Write(frames[i].Figure.Scene));
-                }
-                else
-                {
-                    File.WriteAllText(artifacts[i], SvgWriter.Write(frames[i].Figure.Scene));
-                }
+                ArtifactFiles.Write(
+                    "out",
+                    artifacts[i],
+                    spec.Format == FigureFormat.Pdf
+                        ? PdfWriter.Write(frames[i].Figure.Scene)
+                        : ArtifactFiles.Utf8(SvgWriter.Write(frames[i].Figure.Scene)));
             }
 
-            File.WriteAllText(manifest, CommandJson.Write(new AnimationManifest
+            ArtifactFiles.WriteText("out", manifest, CommandJson.Write(new AnimationManifest
             {
                 Model = Path.GetFileName(absolute),
                 ModelHash = hash,

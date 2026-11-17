@@ -442,8 +442,8 @@ public static class ExportCommand
 
         if (!dryRun)
         {
-            Directory.CreateDirectory(project.Scratch);
-            File.WriteAllText(
+            ArtifactFiles.WriteText(
+                "project",
                 path,
                 ObjWriter.Write(
                     parts,
@@ -747,8 +747,7 @@ public static class ExportCommand
             // engine saying the numbers may not describe the document (GRD-3).
             provenance.AddRange(found.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
 
-            Directory.CreateDirectory(project.Scratch);
-            File.WriteAllText(channelPath, channel.Write(array, provenance));
+            ArtifactFiles.WriteText("project", channelPath, channel.Write(array, provenance));
         }
 
         return written;

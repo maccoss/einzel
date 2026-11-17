@@ -161,11 +161,33 @@ public static class Program
     /// with no sub-verb - and any command line asking for <c>--help</c> are left to the verb, as
     /// they always were.
     /// </remarks>
-    private static bool Malformed(string[] args, CommandLine options)
+    private static bool Malformed(string[] args, CommandLine options) =>
+        CommandLineProblem(args, options) is { } refusal && !Refuse(options, refusal);
+
+    /// <summary>
+    /// What is wrong with a command line before its verb runs, or null where nothing is: a flag
+    /// the verb does not read, a flag that takes a value given none, an argument too many.
+    /// </summary>
+    /// <param name="args">The raw arguments, verb first.</param>
+    /// <returns>The refusal, located at the flag or the argument; null for a command line the verb is handed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="args"/> is null.</exception>
+    /// <remarks>
+    /// Public so that a command line written down somewhere - in a suggestion, a usage line, a
+    /// page of the documentation - can be held to what the CLI accepts: an error that said "see
+    /// 'einzel schema --units'" named a flag nothing read.
+    /// </remarks>
+    public static EinzelError? CommandLineProblem(string[] args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        return CommandLineProblem(args, CommandLine.Parse(args));
+    }
+
+    private static EinzelError? CommandLineProblem(string[] args, CommandLine options)
     {
         if (options.Has("help") || VerbFlags.For(args) is not var (key, flags))
         {
-            return false;
+            return null;
         }
 
         EinzelError? refusal = null;
@@ -205,16 +227,47 @@ public static class Program
                 Code = ErrorCodes.SchemaInvalid,
                 Path = $"/args/{flags.Positionals}",
                 Constraint = $"{key} was given {string.Join(", ", options.Positional.Skip(flags.Positionals).Select(p => $"'{p}'"))}, which it does not take",
-                Suggestion = "a file to write is --out <file>, and a switch such as --json or --no-scale takes no value",
+                Suggestion = PositionalSuggestion(key, flags),
             };
         }
 
-        if (refusal is null)
+        return refusal;
+    }
+
+    /// <summary>
+    /// What to do about an argument a verb does not take, said in that verb's own flags.
+    /// </summary>
+    /// <remarks>
+    /// One sentence for every verb named <c>--out</c> and <c>--no-scale</c>, which most verbs do
+    /// not have: <c>einzel run m.json --vtu out.vtu</c> was told to use <c>--out</c>, which
+    /// <c>run</c> then refused. The stray argument is nearly always a value given to a switch
+    /// or a file given without its flag, so the suggestion names the verb's own switches and
+    /// its own flags that take a value.
+    /// </remarks>
+    private static readonly string[] FileFlags = ["out", "csv", "input"];
+
+    internal static string PositionalSuggestion(string key, VerbFlags flags)
+    {
+        static string Listed(IEnumerable<string> names) =>
+            string.Join(", ", names.Order(StringComparer.Ordinal).Select(n => "--" + n));
+
+        var switches = flags.Switches.Concat(VerbFlags.Global).ToList();
+        var valued = flags.Values.Concat(flags.Optional).ToList();
+        var file = FileFlags.FirstOrDefault(flags.Values.Contains);
+
+        var text = $"{key}'s switches take no value ({Listed(switches)}), so an argument after one is a stray";
+
+        if (valued.Count > 0)
         {
-            return false;
+            text += $"; its flags that take a value are {Listed(valued)}";
         }
 
-        return !Refuse(options, refusal);
+        if (file is not null)
+        {
+            text += $", and a file to write is --{file} <file>";
+        }
+
+        return text;
     }
 
     /// <summary>
@@ -284,6 +337,35 @@ public static class Program
         if (options.Has("study"))
         {
             Console.Out.Write(CatalogCommand.StudySchema());
+            return (int)ExitCode.Success;
+        }
+
+        // The unit symbols a document may use, from the registry that reads them. An unknown
+        // unit's error has always said "see the unit list from 'einzel schema --units'", and
+        // there was no such list: the flag was read by nothing.
+        if (options.Has("units"))
+        {
+            var units = Einzel.Core.Units.UnitRegistry.All
+                .OrderBy(u => u.Dimension.ToString(), StringComparer.Ordinal)
+                .ThenBy(u => u.SiFactor)
+                .ThenBy(u => u.Symbol, StringComparer.Ordinal)
+                .Select(u => new UnitJson { Symbol = u.Symbol, Dimension = u.Dimension.ToString(), SiFactor = u.SiFactor })
+                .ToList();
+
+            if (options.Has("json"))
+            {
+                return Emit(new UnitsOutcome { Units = units });
+            }
+
+            Console.Out.WriteLine($"{"symbol",-12} {"dimension (SI base units)",-28} one of it in SI");
+
+            foreach (var unit in units)
+            {
+                Console.Out.WriteLine(string.Create(
+                    CultureInfo.InvariantCulture, $"{unit.Symbol,-12} {unit.Dimension,-28} {unit.SiFactor}"));
+            }
+
+            Console.Out.WriteLine("symbols are case-sensitive; the micro sign may be written µ or μ");
             return (int)ExitCode.Success;
         }
 
@@ -1460,7 +1542,7 @@ public static class Program
 
             if (!options.Has("dry-run"))
             {
-                File.WriteAllText(target, ProbeCommand.ToCsv(outcome));
+                ArtifactFiles.WriteText("csv", target, ProbeCommand.ToCsv(outcome));
             }
 
             Console.Error.WriteLine(options.Has("dry-run") ? $"would write {target}" : $"wrote {target}");
@@ -1846,12 +1928,7 @@ public static class Program
         // A named directory is created rather than refused, since `--out reports/tonight.html`
         // is the obvious way to keep a series of them and failing on the first is a poor
         // answer. The default target's directory is the project root and always exists.
-        if (Path.GetDirectoryName(Path.GetFullPath(target)) is { } directory)
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        File.WriteAllText(target, page);
+        ArtifactFiles.WriteText("out", target, page);
 
         foreach (var run in outcome.Runs)
         {
@@ -2252,6 +2329,20 @@ public static class Program
         }
 
         var heightKind = SurfaceHeight.Parse(heightGiven ?? SurfaceHeight.Spellings[0]);
+
+        // Two ways of saying how tall, and the usage offers them as alternatives: with an
+        // explicit scale the relief changed nothing and said nothing.
+        if (relief is not null && (perVolt ?? perEv) is not null)
+        {
+            var scaleFlag = perVolt is not null ? "height-mm-per-v" : "height-mm-per-ev";
+
+            Refuse(
+                options,
+                "relief",
+                $"--relief and --{scaleFlag} both say how tall the surface is drawn, and only one can: with --{scaleFlag} the relief would be ignored.",
+                $"give --relief, a fraction of the longer side, or --{scaleFlag}, an explicit scale - not both");
+            return (int)ExitCode.ValidationFailure;
+        }
 
         // The unit of an explicit scale must match what the height is, or it is the ambiguity
         // a unit in the flag's name exists to prevent.
@@ -3385,7 +3476,7 @@ public static class Program
 
         starting out:
           doctor [dir]                  check the installation, and a project if given
-          schema [--study]              the model format, or the study format, as JSON Schema
+          schema [--study | --units]    the model format, or the study format, as JSON Schema; or the unit symbols
           templates [name]              list device templates, or print one
           examples [name]               list example models, or print one
 

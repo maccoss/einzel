@@ -68,6 +68,7 @@ to describe itself, which is what these three are for.
 | Command | Does |
 | --- | --- |
 | `einzel schema [--study]` | The model format as JSON Schema, **generated from the document types**; `--study` gives the study-file format instead |
+| `einzel schema --units` | Every unit symbol a document may use, with its dimension in SI base units and what one of it is in SI - printed from the registry that reads them (`--json` for the same as data) |
 | `einzel templates [name]` | List device templates, or print one |
 | `einzel examples [name]` | List the reference corpus, or print one |
 | `einzel doctor [dir]` | Check the installation, and a project if given |
@@ -922,6 +923,17 @@ anywhere, and `TryParse` in the two readers alone.
 | `--plane` | `xy`, `xz`, `yz` |
 | `--view` | the verb's named views |
 
+**An argument a verb does not take is refused with that verb's own flags in the suggestion**: its
+switches, its flags that take a value, and where it has one the flag a file to write goes after
+(`run m.json --vtu out.vtu` is told `--vtu` is a switch, not sent to an `--out` that `run` does
+not have). **Every `einzel ...` command line written in the source and in these pages names flags
+its verb reads** - `WrittenCommandLinesTests` reads them all - because an unknown unit's error
+said "see 'einzel schema --units'" for as long as it has existed and nothing read that flag. It
+now lists the unit registry. **A file a command is told to write is written whole or not at
+all**, and one that cannot be written is refused at its flag, exit 1 (`ArtifactFiles`, used by
+`render surface`, `render still`, `render section`, `render animation`, `probe --csv`, `report
+--out` and `export`).
+
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
 unless turned off, so the flag alone is the default interval, as it always was. Every other flag that
 takes a value is refused bare; before this they were read as though absent.
@@ -955,7 +967,7 @@ command line and a sample.
 | `report` | `--dry-run` | `--out`, `--project` | 1 |
 | `export` | `--composite`, `--dry-run`, `--mesh` | `--at-us`, `--box-mm`, `--project`, `--step-mm` | 1 |
 | `compare` | - | `--ions` | 1 |
-| `schema` | `--study` | - | 0 |
+| `schema` | `--study`, `--units` | - | 0 |
 | `templates` | - | - | 1 |
 | `examples` | - | - | 1 |
 | `agents-md` | `--dry-run` | `--project` | 1 |
