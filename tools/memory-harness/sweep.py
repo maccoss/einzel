@@ -125,7 +125,7 @@ def table(match=""):
             def per(mebibytes):
                 return "-" if mebibytes is None else f"{mebibytes * MEBI / nodes:.1f}"
 
-            # A live run's working set is held down by its own sampler, so it is not shown.
+            # A live run's working set is held down by its own collections, so it is not shown.
             live = row.get("quantity") == "live"
 
             print(

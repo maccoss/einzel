@@ -1,3 +1,5 @@
+using Einzel.Core.Numerics;
+
 namespace Einzel.Transport.Diffusion;
 
 /// <summary>
@@ -25,6 +27,26 @@ public sealed class AbsorbingCells
 
     /// <summary>Nothing absorbs.</summary>
     public static AbsorbingCells None { get; } = new([], []);
+
+    /// <summary>An owner map with every node open, for a caller to claim nodes in.</summary>
+    /// <param name="nodes">How many nodes the density's grid has.</param>
+    /// <returns>One entry a node, each -1.</returns>
+    /// <remarks>
+    /// Allocated here rather than by the caller because it is the size of the grid, and every
+    /// array that is comes from one place so that the memory tests can read what a run holds
+    /// as it is allocated.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="nodes"/> is negative.</exception>
+    public static int[] OpenOwners(int nodes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(nodes);
+
+        var owner = GridArrays.New<int>(nodes);
+
+        Array.Fill(owner, -1);
+
+        return owner;
+    }
 
     /// <summary>Creates a set of absorbing cells.</summary>
     /// <param name="owner">

@@ -1,3 +1,5 @@
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>Scalar values on a <see cref="Grid2D"/>, row-major.</summary>

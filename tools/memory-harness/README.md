@@ -18,18 +18,30 @@ python tools/memory-harness/sweep.py table            # bytes a node, one row pe
 
 ## The two quantities, and why one process each
 
-**`--live`: the peak live set.** A thread forces a full collection, reads the collector's own
-record of what survived it, and waits as long again as the collection took, for as long as the
-work runs - the sampler `SolveMemoryTests` uses, whose remarks give the reason for each choice.
-This is what `SolveMemoryModel` and the diffusive constants state.
+**`--live`: the peak live set, read from inside the work.** What a solve or a run holds can only
+rise at an allocation, and every array the size of a grid is allocated through one internal
+helper (`GridArrays`), so the harness reads the live set there - a forced full collection, then
+the collector's own record of what survived it - on the work's own thread, at each array that
+could raise the peak. It is the memory tests' own measurement, linked in as source
+(`tests/Shared/LiveSet.cs`), and nothing in it samples: it used to be a second thread forcing
+collections as fast as it could while the work ran, which has to land inside the peak and on a
+short run does not. It reports the least the work can have held at its most (`liveSetPeakMiB`)
+and the most (`liveSetBoundMiB`), a few kilobytes apart, and `liveInvalid` if the work allocated
+a grid array on another thread, where it is not read. This is what `SolveMemoryModel` and the
+diffusive constants state.
 
-**Default: the peak working set**, `Process.PeakWorkingSet64` after the work minus before it, with
-the managed heap polled lightly beside it. Garbage the collector has not yet reclaimed occupies
-physical memory exactly as live data does, so this is what an unconstrained run actually takes.
+**Default: the peak working set**, `Process.PeakWorkingSet64` after the work minus before it. That
+is the operating system's own peak counter, so nothing has to be sampled to get it. **One thing
+here still samples, and it is not a figure anything is held to**: beside the working set, a
+thread polls the managed heap's size every millisecond without provoking a collection
+(`polledHeapPeakMiB`, the `heap` column) to show how much of the working set was garbage not yet
+reclaimed. A poll that misses a peak reads low; the column describes a run and nothing is
+asserted on it. Garbage the collector has not yet reclaimed occupies physical memory exactly as
+live data does, so the working set is what an unconstrained run actually takes.
 
 They need separate processes because measuring the first disturbs the second: forcing a full
-collection every few hundred microseconds is what makes the live peak visible, and it is also
-what keeps the working set down. And the peak working set only ever rises, so a second run in one
+collection at every array is what makes the live peak exact, and it is also what keeps the
+working set down. And the peak working set only ever rises, so a second run in one
 process would read the first one's peak. `sweep.py` starts one process per point, sequentially.
 
 **The working set is not a bound.** The collector frees large arrays lazily when memory is
@@ -61,6 +73,12 @@ first taken; the rest are the same models.
 | diffusive step, drift tube | 263,169 | 248.1 | 280.1 | 1.13 | 263.0 | 8.2 |
 | diffusive step, drift tube | 1,050,625 | 248.0 | 256.2 | 1.03 | 263.0 | 8.0 |
 
+The diffusive rows' `est` is what the estimate stated when they were taken, 263; it states 248
+now, which is the live column, and 4 more where a solved element has electrodes
+(`docs/cli.md`). Their working set was taken while the stepping loop still made 224 bytes of
+garbage a node a step and has not been taken again since it stopped, so read 1.03 to 1.13 as an
+upper figure for that ratio.
+
 The plane read 143.3 live against an estimate of 143.2, and the two rediscretized volumes 47.8 to
 49.7 against 50.9 to 51.5, at `de73ec8`: one array of the fine grid more, which the V-cycle held in
 a local of the frame that recursed while the solver ran as first-tier code, and which the
@@ -76,15 +94,16 @@ loop (`sweep.py meanfield --live`), same machine and commit:
 | two species, mean field | 565.9 | 565.4 | - |
 
 Within a tenth of a byte of what they read at `de73ec8`, before the V-cycle's fix: these runs did
-not show the residual it held while first-tier, which reached `SelfFieldMemoryTests` on a slow
-runner. A measurement that happened not to see a hold is not evidence there was none, which is
+not show the residual it held while first-tier, which reached the self-field's memory test on a
+slow runner. A measurement that happened not to see a hold is not evidence there was none, which is
 why `FirstTierMemoryTests` pins the tier.
 
 ## What the tables say
 
 - **The estimate states the live set, and agrees with an independent measurement of it** to within
-  six percent on every case here: over it on the volumes (the cut-arm allowance) and the
-  diffusive step, and a tenth of a byte under it on the plane.
+  six percent on every case here: over it on the volumes (the cut-arm allowance), a tenth of a
+  byte under it on the plane, and - since it was restated from 263 to 248 - on it for the
+  diffusive step.
 - **An unconstrained solve's working set is two to four and a half times its live set**, and on
   the rediscretized volumes the ratio grows with size (2.3 to 4.2, 2.8 to 4.5 across eightfold).
   The multigrid cycle allocates fresh buffers every cycle and the collector frees them when it

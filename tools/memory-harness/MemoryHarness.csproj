@@ -20,8 +20,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- One reader of the live set for every memory measurement; see the file. -->
+    <!-- The memory tests' own measurement of the live set, linked as source; see the files. -->
     <Compile Include="..\..\tests\Shared\LiveSetReading.cs" Link="Shared\LiveSetReading.cs" />
+    <Compile Include="..\..\tests\Shared\LiveSet.cs" Link="Shared\LiveSet.cs" />
   </ItemGroup>
 
 </Project>

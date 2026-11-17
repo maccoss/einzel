@@ -1,3 +1,4 @@
+using Einzel.Core.Numerics;
 using Einzel.Fields.Solved;
 
 namespace Einzel.Transport.Diffusion;
@@ -46,14 +47,14 @@ public sealed class FaceCoefficients
 
     private FaceCoefficients(int cells, int countX)
     {
-        _scale = new double[cells * Faces];
-        _weight = new double[cells * Faces];
-        _here = new double[cells * Faces];
-        _there = new double[cells * Faces];
-        _outward = new double[cells];
-        _leaving = new bool[cells * Faces];
-        _collects = new bool[cells * Faces];
-        _names = new string?[cells * Faces];
+        _scale = GridArrays.New<double>(cells * Faces);
+        _weight = GridArrays.New<double>(cells * Faces);
+        _here = GridArrays.New<double>(cells * Faces);
+        _there = GridArrays.New<double>(cells * Faces);
+        _outward = GridArrays.New<double>(cells);
+        _leaving = GridArrays.New<bool>(cells * Faces);
+        _collects = GridArrays.New<bool>(cells * Faces);
+        _names = GridArrays.New<string?>(cells * Faces);
         _countX = countX;
     }
 
@@ -64,7 +65,16 @@ public sealed class FaceCoefficients
     /// is bit-identical: floating-point addition is not associative, so a different
     /// order is a different number and the check would be against a moving target.
     /// </remarks>
-    public static (int Di, int Dj)[] Offsets => [(1, 0), (-1, 0), (0, 1), (0, -1)];
+    /// <value>A copy, so that a caller cannot reorder the faces for everyone else.</value>
+    public static (int Di, int Dj)[] Offsets => [.. FaceOffsets];
+
+    /// <summary>
+    /// The offsets, once. <see cref="Neighbour"/> is asked four times a node a step, and read
+    /// through <see cref="Offsets"/> it made a new array each time: 224 bytes of garbage a node
+    /// a step, 3.7 MB a step on a 129 by 129 grid, in a loop that is meant to allocate nothing
+    /// (CMP-1). Found by a memory test bounding what a run holds between two of its arrays.
+    /// </summary>
+    private static readonly (int Di, int Dj)[] FaceOffsets = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
     /// <summary>
     /// The flux across one face, as the exact expression the explicit path used
@@ -198,7 +208,7 @@ public sealed class FaceCoefficients
             Array.Clear(built._names);
         }
 
-        var offsets = Offsets;
+        var offsets = FaceOffsets;
 
         var faceEdges = new[] { edges.MaxX, edges.MinX, edges.MaxY, edges.MinY };
         var faceNames = new[] { "maxX", "minX", "maxY", "minY" };
@@ -257,7 +267,7 @@ public sealed class FaceCoefficients
     /// <returns>The neighbour's cell index, or -1.</returns>
     public int Neighbour(int cell, int face, int countY)
     {
-        var (di, dj) = Offsets[face];
+        var (di, dj) = FaceOffsets[face];
 
         var i = cell % _countX;
         var j = cell / _countX;

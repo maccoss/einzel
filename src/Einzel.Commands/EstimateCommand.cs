@@ -301,20 +301,27 @@ public static class EstimateCommand
     /// </remarks>
     private const double MegaCellsPerSecond = 2.4;
 
-    /// <summary>What a diffusive run holds per density node, measured.</summary>
+    /// <summary>What a diffusive run holds per density node and per species: the arrays it keeps.</summary>
     /// <remarks>
     /// <para>
-    /// 248 and 259 bytes a node on the drift-tube example at 513 x 129 and 1025 x 257, a slope
-    /// of 263 between them, live-set sampled with the solved field excluded. This used to be
-    /// 16 - "two density fields, current and next" - which is a sixteenth of it.
+    /// <b>248 bytes a node, which is its arrays and nothing else.</b> The seed, the density and
+    /// the next step, 24; six coefficients, 48; the face operator, 176 - four faces of four
+    /// doubles, two flags and the name of whatever a leaving face is lost to, and one outward
+    /// rate. Read from inside the run at each of those arrays as it is allocated
+    /// (<c>DiffusiveMemoryTests</c>): 248.00 as a slope between 129 by 129 and 257 by 257 on a
+    /// drift tube, with under 6 kB of the run's whole live set outside them.
     /// </para>
     /// <para>
-    /// 216 bytes a node are named arrays: the seed, the density and the next step, 24; six
-    /// coefficients, 48; the face operator, four faces of four doubles and two flags plus an
-    /// outward rate, 144. The rest is not attributed, which is why the figure is the
-    /// measurement rather than that sum - an estimate that runs under is discovered by the run
-    /// failing. An explicit run with no self-field; a mean-field solve is
-    /// <see cref="SelfFieldBytesPerNode"/> on top.
+    /// This was 263, a slope between two readings of 248 and 259 taken by a thread sampling the
+    /// heap; 216 of it was attributed and the rest was not. The unattributed part was the face
+    /// names, 32, and the 15 over was the sampler: the stepping loop was then making 224 bytes
+    /// of garbage a node a step, and a reading taken while it did read some of that as held.
+    /// Before that it was 16 - "two density fields, current and next".
+    /// </para>
+    /// <para>
+    /// An explicit run with no self-field; a mean-field solve is
+    /// <see cref="SelfFieldBytesPerNode"/> on top, and a run with conductors in it holds
+    /// <see cref="AbsorberMapBytesPerNode"/> as well.
     /// </para>
     /// <para>
     /// <b>Per species, all of it.</b> A mixture gives every species its own walker - its
@@ -324,7 +331,18 @@ public static class EstimateCommand
     /// count, a three-species run was billed a third of what it holds.
     /// </para>
     /// </remarks>
-    private const double DiffusiveBytesPerNode = 263.0;
+    private const double DiffusiveBytesPerNode = (3 * sizeof(double)) + (6 * sizeof(double)) + FaceOperatorBytesPerNode;
+
+    /// <summary>The face operator: four faces of four doubles, two flags and a name, and one outward rate.</summary>
+    private const double FaceOperatorBytesPerNode = (4 * ((4 * sizeof(double)) + (2 * sizeof(bool)) + 8)) + sizeof(double);
+
+    /// <summary>The map of which conductor owns each node, an integer a node, held once for the run.</summary>
+    /// <remarks>
+    /// Built for every run and kept only where a solved element's conductors are there to absorb:
+    /// the drift tube with a bore reads 252.00 bytes a node where the bare one reads 248.00.
+    /// Charged wherever a solved element declares an electrode, which is the most it can be.
+    /// </remarks>
+    private const double AbsorberMapBytesPerNode = sizeof(int);
 
     /// <summary>What mean-field space charge adds to a diffusive run, per density node, measured.</summary>
     /// <remarks>
@@ -1778,7 +1796,7 @@ public static class EstimateCommand
     /// <para>
     /// <b>Asked of the model's peak, whatever holds it.</b> This was the tail of the solved-field
     /// explanation, so a model with nothing solved - a diffusive run through an analytic field,
-    /// which holds 263 bytes a density node and more for every species - never reached it, and
+    /// which holds 248 bytes a density node and more for every species - never reached it, and
     /// a run that would not fit was priced without a word.
     /// </para>
     /// </remarks>
@@ -2229,15 +2247,20 @@ public static class EstimateCommand
     /// <returns>The run's own working set, on top of whatever its solved fields hold.</returns>
     /// <remarks>
     /// Once per declared species, each stepping its own density through its own coefficients, face
-    /// operator and well - nothing of that is shared - and once for the self-field, which is the
-    /// one thing the species do share.
+    /// operator and well - nothing of that is shared - and once for the conductors' map and the
+    /// self-field, which are what the species do share.
     /// </remarks>
     private static double DiffusiveMemoryMiB(CompiledModel model, Grid2D grid, bool averaged)
     {
         var speciesCount = Math.Max(1, model.Species.Count);
 
+        var absorbers = model.Fields.Any(element => element.Solve is { Electrodes.Count: > 0 })
+            ? AbsorberMapBytesPerNode
+            : 0.0;
+
         return grid.NodeCount
-            * ((speciesCount * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0))) + SelfFieldBytes(model))
+            * ((speciesCount * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0)))
+                + absorbers + SelfFieldBytes(model))
             / Mebibyte;
     }
 

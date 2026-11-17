@@ -5875,8 +5875,9 @@ slabs, 135.56 and 45.25 with nothing promoted. An observed solve is the unobserv
 the last bit of every node (`GridArraysTests`). The two memory classes took 60 s and take
 18 s in Release, since a build is measured once instead of three times with a sampler halving
 its speed, and read the same figures in Debug.
-`SelfFieldMemoryTests` and `StudyMemoryEstimateTests` still sample, and so does
-`tools/memory-harness`.
+`SelfFieldMemoryTests` and `StudyMemoryEstimateTests` still sampled then, and so did
+`tools/memory-harness`; they read from inside now ("A bound nobody could meet was pointing at
+garbage", below).
 
 **Then the interval was made immune rather than retried.** What other threads allocate can
 only be bounded by counting it, and counting it widens the interval by however much they
@@ -5904,3 +5905,70 @@ is the one that matters. The measurement broke that promise itself, twice: growi
 storage dropped the arrays the baseline had counted, and a warm-up object it made before the
 baseline went out of scope during the build. Neither shows in a test whose build is too small to
 trigger it; both showed in one that holds a known amount at a realistic size.
+
+## A bound nobody could meet was pointing at garbage
+
+The diffusive run was the last thing measured by a thread sampling the heap. Read from inside
+instead, at each of its arrays, its lower end was exact at once - 248.03 bytes a node, the
+arrays and 664 bytes - and its upper end was nine times that. The upper end is what the run's
+own thread allocated between two readings, added to the last reading: the most that could have
+been live there. On a solve that is a few kilobytes. Here it was 33 MB in nine steps.
+
+The reflex was to call the bound useless for a long loop and look for another one. The bound was
+right, and it was the only thing in the repository that had ever looked at that number.
+`FaceCoefficients.Offsets` was written
+
+```csharp
+public static (int Di, int Dj)[] Offsets => [(1, 0), (-1, 0), (0, 1), (0, -1)];
+```
+
+which reads as a constant and is a method that builds an array. `Neighbour` indexed it once a
+face, so the stepping loop made four arrays a node a step: 224 bytes a node a step, 3.7 MB a
+step on a 129 by 129 grid. Nothing was wrong with any number, so no test failed; the run was
+merely collecting a generation every step, and the sampled memory figure - 263 where the arrays
+come to 248 - was partly that garbage caught before a collection took it. The same sentence was
+written about the 3-D energy sweep's solve inside its member loop: a cost is invisible to a
+suite that only checks answers.
+
+Three things to keep.
+
+- **A property that returns a collection expression allocates on every read.** `=> [..]` on a
+  property is not a field initializer. Where a table is read in a loop, make it a `static
+  readonly` field and say so; where a caller must not be able to reorder it, hand out a copy
+  from a second member that is not on the hot path.
+- **When a bound comes out absurd, find out what it is counting before replacing it.** An upper
+  bound that includes everything allocated is exactly the instrument that sees a loop
+  allocating. The mutation that puts the property back fails the diffusive memory tests by
+  name, where every numerical test in the suite still passes.
+- **A measurement that reads low or high by chance hides the size of what it is measuring
+  around.** The sampled figure had been "248 and 259, a slope of 263" for months, with 216
+  attributed and the rest written down as unattributed. An exact reading attributes all of it
+  in one line - the face names are 32 - and leaves nothing to call noise.
+
+## List what a rule cannot decide, not what it should
+
+The guard that keeps grid-sized arrays inside `GridArrays` refused every allocation whose size
+was not a literal, and excused by exact text the ones that were not grid-sized: eighty-eight of
+them, each a list of drives or stages or weight terms, each with a reason typed beside it. Every
+reason was the same reason. An unrelated edit that reflowed one of those expressions failed the
+test, and the fix each time was to retype the excuse.
+
+A list of exceptions is a rule written out by extension, and the reviewer's question was what
+the rule is. Here it is two sentences: storage for bare numbers is in scope unless its size is
+shown to be a count of things; storage for things only if its size is shown to be a grid's. The
+compiler's semantic model can follow a size back through locals, parameters, fields and calls
+far enough to decide 168 of 171 allocations by those two sentences, and what is left - three
+allocations in one method, each really the size of a grid divided by 512 - is a list worth
+reading.
+
+- **If every entry of an allowlist has the same justification, the justification is the rule
+  and the list is its output.** Write the rule; keep the list for what the rule gets wrong.
+- **State what the rule cannot show.** This one cannot follow a size that arrives from an
+  assembly it does not compile, a collection grown through a reference handed elsewhere, or
+  per-node storage of objects whose count never touches a grid dimension. Each is written in
+  the scan's remarks with what covers it instead, and where the scan does not know it refuses.
+- **Test the rule on small written cases, both ways.** A scan that passes 168 of 171 could be
+  passing them because it is blind. Fifty snippets say which shapes reach a grid, which cannot
+  be shown small, and which per-drive lists must pass, and two mutations of the engine - a grid
+  array outside the helper in the density run, and one number a species beside it - come out
+  refused and passed.

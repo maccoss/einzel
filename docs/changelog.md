@@ -3651,3 +3651,99 @@ Two findings from Stage 1 that bear on the spec:
     projects that measure memory, where it had three copies.
 
   Full suite, 2,051 tests, passes in Debug and in Release.
+
+  **Then the last memory tests that sampled were read from inside too, and a bound found what
+  the sampler had been reading.** `SelfFieldMemoryTests` still measured a diffusive run with a
+  thread forcing collections beside it - two warm-up runs, five readings, the largest held to
+  the middle one - and so did `tools/memory-harness`. `GridArrays` moved to `Einzel.Core`, the
+  one assembly `Einzel.Fields` and `Einzel.Transport` both already reference, and stays
+  internal, named to those two, the two test assemblies that measure and the harness; the
+  densities, the step's six coefficients, the face operator, the conductors' map, the
+  self-field, the well cache, an imported gas density and a density's cumulative table for
+  sampling all come from it now. The measurement and the child process moved to `tests/Shared`
+  and are linked as source into `Einzel.Fields.Tests` and `Einzel.Cli.Tests`, which is an
+  executable as well; the harness links the measurement.
+
+  | | stated | read from inside, least to most |
+  | --- | --- | --- |
+  | diffusive run, drift tube, slope 129 by 129 to 257 by 257 | 248 | 247.89 to 248.11 |
+  | the same in a bore, with the conductors' map | 252 | 251.88 to 252.12 |
+  | self-field, tube, 16,641 and 66,049 nodes | 62 | 61.00 to 61.46, 61.21 to 61.35 |
+  | self-field, bore, 16,641 and 66,049 nodes | 62 | 60.97 to 61.47, 61.20 to 61.32 |
+
+  **The first reading had an upper end nine times its lower.** A measurement's upper end is what
+  the run's thread allocated between two of its arrays, and a 129 by 129 run holding 4.1 MB had
+  allocated 33 MB there in nine steps; at 257 by 257, 501 MB in thirty-four against 16 held.
+  `FaceCoefficients.Offsets` was a property returning a collection expression, so each read made
+  a new four-entry array, and `Neighbour` read it once a face: **224 bytes of garbage a node a
+  step**, in the loop CMP-1 says allocates nothing. The offsets are a static array read in
+  place, the step's ledger of what each surface took is the run's own and reused where it was
+  a dictionary and a list a step, and the stepping loop allocates nothing; the run's whole
+  interval is now under 6 kB wide. Every diffusive number is unchanged - same sums in the same
+  order.
+
+  **So the diffusive figure moves from 263 to 248.** 263 was a slope between two sampled
+  readings, 248 and 259, of which 216 were attributed to arrays. The rest of the 248 is the
+  face names, 32; the 15 over was the sampler reading that garbage as held. The statement is
+  the arrays now - three densities, six coefficients, a face operator of 176 - and the map of
+  which conductor owns each node is 4 more, once, where a solved element has electrodes. A
+  diffusive estimate is 5.7 percent lower without conductors and 4.2 with.
+
+  **The source guard follows sizes and no longer lists them.** It refused every allocation
+  sized at run time and excused 88 by their exact text, so an unrelated edit to a list of
+  drives tripped it. `GridSizeScan` compiles the engine's sources and follows each size back:
+  through arithmetic, locals, parameters to their arguments at every call, fields and
+  properties to what is assigned to them, calls to what they return, a collection filled by
+  `Add` to the loops its `Add`s are in. Storage for bare numbers is refused unless its size
+  ends in constants and counts of things; storage for things only if it reaches a grid's
+  dimensions. In `Einzel.Fields` and `Einzel.Transport`, which is now what is covered, **171
+  allocations are judged, 168 pass by rule and three are listed** - the volume cull's per-block
+  candidate lists, which are the size of a grid over 512. Fifty-odd snippets pin each way a size
+  can reach a grid, each way it can fail to be shown small, and each shape of per-drive list
+  that must pass.
+
+  **A child's failure belongs to whatever caused it.** One child measured seventeen cases under
+  one twenty-minute limit, and a slow case or a line on the error stream failed all of them
+  with nothing naming the culprit. Each case has its own time now, counted by the parent from
+  the line saying the case began; a case past it, or one that takes the process down, fails by
+  name with what was written, and the cases after it are measured by a fresh child. The child
+  marks on its error stream where each case begins and ends, so a line written inside a case
+  fails that case alone. What still fails every case is what is about every case: no start,
+  another runtime or collector, the wrong JIT tier - checked after each case now, before it is
+  reported. The test that gave a cold child twenty seconds to start, build a real case twice
+  and hang gives the stuck case two seconds from its own beginning instead, after a case that
+  sleeps for longer than that.
+
+  **Only the tests that watch in this process run alone.** The whole memory collection ran with
+  parallelization off, though most of it only reads what a child reported. The child-reading
+  classes run in parallel with the rest of the suite; `GridArraysTests`, which starts watches
+  and reads this process's live set, keeps the serialized collection. Every solve a child
+  measured read the same to the byte with the whole suite running beside it as with nothing
+  else running; the one case that is forty small fields, whose least comes from the process's
+  reading, moved by under 6 kB.
+
+  **An interval wholly past an edge is a finding whatever other threads did.** An array added
+  to the self-field failed its test as inconclusive: a refresh re-samples the step's
+  coefficients across cores, those threads allocated a megabyte or two over the run, and the
+  verdict asked only whether that could cover the excess. But the interval's lower end is the
+  build's own arrays still alive, which no other thread can add to, so a lower end over the
+  upper edge is not billed, by name: 68.95 to 69.21 against an edge of 63.24. Only an edge the
+  interval straddles can be the measurement's doing.
+
+  Mutations, each run alone: one more density held fails the two diffusive tests at 256.11 and
+  260.14 against 252.96 and 257.04; one more self-field array fails its four; the density's
+  values allocated without `GridArrays` fail the scan and three self-field tests; the offsets
+  property read in the loop again fails all six, at up to 34,123 bytes a node; a grid-sized
+  `bool[]` and a grid-long list copied to an array in the density run are refused by the scan,
+  and one number a species beside them is passed; a case's time counted from the child's start,
+  one limit for the whole child, an error-stream line failing every case, no fresh child, and a
+  case's death failing every case each fail the protocol tests written for them. The thirty
+  from earlier rounds still fail.
+
+  The room kept for replaced storage said sixty-four doublings and held thirty-two; it holds
+  what thirty-one need, which is more than an array can be doubled, and refuses by name past
+  that. `docs/lessons.md`, "A bound nobody could meet was pointing at garbage" and "List what a
+  rule cannot decide, not what it should".
+
+  Full suite, 2,104 tests, passes in Debug and in Release, with the same readings in both. The
+  solver's memory, protocol and source tests take 47 s in Release and the diffusive ones 75 s.

@@ -1,4 +1,5 @@
 using Einzel.Fields.Solved;
+using Einzel.Testing;
 
 using Xunit.Abstractions;
 
@@ -38,7 +39,7 @@ namespace Einzel.Fields.Tests;
 /// per node where a slope would cancel them, and the hold it exists to catch is 1.06.
 /// </para>
 /// </remarks>
-[Collection(nameof(MemoryMeasurement))]
+[Collection(nameof(MeasuredInAChild))]
 public sealed class FirstTierMemoryTests(MeasuredBuilds builds, ITestOutputHelper output)
 {
     [Fact]

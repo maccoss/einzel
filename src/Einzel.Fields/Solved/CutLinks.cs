@@ -1,3 +1,5 @@
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>The four axis directions a stencil reaches in.</summary>

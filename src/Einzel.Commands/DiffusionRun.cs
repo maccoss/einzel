@@ -691,9 +691,7 @@ public static class DiffusionRun
         CompiledModel model, Grid2D grid, DensityField density)
     {
         var names = new List<string>();
-        var owner = new int[grid.CountX * grid.CountY];
-
-        Array.Fill(owner, -1);
+        var owner = AbsorbingCells.OpenOwners(grid.CountX * grid.CountY);
 
         var seedLoss = new Dictionary<string, double>(StringComparer.Ordinal);
 

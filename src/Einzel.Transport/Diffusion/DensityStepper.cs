@@ -94,12 +94,44 @@ public static class DensityStepper
         AbsorbingCells absorbers,
         StepScheme scheme,
         double dt,
+        double tolerance = 1e-10) =>
+        Advance(density, next, faces, absorbers, scheme, dt, new StepLedger(), tolerance);
+
+    /// <summary>Advances the density by one step, writing what each surface took into a ledger the caller keeps.</summary>
+    /// <param name="density">The density now.</param>
+    /// <param name="next">Where the new density is written.</param>
+    /// <param name="faces">The assembled flux operator.</param>
+    /// <param name="absorbers">Cells inside a conductor.</param>
+    /// <param name="scheme">Which time discretisation to use.</param>
+    /// <param name="dt">The step, in seconds.</param>
+    /// <param name="ledger">
+    /// Emptied and filled; it is the report's <see cref="StepReport.Absorbed"/>, and is good
+    /// until the next step is taken with it.
+    /// </param>
+    /// <param name="tolerance">Relative sweep change the implicit solve stops at.</param>
+    /// <returns>What the step did.</returns>
+    /// <remarks>
+    /// A run takes a step hundreds of thousands of times, and a ledger made new for each was
+    /// a dictionary and a list of garbage a step: 33 MB over six microseconds of a 129 by 129
+    /// drift tube, against the 4 MB the run holds. With the ledger the run's own, the stepping
+    /// loop allocates nothing (CMP-1), which is also what lets a memory test bound what the run
+    /// holds between two of its arrays.
+    /// </remarks>
+    internal static StepReport Advance(
+        DensityField density,
+        DensityField next,
+        FaceCoefficients faces,
+        AbsorbingCells absorbers,
+        StepScheme scheme,
+        double dt,
+        StepLedger ledger,
         double tolerance = 1e-10)
     {
         ArgumentNullException.ThrowIfNull(density);
         ArgumentNullException.ThrowIfNull(next);
         ArgumentNullException.ThrowIfNull(faces);
         ArgumentNullException.ThrowIfNull(absorbers);
+        ArgumentNullException.ThrowIfNull(ledger);
 
         var sweeps = 0;
         var change = 0.0;
@@ -123,9 +155,9 @@ public static class DensityStepper
             ledgerAt = next;
         }
 
-        var (collected, absorbed) = Ledger(ledgerAt, density, faces, absorbers, dt);
+        var collected = Ledger(ledgerAt, density, faces, absorbers, dt, ledger);
 
-        return new StepReport(collected, absorbed, sweeps, change);
+        return new StepReport(collected, ledger, sweeps, change);
     }
 
     private static void Forward(
@@ -283,17 +315,19 @@ public static class DensityStepper
     /// differ in the last bit - and the whole point of the factored form is that the
     /// rewrite of this file can be checked as bit-identical rather than close.
     /// </remarks>
-    private static (double Collected, IReadOnlyList<(string Where, double Ions)> Absorbed) Ledger(
+    private static double Ledger(
         DensityField at,
         DensityField density,
         FaceCoefficients faces,
         AbsorbingCells absorbers,
-        double dt)
+        double dt,
+        StepLedger absorbed)
     {
         var grid = density.Grid;
 
         var collected = 0.0;
-        var absorbed = new Dictionary<string, double>(StringComparer.Ordinal);
+
+        absorbed.Clear();
 
         for (var j = 0; j < grid.CountY; j++)
         {
@@ -333,14 +367,58 @@ public static class DensityStepper
                     }
                     else
                     {
-                        var name = faces.NameOf(cell, face)!;
-
-                        absorbed[name] = absorbed.GetValueOrDefault(name) + leaving;
+                        absorbed.Add(faces.NameOf(cell, face)!, leaving);
                     }
                 }
             }
         }
 
-        return (collected, [.. absorbed.Select(p => (p.Key, p.Value))]);
+        return collected;
     }
+}
+
+/// <summary>
+/// What each named surface took in one step, kept by the run and reused from step to step.
+/// </summary>
+/// <remarks>
+/// In the order the surfaces were first met, and each summed in the order its faces were, which
+/// is the order and the sum a dictionary made new for the step gave: the totals a run reports
+/// are the same to the last bit.
+/// </remarks>
+internal sealed class StepLedger : IReadOnlyList<(string Where, double Ions)>
+{
+    private readonly Dictionary<string, int> _index = new(StringComparer.Ordinal);
+    private readonly List<(string Where, double Ions)> _taken = [];
+
+    /// <inheritdoc/>
+    public int Count => _taken.Count;
+
+    /// <inheritdoc/>
+    public (string Where, double Ions) this[int index] => _taken[index];
+
+    /// <summary>Forgets the step before.</summary>
+    internal void Clear()
+    {
+        _index.Clear();
+        _taken.Clear();
+    }
+
+    /// <summary>Adds what a face lost to the surface it lost it to.</summary>
+    internal void Add(string where, double ions)
+    {
+        if (_index.TryGetValue(where, out var at))
+        {
+            _taken[at] = (where, _taken[at].Ions + ions);
+        }
+        else
+        {
+            _index[where] = _taken.Count;
+            _taken.Add((where, ions));
+        }
+    }
+
+    /// <inheritdoc/>
+    public IEnumerator<(string Where, double Ions)> GetEnumerator() => _taken.GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 }

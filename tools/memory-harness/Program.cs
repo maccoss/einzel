@@ -10,12 +10,13 @@
 //   default  the peak WORKING SET above the process's baseline, with the managed heap polled
 //            lightly beside it. What the operating system had to supply to an unconstrained
 //            process - garbage the collector had not yet reclaimed included.
-//   live     the peak LIVE SET: what survived a forced full collection, sampled continuously
-//            while the work runs. What `einzel estimate` reports, and what has to fit.
+//   live     the peak LIVE SET: what survived a forced full collection, read on the work's own
+//            thread at each grid-sized array it allocates (tests/Shared/LiveSet.cs, the memory
+//            tests' own measurement). What `einzel estimate` reports, and what has to fit.
 //
-// Forcing collections every few hundred microseconds is what makes the live peak measurable
-// and is also what keeps the working set down, so a run that sampled both would report a
-// working set no ordinary run reaches. One JSON line on stdout. See README.md.
+// Forcing a collection at every array is what makes the live peak exact and is also what keeps
+// the working set down, so a run that read both would report a working set no ordinary run
+// reaches. One JSON line on stdout. See README.md.
 
 using System.Diagnostics;
 using System.Runtime;
@@ -24,6 +25,7 @@ using Einzel.Commands;
 using Einzel.Core.Model;
 using Einzel.Fields;
 using Einzel.Io;
+using Einzel.Testing;
 
 var options = args.Skip(2).ToHashSet(StringComparer.Ordinal);
 
@@ -92,44 +94,51 @@ self.Refresh();
 var peakBefore = self.PeakWorkingSet64;
 var commitBefore = self.PeakPagedMemorySize64;
 var heapBefore = GC.GetTotalMemory(forceFullCollection: true);
-var liveBefore = Survived();
 var allocatedBefore = GC.GetTotalAllocatedBytes(precise: false);
 
 long heapPeak = 0;
-long livePeak = liveBefore;
 var stop = 0;
 
-var monitor = new Thread(live ? SampleLive : PollHeap)
-{
-    IsBackground = true,
-    Priority = ThreadPriority.AboveNormal,
-};
-
-monitor.Start();
+Func<object> work = mode == "fields"
+    ? () => FieldAssembly.BuildReported(model)
+    : model.IsMixture
+        ? () => DiffusionRun.ExecuteMixture(model, field!, warnings!)
+        : () => DiffusionRun.Execute(model, field!, warnings!);
 
 var watch = Stopwatch.StartNew();
 object? kept = null;
+LivePeak? livePeak = null;
 
-try
+if (live)
 {
-    if (mode == "fields")
-    {
-        kept = FieldAssembly.BuildReported(model);
-    }
-    else if (model.IsMixture)
-    {
-        kept = DiffusionRun.ExecuteMixture(model, field!, warnings!);
-    }
-    else
-    {
-        kept = DiffusionRun.Execute(model, field!, warnings!);
-    }
-}
-finally
-{
+    // Read from inside the work, at each array it allocates: nothing samples, so there is no
+    // peak to miss however short it is.
+    livePeak = LiveSet.Peak(() => kept = work());
     watch.Stop();
-    Volatile.Write(ref stop, 1);
-    monitor.Join();
+}
+else
+{
+    // The working set is the operating system's own peak counter and needs no sampling. Only the
+    // managed heap's size, garbage included, is polled beside it, as a description of the run
+    // rather than a figure anything is held to.
+    var monitor = new Thread(PollHeap)
+    {
+        IsBackground = true,
+        Priority = ThreadPriority.AboveNormal,
+    };
+
+    monitor.Start();
+
+    try
+    {
+        kept = work();
+    }
+    finally
+    {
+        watch.Stop();
+        Volatile.Write(ref stop, 1);
+        monitor.Join();
+    }
 }
 
 self.Refresh();
@@ -160,8 +169,8 @@ Console.WriteLine(JsonSerializer.Serialize(new
     seconds = watch.Elapsed.TotalSeconds,
 
     // Peak working set and peak commit above what the process held before the work began.
-    // In a live run these are depressed by the sampler's own collections - read them from a
-    // default run.
+    // In a live run these are depressed by the measurement's own collections - read them from
+    // a default run.
     deltaPeakWorkingSetMiB = (peakAfter - peakBefore) / Mebi,
     deltaPeakCommitMiB = (commitAfter - commitBefore) / Mebi,
     baselinePeakWorkingSetMiB = peakBefore / Mebi,
@@ -169,8 +178,16 @@ Console.WriteLine(JsonSerializer.Serialize(new
     // The managed heap's peak above its start, dead objects included (default runs only).
     polledHeapPeakMiB = live ? (double?)null : (heapPeak - heapBefore) / Mebi,
 
-    // The live set's peak above its start (live runs only).
-    liveSetPeakMiB = live ? (livePeak - liveBefore) / Mebi : (double?)null,
+    // The live set's peak above its start (live runs only): the least the work can have held
+    // at its most, and the most. The two differ by what the work allocated outside GridArrays
+    // between two of its arrays, which is a few kilobytes.
+    liveSetPeakMiB = livePeak?.Least / Mebi,
+    liveSetBoundMiB = livePeak?.Bound / Mebi,
+    gridArrays = livePeak?.Readings,
+
+    // Why the live measurement does not cover the work - grid arrays allocated on another
+    // thread - or null.
+    liveInvalid = livePeak?.Invalid,
 
     // Everything allocated over the run: how much the collector had to free.
     allocatedMiB = allocated / Mebi,
@@ -193,32 +210,6 @@ void PollHeap()
         Thread.Sleep(1);
     }
 }
-
-// SolveMemoryTests' sampler: a forced full collection, then the collector's own account of what
-// survived it, waiting as long again as the collection took so the work keeps half the time.
-void SampleLive()
-{
-    var clock = Stopwatch.StartNew();
-
-    while (Volatile.Read(ref stop) == 0)
-    {
-        var started = clock.Elapsed;
-
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
-        livePeak = Math.Max(livePeak, Survived());
-
-        var resume = clock.Elapsed + (clock.Elapsed - started);
-
-        while (clock.Elapsed < resume && Volatile.Read(ref stop) == 0)
-        {
-            Thread.SpinWait(32);
-        }
-    }
-}
-
-// What the last full blocking collection left live, from that collection's own record: one
-// implementation, shared with the memory tests (tests/Shared/LiveSetReading.cs).
-static long Survived() => Einzel.Testing.LiveSetReading.SurvivedLastFullCollection();
 
 static object[] Elements(EstimateOutcome estimate) =>
     [.. estimate.Elements.Select(e => new { e.Type, e.NodeCount, e.MemoryMiB })];

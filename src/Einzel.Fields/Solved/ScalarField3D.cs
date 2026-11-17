@@ -1,3 +1,5 @@
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>Nodal values on a <see cref="Grid3D"/>.</summary>

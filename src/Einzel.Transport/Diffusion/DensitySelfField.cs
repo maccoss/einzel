@@ -1,3 +1,4 @@
+using Einzel.Core.Numerics;
 using Einzel.Fields.Solved;
 
 namespace Einzel.Transport.Diffusion;
@@ -91,7 +92,7 @@ public sealed class DensitySelfField
         _grid = grid;
         _chargeSi = chargeSi;
         _tolerance = refreshTolerance;
-        _potential = new double[grid.CountX * grid.CountY];
+        _potential = GridArrays.New<double>(grid.CountX * grid.CountY);
 
         _mask = new DirichletMask(grid)
         {
@@ -188,7 +189,7 @@ public sealed class DensitySelfField
 
         if (_solvedFor is null)
         {
-            _solvedFor = new double[cells];
+            _solvedFor = GridArrays.New<double>(cells);
         }
         else
         {
@@ -322,7 +323,7 @@ public sealed class DensitySelfField
         }
 
         var cells = _grid.CountX * _grid.CountY;
-        var rho = new double[cells];
+        var rho = GridArrays.New<double>(cells);
 
         // The net charge density, and the magnitude present, in one pass.
         var magnitude = 0.0;
@@ -351,7 +352,7 @@ public sealed class DensitySelfField
 
         if (_solvedFor is null)
         {
-            _solvedFor = new double[cells];
+            _solvedFor = GridArrays.New<double>(cells);
         }
         else
         {

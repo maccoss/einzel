@@ -286,6 +286,14 @@ become a feature release without being renamed twice.
 - **Unsupported RF spectra in the diffusive effective-field path are rejected** instead of
   applying one frequency to all components. Inactive generators no longer set the averaging
   period; trajectory RF support is unchanged.
+- **`einzel estimate` states less memory for a diffusive run: 248 bytes a density node and
+  species where it stated 263**, and 4 more, once, for the map of which conductor owns each
+  node where a solved element has electrodes. 248 is exactly the run's arrays; 263 was a
+  sampled figure that had read garbage as held. A diffusive estimate is 5.7 percent lower
+  without conductors and 4.2 percent lower with them.
+- **A diffusive run no longer allocates in its stepping loop.** Reading the face offsets built
+  a new array four times a node a step - 224 bytes of garbage a node a step, a generation
+  collected every step on a large grid. No number changes.
 - **The solver-behaviour version is advanced to 2**, so older numerical results are not
   reported current after these corrections. The package version is unchanged.
 

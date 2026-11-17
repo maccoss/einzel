@@ -1,20 +1,30 @@
 using System.Diagnostics;
 
 using Einzel.Core.Model;
+using Einzel.Core.Numerics;
 using Einzel.Fields.Solved;
+using Einzel.Testing;
 
 using Xunit.Abstractions;
 
 namespace Einzel.Fields.Tests;
 
 /// <summary>
-/// The measurements here force full collections and read the whole process's live set, so they
-/// must not share the process with anything else allocating: another test's arrays would be
-/// counted as this build's. xUnit runs a collection with parallelization disabled after every
-/// parallel one.
+/// The tests that read what a child process measured. They share the children - each build is
+/// measured once - and nothing else: the measuring is done in processes of its own, so these
+/// run in parallel with the rest of the suite, which does not reach a child.
 /// </summary>
-[CollectionDefinition(nameof(MemoryMeasurement), DisableParallelization = true)]
-public sealed class MemoryMeasurement : ICollectionFixture<MeasuredBuilds>;
+[CollectionDefinition(nameof(MeasuredInAChild))]
+public sealed class MeasuredInAChild : ICollectionFixture<MeasuredBuilds>;
+
+/// <summary>
+/// The tests that watch <see cref="GridArrays"/> or read the live set in this process. A watch
+/// is the process's and belongs to one thread, and a grid array another test allocated on
+/// another thread meanwhile would be recorded against the measurement, so these run with
+/// nothing else: xUnit runs a collection with parallelization disabled after every parallel one.
+/// </summary>
+[CollectionDefinition(nameof(WatchedInProcess), DisableParallelization = true)]
+public sealed class WatchedInProcess;
 
 /// <summary>
 /// What a build says it will hold, against what a build actually holds.
@@ -63,7 +73,7 @@ public sealed class MemoryMeasurement : ICollectionFixture<MeasuredBuilds>;
 /// <see cref="GridArrays"/>, which is where it has to be allocated.
 /// </para>
 /// </remarks>
-[Collection(nameof(MemoryMeasurement))]
+[Collection(nameof(MeasuredInAChild))]
 public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper output)
 {
     /// <summary>The Galerkin hierarchy's peak, per node, against two thin slabs at two meshes.</summary>
@@ -579,8 +589,8 @@ public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper ou
         {
             // The descent the statement was worked out for, and every cycle asked for: a solve
             // that converged or stalled early never reached the cycle its peak is held in.
-            Assert.Equal(planLarge.Levels, build.Levels);
-            Assert.Equal(direct.Cycles, build.Cycles);
+            Assert.Equal(planLarge.Levels, build.Fact("levels"));
+            Assert.Equal(direct.Cycles, build.Fact("cycles"));
         }
 
         return reading;

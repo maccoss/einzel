@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 
+using Einzel.Core.Numerics;
 using Einzel.Fields.Solved;
+using Einzel.Testing;
 
 using Xunit.Abstractions;
 using Xunit.Sdk;
@@ -17,8 +19,8 @@ namespace Einzel.Fields.Tests;
 /// rather than assumed: move a number, cost anything when nobody is watching, or make anything
 /// throw because something is.
 /// </remarks>
-[Collection(nameof(MemoryMeasurement))]
-public sealed class GridArraysTests(MeasuredBuilds builds, ITestOutputHelper output)
+[Collection(nameof(WatchedInProcess))]
+public sealed class GridArraysTests(ITestOutputHelper output)
 {
     /// <summary>
     /// Each kind of solve, watched with a full collection forced at every array, gives the
@@ -220,66 +222,6 @@ public sealed class GridArraysTests(MeasuredBuilds builds, ITestOutputHelper out
         Assert.Equal(1, calls);
         Assert.NotNull(invalid);
         Assert.Contains("the watcher's own failure", invalid, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// A build that allocates more grid arrays than the measurement made room for is measured
-    /// all the same: the storage for following them grows, outside what is charged to the build.
-    /// </summary>
-    /// <remarks>
-    /// Measured in the child, where nothing else allocates, because what is compared is the
-    /// process's own reading: in this test host other threads move it by more than the storage
-    /// is worth.
-    /// </remarks>
-    [Fact]
-    public void MoreArraysThanTheRoomMadeForThemAreMeasuredAllTheSame()
-    {
-        var roomy = builds.Optimized(output, "fields", LiveSet.InitialCapacity).Peak;
-        var cramped = builds.Optimized(output, "fields", 1).Peak;
-
-        Assert.Equal(40, cramped.Readings);
-        Assert.Equal(40, cramped.Collections);
-        Assert.Equal(roomy.Tracked, cramped.Tracked);
-
-        // Grown six times to 64, the storage holds 1,072 bytes the build did not.
-        Assert.InRange(cramped.Held, roomy.Held - 256, roomy.Held + 256);
-        Assert.InRange(cramped.Bound, roomy.Bound - 256, roomy.Bound + 256);
-    }
-
-    /// <summary>
-    /// A build that outgrows the room made for following its arrays, at the room's real size, is
-    /// read at its true peak to within a few kilobytes.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The room made before the baseline is 16,384 arrays, 256 kB of storage. Growing it once
-    /// replaces that storage; dropping what it replaced would take 256 kB the baseline counted out
-    /// of every later reading, and the reading at this build's peak - taken after the growth - would
-    /// be that much low. Kept, the reading is the truth.
-    /// </para>
-    /// <para>
-    /// The build holds 8,000,000 bytes, holds and lets go another 8,000,000, allocates 20,000
-    /// one-byte arrays it drops, then holds 8,800,000 more: its peak is the first and last together,
-    /// and in the child, where nothing else allocates, a reading of it is exact to the few objects
-    /// it keeps them in.
-    /// </para>
-    /// </remarks>
-    [Fact]
-    public void AReadingAfterTheRoomHasGrownIsTheTruth()
-    {
-        var peak = builds.Optimized(output, "grow-drop", 1).Peak;
-        var truth = (double)(ArraySize.Of(8L * 1_000_000) + ArraySize.Of(8L * 1_100_000));
-
-        // The drop let most of the small arrays be passed over; otherwise this would read twenty
-        // thousand times.
-        Assert.True(peak.Collections < 100, $"{peak.Collections} readings were taken");
-
-        output.WriteLine($"truth {truth:N0}: {SolveMemoryTests.Describe(peak, 1)}");
-
-        Assert.Equal(20_003, peak.Readings);
-        Assert.InRange(peak.Held, truth, truth + 4096);
-        Assert.InRange(peak.Least, truth - 4096, truth + 4096);
-        Assert.InRange(peak.Bound, truth, truth + 4096);
     }
 
     /// <summary>A build that allocates nothing outside GridArrays reports nothing outside it.</summary>

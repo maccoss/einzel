@@ -1,9 +1,9 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-using Einzel.Fields.Solved;
+using Einzel.Core.Numerics;
 
-namespace Einzel.Fields.Tests;
+namespace Einzel.Testing;
 
 /// <summary>What a build held at its most, read from inside it, as an interval.</summary>
 /// <param name="Least">
@@ -47,7 +47,7 @@ internal sealed record LivePeak(
 /// <remarks>
 /// <para>
 /// <b>A build's live set can only rise at an allocation, so its peak is held just after one.</b>
-/// Every per-node array a solve allocates comes from <see cref="GridArrays"/>, which tells
+/// Every per-node array a solve or a density run allocates comes from <see cref="GridArrays"/>, which tells
 /// whoever is watching; here each one that could raise the peak forces a full blocking
 /// collection and reads what survived, and one that provably could not is passed over. Nothing
 /// is sampled, so there is no window to miss, no second thread whose
@@ -86,7 +86,7 @@ internal sealed record LivePeak(
 /// </para>
 /// <para>
 /// <b>When the interval is still too wide to decide, that is said, not guessed at.</b>
-/// <see cref="MemoryVerdict"/> fails an edge as "not billed" or "bills what is not held" only if
+/// <c>MemoryVerdict</c> fails an edge as "not billed" or "bills what is not held" only if
 /// other threads could not account for the excess; otherwise it fails as a disturbed
 /// measurement, with the numbers.
 /// </para>
@@ -286,13 +286,32 @@ internal static class LiveSet
     /// <see cref="Own"/> is exactly what growing allocated, as the thread's own counter measured
     /// it, all of it still held.
     /// </para>
+    /// <para>
+    /// <b>Room to keep them is made once and cannot run out.</b> Each growth doubles the room and
+    /// keeps the two arrays it replaced, and room for more than <see cref="Array.MaxLength"/>
+    /// arrays cannot exist: from the least room there can be, one, that is at most
+    /// <see cref="MostGrowths"/> doublings, and <see cref="_kept"/> has two slots for each. Kept
+    /// in a fixed array rather than a list, because a list grows by dropping its own storage,
+    /// which is the defect this exists to prevent.
+    /// </para>
     /// </remarks>
-    private sealed class Followed(int capacity)
+    private sealed class Followed
     {
-        private readonly Array[] _kept = new Array[64];
-        private GCHandle[] _handles = new GCHandle[capacity];
-        private long[] _sizes = new long[capacity];
+        /// <summary>The most times room can double: past this it would exceed what an array can hold.</summary>
+        internal const int MostGrowths = 31;
+
+        private readonly Array[] _kept = new Array[2 * MostGrowths];
+        private GCHandle[] _handles;
+        private long[] _sizes;
         private int _keptCount;
+
+        public Followed(int capacity)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
+
+            _handles = new GCHandle[capacity];
+            _sizes = new long[capacity];
+        }
 
         public int Count { get; private set; }
 
@@ -303,6 +322,15 @@ internal static class LiveSet
 
         public void Grow()
         {
+            // Checked before anything is replaced: doubling past what an array can hold throws here,
+            // by name, and the watch records it - never an index past the end of what is kept.
+            if (_handles.Length > Array.MaxLength / 2 || _keptCount + 2 > _kept.Length)
+            {
+                throw new InvalidOperationException(
+                    $"a build allocated more than {_handles.Length:N0} grid arrays, and room to follow twice as many "
+                    + "cannot be made");
+            }
+
             var before = GC.GetAllocatedBytesForCurrentThread();
 
             var handles = new GCHandle[2 * _handles.Length];
@@ -311,7 +339,7 @@ internal static class LiveSet
             Array.Copy(_handles, handles, Count);
             Array.Copy(_sizes, sizes, Count);
 
-            // Kept, not dropped: see the remarks. Sixty-four doublings is more than any build.
+            // Kept, not dropped: see the remarks.
             _kept[_keptCount++] = _handles;
             _kept[_keptCount++] = _sizes;
 
@@ -365,63 +393,6 @@ internal static class LiveSet
 
     /// <summary>What the last full blocking collection left live (<see cref="Einzel.Testing.LiveSetReading"/>).</summary>
     private static long Survived() => Einzel.Testing.LiveSetReading.SurvivedLastFullCollection();
-}
-
-/// <summary>Whether a measured figure lies inside its edges, said three ways.</summary>
-/// <remarks>
-/// A measurement is an interval. An edge it is wholly past is a finding about the solver; an
-/// edge it straddles is a finding about the measurement. Which of those it is turns on whether
-/// other threads allocated enough to account for the excess: if they did, the test cannot tell
-/// and says so by name, with the numbers, rather than reporting the solver.
-/// </remarks>
-internal static class MemoryVerdict
-{
-    /// <summary>The message a disturbed measurement fails with.</summary>
-    internal const string Disturbed = "INCONCLUSIVE, the measurement was disturbed";
-
-    /// <summary>Asserts a figure in bytes a node lies between two edges.</summary>
-    /// <param name="what">What the figure is, for the message.</param>
-    /// <param name="lower">The least it can be.</param>
-    /// <param name="upper">The most it can be.</param>
-    /// <param name="least">The lower edge.</param>
-    /// <param name="most">The upper edge.</param>
-    /// <param name="nodes">The nodes the figure is per.</param>
-    /// <param name="foreign">Bytes other threads allocated during the measurements it rests on.</param>
-    internal static void Within(string what, double lower, double upper, double least, double most, double nodes, long foreign)
-    {
-        // The upper edge first: an array allocated outside GridArrays widens the interval both
-        // ways, and it is the upper edge's message that says so.
-        if (upper > most)
-        {
-            var excess = (upper - most) * nodes;
-
-            Assert.Fail(foreign >= excess
-                ? $"{Disturbed}: {what} is at most {upper:F2} B/node, over the edge of {most:F2} by {excess:N0} bytes, and other "
-                    + $"threads allocated {foreign:N0} bytes during the measurement - enough to be the excess. The solver may be "
-                    + "fine or not; run it again in a quieter process."
-                : $"{what} is at most {upper:F2} B/node against an edge of {most:F2}: something held is not billed, or is "
-                    + $"allocated without GridArrays (other threads allocated only {foreign:N0} of the {excess:N0} bytes over)");
-        }
-
-        if (lower < least)
-        {
-            var shortfall = (least - lower) * nodes;
-
-            Assert.Fail(foreign >= shortfall
-                ? $"{Disturbed}: {what} is at least {lower:F2} B/node, under the edge of {least:F2} by {shortfall:N0} bytes, and "
-                    + $"other threads allocated {foreign:N0} bytes during the measurement - enough to be the shortfall."
-                : $"{what} is at least {lower:F2} B/node against an edge of {least:F2}: the statement bills what is not held");
-        }
-    }
-
-    /// <summary>Fails a measurement that does not cover the build, by name.</summary>
-    internal static void Covered(string what, LivePeak peak)
-    {
-        if (peak.Invalid is { } invalid)
-        {
-            Assert.Fail($"{what}: {invalid}");
-        }
-    }
 }
 
 /// <summary>What an array of primitive elements occupies on the heap, header and padding included.</summary>

@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
-namespace Einzel.Fields.Solved;
+namespace Einzel.Core.Numerics;
 
 /// <summary>Told about an array straight after <see cref="GridArrays"/> allocates it.</summary>
 /// <param name="array">The array.</param>
@@ -10,8 +10,8 @@ namespace Einzel.Fields.Solved;
 internal delegate void GridArrayWatcher(Array array, long bytes);
 
 /// <summary>
-/// The one place a solve allocates an array the size of a grid, so that a test can read what
-/// the solve holds at that instant from inside it.
+/// The one place a solve or a density run allocates an array the size of a grid, so that a test
+/// can read what it holds at that instant from inside it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -26,9 +26,18 @@ internal delegate void GridArrayWatcher(Array array, long bytes);
 /// <b>Allocating and telling are one call</b>, so that neither can be done without the other,
 /// and the size is worked out here from the element type rather than stated by a caller. The
 /// fields, masks, cut links and operators get every array from <see cref="New{T}"/> and grow
-/// one with <see cref="Resize{T}"/>. <c>GridArraySourceTests</c> parses <c>Einzel.Fields</c>
-/// and refuses storage sized at run time and allocated any other way; its remarks say exactly
-/// which forms it reads.
+/// one with <see cref="Resize{T}"/>; so do the densities, the step's coefficients and face
+/// operator, the self-field and the well cache of a diffusive run. <c>GridArraySourceTests</c>
+/// parses <c>Einzel.Fields</c> and <c>Einzel.Transport</c> and refuses storage the size of a
+/// grid allocated any other way; its remarks say exactly what it can and cannot show.
+/// </para>
+/// <para>
+/// <b>Here, in the innermost assembly, and internal.</b> The arrays are allocated in
+/// <c>Einzel.Fields</c> and in <c>Einzel.Transport</c>, and <c>Einzel.Core</c> is the one
+/// assembly both already reference, so no reference is added and none points upward. It stays
+/// internal - named to those two assemblies, and to the test assemblies and the memory harness
+/// that watch - because a public allocation hook would be an extension point in the engine's
+/// allocation path that nothing outside a memory measurement has any business holding.
 /// </para>
 /// <para>
 /// <b>A watch belongs to the thread that started it, and never makes an allocation throw.</b>
@@ -58,7 +67,6 @@ internal static class GridArrays
     /// <param name="length">How many elements.</param>
     /// <returns>The array.</returns>
     internal static T[] New<T>(long length)
-        where T : unmanaged
     {
         var array = new T[length];
 
@@ -81,7 +89,6 @@ internal static class GridArrays
     /// <param name="length">The new length.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative.</exception>
     internal static void Resize<T>([NotNull] ref T[]? array, int length)
-        where T : unmanaged
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
 

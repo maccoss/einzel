@@ -3,6 +3,14 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!--
+      An executable, so that the memory tests can run this assembly as a child process and read
+      a diffusive run's live set in a process that holds nothing else. MeasuringEntry is the
+      entry point; the test host never calls it. See tests/Shared/MeasuringChild.cs.
+    -->
+    <OutputType>Exe</OutputType>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <StartupObject>Einzel.Cli.Tests.MeasuringEntry</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,8 +29,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- One reader of the live set for every memory measurement; see the file. -->
-    <Compile Include="..\Shared\LiveSetReading.cs" Link="Shared\LiveSetReading.cs" />
+    <!-- One harness for every memory measurement, linked as source; see the files. -->
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

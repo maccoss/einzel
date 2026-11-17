@@ -1,8 +1,9 @@
 using Einzel.Core.Geometry;
 using Einzel.Core.Model;
+using Einzel.Core.Numerics;
 using Einzel.Core.Results;
-using Einzel.Fields;
 using Einzel.Fields.Solved;
+using Einzel.Fields;
 using Einzel.Transport.Collisions;
 using Einzel.Transport.Diffusion;
 
@@ -337,9 +338,28 @@ public static class PacketConversion
     private static double[] Cumulative(DensityField density, out (int I, int J)[] cells)
     {
         var grid = density.Grid;
-        var list = new List<(int, int)>();
-        var running = new List<double>();
+
+        // Counted first, so that both arrays are made once at their own length, and by
+        // GridArrays: they are as long as the grid wherever the density fills it.
+        var occupied = 0;
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                // The sign of the population is the sign of the density: a cell's volume is positive.
+                if (density[i, j] * density.CellVolume(j) > 0.0)
+                {
+                    occupied++;
+                }
+            }
+        }
+
+        cells = GridArrays.New<(int I, int J)>(occupied);
+
+        var running = GridArrays.New<double>(occupied);
         var total = 0.0;
+        var at = 0;
 
         for (var j = 0; j < grid.CountY; j++)
         {
@@ -355,14 +375,13 @@ public static class PacketConversion
                 }
 
                 total += ions;
-                list.Add((i, j));
-                running.Add(total);
+                cells[at] = (i, j);
+                running[at] = total;
+                at++;
             }
         }
 
-        cells = [.. list];
-
-        return [.. running];
+        return running;
     }
 
     private static (int I, int J) Pick(

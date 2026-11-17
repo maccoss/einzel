@@ -1,8 +1,6 @@
 using System.Diagnostics;
 
-using Einzel.Fields.Solved;
-
-namespace Einzel.Fields.Tests;
+namespace Einzel.Testing;
 
 /// <summary>Which tier of JIT code a measuring child runs as, set by its parent and checked by it.</summary>
 /// <remarks>
@@ -25,9 +23,13 @@ namespace Einzel.Fields.Tests;
 /// the tiering variables say - <c>DOTNET_ReadyToRun=0</c> would make them JIT too, at the price
 /// of compiling the whole framework the child touches at first tier, for no purpose: a hold
 /// these tests look for is a local in the solver's own frames, and the solver is never
-/// precompiled. That is checked rather than assumed - a first-tier child refuses if
-/// <c>Einzel.Fields</c> or this assembly carries a ReadyToRun header - and the behavioural probe
-/// is a method in this assembly, compiled by the same JIT, in the same tier, as the solver.
+/// precompiled. That is checked rather than assumed - a first-tier child refuses if an assembly
+/// it measures, or the test assembly, carries a ReadyToRun header - and the behavioural probe
+/// is a method in the test assembly, compiled by the same JIT, in the same tier, as the solver.
+/// </para>
+/// <para>
+/// Linked as source into each test assembly that measures in a child, which names the
+/// assemblies it measures by a type from each.
 /// </para>
 /// </remarks>
 internal sealed class JitTier
@@ -80,10 +82,14 @@ internal sealed class JitTier
     /// <summary>
     /// Why this process is not running as the tier asked for, or null if it is.
     /// </summary>
-    internal static string? Refusal(JitTier wanted)
+    /// <param name="wanted">The tier asked for.</param>
+    /// <param name="measured">A type from each assembly whose code is measured.</param>
+    internal static string? Refusal(JitTier wanted, IReadOnlyList<Type> measured)
     {
+        Type[] code = [.. measured, typeof(JitTier)];
+
         var keeps = ALocalOutlivesItsLastUse();
-        var unoptimizedBuild = !IsOptimizedBuild(typeof(PoissonSolver3D)) || !IsOptimizedBuild(typeof(JitTier));
+        var unoptimizedBuild = code.Any(type => !IsOptimizedBuild(type));
 
         if (wanted._optimized)
         {
@@ -102,7 +108,7 @@ internal sealed class JitTier
 
         // Precompiled code runs optimized in every tier, so the solver must be JIT-compiled for its
         // tier to be the one asked for.
-        if (new[] { typeof(PoissonSolver3D), typeof(JitTier) }.FirstOrDefault(IsPrecompiled) is { } precompiled)
+        if (code.FirstOrDefault(IsPrecompiled) is { } precompiled)
         {
             return $"{precompiled.Assembly.GetName().Name} is precompiled (ReadyToRun), so its code runs optimized in every "
                 + "tier and a first-tier hold in it cannot show";

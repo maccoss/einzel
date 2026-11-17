@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.Numerics;
 
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>Which of the six stencil arms a cut is recorded on.</summary>

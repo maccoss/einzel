@@ -37,8 +37,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- One reader of the live set for every memory measurement; see the file. -->
-    <Compile Include="..\Shared\LiveSetReading.cs" Link="Shared\LiveSetReading.cs" />
+    <!-- One harness for every memory measurement, linked as source; see the files. -->
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
