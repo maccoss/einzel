@@ -9,8 +9,8 @@ using Xunit.Abstractions;
 namespace Einzel.Fields.Tests;
 
 /// <summary>
-/// Nothing in <c>Einzel.Fields</c> or <c>Einzel.Transport</c> allocates storage the size of a
-/// grid except through <c>GridArrays</c>.
+/// Nothing in <c>Einzel.Fields</c>, <c>Einzel.Transport</c>, <c>Einzel.Io</c> or
+/// <c>Einzel.Commands</c> allocates storage the size of a grid except through <c>GridArrays</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,16 +21,27 @@ namespace Einzel.Fields.Tests;
 /// (<see cref="GridSizeScan"/>, whose remarks state the rule and what it cannot show).
 /// </para>
 /// <para>
-/// <b>Which assemblies.</b> Refused in <c>Einzel.Fields</c> and <c>Einzel.Transport</c>: between
-/// them they allocate every array the size of a field's grid or a density's - the solvers'
-/// fields, masks, cut links and operators; the densities, step coefficients, face operator,
-/// self-field, well cache and conductor map of a diffusive run; the particle-in-cell grid.
-/// Those are the operations <c>einzel estimate</c> bills by the node and the memory tests
-/// measure. The other engine assemblies are compiled with them, so that a size passed in from
-/// <c>Einzel.Commands</c> can be followed to where it was made, but nothing is refused there:
-/// what <c>Einzel.Commands</c> and <c>Einzel.Io</c> allocate by the node - a field sampled for
-/// export, a viewport's contours, an imported gas field - is not part of a solve or a run's
-/// working set, is not billed as one, and is not measured.
+/// <b>Which assemblies.</b> By the whole rule in <c>Einzel.Fields</c>, <c>Einzel.Transport</c>
+/// and <c>Einzel.Io</c>: between them they allocate every array the size of a field's grid or a
+/// density's that a solve or a run holds - the solvers' fields, masks, cut links and operators;
+/// the densities, step coefficients, face operator, self-field, well cache and conductor map of
+/// a diffusive run; the particle-in-cell grid; an imported gas field. Those are what
+/// <c>einzel estimate</c> bills by the node and the memory tests measure.
+/// </para>
+/// <para>
+/// In <c>Einzel.Commands</c> by the rule's first half only: storage is refused there where its
+/// size is <i>shown to be a grid's</i>, and not where it merely cannot be shown small. What that
+/// assembly sizes at run time is mostly a count that arrives from outside it - ions in a cloud,
+/// vertices of a mesh, figures in a project, instants on a command line - which no following of
+/// the code ends in a count of things, and of which the scan refuses twenty-odd for that reason
+/// and no other. Its per-node allocations are the conductor map of a diffusive run and a field
+/// sampled for export, both through <c>GridArrays</c>, and the viewport's rasters, which are
+/// two-dimensional arrays made for a picture after the run and are no part of a solve's or a
+/// run's working set.
+/// </para>
+/// <para>
+/// The other engine assemblies are compiled beside these, so that a size can be followed into
+/// them, and nothing is refused there: none allocates by the node.
 /// </para>
 /// <para>
 /// <b>What is looked at</b>: an array creation with a size that is not a constant; a collection
@@ -50,13 +61,19 @@ namespace Einzel.Fields.Tests;
 public sealed partial class GridArraySourceTests(ITestOutputHelper output)
 {
     /// <summary>The assemblies in which an allocation is refused.</summary>
-    private static readonly string[] Covered = ["Einzel.Fields", "Einzel.Transport"];
+    private static readonly string[] Covered = ["Einzel.Fields", "Einzel.Transport", "Einzel.Io", "Einzel.Commands"];
+
+    /// <summary>
+    /// The assemblies in which storage is refused only where its size is shown to be a grid's,
+    /// whatever it holds.
+    /// </summary>
+    private static readonly string[] GridOnly = ["Einzel.Commands"];
 
     /// <summary>The assemblies compiled beside them, for a size to be followed into.</summary>
     private static readonly string[] Beside =
     [
-        "Einzel.Core", "Einzel.Io", "Einzel.Analysis", "Einzel.Sweeps", "Einzel.Library", "Einzel.Project",
-        "Einzel.Extensions", "Einzel.Render", "Einzel.Commands",
+        "Einzel.Core", "Einzel.Analysis", "Einzel.Sweeps", "Einzel.Library", "Einzel.Project",
+        "Einzel.Extensions", "Einzel.Render",
     ];
 
     /// <summary>
@@ -79,6 +96,11 @@ public sealed partial class GridArraySourceTests(ITestOutputHelper output)
         ("Einzel.Fields/Solved/GeometryBuilder3D.cs", "GeometryBuilder3D.Candidates", "new List<int>?[blocksX * blocksY * blocksZ]", 1, "one reference a block of 512 nodes"),
         ("Einzel.Fields/Solved/GeometryBuilder3D.cs", "GeometryBuilder3D.Candidates", "new int[lists.Length][]", 1, "one reference a block of 512 nodes"),
         ("Einzel.Fields/Solved/GeometryBuilder3D.cs", "GeometryBuilder3D.Candidates", "[.. list]", 1, "one index an electrode near the block: the loops round its Add choose the block, they do not fill one list"),
+
+        // A density resampled onto a raster for the viewport to contour. It is the size of the
+        // density's grid, it is made after the run it draws and is no part of what a run holds,
+        // and it is a two-dimensional array, which GridArrays does not make.
+        ("Einzel.Commands/ViewportCommand.cs", "ViewportCommand.Shells", "new double[columns, rows]", 1, "a raster for a picture, made after the run"),
     ];
 
     [Fact]
@@ -128,10 +150,17 @@ public sealed partial class GridArraySourceTests(ITestOutputHelper output)
             files[assembly]++;
             through += tree.GetRoot().DescendantNodes().Count(GridSizeScan.IsGridArrays);
             targetTyped += GridSizeScan.TargetTyped(tree);
-            looked += scan.Looked(tree);
+            var judged = scan.Judged(tree);
 
-            foreach (var refused in scan.Refusals(tree))
+            looked += judged.Looked;
+
+            foreach (var refused in judged.Refused)
             {
+                if (GridOnly.Contains(assembly) && refused.Shown.Extent != Extent.Grid)
+                {
+                    continue;
+                }
+
                 var key = (relative, Member(refused.Node), Collapse(refused.Node.ToString()));
                 var line = refused.Node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
 
@@ -171,7 +200,8 @@ public sealed partial class GridArraySourceTests(ITestOutputHelper output)
         Assert.True(files["Einzel.Fields"] >= 40, $"only {files["Einzel.Fields"]} files were read of Einzel.Fields");
         Assert.True(files["Einzel.Transport"] >= 30, $"only {files["Einzel.Transport"]} files were read of Einzel.Transport");
         Assert.True(through >= 40, $"only {through} allocations go through GridArrays");
-        Assert.True(looked >= 80, $"only {looked} allocations sized at run time were found to judge");
+        Assert.True(looked >= 300, $"only {looked} allocations sized at run time were found to judge");
+        Assert.True(files["Einzel.Io"] >= 4 && files["Einzel.Commands"] >= 40, "Einzel.Io or Einzel.Commands was not read");
 
         Assert.True(
             caught.Count == 0,

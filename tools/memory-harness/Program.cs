@@ -41,6 +41,43 @@ var mode = args[0];
 var path = Path.GetFullPath(args[1]);
 var live = options.Contains("live");
 
+// A LIVE FIGURE IS READ UNDER THE COLLECTOR THE MEMORY TESTS READ UNDER: workstation, and not
+// concurrent, so that the only full collections are the ones the measurement forces, with the
+// JIT compiling everything fully at once so that nothing is held by first-tier code. Those are
+// settled before a runtime starts, so a live run starts itself again with them set - the
+// default run keeps the runtime's own collector, whose working set is the thing it measures.
+const string Pinned = "MEMORY_HARNESS_PINNED";
+
+if (live && Environment.GetEnvironmentVariable(Pinned) != "1")
+{
+    var again = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+
+    foreach (var argument in args)
+    {
+        again.ArgumentList.Add(argument);
+    }
+
+    again.Environment["DOTNET_gcServer"] = "0";
+    again.Environment["DOTNET_gcConcurrent"] = "0";
+    again.Environment["DOTNET_TieredCompilation"] = "0";
+    again.Environment[Pinned] = "1";
+
+    using var pinned = Process.Start(again)!;
+
+    pinned.WaitForExit();
+
+    return pinned.ExitCode;
+}
+
+if (live && (GCSettings.IsServerGC || GCSettings.LatencyMode != GCLatencyMode.Batch))
+{
+    Console.Error.WriteLine(
+        $"a live figure is read under a workstation, non-concurrent collector, and this process has "
+        + $"{(GCSettings.IsServerGC ? "server" : "workstation")} {GCSettings.LatencyMode}: something set it otherwise");
+
+    return 3;
+}
+
 // The figure under test, and the grids it was computed from.
 var estimate = EstimateCommand.Execute(path, calibrate: false);
 
@@ -111,9 +148,15 @@ LivePeak? livePeak = null;
 
 if (live)
 {
+    // Once unmeasured, as the memory tests do, so that what a first call allocates for itself
+    // and keeps - statics, tables - is in the baseline and not in the reading.
+    work();
+
     // Read from inside the work, at each array it allocates: nothing samples, so there is no
-    // peak to miss however short it is.
-    livePeak = LiveSet.Peak(() => kept = work());
+    // peak to miss however short it is. What the work returns is let go, so that what is left
+    // of its arrays afterwards is what something outliving it kept.
+    watch.Restart();
+    livePeak = LiveSet.Peak(work);
     watch.Stop();
 }
 else
@@ -154,6 +197,31 @@ GC.KeepAlive(field);
 
 const double Mebi = 1024.0 * 1024.0;
 
+// What the estimate states for the work that was measured: every solved element for `fields`,
+// and for `diffuse` the run's own part, the field having been built before the baseline.
+var solved = estimate.Elements.Sum(e => e.MemoryMiB);
+var statedMiB = mode == "fields" ? solved : estimate.MemoryMiB - solved;
+var perNodes = mode == "fields" ? estimate.Elements.Sum(e => (double)e.NodeCount) : DiffusionRun.GridFor(model).NodeCount;
+
+// The memory tests' own verdict, in their words: whether the measurement covers the work and
+// was the work's alone, and then whether the interval lies within 0.90 to 1.02 of the statement
+// - a finding where it is wholly past an edge, inconclusive where it straddles one and other
+// threads allocated enough to be the difference. A one-step diffusive run with a self-field
+// reads under its statement, which is the statement of a whole flight: ask for `declared`.
+var verdict = livePeak is null || perNodes <= 0
+    ? null
+    : LiveVerdict.NotCovered("the work", livePeak)
+        ?? LiveVerdict.NotItsOwn("the work", livePeak)
+        ?? LiveVerdict.Against(
+            "the work",
+            livePeak.Least / perNodes,
+            livePeak.Bound / perNodes,
+            0.90 * statedMiB * Mebi / perNodes,
+            1.02 * statedMiB * Mebi / perNodes,
+            perNodes,
+            livePeak.Foreign)
+        ?? "within 0.90 to 1.02 of what the estimate states";
+
 Console.WriteLine(JsonSerializer.Serialize(new
 {
     mode,
@@ -183,11 +251,28 @@ Console.WriteLine(JsonSerializer.Serialize(new
     // between two of its arrays, which is a few kilobytes.
     liveSetPeakMiB = livePeak?.Least / Mebi,
     liveSetBoundMiB = livePeak?.Bound / Mebi,
+
+    // The rest of the measurement, as the memory tests have it: the largest reading of the
+    // process, the work's own grid arrays at their most, how many there were and how many were
+    // read at, what the work's thread allocated outside them, what other threads allocated in
+    // all and at most between two readings, and what of the work's arrays was still alive after
+    // it returned and its result was let go.
+    liveHeldMiB = livePeak?.Held / Mebi,
+    liveGridArraysMiB = livePeak?.Tracked / Mebi,
     gridArrays = livePeak?.Readings,
+    gridArraysRead = livePeak?.Collections,
+    liveOutsideGridArraysBytes = livePeak?.Silent,
+    liveForeignBytes = livePeak?.Foreign,
+    liveForeignBurstBytes = livePeak?.ForeignBurst,
+    liveRetainedBytes = livePeak?.Retained,
 
     // Why the live measurement does not cover the work - grid arrays allocated on another
     // thread - or null.
     liveInvalid = livePeak?.Invalid,
+
+    // What the estimate states for the work measured, and the verdict on the interval against it.
+    statedMiB,
+    liveVerdict = verdict,
 
     // Everything allocated over the run: how much the collector had to free.
     allocatedMiB = allocated / Mebi,
@@ -197,6 +282,7 @@ Console.WriteLine(JsonSerializer.Serialize(new
 
     gen2Collections = GC.CollectionCount(2),
     serverGc = GCSettings.IsServerGC,
+    gcLatencyMode = GCSettings.LatencyMode.ToString(),
 }));
 
 return 0;

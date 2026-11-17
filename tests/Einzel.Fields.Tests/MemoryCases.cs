@@ -125,19 +125,4 @@ internal static class MemoryCases
 /// <summary>
 /// Every build the solver's memory tests measure, measured once (<see cref="MeasuredCases"/>).
 /// </summary>
-public sealed class MeasuredBuilds() : MeasuredCases(MemoryCases.Host, OptimizedCases, FirstTierCases)
-{
-    private static readonly (string Kind, double Size)[] OptimizedCases =
-    [
-        ("slabs", 0.0005), ("slabs", 0.00025), ("driven-slabs", 0.00025),
-        ("sphere", 0.000625), ("sphere", 0.0003125),
-        ("ball-flat", 0.016), ("ball-flat", 0.032),
-        ("ball-one-level", 0.016), ("ball-one-level", 0.032),
-        ("thin", 4.096), ("thin", 8.192),
-        ("rods", 0.0001), ("rods", 0.00005), ("driven-rods", 0.0001),
-        ("fields", LiveSet.InitialCapacity), ("fields", 1), ("grow-drop", 1),
-    ];
-
-    // Small, because first-tier code is slow.
-    private static readonly (string Kind, double Size)[] FirstTierCases = [("rods", 0.0001), ("sphere", 0.000625)];
-}
+public sealed class MeasuredBuilds() : MeasuredCases(MemoryCases.Host);

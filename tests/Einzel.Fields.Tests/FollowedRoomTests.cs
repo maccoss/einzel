@@ -74,4 +74,20 @@ public sealed class FollowedRoomTests(MeasuredBuilds builds, ITestOutputHelper o
         Assert.InRange(peak.Least, truth - 4096, truth + 4096);
         Assert.InRange(peak.Bound, truth, truth + 4096);
     }
+
+    /// <summary>
+    /// A solve measured four times in one process holds the same each time and leaves nothing
+    /// behind: nothing is kept from one solve into the next.
+    /// </summary>
+    [Theory]
+    [InlineData("sphere", 0.000625)]
+    [InlineData("rods", 0.0001)]
+    public void ARepeatedSolveLeavesNothingBehind(string kind, double size)
+    {
+        var runs = builds.Optimized(output, kind, size, times: 4).Every;
+
+        output.WriteLine(string.Join("; ", runs.Select(r => $"{r.Least:N0} to {r.Bound:N0}, {r.Retained:N0} left")));
+
+        MemoryVerdict.Repeatable($"the {kind} build", runs);
+    }
 }

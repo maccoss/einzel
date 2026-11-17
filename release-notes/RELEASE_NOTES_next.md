@@ -291,6 +291,12 @@ become a feature release without being renamed twice.
   node where a solved element has electrodes. 248 is exactly the run's arrays; 263 was a
   sampled figure that had read garbage as held. A diffusive estimate is 5.7 percent lower
   without conductors and 4.2 percent lower with them.
+- **`einzel estimate --snapshots <n>`** bills the instants a diffusive run is to record its
+  density at - 8 bytes a density node each, kept to the end. A run records none; a render at an
+  instant asks for one and an animation for one a frame.
+- **A density that is not a number is refused where it is handed to a trajectory phase**, naming
+  the cell (`CONVERGENCE_FAILED` at `/sequence`), instead of being drawn from: every ion was
+  placed in an arbitrary cell with nothing said.
 - **A diffusive run no longer allocates in its stepping loop.** Reading the face offsets built
   a new array four times a node a step - 224 bytes of garbage a node a step, a generation
   collected every step on a large grid. No number changes.

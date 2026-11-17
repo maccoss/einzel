@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Einzel.Core.Errors;
+using Einzel.Core.Numerics;
 
 namespace Einzel.Io;
 
@@ -145,7 +146,7 @@ public static class VtkImageData
                 + "is the usual cause");
         }
 
-        var values = new double[numbers.Length];
+        var values = GridArrays.New<double>(numbers.Length);
 
         for (var i = 0; i < numbers.Length; i++)
         {

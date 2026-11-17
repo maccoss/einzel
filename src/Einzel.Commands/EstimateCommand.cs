@@ -319,9 +319,16 @@ public static class EstimateCommand
     /// Before that it was 16 - "two density fields, current and next".
     /// </para>
     /// <para>
-    /// An explicit run with no self-field; a mean-field solve is
-    /// <see cref="SelfFieldBytesPerNode"/> on top, and a run with conductors in it holds
-    /// <see cref="AbsorberMapBytesPerNode"/> as well.
+    /// <b>Every configuration that changes what a run holds is a term, and every term is read.</b>
+    /// The implicit scheme solves in place and holds the same 248 (247.85 to 248.16). A phase
+    /// that ramps re-assembles its operator into the arrays it has and holds the same, through
+    /// the sequenced path (250.93 to 252.34 against 252 with its conductors' map). A run through
+    /// a cycle average adds <see cref="WellCacheBytesPerNode"/> a species (303.86 to 304.14
+    /// against 304). Each species of a mixture holds all of it again (495.91 to 496.09 against
+    /// 496). A mean-field solve is <see cref="SelfFieldBytesPerNode"/> on top, and
+    /// <see cref="MixtureChargeBytesPerNode"/> more for a mixture (565.19 to 565.35 against 566).
+    /// A run with conductors in it holds <see cref="AbsorberMapBytesPerNode"/>, and each
+    /// recorded instant <see cref="SnapshotBytesPerNode"/>.
     /// </para>
     /// <para>
     /// <b>Per species, all of it.</b> A mixture gives every species its own walker - its
@@ -335,6 +342,14 @@ public static class EstimateCommand
 
     /// <summary>The face operator: four faces of four doubles, two flags and a name, and one outward rate.</summary>
     private const double FaceOperatorBytesPerNode = (4 * ((4 * sizeof(double)) + (2 * sizeof(bool)) + 8)) + sizeof(double);
+
+    /// <summary>One recorded instant: a copy of the density, kept until the run returns.</summary>
+    /// <remarks>
+    /// Read at 280.00 bytes a node with four instants recorded against 248.00 with none
+    /// (<c>DiffusiveMemoryTests</c>). A run records none; a render asks for one, an animation
+    /// for one a frame, and each is held to the end.
+    /// </remarks>
+    private const double SnapshotBytesPerNode = sizeof(double);
 
     /// <summary>The map of which conductor owns each node, an integer a node, held once for the run.</summary>
     /// <remarks>
@@ -670,13 +685,21 @@ public static class EstimateCommand
     /// machine's when omitted. A parameter for the reason <paramref name="threshold"/> is one:
     /// so the comparison can be checked without a machine that is short of memory.
     /// </param>
+    /// <param name="snapshots">
+    /// How many instants a diffusive run is to record its density at, each a copy of the density
+    /// it holds to the end. None for <c>einzel run</c>; a render at an instant asks for one and
+    /// an animation for one a frame.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="snapshots"/> is negative.</exception>
     public static EstimateOutcome Execute(
         string modelPath,
         bool calibrate = true,
         double threshold = ThresholdSeconds,
-        long? availableMemoryBytes = null)
+        long? availableMemoryBytes = null,
+        int snapshots = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+        ArgumentOutOfRangeException.ThrowIfNegative(snapshots);
 
         var absolute = Path.GetFullPath(modelPath);
         var document = Io.ModelJson.Parse(File.ReadAllText(absolute));
@@ -894,7 +917,8 @@ public static class EstimateCommand
 
         if (model.TransportMode == "diffusion")
         {
-            var diffusive = Diffusive(model, Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory());
+            var diffusive = Diffusive(
+                model, Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory(), snapshots);
 
             seconds += diffusive.Seconds;
             diffusiveMemory = diffusive.MemoryMiB;
@@ -2032,7 +2056,7 @@ public static class EstimateCommand
     /// </para>
     /// </remarks>
     private static (double Seconds, double MemoryMiB, string Basis, bool Averaged) Diffusive(
-        CompiledModel model, string modelDirectory)
+        CompiledModel model, string modelDirectory, int snapshots = 0)
     {
         var grid = DiffusionRun.GridFor(model);
 
@@ -2201,7 +2225,7 @@ public static class EstimateCommand
         // Once per declared species: each steps its own density through its own coefficients,
         // face operator and well, and nothing of the working set is shared between them.
         var speciesCount = Math.Max(1, model.Species.Count);
-        var memory = DiffusiveMemoryMiB(model, grid, averaged);
+        var memory = DiffusiveMemoryMiB(model, grid, averaged, snapshots);
         var selfField = SelfFieldBytes(model);
 
         return (
@@ -2213,6 +2237,9 @@ public static class EstimateCommand
                 : string.Empty)
             + (model.ModelsMeanField
                 ? string.Create(Inv, $", with one mean-field self-field over the grid at {selfField:F0} bytes a node")
+                : string.Empty)
+            + (snapshots > 0
+                ? string.Create(Inv, $", and {snapshots} recorded instant(s), each a copy of the density kept to the end")
                 : string.Empty)
             + $", a stability-limited step of "
             + $"{stable:G3} s set by {limit}, "
@@ -2250,7 +2277,8 @@ public static class EstimateCommand
     /// operator and well - nothing of that is shared - and once for the conductors' map and the
     /// self-field, which are what the species do share.
     /// </remarks>
-    private static double DiffusiveMemoryMiB(CompiledModel model, Grid2D grid, bool averaged)
+    /// <param name="snapshots">How many instants the density is recorded at.</param>
+    private static double DiffusiveMemoryMiB(CompiledModel model, Grid2D grid, bool averaged, int snapshots = 0)
     {
         var speciesCount = Math.Max(1, model.Species.Count);
 
@@ -2260,7 +2288,7 @@ public static class EstimateCommand
 
         return grid.NodeCount
             * ((speciesCount * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0)))
-                + absorbers + SelfFieldBytes(model))
+                + absorbers + SelfFieldBytes(model) + (snapshots * SnapshotBytesPerNode))
             / Mebibyte;
     }
 

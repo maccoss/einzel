@@ -24,6 +24,11 @@ namespace Einzel.Testing;
 /// <param name="Silent">Everything the build thread allocated other than through <see cref="GridArrays"/>.</param>
 /// <param name="Foreign">Bytes other threads allocated while the measurement ran.</param>
 /// <param name="ForeignBurst">The most of those allocated between two readings.</param>
+/// <param name="Retained">
+/// What the build's own grid arrays still alive come to once the build has returned and what
+/// it returned has been let go, in bytes: nothing, unless the build left an array somewhere
+/// that outlives it - a static, a pool, a cache that grows by the run.
+/// </param>
 /// <param name="Invalid">
 /// Why the measurement does not cover the build - grid arrays allocated on other threads, or
 /// the watcher itself failing - or null. A measurement with this set is a failure by name.
@@ -39,6 +44,7 @@ internal sealed record LivePeak(
     long Silent,
     long Foreign,
     long ForeignBurst,
+    double Retained,
     string? Invalid);
 
 /// <summary>
@@ -140,6 +146,31 @@ internal static class LiveSet
         }
     }
 
+    [ThreadStatic]
+    private static Action? between;
+
+    /// <summary>
+    /// Offers the measurement running on this thread, if there is one, a reading between two of
+    /// the build's arrays.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A build's live set can only rise at an allocation, and the allocations that are not grid
+    /// arrays are bounded rather than read: everything the thread allocated since the last
+    /// reading is taken as possibly live. That is a few kilobytes for a solve. A run that goes
+    /// on for a thousand steps after its last array, each step allocating a little, has nothing
+    /// to read at and its bound grows by all of it - megabytes on a megabyte. A build that can
+    /// call out between steps calls this, which reads exactly as at an array, and only where
+    /// the live set could by then have passed what has been read; the bound is then what one
+    /// step allocates.
+    /// </para>
+    /// <para>
+    /// It can only tighten the upper end. The least is a maximum over readings, and a reading
+    /// more cannot lower it.
+    /// </para>
+    /// </remarks>
+    internal static void Checkpoint() => between?.Invoke();
+
     private static LivePeak Measure(Func<object> build, Followed followed, bool collectEveryArray)
     {
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
@@ -174,7 +205,7 @@ internal static class LiveSet
             threadAtOthers = thread;
         }
 
-        void Read(Array array, long bytes)
+        void Read(Array? array, long bytes)
         {
             // Room to follow it, made outside what is charged to the build: the thread's counter
             // is moved past what growing the storage allocated.
@@ -187,9 +218,13 @@ internal static class LiveSet
 
             // What the array occupies, header and padding included, which is what the thread's
             // counter charged for it and what it holds in the live set.
-            var occupies = ArraySize.Of(bytes);
+            // A reading asked for between two arrays has none of its own.
+            var occupies = array is null ? 0L : ArraySize.Of(bytes);
 
-            followed.Add(array, occupies);
+            if (array is not null)
+            {
+                followed.Add(array, occupies);
+            }
 
             // Everything the thread allocated since the last reading. Of that, `pending` and this
             // array went through GridArrays; the rest, `since`, did not. Exact, so a build that
@@ -242,10 +277,10 @@ internal static class LiveSet
             threadAtPrevious = GC.GetAllocatedBytesForCurrentThread();
         }
 
-        object? built = null;
         string? invalid;
 
         GridArrays.StartWatching(Read);
+        between = () => Read(null, 0);
 
         // Counted from here: the watch itself and the delegate it calls are the measurement's, not
         // the build's.
@@ -253,10 +288,11 @@ internal static class LiveSet
 
         try
         {
-            built = build();
+            Run(build);
         }
         finally
         {
+            between = null;
             invalid = GridArrays.StopWatching();
         }
 
@@ -269,11 +305,24 @@ internal static class LiveSet
         bound = Math.Max(bound, Math.Min(previous + tail, trackedPrevious + pending + silent));
         Others();
 
-        GC.KeepAlive(built);
+        // What the build returned was let go when its frame returned. Whatever of its grid
+        // arrays is alive after a collection now is held by something that outlives the build.
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
+
+        var retained = followed.Alive();
 
         return new LivePeak(
-            least, Math.Max(bound, least), held, tracked, followed.Count, collections, unreported, silent, foreign, burst, invalid);
+            least, Math.Max(bound, least), held, tracked, followed.Count, collections, unreported, silent, foreign, burst,
+            retained, invalid);
     }
+
+    /// <summary>Runs the build and lets go of what it returns.</summary>
+    /// <remarks>
+    /// In a frame of its own, not inlined, so that the result is unreachable when this returns
+    /// in every build configuration: unoptimized code keeps a local to the end of its method.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Run(Func<object> build) => GC.KeepAlive(build());
 
     /// <summary>The grid arrays a build allocated, each followed by a weak handle.</summary>
     /// <remarks>

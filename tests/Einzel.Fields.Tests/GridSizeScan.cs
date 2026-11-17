@@ -188,8 +188,30 @@ internal sealed class GridSizeScan
         }
     }
 
-    /// <summary>How many allocations sized at run time a tree has, refused or passed.</summary>
-    internal int Looked(SyntaxTree tree) => tree.GetRoot().DescendantNodes().Count(node => Judge(node) is not null);
+    /// <summary>How many allocations sized at run time a tree has, refused or passed, and the refused ones.</summary>
+    /// <remarks>One pass: judging an allocation is following its size, which is the cost of the scan.</remarks>
+    internal (int Looked, List<Refused> Refused) Judged(SyntaxTree tree)
+    {
+        var looked = 0;
+        var refused = new List<Refused>();
+
+        foreach (var node in tree.GetRoot().DescendantNodes())
+        {
+            if (Judge(node) is not { } shown)
+            {
+                continue;
+            }
+
+            looked++;
+
+            if (shown.Extent != Extent.Small && Matters(node, shown))
+            {
+                refused.Add(new Refused(node, shown));
+            }
+        }
+
+        return (looked, refused);
+    }
 
     /// <summary>How many target-typed <c>new</c> expressions a tree has, for the test to show they were read.</summary>
     internal static int TargetTyped(SyntaxTree tree) =>

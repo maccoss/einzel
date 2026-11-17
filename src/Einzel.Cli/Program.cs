@@ -841,7 +841,7 @@ public static class Program
         if (options.Positional.Count == 0)
         {
             Console.Error.WriteLine(
-                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--json]");
+                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--snapshots <instants>] [--json]");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -876,9 +876,25 @@ public static class Program
         // because the file already says which it is and a flag would let the two
         // disagree - the cost of getting that wrong is a plan short by a factor of
         // the evaluation count.
+        // How many instants a diffusive run is to record its density at: none for a run, one for
+        // a render at an instant, one a frame for an animation. Each is a copy held to the end.
+        var snapshots = 0;
+
+        if (options.Value("snapshots") is { } instants
+            && (!int.TryParse(instants, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out snapshots)
+                || IsStudy(path)))
+        {
+            Console.Error.WriteLine(
+                IsStudy(path)
+                    ? "--snapshots is about one diffusive run's recorded instants, and a study records none"
+                    : $"'{instants}' is not a whole number of instants");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var outcome = IsStudy(path)
             ? EstimateCommand.ForStudy(path, calibrate, threshold)
-            : EstimateCommand.Execute(path, calibrate, threshold);
+            : EstimateCommand.Execute(path, calibrate, threshold, snapshots: snapshots);
 
         if (options.Has("json"))
         {

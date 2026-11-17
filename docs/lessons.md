@@ -5972,3 +5972,67 @@ reading.
   be shown small, and which per-drive lists must pass, and two mutations of the engine - a grid
   array outside the helper in the density run, and one number a species beside it - come out
   refused and passed.
+
+## Two passes over one array must ask one question
+
+`PacketConversion.Cumulative` filled two lists cell by cell. Making its arrays the right length
+before filling them - so that they could come from the one allocator - turned one loop into two,
+a count and a fill, and the two were written a few lines apart:
+
+```csharp
+if (density[i, j] * density.CellVolume(j) > 0.0) { occupied++; }   // the count
+...
+if (ions <= 0.0) { continue; }                                       // the fill
+```
+
+They read as complements and are not. A value that is not a number is neither greater than zero
+nor at most zero, so the count passed over it and the fill wrote it, one element past the end.
+Every test passed, because no test had a density that was not a number, and a refactor that
+"changes nothing" is not usually given new tests.
+
+- **Write the predicate once and call it twice.** Two spellings of one condition agree on every
+  value somebody thought of.
+- **`x > 0` and `x <= 0` are not complements for a floating-point `x`.** Wherever a branch on a
+  comparison is duplicated, mirrored or negated, ask what not-a-number does at each copy.
+- **And then ask what the old code did with it.** It did not throw, which made the new crash
+  look like the regression. It was drawing every ion from an arbitrary cell and saying nothing,
+  which is worse than a crash and is what the refusal replaces.
+
+## A constant measured in one configuration is a claim about one configuration
+
+The diffusive figure was restated from a sampled 263 to an exact 248 on the strength of a drift
+tube stepped explicitly with nothing driven, and the estimate applied it to every diffusive
+run: implicit, driven, ramped, recording, mixed. The old figure had fifteen bytes of slack that
+nobody had asked for and that covered, by accident, anything a configuration might add. The
+exact one had none.
+
+Measured in a release build, every configuration held what the statement already said (in a
+debug build two held one array more - see the next section) - the implicit scheme solves
+in place, a ramp re-assembles into the arrays it has, a well cache is its seven arrays, a second
+species is everything again. One term was missing, a recorded instant, which the estimate had
+never been able to be told about. So the restatement was right, and it was right by luck: the
+argument for it was a measurement of one case.
+
+- **When a measured constant replaces a padded one, the padding was covering something or
+  nothing, and only measuring the other cases says which.** Enumerate what the constant is
+  multiplied into - every branch of the code that bills it - and measure one case down each.
+- **Hold a term to its own size.** An array too many in a 56-byte cache is three percent of a
+  304-byte run and inside any band worth having; against the run without the cache it is
+  fourteen percent of the difference.
+
+## What a frame once held, an unoptimized frame keeps
+
+A mixture held one density more than it was billed, and so did a sequence whose second phase
+ramped - in a Debug build, and never in Release. The mixture copied one seed shape into each
+species and never read the shape again; the sequence made its first phase's density in the
+frame that walks the whole timeline. Code compiled without optimization keeps every local, and
+some of the JIT's own temporaries, alive to the end of the method, so the shape lived through
+the run and the seed through every phase after the one it seeded. Finding the second took a
+weak handle: alive after the last phase, gone once the method returned, and reachable from none
+of the run's objects - so the frame was the root, and no variable in it named the seed.
+
+- **A grid-sized object made in a long-lived frame lives as long as that frame, in the build
+  somebody debugs with.** Make it in the frame that uses it - here, inside the leg that steps
+  it - or let the last use be the object itself rather than a copy of it.
+- **Run the memory tests in both configurations.** The two disagree about liveness, and the
+  estimate is a statement about the code, not about the optimizer.

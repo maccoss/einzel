@@ -1,3 +1,4 @@
+using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
 using Einzel.Core.Model;
 using Einzel.Core.Numerics;
@@ -335,20 +336,52 @@ public static class PacketConversion
         density[i, j] += ions / density.CellVolume(j);
 
     /// <summary>The cumulative population over occupied cells, for inverse-CDF sampling.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two passes that ask one question.</b> The cells are counted, so that both arrays are
+    /// made once at their own length and by <see cref="GridArrays"/> - they are as long as the
+    /// grid wherever the density fills it - and then filled. Which cells count is
+    /// <see cref="Occupied"/> in both, on the same product: asked two ways, a cell the count
+    /// passed over and the fill did not is a write past the end of the table.
+    /// </para>
+    /// <para>
+    /// <b>A density that is not a number anywhere is refused, by its cell.</b> It is a failure of
+    /// whatever stepped the density, not a state to draw ions from. Counted as empty it would
+    /// drop the cell and say nothing; carried into the table, as a list filled cell by cell once
+    /// did, it makes every later total not a number, and every ion is then drawn from wherever a
+    /// search for not-a-number happens to stop.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="EinzelException">The density is not finite somewhere.</exception>
     private static double[] Cumulative(DensityField density, out (int I, int J)[] cells)
     {
         var grid = density.Grid;
-
-        // Counted first, so that both arrays are made once at their own length, and by
-        // GridArrays: they are as long as the grid wherever the density fills it.
         var occupied = 0;
 
         for (var j = 0; j < grid.CountY; j++)
         {
+            var volume = density.CellVolume(j);
+
             for (var i = 0; i < grid.CountX; i++)
             {
-                // The sign of the population is the sign of the density: a cell's volume is positive.
-                if (density[i, j] * density.CellVolume(j) > 0.0)
+                var ions = density[i, j] * volume;
+
+                if (!double.IsFinite(ions))
+                {
+                    throw new EinzelException(new EinzelError
+                    {
+                        Code = ErrorCodes.ConvergenceFailed,
+                        Path = "/sequence",
+                        Constraint = string.Create(
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            $"a density handed to a trajectory phase is finite in every cell, and it is not in cell ({i}, {j}), at x = {grid.X(i):G6} m, y = {grid.Y(j):G6} m"),
+                        Observed = new ObservedValue(density[i, j], "m^-3"),
+                        Suggestion = "the diffusive phase before this boundary did not stay finite: shorten its step "
+                            + "(transport.densityStep), or look at the field and the mobility near that cell",
+                    });
+                }
+
+                if (Occupied(ions))
                 {
                     occupied++;
                 }
@@ -369,7 +402,7 @@ public static class PacketConversion
             {
                 var ions = density[i, j] * volume;
 
-                if (ions <= 0.0)
+                if (!Occupied(ions))
                 {
                     continue;
                 }
@@ -383,6 +416,9 @@ public static class PacketConversion
 
         return running;
     }
+
+    /// <summary>Whether a cell holding this many ions is one to draw from: more than none.</summary>
+    private static bool Occupied(double ions) => ions > 0.0;
 
     private static (int I, int J) Pick(
         double[] cumulative, (int I, int J)[] cells, double target, Grid2D grid)

@@ -278,6 +278,38 @@ public sealed class ChildProtocolTests(ITestOutputHelper output)
         Assert.Contains("GC " + MeasuringChild.ExpectedGc, session.Text, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The host is looked for where the running runtime is installed first, and only after
+    /// that, and after what the environment names, as this process itself and on the path.
+    /// </summary>
+    /// <remarks>
+    /// The last two can be another installation. They are safe to fall back to because a child
+    /// that ran on another runtime says so and is refused by name, which
+    /// <see cref="WhatIsAboutEveryCaseFailsEveryCase"/> holds.
+    /// </remarks>
+    [Fact]
+    public void TheHostIsLookedForPreciselyFirstAndOnThePathLast()
+    {
+        var name = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+        var candidates = MeasuringChild.HostCandidates().ToList();
+        var runtime = new DirectoryInfo(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory());
+
+        output.WriteLine(string.Join(Environment.NewLine, candidates));
+
+        Assert.Equal(Path.Combine(runtime.Parent!.Parent!.Parent!.FullName, name), candidates[0]);
+
+        var onPath = (Environment.GetEnvironmentVariable("PATH") ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(directory => Path.Combine(directory, name))
+            .ToList();
+
+        Assert.NotEmpty(onPath);
+
+        // Every path entry is offered, and all of them after everything else.
+        Assert.Equal(onPath, candidates.Skip(candidates.Count - onPath.Count));
+        Assert.NotNull(MeasuringChild.Host());
+    }
+
     /// <summary>An unknown command, or none, is refused with a usage line and a non-zero exit.</summary>
     [Fact]
     public void AnUnknownCommandIsRefused()
@@ -295,7 +327,7 @@ public sealed class ChildProtocolTests(ITestOutputHelper output)
     private static string Begin() => "BEGIN " + Key;
 
     private static string Case(string key = Key) => "CASE " + JsonSerializer.Serialize(
-        new CaseResult(key, new MeasuredBuild(new LivePeak(1, 2, 2, 1, 7, 3, 0, 0, 0, 0, null), []), null));
+        new CaseResult(key, new MeasuredBuild(new LivePeak(1, 2, 2, 1, 7, 3, 0, 0, 0, 0, 0, null), [], null), null));
 
     private static ChildExit Exit(int code, string[] lines, string errors = "") =>
         new(

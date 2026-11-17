@@ -1,6 +1,7 @@
 using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
 using Einzel.Core.Model;
+using Einzel.Core.Numerics;
 using Einzel.Core.Results;
 using Einzel.Core.Units;
 using Einzel.Fields;
@@ -300,7 +301,12 @@ public static class DiffusionRun
 
             mobilities.Add(declared.Mobility with { ZeroFieldSi = mobility.ZeroFieldSi });
 
-            var seeded = shape.Clone();
+            // The last species is seeded in the shape itself, scaled where it lies, and every
+            // other in a copy of it. A shape kept beside the species it was copied into is one
+            // more density held for the whole run, which the estimate does not bill and nothing
+            // reads again: unoptimized code keeps a local alive to the end of its method, and a
+            // mixture run in a Debug build read 504 bytes a node where 496 are billed.
+            var seeded = members.Count == model.Species.Count - 1 ? shape : shape.Clone();
             var scale = declared.Population / shapePopulation;
 
             for (var j = 0; j < grid.CountY; j++)
@@ -691,7 +697,10 @@ public static class DiffusionRun
         CompiledModel model, Grid2D grid, DensityField density)
     {
         var names = new List<string>();
-        var owner = AbsorbingCells.OpenOwners(grid.CountX * grid.CountY);
+        // The size of the grid, so from the one place such arrays come from.
+        var owner = GridArrays.New<int>(grid.CountX * grid.CountY);
+
+        Array.Fill(owner, -1);
 
         var seedLoss = new Dictionary<string, double>(StringComparer.Ordinal);
 

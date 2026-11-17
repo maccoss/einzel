@@ -10,7 +10,7 @@ namespace Einzel.Testing;
 internal static class MemoryVerdict
 {
     /// <summary>The message a disturbed measurement fails with.</summary>
-    internal const string Disturbed = "INCONCLUSIVE, the measurement was disturbed";
+    internal const string Disturbed = LiveVerdict.Disturbed;
 
     /// <summary>Asserts a figure in bytes a node lies between two edges.</summary>
     /// <param name="what">What the figure is, for the message.</param>
@@ -22,74 +22,74 @@ internal static class MemoryVerdict
     /// <param name="foreign">Bytes other threads allocated during the measurements it rests on.</param>
     internal static void Within(string what, double lower, double upper, double least, double most, double nodes, long foreign)
     {
-        // An interval wholly past an edge is a finding whatever other threads did: its lower
-        // end is at least the build's own arrays still alive, and its upper end at most those
-        // plus what the build's own thread allocated, and neither is something another thread
-        // can add to. Only an edge the interval straddles can be the measurement's doing.
-        if (lower > most)
+        if (LiveVerdict.Against(what, lower, upper, least, most, nodes, foreign) is { } failure)
         {
-            Assert.Fail(
-                $"{what} is at least {lower:F2} B/node against an edge of {most:F2}: something held is not billed "
-                + $"({(lower - most) * nodes:N0} bytes over, in the build's own arrays)");
-        }
-
-        if (upper < least)
-        {
-            Assert.Fail($"{what} is at most {upper:F2} B/node against an edge of {least:F2}: the statement bills what is not held");
-        }
-
-        // The upper edge first: an array allocated outside GridArrays widens the interval both
-        // ways, and it is the upper edge's message that says so.
-        if (upper > most)
-        {
-            var excess = (upper - most) * nodes;
-
-            Assert.Fail(foreign >= excess
-                ? $"{Disturbed}: {what} is at most {upper:F2} B/node, over the edge of {most:F2} by {excess:N0} bytes, and other "
-                    + $"threads allocated {foreign:N0} bytes during the measurement - enough to be the excess. The solver may be "
-                    + "fine or not; run it again in a quieter process."
-                : $"{what} is at most {upper:F2} B/node against an edge of {most:F2}: something held is not billed, or is "
-                    + $"allocated without GridArrays (other threads allocated only {foreign:N0} of the {excess:N0} bytes over)");
-        }
-
-        if (lower < least)
-        {
-            var shortfall = (least - lower) * nodes;
-
-            Assert.Fail(foreign >= shortfall
-                ? $"{Disturbed}: {what} is at least {lower:F2} B/node, under the edge of {least:F2} by {shortfall:N0} bytes, and "
-                    + $"other threads allocated {foreign:N0} bytes during the measurement - enough to be the shortfall."
-                : $"{what} is at least {lower:F2} B/node against an edge of {least:F2}: the statement bills what is not held");
+            Assert.Fail(failure);
         }
     }
 
     /// <summary>
     /// Fails a measurement during which another thread allocated, between two readings, more than
-    /// anything but a grid array would come to.
+    /// anything but a grid array would come to (<see cref="LiveVerdict.NotItsOwn"/>).
+    /// </summary>
+    internal static void TheBuildsOwn(string name, LivePeak peak)
+    {
+        if (LiveVerdict.NotItsOwn(name, peak) is { } failure)
+        {
+            Assert.Fail(failure);
+        }
+    }
+
+    /// <summary>
+    /// Asserts that a build measured several times in one process held the same each time and
+    /// left nothing behind.
     /// </summary>
     /// <remarks>
-    /// The backstop behind <c>GridArrays</c>, which records by name any grid array allocated off
-    /// the measuring thread: an array a build allocated on a worker <i>without</i> going through
-    /// it would be neither read at nor bounded, only counted among what other threads allocated.
-    /// Asked of the most between two readings, not of the total: what the runtime's own threads
-    /// do is a few hundred bytes a collection, and a total grows with how many collections a build
-    /// needs - twenty thousand, for one test here - where an array allocated on a worker arrives
-    /// all at once. 64 kB is two orders over that housekeeping and under the smallest grid array
-    /// the memory tests build.
+    /// <para>
+    /// What this is for is something kept from one run into the next: a pool, a cache, a static
+    /// list that grows by the run. Each measurement takes its own baseline, so an array a run
+    /// leaves behind is in the next run's baseline and no single reading shows it. Two things
+    /// do. <see cref="LivePeak.Retained"/> is the build's own grid arrays still alive after the
+    /// build has returned and its result has been let go, which is nothing unless something
+    /// outlives the run. And the build's arrays alive at its peak are the same number of bytes
+    /// every time, exactly, since nothing is sampled.
+    /// </para>
+    /// <para>
+    /// The process's own readings may differ by what the build allocated outside its arrays,
+    /// which is the width of the interval, and by no more.
+    /// </para>
     /// </remarks>
-    internal static void TheBuildsOwn(string name, LivePeak peak) =>
-        Assert.True(
-            peak.ForeignBurst <= 64 * 1024,
-            $"{name}: {Disturbed} - another thread allocated {peak.ForeignBurst:N0} bytes between two readings "
-            + $"({peak.Foreign:N0} in all). Either the measuring process was not the build's alone, or the code measured "
-            + "now allocates on worker threads outside GridArrays, where the live set is neither read nor bounded.");
+    internal static void Repeatable(string what, IReadOnlyList<LivePeak> runs)
+    {
+        Assert.True(runs.Count >= 3, $"{what} was measured {runs.Count} time(s), which is not a repetition");
+
+        for (var run = 0; run < runs.Count; run++)
+        {
+            Assert.True(
+                runs[run].Retained == 0.0,
+                $"{what}: run {run + 1} of {runs.Count} left {runs[run].Retained:N0} bytes of its grid arrays alive after it "
+                + "returned and its result was let go - something that outlives a run is keeping them, and grows by the run");
+
+            Assert.True(
+                runs[run].Tracked == runs[0].Tracked,
+                $"{what}: run {run + 1} held {runs[run].Tracked:N0} bytes of grid arrays at its most and the first "
+                + $"{runs[0].Tracked:N0}: repetitions of one build held different arrays");
+
+            var width = Math.Max(runs[run].Bound - runs[run].Least, runs[0].Bound - runs[0].Least);
+
+            Assert.True(
+                Math.Abs(runs[run].Least - runs[0].Least) <= width,
+                $"{what}: run {run + 1} read at least {runs[run].Least:N0} bytes and the first {runs[0].Least:N0}, "
+                + $"further apart than either interval is wide ({width:N0})");
+        }
+    }
 
     /// <summary>Fails a measurement that does not cover the build, by name.</summary>
     internal static void Covered(string what, LivePeak peak)
     {
-        if (peak.Invalid is { } invalid)
+        if (LiveVerdict.NotCovered(what, peak) is { } failure)
         {
-            Assert.Fail($"{what}: {invalid}");
+            Assert.Fail(failure);
         }
     }
 }

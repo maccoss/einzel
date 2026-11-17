@@ -10,11 +10,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Einzel.Core.Tests" />
-    <!-- GridArrays, the one place a grid-sized array is allocated: the two assemblies that
-         allocate them, and the test assemblies and the harness that watch them being allocated
-         to read what a solve or a density run holds. Internal on purpose; see the type. -->
-    <InternalsVisibleTo Include="Einzel.Fields" />
-    <InternalsVisibleTo Include="Einzel.Transport" />
+    <!-- Watching GridArrays allocate, which is how the memory tests read what a solve or a
+         density run holds: the two test assemblies that measure, and the harness. No assembly
+         that ships is given sight of this one's internals; allocating is public. -->
     <InternalsVisibleTo Include="Einzel.Fields.Tests" />
     <InternalsVisibleTo Include="Einzel.Cli.Tests" />
     <InternalsVisibleTo Include="memory-harness" />

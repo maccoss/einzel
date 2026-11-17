@@ -1,6 +1,7 @@
 using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
 using Einzel.Core.Model;
+using Einzel.Core.Numerics;
 using Einzel.Transport.Collisions;
 
 namespace Einzel.Io;
@@ -188,7 +189,7 @@ public static class GasFlowImport
 
         // Into pascals, from whatever the document said the file holds. Validation
         // resolved the symbol, so this is a multiplication rather than a lookup.
-        var pascals = new double[array.Values.Length];
+        var pascals = GridArrays.New<double>(array.Values.Length);
 
         for (var i = 0; i < pascals.Length; i++)
         {

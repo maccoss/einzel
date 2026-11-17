@@ -180,6 +180,68 @@ public sealed class PacketConversionTests(ITestOutputHelper output)
             $"mean radius {mean:G6} is close to R/2, which is the density-weighted answer");
     }
 
+    /// <summary>
+    /// A density that is not a number in one cell is refused by that cell, not drawn from.
+    /// </summary>
+    /// <remarks>
+    /// The table of cells to draw from is sized by one pass and filled by another, and a cell
+    /// that is not a number answers false to "more than none" and false to "none or fewer": the
+    /// count passed over it and the fill wrote it, one past the end of the table, which reached
+    /// a run as an internal error. Before the table was sized that way the cell was carried into
+    /// it, every total after it was not a number, and every ion was drawn from an arbitrary cell
+    /// with nothing said.
+    /// </remarks>
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void ADensityThatIsNotANumberIsRefusedByItsCell(double bad)
+    {
+        var grid = new Grid2D(0.0, 0.0, 0.0005, 0.0005, 9, 9);
+        var density = new DensityField(grid);
+
+        density[2, 2] = 1.0e12;
+        density[5, 3] = bad;
+        density[7, 7] = 1.0e12;
+
+        var refused = Assert.Throws<Einzel.Core.Errors.EinzelException>(() => PacketConversion.ToTrajectories(
+            density, 100, Ion, Gas(), FieldFreeSpace.Instance, Mu(Gas()), seed: 3));
+
+        output.WriteLine(refused.Error.ToString());
+
+        Assert.Equal(Einzel.Core.Errors.ErrorCodes.ConvergenceFailed, refused.Error.Code);
+        Assert.Contains("cell (5, 3)", refused.Error.Constraint, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A cell below zero is not drawn from and does not disturb the cells that are: every ion
+    /// comes from an occupied cell, in proportion.
+    /// </summary>
+    [Fact]
+    public void ACellBelowZeroIsNotDrawnFrom()
+    {
+        var grid = new Grid2D(0.0, 0.0, 0.0005, 0.0005, 9, 9);
+        var density = new DensityField(grid);
+
+        density[2, 2] = 3.0e12;
+        density[5, 3] = -1.0e12;
+        density[7, 7] = 1.0e12;
+
+        var converted = PacketConversion.ToTrajectories(
+            density, 20_000, Ion, Gas(), FieldFreeSpace.Instance, Mu(Gas()), seed: 3);
+
+        bool In(PhaseState state, int i, int j) =>
+            Math.Abs(state.Position.X - grid.X(i)) <= 0.5 * grid.SpacingX
+            && Math.Abs(state.Position.Y - grid.Y(j)) <= 0.5 * grid.SpacingY;
+
+        var first = converted.States.Count(s => In(s, 2, 2));
+        var second = converted.States.Count(s => In(s, 7, 7));
+
+        output.WriteLine($"{first} and {second} of {converted.States.Length}, none from the cell below zero");
+
+        Assert.Equal(converted.States.Length, first + second);
+        Assert.Equal(0.75, first / (double)converted.States.Length, 0.02);
+    }
+
     /// <summary>The azimuth is drawn, so a sampled ring is a ring rather than a line.</summary>
     [Fact]
     public void ACylindricalSampleIsSpreadOverItsAzimuth()

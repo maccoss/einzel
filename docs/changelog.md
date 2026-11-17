@@ -3747,3 +3747,99 @@ Two findings from Stage 1 that bear on the spec:
 
   Full suite, 2,104 tests, passes in Debug and in Release, with the same readings in both. The
   solver's memory, protocol and source tests take 47 s in Release and the diffusive ones 75 s.
+
+  **A ninth review found a crash this work had introduced, and a zero-margin constant standing
+  for runs nobody had measured.**
+
+  **The crash.** Sizing a density's cumulative table through `GridArrays` took two passes, and
+  they asked different questions: the count kept a cell whose population was `> 0` and the fill
+  skipped one that was `<= 0`. A cell that is not a number answers false to both, so it was
+  passed over by the count and written by the fill, one past the end - `INTERNAL_ERROR` where a
+  sequence hands a density to a trajectory phase. Both passes ask one predicate now. **And a
+  density that is not a number is refused there, by its cell** (`CONVERGENCE_FAILED` at
+  `/sequence`): the list-based code this replaced did not throw, and that was worse - it carried
+  the cell into the table, every total after it was not a number, and every ion was drawn from
+  wherever a search for not-a-number stopped, with nothing said. A cell below zero is skipped,
+  as it always was.
+
+  **The constant.** 248 bytes a node had been read on an explicit, undriven run on a drift tube
+  and billed to every diffusive run. Each configuration the estimate bills differently is now a
+  run in a child process, read as a slope between 129 by 129 and 257 by 257 and, for a term, as
+  what it adds to the run without it:
+
+  | configuration | stated | read, least to most |
+  | --- | --- | --- |
+  | plain, drift tube | 248 | 247.89 to 248.11 |
+  | plain, in a bore (the conductors' map) | 252 | 251.87 to 252.13 |
+  | implicit scheme | 248 | 247.84 to 248.16 |
+  | a sequence whose phase ramps (1,189 assemblies), in a bore | 252 | 250.93 to 252.14 |
+  | driven: the cycle-averaged well's cache | 304; the cache 56 | 303.86 to 304.14; 55.92 to 56.11 |
+  | four recorded instants | 280; the four 32 | 279.88 to 280.12; 31.92 to 32.09 |
+  | two species | 496; the second 248 | 495.91 to 496.09; 247.92 to 248.08 |
+  | two species and their self-field | 566; the field 70 | 565.20 to 565.35; 69.22 to 69.35 |
+  | self-field, one species, tube and bore, two grids | 62 | 60.96 to 61.47 |
+
+  Every stated term held. One was missing: **a recorded instant is a copy of the density kept to
+  the end**, 8 bytes a node each, and the estimate had no way to be told of one - `einzel
+  estimate --snapshots <n>` now. And the ramped run could not be bounded at first: it
+  re-assembles its operator every step, a few kilobytes of allocation and no grid array, so
+  there was nowhere to read for a thousand steps and the most it could have held came out at 318
+  against 252. A run's progress listener is asked at every step, on the thread that steps, and
+  the measured runs pass one that offers the measurement a reading there
+  (`LiveSet.Checkpoint`), which can only tighten the upper end.
+
+  **In a Debug build two of them held one density more, and the code was changed rather than
+  the statement.** A mixture read 503.89 to 504.11 against 496, and the ramped sequence 258.89
+  to 260.13 against 252 - one array of the grid each, and only where the engine is compiled
+  without optimization, which keeps every local and some of the JIT's own temporaries alive to
+  the end of their method. A mixture seeded each species from a copy of one shape and kept the
+  shape; the last species is now seeded in the shape itself. A sequence made the first phase's
+  density in its own frame, which ran to the end of the whole timeline, so the seed outlived
+  the phase it seeded - shown by a weak handle to it, alive after the second phase and gone
+  once the sequence returned, and reachable from none of the run's objects, so held by the
+  frame; it is now made inside the leg that steps it, as a density converted from trajectories
+  is. Read again in Debug: 495.87 to 496.11 and 250.89 to 252.13, against 496 and 252. A release build never held
+  either, which is why the table above did not show them.
+
+  **Five repetitions that had to agree are back, exactly.** The sampled self-field test this
+  replaced ran a run five times and held the readings together, which is what catches something
+  kept from one run into the next. One measurement cannot see that, since each takes its own
+  baseline. A case may now be measured several times in one child, and two things are asserted
+  of four repetitions of a charged run and of a solve: the build's own grid arrays still alive
+  after it has returned and its result has been let go are none, and the arrays alive at its
+  peak are the same number of bytes each time - 5,148,024 four times over.
+
+  **The allocator is public and the watch is not.** Reaching `GridArrays` from `Einzel.Fields` and
+  `Einzel.Transport` had been done by showing them all of `Einzel.Core`'s internals, and
+  `Einzel.Commands` still could not reach it, which forced a special public method on
+  `AbsorbingCells`. `GridArrays.New` and `Resize` are public; starting and stopping a watch are
+  internal, visible to the two test assemblies that measure and to the harness. No shipping
+  assembly sees into another: the two grants are gone, nothing had come to rely on them, and
+  `Einzel.Fields`' grant to its own tests went too - they use no internal of it. A field sampled
+  for export and an imported gas field come from the allocator now, and the scan refuses by the
+  whole rule in `Einzel.Io` and, in `Einzel.Commands`, wherever a size is shown to be a grid's:
+  438 allocations judged, four listed.
+
+  **A test run alone starts only the children it reads.** The fixture measured every case of
+  its class, each built twice, whichever test asked. A case is measured in a child of its own
+  when a test first asks for it; one solve test alone took its class's whole fixture, about 14 s, and takes
+  under a second; the class takes 14 s as it did, and the memory, protocol and source tests
+  together 47 s as they did.
+
+  The harness's live figure had none of this - no warm-up, no verdict, concurrent collection
+  left on. It reports the whole interval with the tests' verdict, warms up once, and starts
+  itself again under the collector the children run under; **a collector written into its
+  project file could not be turned off from the environment**, since the runtime reads its
+  configuration first, so the project states none. The host for a child is looked for on the
+  path again, last, the runtime check being what makes that safe. Fourteen environment entries
+  that unset variables in an environment already emptied are gone.
+
+  Mutations, each run alone. The density's finite check removed fails the two not-a-number
+  tests, and with the two predicates put back as well it is the index out of range; a cell below
+  zero drawn from fails its test. A static list keeping one array a run fails the repetition
+  tests by what was left alive (133,152 bytes after the first of four), and the same in a solve.
+  One array too many in the implicit run, the ramped phase, beside each recorded instant, in the
+  well cache, in one species of two, and beside a mixture's summed charge each fail the test of
+  that configuration, as not billed. `Einzel.Fields` reading whether `GridArrays` is watched
+  does not compile. The forty from earlier rounds still fail, and one number a species is still
+  passed by the scan.

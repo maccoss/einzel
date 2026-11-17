@@ -32,22 +32,13 @@ internal delegate void GridArrayWatcher(Array array, long bytes);
 /// grid allocated any other way; its remarks say exactly what it can and cannot show.
 /// </para>
 /// <para>
-/// <b>Here, in the innermost assembly, and internal.</b> The arrays are allocated in
-/// <c>Einzel.Fields</c> and in <c>Einzel.Transport</c>, and <c>Einzel.Core</c> is the one
-/// assembly both already reference, so no reference is added and none points upward. It stays
-/// internal - named to those two assemblies, and to the test assemblies and the memory harness
-/// that watch - because a public allocation hook would be an extension point in the engine's
-/// allocation path that nothing outside a memory measurement has any business holding.
-/// </para>
-/// <para>
-/// <b>A watch belongs to the thread that started it, and never makes an allocation throw.</b>
-/// The watcher runs on the allocating thread, and what it does there - force a collection, read
-/// the live set and that thread's allocation counter - measures the build only if the build is
-/// on that thread. An array allocated here on any other thread while a watch is on is therefore
-/// not shown to the watcher; it is recorded. And whatever the watcher itself throws is caught
-/// and recorded too, and the watcher is not called again. <see cref="StopWatching"/> hands both
-/// records back to the measurement, which fails by name. Code that allocates goes on exactly as
-/// it would have, watched or not.
+/// <b>Allocating is public and watching is not.</b> The arrays are allocated in
+/// <c>Einzel.Fields</c>, <c>Einzel.Transport</c>, <c>Einzel.Io</c> and <c>Einzel.Commands</c>,
+/// and <c>Einzel.Core</c> is the one assembly all of them already reference, so the allocator
+/// is here and its two methods are public: no assembly is given sight of another's internals
+/// to reach it. Starting and stopping a watch stay internal, visible to the test assemblies
+/// that measure and to the memory harness and to nothing that ships - an allocation hook is
+/// not an extension point.
 /// </para>
 /// <para>
 /// Nothing is watching outside the memory tests, which watch only in a child process started
@@ -55,18 +46,19 @@ internal delegate void GridArrayWatcher(Array array, long bytes);
 /// per array, never per node - and allocates nothing but the array.
 /// </para>
 /// </remarks>
-internal static class GridArrays
+public static class GridArrays
 {
     private static volatile Watch? watch;
 
     /// <summary>Whether a watch is on, in this process.</summary>
     internal static bool Watched => watch is not null;
 
-    /// <summary>Allocates a zeroed array, and tells whoever is watching.</summary>
+    /// <summary>Allocates a zeroed array the size of a grid, and tells whoever is watching.</summary>
     /// <typeparam name="T">The element type.</typeparam>
     /// <param name="length">How many elements.</param>
     /// <returns>The array.</returns>
-    internal static T[] New<T>(long length)
+    /// <exception cref="OverflowException"><paramref name="length"/> is negative or more than an array can hold.</exception>
+    public static T[] New<T>(long length)
     {
         var array = new T[length];
 
@@ -88,7 +80,7 @@ internal static class GridArrays
     /// <param name="array">The array, replaced unless its length is already right.</param>
     /// <param name="length">The new length.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative.</exception>
-    internal static void Resize<T>([NotNull] ref T[]? array, int length)
+    public static void Resize<T>([NotNull] ref T[]? array, int length)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
 

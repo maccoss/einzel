@@ -5,12 +5,15 @@
     <AssemblyName>memory-harness</AssemblyName>
     <RootNamespace>MemoryHarness</RootNamespace>
     <!--
-      The runtime's default collector, stated rather than left implicit: the peak working set
-      this measures IS a property of the collector, so a run under a different configuration
-      is a different measurement. See README.md.
+      NO COLLECTOR IS SET HERE, on purpose. The default run measures a working set under the
+      runtime's own default - workstation, concurrent - and the peak working set IS a property
+      of the collector, so a run under another is another measurement. A `live` run starts
+      itself again with the collector set by environment variable to workstation and not
+      concurrent, as the memory tests' children run - and a collector written into this
+      project would go into the runtime configuration, which the runtime reads before the
+      environment: with ConcurrentGarbageCollection stated here the live run could not turn
+      it off. See README.md.
     -->
-    <ServerGarbageCollector>false</ServerGarbageCollector>
-    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +26,7 @@
     <!-- The memory tests' own measurement of the live set, linked as source; see the files. -->
     <Compile Include="..\..\tests\Shared\LiveSetReading.cs" Link="Shared\LiveSetReading.cs" />
     <Compile Include="..\..\tests\Shared\LiveSet.cs" Link="Shared\LiveSet.cs" />
+    <Compile Include="..\..\tests\Shared\LiveVerdict.cs" Link="Shared\LiveVerdict.cs" />
   </ItemGroup>
 
 </Project>

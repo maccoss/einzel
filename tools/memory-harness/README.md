@@ -25,10 +25,32 @@ the collector's own record of what survived it - on the work's own thread, at ea
 could raise the peak. It is the memory tests' own measurement, linked in as source
 (`tests/Shared/LiveSet.cs`), and nothing in it samples: it used to be a second thread forcing
 collections as fast as it could while the work ran, which has to land inside the peak and on a
-short run does not. It reports the least the work can have held at its most (`liveSetPeakMiB`)
-and the most (`liveSetBoundMiB`), a few kilobytes apart, and `liveInvalid` if the work allocated
-a grid array on another thread, where it is not read. This is what `SolveMemoryModel` and the
-diffusive constants state.
+short run does not. This is what `SolveMemoryModel` and the diffusive constants state.
+
+A live run reports the whole measurement and a verdict on it, by the tests' own logic
+(`tests/Shared/LiveVerdict.cs`):
+
+| field | what it is |
+| --- | --- |
+| `liveSetPeakMiB`, `liveSetBoundMiB` | the least the work can have held at its most, and the most |
+| `liveHeldMiB`, `liveGridArraysMiB` | the largest reading of the process, and the work's own grid arrays at their most |
+| `gridArrays`, `gridArraysRead` | how many grid arrays it allocated, and how many were read at |
+| `liveOutsideGridArraysBytes` | what the work's thread allocated outside them, live or not |
+| `liveForeignBytes`, `liveForeignBurstBytes` | what other threads allocated, in all and at most between two readings |
+| `liveRetainedBytes` | the work's grid arrays still alive after it returned and its result was let go |
+| `liveInvalid` | why the measurement does not cover the work - a grid array allocated on another thread - or null |
+| `statedMiB` | what the estimate states for the work measured |
+| `liveVerdict` | "within 0.90 to 1.02 of what the estimate states", or the sentence a memory test would fail with: not covered, not the work's alone, past an edge, or inconclusive where the interval straddles an edge and other threads allocated enough to be the difference |
+
+**A live run pins what the tests' children pin, and warms up once.** It starts itself again
+with a workstation, non-concurrent collector and with tiered compilation off, so that the only
+full collections are the ones it forces and nothing is held by first-tier code, and it refuses
+to report if the collector is anything else. The work is run once unmeasured first, so that
+what a first call allocates for itself and keeps is in the baseline. The project sets no
+collector of its own for this reason: one written into the project goes into the runtime
+configuration, which the runtime reads before the environment, and a live run could then not
+turn concurrent collection off. A one-step diffusive run with a self-field reads under its
+statement, which is a whole flight's; pass `declared`.
 
 **Default: the peak working set**, `Process.PeakWorkingSet64` after the work minus before it. That
 is the operating system's own peak counter, so nothing has to be sampled to get it. **One thing

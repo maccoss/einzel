@@ -13,8 +13,15 @@ namespace Einzel.Testing;
 /// What the case reports beside the measurement, by name - the levels a forced solve descended,
 /// how often a self-field was solved - for the test to check the build was the one it meant.
 /// </param>
-internal sealed record MeasuredBuild(LivePeak Peak, Dictionary<string, double> Facts)
+/// <param name="Again">
+/// The same build measured again in the same process, as many times more as the case asked
+/// for, or null: for a test that what one run leaves behind does not grow.
+/// </param>
+internal sealed record MeasuredBuild(LivePeak Peak, Dictionary<string, double> Facts, List<LivePeak>? Again)
 {
+    /// <summary>Every measurement of the build, the first included.</summary>
+    internal IReadOnlyList<LivePeak> Every => [Peak, .. Again ?? []];
+
     /// <summary>A fact the case reported, as a whole number; fails by name if it reported none.</summary>
     internal int Fact(string name) => Facts.TryGetValue(name, out var value)
         ? (int)value
@@ -158,8 +165,11 @@ internal static class MeasuringChild
     internal const string ExpectedGc = "workstation Batch";
 
     /// <summary>A case as the child is told it and prints it.</summary>
-    internal static string Key(string kind, double size) =>
-        string.Create(CultureInfo.InvariantCulture, $"{kind}={size:R}");
+    /// <param name="kind">The build's kind.</param>
+    /// <param name="size">Its size.</param>
+    /// <param name="times">How many times to measure it in the one process.</param>
+    internal static string Key(string kind, double size, int times = 1) =>
+        string.Create(CultureInfo.InvariantCulture, $"{kind}={size:R}") + (times > 1 ? $"*{times}" : "");
 
     /// <summary>Measures cases in child processes, in the order given.</summary>
     /// <param name="host">The test assembly's builds.</param>
@@ -424,16 +434,27 @@ internal static class MeasuringChild
         try
         {
             var split = item.IndexOf('=', StringComparison.Ordinal);
+            var star = item.IndexOf('*', StringComparison.Ordinal);
             var kind = item[..split];
-            var size = double.Parse(item[(split + 1)..], CultureInfo.InvariantCulture);
+            var size = double.Parse(item[(split + 1)..(star < 0 ? item.Length : star)], CultureInfo.InvariantCulture);
+            var times = star < 0 ? 1 : int.Parse(item[(star + 1)..], CultureInfo.InvariantCulture);
 
             var measured = TestCase(kind, size) ?? host.Cases(kind, size);
 
             measured.Build();
 
             var peak = LiveSet.Peak(measured.Build, measured.CollectEveryArray, measured.Capacity);
+            var facts = measured.Facts?.Invoke() ?? [];
+            var again = new List<LivePeak>();
 
-            return new CaseResult(item, new MeasuredBuild(peak, measured.Facts?.Invoke() ?? []), null);
+            // Again, in this process, with nothing reset between: what a run leaves behind
+            // that the next one adds to shows as readings that do not agree.
+            for (var more = 1; more < times; more++)
+            {
+                again.Add(LiveSet.Peak(measured.Build, measured.CollectEveryArray, measured.Capacity));
+            }
+
+            return new CaseResult(item, new MeasuredBuild(peak, facts, times > 1 ? again : null), null);
         }
         catch (Exception failed)
         {
@@ -627,10 +648,7 @@ internal static class MeasuringChild
 
         foreach (var (name, value) in tier.Environment())
         {
-            if (value is not null)
-            {
-                environment[name] = value;
-            }
+            environment[name] = value;
         }
 
         // Workstation and not concurrent: see ExpectedGc. The child reports what it ran with,
@@ -646,12 +664,14 @@ internal static class MeasuringChild
     /// The running runtime's own installation first, since that is the runtime the child must
     /// match - and is found from the runtime itself, so a test host that is not <c>dotnet</c>
     /// (<c>testhost.exe</c>, an IDE's runner) finds it as well. Then the host the CLI says it
-    /// is, then <c>DOTNET_ROOT</c>. Never a bare <c>dotnet</c> off the path, which can be another
-    /// installation; and the child says which runtime it ran on, and is refused if it differs.
+    /// is, then <c>DOTNET_ROOT</c>. Then, where none of those is there - a runtime laid out
+    /// some other way - this process itself if it is <c>dotnet</c>, and last each <c>dotnet</c>
+    /// on the path. Those last can be another installation, and what makes them safe to try is
+    /// that the child says which runtime it ran on and is refused, by name, if it differs.
     /// </remarks>
     internal static string? Host() => HostCandidates().FirstOrDefault(File.Exists);
 
-    private static IEnumerable<string> HostCandidates()
+    internal static IEnumerable<string> HostCandidates()
     {
         var name = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
 
@@ -672,45 +692,73 @@ internal static class MeasuringChild
         {
             yield return Path.Combine(dotnetRoot, name);
         }
+
+        // After the precise ones: this process, if it is the host, and then the path.
+        if (Environment.ProcessPath is { Length: > 0 } self
+            && string.Equals(Path.GetFileName(self), name, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return self;
+        }
+
+        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            yield return Path.Combine(directory, name);
+        }
     }
 }
 
 /// <summary>
-/// Every build a test assembly's memory tests measure, measured once: one run of children a
-/// tier, started when a test first asks for a build of that tier.
+/// The builds a test assembly's memory tests measure, each measured once, when a test first
+/// asks for it.
 /// </summary>
 /// <remarks>
-/// Each case is built and measured once however many tests ask for it. A test assembly derives
-/// a fixture from this with its own lists of cases. The children only measure: what a build
-/// should hold, and whether it does, stay in the tests.
+/// <para>
+/// <b>A build is measured when it is asked for, in a child of its own.</b> One test run alone
+/// - a filter, a rerun of one failure - starts the children for the builds it reads and no
+/// others; this used to measure every build of the class, each built twice, whichever test
+/// asked. A child costs a few tenths of a second to start, which is what measuring them all
+/// in one saved. A build is still measured once however many tests ask for it, and a failure
+/// is that build's alone by construction.
+/// </para>
+/// <para>
+/// A test assembly derives a fixture from this, naming its builds. The children only measure:
+/// what a build should hold, and whether it does, stay in the tests.
+/// </para>
 /// </remarks>
 public abstract class MeasuredCases
 {
-    // Lazy over a value that cannot throw: a failure is a result, reported to the tests it
-    // concerns, not an exception cached and rethrown to every test that asks for anything.
-    private readonly Lazy<ChildRun> _optimized;
-    private readonly Lazy<ChildRun> _first;
+    private readonly ChildHost _host;
+    private readonly Dictionary<(string Tier, string Key), ChildRun> _measured = [];
 
-    /// <summary>Names the cases; nothing runs until a test asks.</summary>
-    private protected MeasuredCases(
-        ChildHost host,
-        IReadOnlyList<(string Kind, double Size)> optimized,
-        IReadOnlyList<(string Kind, double Size)> firstTier)
-    {
-        _optimized = new(() => MeasuringChild.Measure(host, JitTier.Optimized, Keys(optimized)));
-        _first = new(() => MeasuringChild.Measure(host, JitTier.First, Keys(firstTier)));
-    }
-
-    private static string[] Keys(IReadOnlyList<(string Kind, double Size)> cases) =>
-        [.. cases.Select(c => MeasuringChild.Key(c.Kind, c.Size))];
+    /// <summary>Names the builds; nothing runs until a test asks.</summary>
+    private protected MeasuredCases(ChildHost host) => _host = host;
 
     /// <summary>A build measured as fully optimized code.</summary>
-    internal MeasuredBuild Optimized(ITestOutputHelper output, string kind, double size) =>
-        Find(_optimized.Value, "optimized", output, MeasuringChild.Key(kind, size));
+    internal MeasuredBuild Optimized(ITestOutputHelper output, string kind, double size, int times = 1) =>
+        Measured(JitTier.Optimized, "optimized", output, MeasuringChild.Key(kind, size, times));
 
     /// <summary>A build measured as first-tier code that is never promoted.</summary>
     internal MeasuredBuild FirstTier(ITestOutputHelper output, string kind, double size) =>
-        Find(_first.Value, "first-tier", output, MeasuringChild.Key(kind, size));
+        Measured(JitTier.First, "first-tier", output, MeasuringChild.Key(kind, size));
+
+    private MeasuredBuild Measured(JitTier tier, string name, ITestOutputHelper output, string key)
+    {
+        ChildRun run;
+
+        // One at a time: two children measuring at once would each be the other's busy machine,
+        // which moves no reading and does lengthen both.
+        lock (_measured)
+        {
+            if (!_measured.TryGetValue((name, key), out run!))
+            {
+                // Never throws: a failure is a result, kept and reported to every test that asks.
+                _measured[(name, key)] = run = MeasuringChild.Measure(_host, tier, [key]);
+            }
+        }
+
+        return Find(run, name, output, key);
+    }
 
     /// <summary>A case's measurement, or a failure naming why there is none to trust.</summary>
     /// <remarks>
@@ -727,7 +775,7 @@ public abstract class MeasuredCases
 
         if (!run.Cases.TryGetValue(key, out var result))
         {
-            Assert.Fail($"{key} is not among the builds the {tier} child measures: add it to the list");
+            Assert.Fail($"{key} was not reported by the {tier} measuring child{Environment.NewLine}{run.Text}");
         }
 
         if (result.Failure is { } failure)
@@ -741,8 +789,11 @@ public abstract class MeasuredCases
 
         // The specific failure first: grid arrays allocated off the measuring thread are named
         // as such, before the count of other threads' bytes they also inflate.
-        MemoryVerdict.Covered(key, build.Peak);
-        MemoryVerdict.TheBuildsOwn(key, build.Peak);
+        foreach (var peak in build.Every)
+        {
+            MemoryVerdict.Covered(key, peak);
+            MemoryVerdict.TheBuildsOwn(key, peak);
+        }
 
         return build;
     }

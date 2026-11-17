@@ -34,9 +34,6 @@ namespace Einzel.Testing;
 /// </remarks>
 internal sealed class JitTier
 {
-    private static readonly string[] Variables =
-        ["TieredCompilation", "TC_QuickJit", "TC_QuickJitForLoops", "TC_CallCounting", "TieredPGO", "TC_OnStackReplacement", "ReadyToRun"];
-
     private readonly bool _optimized;
 
     private JitTier(bool optimized) => _optimized = optimized;
@@ -54,15 +51,14 @@ internal sealed class JitTier
     internal static JitTier? Named(string name) =>
         name == Optimized.Name ? Optimized : name == First.Name ? First : null;
 
-    /// <summary>The variables to set, and with a null value to remove, for a child of this tier.</summary>
-    internal IEnumerable<(string Name, string? Value)> Environment()
+    /// <summary>The variables that pin a child to this tier.</summary>
+    /// <remarks>
+    /// Set into an environment that holds nothing else of the kind: a measuring child is started
+    /// with only what a process needs to start (<c>MeasuringChild.Controlled</c>), so no tiering
+    /// variable of the parent's, under either prefix, is there to contradict these.
+    /// </remarks>
+    internal IEnumerable<(string Name, string Value)> Environment()
     {
-        foreach (var variable in Variables)
-        {
-            yield return ($"COMPlus_{variable}", null);
-            yield return ($"DOTNET_{variable}", null);
-        }
-
         if (_optimized)
         {
             yield return ("DOTNET_TieredCompilation", "0");

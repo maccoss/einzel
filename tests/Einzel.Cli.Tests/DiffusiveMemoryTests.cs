@@ -47,20 +47,38 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
     private const int Small = 128, Large = 256;
 
     /// <summary>
-    /// A run's own working set, a node: the slope between two density grids of one model, which
-    /// cancels whatever the run holds that does not grow with the grid.
+    /// A run's own working set, a node, in each configuration the estimate bills differently:
+    /// the slope between two density grids of one model, which cancels whatever the run holds
+    /// that does not grow with the grid.
     /// </summary>
     /// <remarks>
-    /// Two geometries: a Cartesian tube with nothing in it, and a cylindrical bore whose earthed
-    /// wall lies inside the density grid, so the run keeps the map of which conductor owns each
-    /// node as well.
+    /// <para>
+    /// One case for each term of the estimate's statement, so that no term stands unmeasured: an
+    /// estimate that runs under is discovered by the run failing, which is what GRD-8's gate is
+    /// there to prevent. The plain run on a Cartesian tube is the run's own arrays; in a
+    /// cylindrical bore whose earthed wall lies inside the density grid it keeps the map of
+    /// which conductor owns each node as well. Then the implicit scheme; an RF drive, whose
+    /// cycle-averaged well is cached; four recorded instants; two species, each with all of it
+    /// again; two species sharing a self-field; and a sequence whose second phase ramps the
+    /// wall's potential, re-assembling the operator at every step, through the sequenced path.
+    /// </para>
+    /// <para>
+    /// Each asserts that the run was the one it meant - that the ramped one re-assembled, that
+    /// the charged one refreshed inside its loop - since a run that did not would hold less and
+    /// pass.
+    /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("tube")]
-    [InlineData("bore")]
-    public void ADiffusiveRunHoldsWhatTheEstimateCharges(string geometry)
+    [InlineData("tube-plain")]
+    [InlineData("bore-plain")]
+    [InlineData("tube-implicit")]
+    [InlineData("tube-driven")]
+    [InlineData("tube-snapshots")]
+    [InlineData("tube-mixture")]
+    [InlineData("tube-mixture-charged")]
+    [InlineData("bore-ramped")]
+    public void ADiffusiveRunHoldsWhatTheEstimateCharges(string kind)
     {
-        var kind = geometry + "-plain";
         var small = runs.Optimized(output, kind, Small);
         var large = runs.Optimized(output, kind, Large);
         var nodes = (double)(large.Fact("nodes") - small.Fact("nodes"));
@@ -71,64 +89,115 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
         var upper = (large.Peak.Bound - small.Peak.Least) / nodes;
 
         output.WriteLine(
-            $"{geometry}: {lower:F2} to {upper:F2} bytes a node between {small.Fact("nodes"):N0} and "
+            $"{kind}: {lower:F2} to {upper:F2} bytes a node between {small.Fact("nodes"):N0} and "
             + $"{large.Fact("nodes"):N0} nodes, {stated:F2} stated");
 
+        foreach (var run in (MeasuredBuild[])[small, large])
+        {
+            if (kind == "bore-ramped")
+            {
+                Assert.True(
+                    run.Fact("assemblies") >= 100,
+                    $"the operator was assembled {run.Fact("assemblies")} time(s), so the ramp did not re-assemble it as it went");
+            }
+
+            if (kind == "tube-mixture-charged")
+            {
+                Assert.True(
+                    run.Fact("solves") >= 2,
+                    $"the self-field was solved {run.Fact("solves")} time(s), so no refresh happened inside the loop");
+            }
+        }
+
         MemoryVerdict.Within(
-            $"the {geometry} run's slope", lower, upper, 0.90 * stated, 1.02 * stated, nodes,
+            $"the {kind} run's slope", lower, upper, 0.90 * stated, 1.02 * stated, nodes,
             small.Peak.Foreign + large.Peak.Foreign);
     }
 
     /// <summary>
-    /// What mean-field space charge adds to a run: the same run with it and without, at one
-    /// grid, and at another.
+    /// What a configuration adds to a run: the same run with it and without, at one grid, against
+    /// what the estimate says it adds.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The run has to refresh inside the stepping loop</b>, and the test asserts that it did.
-    /// The first Poisson solve is done before the loop, when the step's own arrays do not exist
-    /// yet, and a run of one step reads 25 bytes a node for the self-field where the run reads
-    /// 61: every later refresh solves on top of the step. A run too short to refresh would pass
-    /// against a statement of 25 and say nothing about the peak.
+    /// A term is a small part of a run - a self-field is 62 bytes a node on 248, a recorded
+    /// instant 8 - so held to the whole run's band an array too many in it would pass. Held to
+    /// its own, it does not: one array of the grid is an eighth of a self-field and all of an
+    /// instant.
     /// </para>
     /// <para>
-    /// <b>Two geometries.</b> A Cartesian tube with nothing in it, where the self-field's mask
-    /// fixes only the edges; and a cylindrical bore whose earthed wall lies inside the density
-    /// grid, where the mask fixes every absorbing node of the wall and the solve is the
+    /// <b>A charged run has to refresh inside the stepping loop</b>, and the test asserts that it
+    /// did. The first Poisson solve is done before the loop, when the step's own arrays do not
+    /// exist yet, and a run of one step reads 25 bytes a node for the self-field where the run
+    /// reads 61: every later refresh solves on top of the step. A run too short to refresh would
+    /// pass against a statement of 25 and say nothing about the peak.
+    /// </para>
+    /// <para>
+    /// <b>Two geometries for the self-field.</b> A Cartesian tube with nothing in it, where its
+    /// mask fixes only the edges; and a cylindrical bore whose earthed wall lies inside the
+    /// density grid, where the mask fixes every absorbing node of the wall and the solve is the
     /// axisymmetric one.
     /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("tube", Small)]
-    [InlineData("tube", Large)]
-    [InlineData("bore", Small)]
-    [InlineData("bore", Large)]
-    public void ASelfFieldHoldsWhatTheEstimateCharges(string geometry, int intervals)
+    [InlineData("tube-charged", "tube-plain", Small)]
+    [InlineData("tube-charged", "tube-plain", Large)]
+    [InlineData("bore-charged", "bore-plain", Small)]
+    [InlineData("bore-charged", "bore-plain", Large)]
+    [InlineData("tube-mixture-charged", "tube-mixture", Large)]
+    [InlineData("tube-mixture", "tube-plain", Large)]
+    [InlineData("tube-driven", "tube-plain", Large)]
+    [InlineData("tube-snapshots", "tube-plain", Large)]
+    public void AConfigurationAddsWhatTheEstimateCharges(string with, string without, int intervals)
     {
-        var charged = runs.Optimized(output, geometry + "-charged", intervals);
-        var plain = runs.Optimized(output, geometry + "-plain", intervals);
-        var nodes = (double)charged.Fact("nodes");
+        var added = runs.Optimized(output, with, intervals);
+        var plain = runs.Optimized(output, without, intervals);
+        var nodes = (double)added.Fact("nodes");
 
-        var stated = (Stated(geometry + "-charged", intervals) - Stated(geometry + "-plain", intervals)) / nodes;
+        var stated = (Stated(with, intervals) - Stated(without, intervals)) / nodes;
 
-        var lower = (charged.Peak.Least - plain.Peak.Bound) / nodes;
-        var upper = (charged.Peak.Bound - plain.Peak.Least) / nodes;
+        var lower = (added.Peak.Least - plain.Peak.Bound) / nodes;
+        var upper = (added.Peak.Bound - plain.Peak.Least) / nodes;
 
         output.WriteLine(
-            $"{geometry} self-field at {nodes:N0} nodes: {lower:F2} to {upper:F2} bytes a node over "
-            + $"{charged.Fact("solves")} solves, {stated:F2} stated; the run alone "
+            $"{with} over {without} at {nodes:N0} nodes: {lower:F2} to {upper:F2} bytes a node over "
+            + $"{added.Fact("solves")} solves, {stated:F2} stated; the run without "
             + $"{plain.Peak.Least / nodes:F2} to {plain.Peak.Bound / nodes:F2}");
 
         Assert.Equal(nodes, plain.Fact("nodes"));
         Assert.Equal(0, plain.Fact("solves"));
 
-        Assert.True(
-            charged.Fact("solves") >= 2,
-            $"the self-field was solved {charged.Fact("solves")} time(s), so no refresh happened inside the loop");
+        if (with.EndsWith("-charged", StringComparison.Ordinal))
+        {
+            Assert.True(
+                added.Fact("solves") >= 2,
+                $"the self-field was solved {added.Fact("solves")} time(s), so no refresh happened inside the loop");
+        }
 
         MemoryVerdict.Within(
-            $"the {geometry} self-field", lower, upper, 0.90 * stated, 1.02 * stated, nodes,
-            charged.Peak.Foreign + plain.Peak.Foreign);
+            $"what {with} adds", lower, upper, 0.90 * stated, 1.02 * stated, nodes,
+            added.Peak.Foreign + plain.Peak.Foreign);
+    }
+
+    /// <summary>
+    /// A run with a self-field, measured four times in one process, holds the same each time and
+    /// leaves nothing behind.
+    /// </summary>
+    /// <remarks>
+    /// This is what five sampled repetitions that had to agree were for: something kept from one
+    /// run into the next - a pool or a cache that grows - which no single measurement shows,
+    /// since each takes its own baseline.
+    /// </remarks>
+    [Theory]
+    [InlineData("tube")]
+    [InlineData("bore")]
+    public void ARepeatedRunLeavesNothingBehind(string geometry)
+    {
+        var measured = runs.Optimized(output, geometry + "-charged", Small, times: 4).Every;
+
+        output.WriteLine(string.Join("; ", measured.Select(r => $"{r.Least:N0} to {r.Bound:N0}, {r.Retained:N0} left")));
+
+        MemoryVerdict.Repeatable($"the charged {geometry} run", measured);
     }
 
     /// <summary>What the estimate says a run holds, in bytes: every term, the solved field's included.</summary>
@@ -143,7 +212,10 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
 
             File.WriteAllText(path, RunMemoryCases.Document(kind, intervals));
 
-            return EstimateCommand.Execute(path, calibrate: false).MemoryMiB * 1024.0 * 1024.0;
+            // Told how many instants the run records, as `einzel estimate --snapshots` is.
+            var snapshots = kind.EndsWith("-snapshots", StringComparison.Ordinal) ? RunMemoryCases.SnapshotSeconds.Length : 0;
+
+            return EstimateCommand.Execute(path, calibrate: false, snapshots: snapshots).MemoryMiB * 1024.0 * 1024.0;
         }
         finally
         {
