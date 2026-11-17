@@ -52,7 +52,6 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
             var read = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), ReadPattern);
             var valued = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), ValuePattern);
             var refused = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), BarePattern);
-            var optional = Walk(handler, bodies, new HashSet<string>(skip, StringComparer.Ordinal), OptionalPattern);
             var flags = VerbFlags.ByVerb[verb];
 
             output.WriteLine($"{verb}: reads {string.Join(", ", read.Order(StringComparer.Ordinal))}");
@@ -61,13 +60,16 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
             read.ExceptWith(VerbFlags.Global);
 
             Assert.True(registered.SetEquals(read), $"{verb}: registered {string.Join(",", registered.Order())} but the handler reads {string.Join(",", read.Order())}");
-            Assert.True(valued.IsSubsetOf(flags.Values), $"{verb}: reads {string.Join(",", valued.Except(flags.Values))} as values, registered otherwise");
-            Assert.Empty(flags.Values.Except(valued).Except(ReadDynamically));
+            // A flag read as a value is registered as one that takes a value or may; which of
+            // the two is the registry's statement and nobody else's - the handler reads both
+            // the same way, and a bare one is simply absent to it.
+            var takesValue = flags.Values.Concat(flags.Optional).ToHashSet(StringComparer.Ordinal);
+
+            Assert.True(valued.IsSubsetOf(takesValue), $"{verb}: reads {string.Join(",", valued.Except(takesValue))} as values, registered otherwise");
+            Assert.Empty(takesValue.Except(valued).Except(ReadDynamically));
             Assert.True(flags.Refused.SetEquals(refused), $"{verb}: refuses {string.Join(",", refused)} but registers {string.Join(",", flags.Refused)}");
 
-            // The third kind: a flag whose value may be left off is exactly one read through
-            // the reader that takes it bare, and is neither a switch nor a plain value.
-            Assert.True(flags.Optional.SetEquals(optional), $"{verb}: reads {string.Join(",", optional)} as optional values but registers {string.Join(",", flags.Optional)}");
+            // The third kind is neither of the other two.
             Assert.Empty(flags.Optional.Intersect(flags.Values));
             Assert.Empty(flags.Optional.Intersect(flags.Switches));
         }
@@ -77,29 +79,40 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// No flag is a switch in one verb and takes a value in another.
+    /// Whether a flag is a switch is asked of the verb the command line names, so the argument
+    /// after a verb's switch is never its value, and a flag another verb reads as a value is.
     /// </summary>
     /// <remarks>
-    /// The parser reads the flags before it knows the verb, so its switches are every verb's
-    /// (<see cref="VerbFlags.AllSwitches"/>, which <see cref="CommandLine.Switches"/> is). A name
-    /// that was a switch in one verb and a value in another would be parsed as a switch in both.
+    /// The parser used to take its switches from every verb at once, which made "no name is a
+    /// switch in one verb and a value in another" a rule the registry had to keep and a test
+    /// had to police. Parsed against the verb, there is no such rule.
     /// </remarks>
     [Fact]
-    public void NoFlagIsASwitchInOneVerbAndAValueInAnother()
+    public void TheParserAsksTheVerbWhichFlagsAreSwitches()
     {
-        var valued = VerbFlags.ByVerb.Values.SelectMany(f => f.Values.Concat(f.Optional)).ToHashSet(StringComparer.Ordinal);
+        // --vtu is run's switch: the model after it is a positional argument.
+        var run = CommandLine.Parse(["run", "--vtu", "model.json"]);
+        Assert.Equal(["model.json"], run.Positional);
+        Assert.Null(run.Value("vtu"));
 
-        Assert.Empty(VerbFlags.AllSwitches.Intersect(valued));
-        Assert.Same(VerbFlags.AllSwitches, CommandLine.Switches);
-        Assert.Contains("help", CommandLine.Switches);
-        Assert.Contains("json", CommandLine.Switches);
-        Assert.Contains("cycle-mean", CommandLine.Switches);
+        // It is nothing to compare, whose registry does not name it: there it is read as any
+        // unknown flag is, taking the next argument - and refused by name before the verb runs.
+        var compare = CommandLine.Parse(["compare", "--vtu", "model.json"]);
+        Assert.Empty(compare.Positional);
+        Assert.Equal("model.json", compare.Value("vtu"));
+
+        // A sub-verb's switches are its own.
+        var surface = CommandLine.Parse(["render", "surface", "--cycle-mean", "model.json"]);
+        Assert.Equal(["surface", "model.json"], surface.Positional);
+
+        // --json and --help are every verb's, and an unknown verb's too.
+        Assert.Equal(["x"], CommandLine.Parse(["bogus", "--json", "x"]).Positional);
+        Assert.Equal(["x"], CommandLine.Parse(["validate", "--help", "x"]).Positional);
     }
 
     private const string Readers = "(?:TryNumberFlag|TryWholeFlag|TryChoiceFlag)";
     private static readonly Regex ReadPattern = new(@"(?:\.Has|\.Value|\.Values)\(""([a-z0-9-]+)""\)|Try\w*Flag\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
     private static readonly Regex ValuePattern = new(@"(?:\.Value|\.Values)\(""([a-z0-9-]+)""\)|" + Readers + @"\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
-    private static readonly Regex OptionalPattern = new(@"(TryOptionalNumberFlag)\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
     private static readonly Regex BarePattern = new(@"foreach \(var bare in new\[\] \{([^}]*)\}", RegexOptions.Compiled);
 
     private static HashSet<string> Walk(string method, Dictionary<string, string> bodies, HashSet<string> seen, Regex pattern)
@@ -119,10 +132,6 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
                 {
                     found.Add(name.Groups[1].Value);
                 }
-            }
-            else if (pattern == OptionalPattern)
-            {
-                found.Add(m.Groups[2].Value);
             }
             else
             {

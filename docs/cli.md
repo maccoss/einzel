@@ -894,8 +894,9 @@ agent never gets an empty stdout and a bare exit 1. `--json` and `--help` are ac
 and a command line asking for `--help`, or naming no verb this knows, is left to the verb exactly as
 before. A flag a verb did not read used to be accepted and ignored, which is how a mistyped
 `--no-scales` drew the scale anyway. `VerbFlagsTests` reads each verb's handler, through every helper
-it calls, and fails when the registry and the handler disagree. The parser's list of switches is
-derived from the same registry, so a switch is declared once.
+it calls, and fails when the registry and the handler disagree. The parser asks the same registry,
+of the verb the command line names, which flags are switches - so the argument after a verb's
+switch is never read as its value, and nothing requires a name to mean the same in every verb.
 
 **A flag's value is read by one of four readers, and refused one way.** A number (`TryNumberFlag`)
 is finite and in the invariant culture. A whole number (`TryWholeFlag`) is **digits alone** - no

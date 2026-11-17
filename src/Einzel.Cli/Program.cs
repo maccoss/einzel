@@ -1271,17 +1271,6 @@ public static class Program
     }
 
     /// <summary>
-    /// Reads a numeric flag whose value may be left off: bare, it is the default, as when absent.
-    /// </summary>
-    /// <remarks>
-    /// The same reader as <see cref="TryNumberFlag"/> under its own name, because the registry
-    /// (<see cref="VerbFlags.Optional"/>) is held to the handlers by which reader each flag goes
-    /// through: a flag read here may be given bare, and one read there may not.
-    /// </remarks>
-    private static bool TryOptionalNumberFlag(CommandLine options, string flag, string what, out double? value, string? suggestion = null) =>
-        TryNumberFlag(options, flag, what, out value, suggestion);
-
-    /// <summary>
     /// Reads an optional whole-number flag: digits alone, within the flag's own range.
     /// </summary>
     /// <param name="options">The command line.</param>
@@ -2772,15 +2761,8 @@ public static class Program
         // same conversation. The value is in the parameter's own declared unit: a person
         // editing a 5 mm radius types 7, and demanding 0.007 would ask them to do the
         // conversion the format exists to make unnecessary.
-        // `--set` with nothing after it is a mistake, not a request to do nothing. The
-        // malformed `--set name` case below is already refused, so silently listing the
-        // outline here would make one kind of malformed set loud and the other silent.
-        if (options.Has("set") && options.Value("set") is null)
-        {
-            Refuse(options, "set", "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
-            return (int)ExitCode.ValidationFailure;
-        }
-
+        // `--set` with nothing after it never reaches here: it is a flag that takes a value
+        // given none, which the command line refuses for every verb before the verb runs.
         // Every occurrence, not the last. `--set a=1 --set b=2` under a last-wins read
         // applies b, drops a, exits 0 and says nothing - which is how an agent that
         // batched two edits lost one and believed both had landed.
@@ -3470,8 +3452,10 @@ public static class Program
         progress = null;
 
         // Bare, --progress is the default interval, as it is when absent: reporting is on
-        // unless turned off, so the flag alone says nothing new and is not a mistake.
-        if (!TryOptionalNumberFlag(options, "progress", "an interval in seconds", out var interval, "Use 0 to turn it off."))
+        // unless turned off, so the flag alone says nothing new and is not a mistake. That it
+        // may be bare is the registry's statement (VerbFlags.Optional), which is what lets the
+        // command line through; read here, a flag with no value is simply absent.
+        if (!TryNumberFlag(options, "progress", "an interval in seconds", out var interval, "Use 0 to turn it off."))
         {
             return false;
         }

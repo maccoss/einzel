@@ -1157,13 +1157,20 @@ public static class SurfaceCommand
         var (low, high) = Range(surface);
         var bar = Bar(surface, mmPerUnit, angles, low, high);
 
-        var drawn = layers.SelectMany(Points).ToList();
+        // Measured once: the frame is refitted below for the scale's labels, and every refit
+        // adds a handful of points to this, not another walk over every vertex drawn.
+        var drawn = Framing.Extent.Of(layers.SelectMany(Points), angles.Azimuth, angles.Elevation);
         var aspect = (double)width / height;
-        var matrix = Framing.Around(drawn, angles.Azimuth, angles.Elevation).Matrix(aspect);
+        var matrix = drawn.Frame().Matrix(aspect);
 
         var tainted = warnings.Any(w => w.Severity == WarningSeverity.ValidityViolation);
         var cycleMean = request.CycleMean;
         var instantUs = probe.TimeVarying ? request.AtUs ?? 0.0 : (double?)null;
+
+        // What the caption has to resolve: the fastest drive's period, where there is one.
+        var periodUs = probe.Field is Einzel.Fields.ITimeVaryingField timed && double.IsFinite(timed.ShortestPeriodSeconds)
+            ? timed.ShortestPeriodSeconds * 1e6
+            : (double?)null;
 
         RasterOverlay? overlay = null;
 
@@ -1188,8 +1195,7 @@ public static class SurfaceCommand
                 var reach = reachPx / (across * width / 2.0);
                 var lift = liftPx / (up * height / 2.0);
 
-                var points = new List<(double X, double Y, double Z)>(drawn);
-                points.AddRange(bar.Points);
+                var points = new List<(double X, double Y, double Z)>(bar.Points);
 
                 foreach (var (x, y, z) in bar.Points)
                 {
@@ -1199,7 +1205,7 @@ public static class SurfaceCommand
                 var (tx, ty, tz) = bar.Points[1];
                 points.Add((tx + (fitted[1] / up * lift), ty + (fitted[5] / up * lift), tz + (fitted[9] / up * lift)));
 
-                var next = Framing.Around(points, angles.Azimuth, angles.Elevation).Matrix(aspect);
+                var next = drawn.Including(points).Frame().Matrix(aspect);
                 var nextAcross = Math.Sqrt((next[0] * next[0]) + (next[4] * next[4]) + (next[8] * next[8]));
                 fitted = next;
 
@@ -1213,7 +1219,7 @@ public static class SurfaceCommand
             // the bar is a point with every label on top of the last, and in a picture too small
             // for its labels they would run off the edge or squeeze the surface to a smudge. The
             // picture is then framed without it.
-            var candidate = Overlay(surface, bar, fitted, width, height, low, high, mmPerUnit, cycleMean, instantUs);
+            var candidate = Overlay(surface, bar, fitted, width, height, low, high, mmPerUnit, cycleMean, instantUs, periodUs);
 
             var kept = Math.Sqrt((fitted[0] * fitted[0]) + (fitted[4] * fitted[4]) + (fitted[8] * fitted[8]))
                 / Math.Sqrt((matrix[0] * matrix[0]) + (matrix[4] * matrix[4]) + (matrix[8] * matrix[8]));
@@ -1391,15 +1397,47 @@ public static class SurfaceCommand
 
     /// <summary>An instant as the picture states it: compact at any size, in characters the stroke font draws.</summary>
     /// <param name="microseconds">The instant.</param>
+    /// <param name="periodMicroseconds">
+    /// The fastest drive's period, where the field has one: the caption then carries enough
+    /// digits to place the instant in the cycle. Null for a field with no drive.
+    /// </param>
     /// <returns>"t=2.5 µs", "t=12.3 ms", or with an exponent past a thousand seconds.</returns>
-    public static string Instant(double microseconds)
+    /// <remarks>
+    /// <para>
+    /// <b>A caption on a driven field names the phase drawn.</b> Rounded to three figures,
+    /// 100 µs and 100.25 µs on a 1 MHz drive were both "t=100 µs" over surfaces a quarter
+    /// cycle apart - a rod pair at its peak and the same pair at zero. So where there is a
+    /// drive the instant is written to <see cref="Einzel.Fields.FieldInstants.ResolutionFraction"/>
+    /// of its period, the same fraction an instant must be placeable to at all, and then
+    /// shortened to the fewest digits that still say it: 100.25 stays 100.25, and 100 stays 100.
+    /// </para>
+    /// <para>
+    /// Without a drive there is no phase to tell apart and the caption stays at three figures.
+    /// </para>
+    /// </remarks>
+    public static string Instant(double microseconds, double? periodMicroseconds = null)
     {
         var invariant = CultureInfo.InvariantCulture;
         var a = Math.Abs(microseconds);
+        var (scale, unit) = a < 1e4 ? (1.0, "µs") : a < 1e7 ? (1e-3, "ms") : (1e-6, "s");
 
-        return a < 1e4 ? $"t={Format(microseconds)} µs"
-            : a < 1e7 ? $"t={Format(microseconds / 1e3)} ms"
-            : a < 1e9 ? $"t={Format(microseconds / 1e6)} s"
+        if (periodMicroseconds is { } period && period > 0.0 && double.IsFinite(period))
+        {
+            // Decimal places that resolve the fraction of a period, in the unit shown.
+            var step = Einzel.Fields.FieldInstants.ResolutionFraction * period * scale;
+            var decimals = Math.Clamp((int)Math.Ceiling(-Math.Log10(step)), 0, 15);
+            var text = (microseconds * scale).ToString("F" + decimals.ToString(invariant), invariant);
+
+            if (text.Contains('.', StringComparison.Ordinal))
+            {
+                text = text.TrimEnd('0').TrimEnd('.');
+            }
+
+            return $"t={(text == "-0" ? "0" : text)} {unit}";
+        }
+
+        return a < 1e9
+            ? $"t={Format(microseconds * scale)} {unit}"
             : $"t={(microseconds / 1e6).ToString("0.##e+0", invariant)} s";
     }
 
@@ -1653,24 +1691,69 @@ public static class SurfaceCommand
     private static (double X, double Z, List<(double X, double Y, double Z)> Points) Bar(
         PotentialSurface surface, double mmPerUnit, (double Azimuth, double Elevation) angles, double low, double high)
     {
-        var (a0, a1, d0, d1) = (
-            surface.Across[0], surface.Across[^1], surface.DeepSign * surface.Deep[0], surface.DeepSign * surface.Deep[^1]);
-        var corners = new[] { (a0, d0), (a0, d1), (a1, d0), (a1, d1) };
-
-        // Leftmost on screen, measured with a framing at the picture's own angles.
-        var probe = Framing.Around(corners.Select(c => (c.Item1, 0.0, c.Item2)), angles.Azimuth, angles.Elevation)
-            .Matrix(1.0);
-
-        var (x, z) = corners.MinBy(c => (probe[0] * c.Item1) + (probe[8] * c.Item2));
-
-        // Set out from the corner, so the bar does not stand on the surface's own edge.
-        var gap = 0.06 * Math.Max(a1 - a0, Math.Abs(d1 - d0));
-        x += x == a0 ? -gap : gap;
+        var (x, z) = ScaleFoot(surface, angles.Azimuth, angles.Elevation);
 
         var bottom = Math.Min(low, 0.0) * mmPerUnit;
         var top = Math.Max(high, 0.0) * mmPerUnit;
 
         return (x, z, [(x, bottom, z), (x, top, z)]);
+    }
+
+    /// <summary>
+    /// Where the foot of the vertical scale stands on the base plane, in the picture's own
+    /// coordinates: across, and the picture's z (the deep coordinate times
+    /// <see cref="PotentialSurface.DeepSign"/>).
+    /// </summary>
+    /// <param name="surface">The sampled surface.</param>
+    /// <param name="azimuth">The view's turn about the vertical, in degrees.</param>
+    /// <param name="elevation">The view's tilt, in degrees.</param>
+    /// <returns>The foot: the base corner that appears leftmost, set out from the surface.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Set out along the plane axis that shows on screen.</b> The gap was always along the
+    /// across axis, which seen from the front (azimuth 90) points at the viewer and projects to
+    /// nothing: the bar stood on the surface's own edge. It is set out along whichever of the
+    /// two base axes moves it further across the screen.
+    /// </para>
+    /// <para>
+    /// <b>And the corner is chosen with a tolerance.</b> From the front or the side two
+    /// corners are equally far left, and which was "leftmost" hung on the cosine of ninety
+    /// degrees being 6e-17 and not zero. Corners within a billionth of the base's width on
+    /// screen are level, and of level corners the first in a fixed order is taken.
+    /// </para>
+    /// </remarks>
+    public static (double Across, double Z) ScaleFoot(PotentialSurface surface, double azimuth, double elevation)
+    {
+        ArgumentNullException.ThrowIfNull(surface);
+
+        var (a0, a1, d0, d1) = (
+            surface.Across[0], surface.Across[^1], surface.DeepSign * surface.Deep[0], surface.DeepSign * surface.Deep[^1]);
+        var corners = new[] { (a0, d0), (a0, d1), (a1, d0), (a1, d1) };
+
+        // Leftmost on screen, measured with a framing at the picture's own angles.
+        var probe = Framing.Around(corners.Select(c => (c.Item1, 0.0, c.Item2)), azimuth, elevation)
+            .Matrix(1.0);
+
+        double Screen((double A, double D) c) => (probe[0] * c.A) + (probe[8] * c.D);
+
+        var leftmost = corners.Min(Screen);
+        var level = 1e-9 * (corners.Max(Screen) - leftmost);
+        var (x, z) = corners.First(c => Screen(c) - leftmost <= level);
+
+        // Set out from the corner, so the bar does not stand on the surface's own edge: away
+        // from the surface along the base axis that shows more on screen.
+        var gap = 0.06 * Math.Max(a1 - a0, Math.Abs(d1 - d0));
+
+        if (Math.Abs(probe[0]) >= Math.Abs(probe[8]))
+        {
+            x += x == a0 ? -gap : gap;
+        }
+        else
+        {
+            z += z == d0 ? (d0 <= d1 ? -gap : gap) : (d1 <= d0 ? -gap : gap);
+        }
+
+        return (x, z);
     }
 
     /// <summary>The vertical scale and its labels, in pixels over the finished picture.</summary>
@@ -1684,7 +1767,8 @@ public static class SurfaceCommand
         double high,
         double mmPerUnit,
         bool cycleMean,
-        double? instantUs)
+        double? instantUs,
+        double? periodUs)
     {
         (double X, double Y) Pixel(double x, double y, double z)
         {
@@ -1741,7 +1825,7 @@ public static class SurfaceCommand
         }
 
         // What instant the heights are, above the bar: a picture of a driven field is a frame.
-        var caption = cycleMean ? "cycle mean" : instantUs is { } t ? Instant(t) : null;
+        var caption = cycleMean ? "cycle mean" : instantUs is { } t ? Instant(t, periodUs) : null;
 
         if (caption is not null)
         {

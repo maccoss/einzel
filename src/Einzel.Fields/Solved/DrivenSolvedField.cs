@@ -145,10 +145,10 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
                 continue;
             }
 
-            if ((_operatingPoint is null && _boundaries.Length > 0)
-                || CycleMeanWeight(k, fromSeconds, periodSeconds) is not { } mean)
+            // The same per-channel mean weight the potential's cycle mean is taken with, and
+            // the same decision about when it has no closed form.
+            if (CycleMeanWeight(k, fromSeconds, periodSeconds) is not { } mean)
             {
-                // Not a whole number of cycles, or a sequence not held: average the instants.
                 return HeldConductors.SampledMean(this, conductor, fromSeconds, periodSeconds, samples);
             }
 
@@ -158,9 +158,12 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
         return total;
     }
 
-    /// <inheritdoc/>
-    /// <remarks>Its channels are solved over the same conductors, so the first channel says.</remarks>
-    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(_channels[0], conductor);
+    // Where the metal is and how fine the mesh: every channel is the same geometry at
+    // different potentials, so the first is as good as any. The builders always make one
+    // channel - a geometry with nothing on any electrode gets one of zero weight - but this
+    // type can be made with none, and then it is a field of nothing: no metal, no mesh, no
+    // edge, asked without an index out of range.
+    private IElectrostaticField? Metal => _channels.Length > 0 ? _channels[0] : null;
 
     internal DrivenSolvedField(
         IReadOnlyList<IElectrostaticField> channels,
@@ -418,7 +421,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     }
 
     /// <inheritdoc/>
-    public double ResolutionLength => _channels[0].ResolutionLength;
+    public double ResolutionLength => Metal?.ResolutionLength ?? double.PositiveInfinity;
 
     /// <summary>The potential a channel holds at an instant, in volts.</summary>
     /// <param name="channel">Channel index.</param>
@@ -517,16 +520,6 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     public double CycleMeanPotentialAt(
         in Vec3 position, double fromSeconds, double periodSeconds, int samples)
     {
-        // The stage and the ramp fraction have to be constant across the window, or the mean
-        // of the weights is not a function of one setting. They are when the operating point
-        // is held - which is what the diffusive path does - and trivially when there are no
-        // stages at all. Otherwise sample, as before.
-        if (_operatingPoint is null && _boundaries.Length > 0)
-        {
-            return ITimeVaryingField.SampledCycleMean(
-                this, in position, fromSeconds, periodSeconds, samples);
-        }
-
         // ONE PASS AND NO ARRAY. A first version held the channel means in a
         // `new double[_channels.Length]` so it could bail out before evaluating any channel
         // potential - and this is called seven times per density node per step (once for the
@@ -559,11 +552,25 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     }
 
     /// <summary>
-    /// The mean of a channel's weight over a window, in closed form, or null where the
-    /// window is not a whole number of cycles for every drive the channel taps.
+    /// The mean of a channel's weight over a window, in closed form, or null where it has
+    /// none: the window is not a whole number of cycles for every drive the channel taps, or
+    /// the field is sequenced and not held at an operating point.
     /// </summary>
+    /// <remarks>
+    /// The one decision between the closed form and sampling, for the potential's cycle mean
+    /// and for a conductor's held mean alike.
+    /// </remarks>
     private double? CycleMeanWeight(int channel, double fromSeconds, double periodSeconds)
     {
+        // The stage and the ramp fraction have to be constant across the window, or the mean
+        // of the weights is not a function of one setting. They are when the operating point
+        // is held - which is what the diffusive path does - and trivially when there are no
+        // stages at all. Otherwise there is no closed form, and the caller samples.
+        if (_operatingPoint is null && _boundaries.Length > 0)
+        {
+            return null;
+        }
+
         var setting = _operatingPoint ?? fromSeconds;
 
         var stage = _boundaries.Length == 0 ? -1 : StageAt(setting);
@@ -650,7 +657,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
 
     /// <inheritdoc/>
     public double SignedDistanceToDiscontinuity(in Vec3 position) =>
-        _channels[0].SignedDistanceToDiscontinuity(in position);
+        Metal?.SignedDistanceToDiscontinuity(in position) ?? double.PositiveInfinity;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -658,11 +665,11 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// in the same place in all of them and the first is as good as any.
     /// </remarks>
     public double SignedDistanceToConductor(in Vec3 position) =>
-        _channels[0] is IConductorBounded bounded
+        Metal is IConductorBounded bounded
             ? bounded.SignedDistanceToConductor(in position)
             : double.PositiveInfinity;
 
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position) =>
-        _channels[0] is IConductorBounded bounded ? bounded.ConductorAt(in position) : null;
+        Metal is IConductorBounded bounded ? bounded.ConductorAt(in position) : null;
 }

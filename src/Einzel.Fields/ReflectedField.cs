@@ -13,7 +13,7 @@ namespace Einzel.Fields;
 /// meshed differently.
 /// </remarks>
 public sealed class ReflectedField(IElectrostaticField inner, double planeX)
-    : IElectrostaticField, IConductorBounded, IHeldConductors
+    : IElectrostaticField, IConductorBounded
 {
     /// <inheritdoc/>
     /// <remarks>
@@ -30,17 +30,6 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX)
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position) =>
         inner is IConductorBounded bounded ? bounded.ConductorAt(Reflect(in position)) : null;
-
-    /// <inheritdoc/>
-    public double? HeldPotentialOf(string conductor, double timeSeconds) =>
-        HeldConductors.Forward(inner, conductor, timeSeconds);
-
-    /// <inheritdoc/>
-    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        HeldConductors.ForwardMean(inner, conductor, fromSeconds, periodSeconds, samples);
-
-    /// <inheritdoc/>
-    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(inner, conductor);
 
     private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
 

@@ -1029,6 +1029,21 @@ public static class GeometryBuilder
     /// <exception cref="ArgumentNullException"><paramref name="solve"/> is null.</exception>
     public static (IElectrostaticField Field, SolveReport Report) Build(CompiledSolvedField solve)
     {
+        var (field, report, _) = BuildLeaved(solve);
+
+        return (field, report);
+    }
+
+    /// <summary>
+    /// Builds as <see cref="Build"/> does, and hands out the field's conductor-bearing leaves:
+    /// the declared half, and its image where the solve is reflected.
+    /// </summary>
+    /// <param name="solve">The declared geometry.</param>
+    /// <returns>The field, how the solve went, and its leaves.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="solve"/> is null.</exception>
+    public static (IElectrostaticField Field, SolveReport Report, IReadOnlyList<ConductorLeaf> Leaves) BuildLeaved(
+        CompiledSolvedField solve)
+    {
         ArgumentNullException.ThrowIfNull(solve);
 
         if (solve.Drives.Count > 0 || solve.Stages.Count > 0)
@@ -1043,7 +1058,7 @@ public static class GeometryBuilder
 
         report = report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(solve, grid, mask)) };
 
-        IElectrostaticField field = new SolvedField2D(
+        var solved = new SolvedField2D(
             potential,
             new BicubicInterpolant(potential),
             boundaryIsDiscontinuous: solve.BoundaryIsDiscontinuous,
@@ -1051,6 +1066,8 @@ public static class GeometryBuilder
         {
             HoldsDeclaredPotentials = true,
         };
+
+        IElectrostaticField field = solved;
 
         // Wrapped before any reflection, so a reflection composes in space rather
         // than in the half-plane - it mirrors the axial coordinate of a field that
@@ -1060,6 +1077,8 @@ public static class GeometryBuilder
             field = new AxisymmetricField(field);
         }
 
+        var leaves = ConductorLeaf.Of(field, solve.ReflectAboutX, solved);
+
         if (solve.ReflectAboutX is { } plane)
         {
             // The reflected half is the same solve seen backwards, so the two are
@@ -1068,7 +1087,7 @@ public static class GeometryBuilder
             field = new SuperposedField([field, new ReflectedField(field, plane)]);
         }
 
-        return (field, report);
+        return (field, report, leaves);
     }
 
     /// <summary>
@@ -1089,7 +1108,8 @@ public static class GeometryBuilder
     /// channel; add a grounded housing and it is two.
     /// </para>
     /// </remarks>
-    private static (IElectrostaticField Field, SolveReport Report) BuildDriven(CompiledSolvedField solve)
+    private static (IElectrostaticField Field, SolveReport Report, IReadOnlyList<ConductorLeaf> Leaves) BuildDriven(
+        CompiledSolvedField solve)
     {
         var grid = BuildGrid(solve);
         var (frequencies, waveforms, quadrature) = Clocks(solve.Drives);
@@ -1116,6 +1136,7 @@ public static class GeometryBuilder
 
         SolveReport worst = new(true, 0, 0.0, 0.0, 0.0);
         IReadOnlyList<Core.Results.ValidityWarning>? meshWarnings = null;
+        IElectrostaticField? metal = null;
 
         for (var index = 0; index < groups.Count; index++)
         {
@@ -1141,6 +1162,9 @@ public static class GeometryBuilder
                 basis = new AxisymmetricField(basis);
             }
 
+            // Every channel is the same metal, so the first one's declared half says where it is.
+            metal ??= basis;
+
             if (solve.ReflectAboutX is { } plane)
             {
                 basis = new SuperposedField([basis, new ReflectedField(basis, plane)]);
@@ -1165,15 +1189,22 @@ public static class GeometryBuilder
             Warnings = meshWarnings ?? SharedFaceNodes.Warnings(NodesOnSharedFaces(solve, grid)),
         };
 
+        // There is always a channel: a geometry with nothing on any electrode is given one of
+        // zero weight (DriveChannels.DecomposeStates), so there is a field object to return.
+        if (metal is null)
+        {
+            throw new InvalidOperationException("a driven geometry decomposed into no channel at all");
+        }
+
         if (solve.Stages.Count == 0)
         {
-            return (
-                new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms)
-                {
-                    ConductorCoefficients = DriveChannels.Coefficients(
-                        groups, solve.Electrodes.Where(e => e.Shape != ElectrodeShape.EdgeProfile).Select(e => e.Name)),
-                },
-                worst);
+            var driven = new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms)
+            {
+                ConductorCoefficients = DriveChannels.Coefficients(
+                    groups, solve.Electrodes.Where(e => e.Shape != ElectrodeShape.EdgeProfile).Select(e => e.Name)),
+            };
+
+            return (driven, worst, ConductorLeaf.Of(metal, solve.ReflectAboutX, driven));
         }
 
         var boundaries = new List<double>(solve.Stages.Count);
@@ -1236,7 +1267,7 @@ public static class GeometryBuilder
                 groups, solve.Electrodes.Where(e => e.Shape != ElectrodeShape.EdgeProfile).Select(e => e.Name)),
         };
 
-        return (sequenced, worst);
+        return (sequenced, worst, ConductorLeaf.Of(metal, solve.ReflectAboutX, sequenced));
     }
 
     /// <summary>

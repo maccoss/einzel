@@ -34,7 +34,8 @@ public static class FieldInstants
         ArgumentNullException.ThrowIfNull(field);
 
         // Through a magnet's wrapper to the electric field it carries: a drive inside is still a
-        // drive whatever answers for the sum.
+        // drive whatever answers for the sum. The assembly's own wrapper is driven when what it
+        // wraps is (MagnetizedField.Around); one made another way need not be.
         var electric = field is Magnetic.MagnetizedField magnetized ? magnetized.Electric : field;
 
         if (atSeconds is not { } seconds || !double.IsFinite(seconds)

@@ -27,6 +27,13 @@ namespace Einzel.Fields;
 /// declared shape runs on past the edge of its solve, so a field answering "the potential at
 /// this point" from the shape alone drew a plateau where nothing had been solved.
 /// </para>
+/// <para>
+/// <b>Only the solves themselves implement this</b> - a static solve and a driven one, in the
+/// plane and in a volume. A wrapper that mirrors, rotates or sums fields does not: the assembly
+/// hands out each conductor-bearing leaf with the solve that holds it
+/// (<see cref="FieldLeaf"/>), so nothing has to forward the question through whatever stands
+/// between, and a sum is never asked what a name shared by two elements "holds".
+/// </para>
 /// </remarks>
 public interface IHeldConductors
 {
@@ -39,16 +46,6 @@ public interface IHeldConductors
     /// along it.
     /// </returns>
     double? HeldPotentialOf(string conductor, double timeSeconds);
-
-    /// <summary>Whether this field has a conductor of this name, whether or not it holds one potential.</summary>
-    /// <param name="conductor">The conductor's name.</param>
-    /// <returns>True where the name is one of this field's conductors - an edge-profiled board included.</returns>
-    /// <remarks>
-    /// What separates "no conductor of that name here" from "a conductor of that name, with no
-    /// single potential": both answer <see cref="HeldPotentialOf"/> with null, and a sum must not
-    /// read the second as the first.
-    /// </remarks>
-    bool HasConductor(string conductor);
 
     /// <summary>The mean of <see cref="HeldPotentialOf"/> over a window.</summary>
     /// <param name="conductor">The conductor's name.</param>
@@ -94,126 +91,52 @@ public static class HeldConductors
 
         return total / samples;
     }
+}
 
-    /// <summary>What a wrapper forwards: the inner field's held potential for a conductor, if it holds any.</summary>
-    /// <param name="inner">The wrapped field.</param>
-    /// <param name="conductor">The conductor's name.</param>
-    /// <param name="timeSeconds">The instant, on the inner field's clock.</param>
-    /// <returns>The potential, or null where the inner field holds no such conductor.</returns>
-    public static double? Forward(IElectrostaticField inner, string conductor, double timeSeconds) =>
-        inner is IHeldConductors held ? held.HeldPotentialOf(conductor, timeSeconds) : null;
-
-    /// <summary>What a wrapper forwards for whether a conductor of this name is there.</summary>
-    /// <param name="inner">The wrapped field.</param>
-    /// <param name="conductor">The conductor's name.</param>
-    /// <returns>Whether the inner field has it.</returns>
-    public static bool ForwardHas(IElectrostaticField inner, string conductor) =>
-        inner is IHeldConductors held && held.HasConductor(conductor);
-
-    /// <summary>Whether any member of a sum has a conductor of this name.</summary>
-    /// <param name="members">The members.</param>
-    /// <param name="conductor">The name.</param>
-    /// <returns>True where one does.</returns>
-    public static bool AnyHas(IReadOnlyList<IElectrostaticField> members, string conductor)
+/// <summary>
+/// One conductor-bearing piece of a solved element: where its metal is, and the solve that says
+/// what the metal holds.
+/// </summary>
+/// <param name="Shape">Where the conductors are, in space as the element stands in the model.</param>
+/// <param name="Held">The solve that pinned them, asked by conductor name.</param>
+/// <param name="Mirrored">
+/// False for the half the solve was declared in; true for its image in the mirror plane of a
+/// reflected solve. Each is real metal only on its own side: the declared half inside the
+/// declared solve box, the image inside that box's reflection.
+/// </param>
+/// <remarks>
+/// Handed out by the builder that made the field, which is the only place that knows a
+/// reflected solve is one solved half and its image. Reconstructing that afterwards from the
+/// assembled field meant recognising each wrapper type, and treated the declared half's shape
+/// as metal in the image's half - an electrode declared running past the mirror plane drew a
+/// plateau over the part of it that the mirror replaces.
+/// </remarks>
+public sealed record ConductorLeaf(IConductorBounded Shape, IHeldConductors Held, bool Mirrored)
+{
+    /// <summary>The leaves of one solve: its declared half, and its image where it is reflected.</summary>
+    /// <param name="direct">The field over the declared half, before any reflection.</param>
+    /// <param name="mirrorX">The mirror plane, or null where the solve is not reflected.</param>
+    /// <param name="held">The solve that says what the conductors hold.</param>
+    /// <returns>One leaf, or two; none where the field has no conductors.</returns>
+    public static IReadOnlyList<ConductorLeaf> Of(IElectrostaticField direct, double? mirrorX, IHeldConductors held)
     {
-        ArgumentNullException.ThrowIfNull(members);
+        ArgumentNullException.ThrowIfNull(direct);
+        ArgumentNullException.ThrowIfNull(held);
 
-        foreach (var member in members)
+        if (direct is not IConductorBounded shape)
         {
-            if (ForwardHas(member, conductor))
-            {
-                return true;
-            }
+            return [];
         }
 
-        return false;
-    }
-
-    /// <summary>What a wrapper forwards for a cycle mean.</summary>
-    /// <param name="inner">The wrapped field.</param>
-    /// <param name="conductor">The conductor's name.</param>
-    /// <param name="fromSeconds">Where the window opens, on the inner field's clock.</param>
-    /// <param name="periodSeconds">How long it is.</param>
-    /// <param name="samples">How many instants, where sampled.</param>
-    /// <returns>The mean, or null where the inner field holds no such conductor.</returns>
-    public static double? ForwardMean(
-        IElectrostaticField inner, string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        inner is IHeldConductors held ? held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) : null;
-
-    /// <summary>
-    /// What a sum's members say a conductor of this name holds, when they agree; null when no
-    /// member holds one or when two hold different values.
-    /// </summary>
-    /// <param name="members">The members.</param>
-    /// <param name="conductor">The name.</param>
-    /// <param name="timeSeconds">The instant.</param>
-    /// <returns>The one value every member holding the name gives, or null.</returns>
-    /// <remarks>
-    /// A name is unique within one element and no further, so two elements may each have a
-    /// <c>plate</c>, one at +100 V and one at -100 V. Answering with the first member that has
-    /// the name gave both +100 V to anything asking the sum. A sum answers only where the name
-    /// cannot mean two things: one member has it, or every member that has it agrees - which is
-    /// the case a reflected solve makes, its one element seen twice. A member that has the name
-    /// but no single potential for it (an edge-profiled board) makes the answer null too. A caller that knows which
-    /// element it means asks that element, as the probe does.
-    /// </remarks>
-    public static double? Agreed(IReadOnlyList<IElectrostaticField> members, string conductor, double timeSeconds)
-    {
-        ArgumentNullException.ThrowIfNull(members);
-
-        double? agreed = null;
-
-        foreach (var member in members)
-        {
-            if (member is not IHeldConductors held || !held.HasConductor(conductor))
-            {
-                continue;
-            }
-
-            // A member that has the name and cannot give one value - an edge-profiled board -
-            // means the name has no single answer here, whatever another member says.
-            if (held.HeldPotentialOf(conductor, timeSeconds) is not { } value
-                || (agreed is { } other && other != value))
-            {
-                return null;
-            }
-
-            agreed = value;
-        }
-
-        return agreed;
-    }
-
-    /// <summary>The same as <see cref="Agreed"/>, for a cycle mean.</summary>
-    /// <param name="members">The members.</param>
-    /// <param name="conductor">The name.</param>
-    /// <param name="fromSeconds">Where the window opens.</param>
-    /// <param name="periodSeconds">How long it is.</param>
-    /// <param name="samples">How many instants, where sampled.</param>
-    /// <returns>The one mean every member holding the name gives, or null.</returns>
-    public static double? AgreedMean(
-        IReadOnlyList<IElectrostaticField> members, string conductor, double fromSeconds, double periodSeconds, int samples)
-    {
-        ArgumentNullException.ThrowIfNull(members);
-
-        double? agreed = null;
-
-        foreach (var member in members)
-        {
-            if (member is not IHeldConductors held || !held.HasConductor(conductor))
-            {
-                continue;
-            }
-
-            if (held.HeldCycleMeanOf(conductor, fromSeconds, periodSeconds, samples) is not { } value
-                || (agreed is { } other && other != value))
-            {
-                return null;
-            }
-
-            agreed = value;
-        }
-
-        return agreed;
+        return mirrorX is { } plane
+            ? [new ConductorLeaf(shape, held, false), new ConductorLeaf(new ReflectedField(direct, plane), held, true)]
+            : [new ConductorLeaf(shape, held, false)];
     }
 }
+
+/// <summary>A <see cref="ConductorLeaf"/> of an assembled model, with the field element it belongs to.</summary>
+/// <param name="Shape">Where the conductors are, in the model's frame - a tilted cross-section's tilt applied.</param>
+/// <param name="Held">The solve that pinned them.</param>
+/// <param name="Element">The index of the element in <see cref="Core.Model.CompiledModel.Fields"/>.</param>
+/// <param name="Mirrored">Whether this is the image half of a reflected solve.</param>
+public sealed record FieldLeaf(IConductorBounded Shape, IHeldConductors Held, int Element, bool Mirrored);

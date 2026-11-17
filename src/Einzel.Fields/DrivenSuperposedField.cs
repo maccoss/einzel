@@ -29,7 +29,7 @@ namespace Einzel.Fields;
 /// know which is which beyond the type test.
 /// </para>
 /// </remarks>
-public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded, IHeldConductors
+public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 {
     private readonly IElectrostaticField[] _elements;
 
@@ -337,19 +337,4 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 
         return null;
     }
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Only where the name cannot mean two things (<see cref="HeldConductors.Agreed"/>): names
-    /// are unique within one element, and two elements may each have one called <c>plate</c>.
-    /// </remarks>
-    public double? HeldPotentialOf(string conductor, double timeSeconds) =>
-        HeldConductors.Agreed(_elements, conductor, timeSeconds);
-
-    /// <inheritdoc/>
-    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        HeldConductors.AgreedMean(_elements, conductor, fromSeconds, periodSeconds, samples);
-
-    /// <inheritdoc/>
-    public bool HasConductor(string conductor) => HeldConductors.AnyHas(_elements, conductor);
 }

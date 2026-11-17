@@ -147,10 +147,6 @@ public sealed class SolvedField3D : IElectrostaticField, IConductorBounded, IHel
         HeldPotentialOf(conductor, fromSeconds);
 
     /// <inheritdoc/>
-    public bool HasConductor(string conductor) =>
-        Array.Exists(_conductors, c => string.Equals(c.Name, conductor, StringComparison.Ordinal));
-
-    /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position)
     {
         string? nearestName = null;

@@ -29,7 +29,7 @@ namespace Einzel.Fields.Magnetic;
 /// interface" defect this project has met six times.
 /// </para>
 /// </remarks>
-public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBounded, IHeldConductors
+public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBounded
 {
     private readonly IElectrostaticField _electric;
     private readonly IMagneticField _magnetic;
@@ -137,17 +137,6 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
     public string? ConductorAt(in Vec3 position) => _electric is IConductorBounded bounded
         ? bounded.ConductorAt(in position)
         : null;
-
-    /// <inheritdoc/>
-    public double? HeldPotentialOf(string conductor, double timeSeconds) =>
-        HeldConductors.Forward(_electric, conductor, timeSeconds);
-
-    /// <inheritdoc/>
-    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        HeldConductors.ForwardMean(_electric, conductor, fromSeconds, periodSeconds, samples);
-
-    /// <inheritdoc/>
-    public bool HasConductor(string conductor) => HeldConductors.ForwardHas(_electric, conductor);
 }
 
 /// <summary>A magnetized field whose electric part is driven.</summary>

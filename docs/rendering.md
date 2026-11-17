@@ -858,7 +858,7 @@ point the field refuses is a hole in the surface counted by `probe.refused`. A c
 detected the probe's way, by the composite field's signed distance.
 
 **A plateau is drawn at what the conductor holds, not at what the field reads inside it**
-(`FieldProbe.HeldPotentialAt`, from `IHeldConductors`). A static solve holds each electrode at its
+(`FieldProbe.HeldPotentialAt`, from `IHeldConductors`, which only the solves implement). A static solve holds each electrode at its
 declared potential; a driven or staged one holds it at the sum over channels of its coefficient in
 that channel's pattern times the channel's weight at the instant - the same weights the field is
 summed with, so every generator it taps, every stage and every ramp is in it, and under
@@ -889,13 +889,20 @@ field sums keep their own `ConductorAt` exactly as it was, because that names th
 strikes in a loss itemisation (ACC-5): a static sum names the nearest member's conductor and a
 driven one the first member containing the point, and a drawing is no place to change that.
 
-**A reflected solve is one element with two halves.** Its field is itself a sum, the solve and its
-mirror image, and the probe takes the assembled field apart in one place (`FieldProbe.Leaves`),
-recording for every piece the element it came from. A version that took every sum apart and mapped
-the pieces by position against the assembly's one-entry-per-element list left the mirror image
-with no element, so every point in it read as free space and no plateau was drawn there - the
-planar mirror pair and both Astral analysers among the shipped templates. Sampling runs across the
-processors, a row at a time, and is byte for byte what a serial pass gives.
+**A reflected solve is one element with two halves, and each half is metal only on its own side
+of the mirror.** The assembly hands out the field's conductor-bearing leaves as it builds it
+(`FieldAssembly.BuildMapped` returns a `FieldLeaf` for each: where the metal is, the solve that
+says what it holds, its element, and whether it is the declared half or the image), and the probe
+asks each leaf about its own half - the declared solve box for the declared half, that box's
+reflection for the image. The probe used to take the assembled field apart afterwards, which got
+it wrong three ways in turn. Mapping the pieces by position left the mirror image with no element,
+so every point in it read as free space and no plateau was drawn there - the planar mirror pair
+and both Astral analysers among the shipped templates. And asking whether a conductor's *element*
+was solved at a point counted the declared half's shape as metal in the image's half: a conductor
+declared from 18 mm to 40 mm against a mirror at 20 mm is metal from 18 to 22 - the near side and
+its image - and was drawn as a plateau out to 40. No wrapper forwards "what does this conductor
+hold" any more, and a sum is never asked. Sampling runs across the processors, a row at a time, and
+is byte for byte what a serial pass gives.
 
 What the sweep of every shipped template and example found with the held value: `tims-analyzer`,
 `tims-front-end` and `tims-tandem` warn on every ring (the analytic RF, as above); `astral-3d` and
@@ -1016,7 +1023,15 @@ the fastest drive period apart (`FieldInstants.CheckResolution`, shared with `pr
 section`, which checks the instant it draws at whether it came from `--at-us` or the spec's
 `atSeconds`) - at
 1e300 us on a 1 MHz drive the phase drawn was whichever the rounding gave, under a 300-digit
-caption. The caption is compact at any size (`t=15 ms`, `t=1e+294 s`). **`--at-us` on a static
+caption. The caption is compact at any size (`t=15 ms`, `t=1e+294 s`), and **on a driven field
+it names the phase drawn**: the instant is written to a thousandth of the fastest drive period -
+the same fraction an instant must be placeable to - and then shortened, so `--at-us 100` and
+`--at-us 100.25` on a 1 MHz drive are `t=100 µs` and `t=100.25 µs`. At three figures both were
+`t=100 µs`, over surfaces a quarter of a cycle apart. **The scale stands clear of the surface in
+every view**: it is set out from the leftmost base corner along whichever base axis shows on
+screen (from the front the across axis points at the viewer, and a gap along it was no pixels),
+and of two corners equally far left the choice no longer hangs on the last bit of a cosine.
+**`--at-us` on a static
 field is the other way round**: the picture is right at every instant, so it is drawn and
 `render.instant-ignored` (advisory) says the flag changed nothing - which is also what lets one
 command line be used across static and driven models.

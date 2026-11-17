@@ -1487,14 +1487,14 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         File.WriteAllText(path, node.ToJsonString());
 
         var probe = FieldProbe.Open(path);
-        var (field, _, _) = Einzel.Fields.FieldAssembly.BuildMapped(probe.Model);
-        var sum = Assert.IsType<Einzel.Fields.SuperposedField>(field);
+        var (field, _, leaves) = Einzel.Fields.FieldAssembly.BuildMapped(probe.Model);
 
-        Assert.Null(sum.HeldPotentialOf("plate", 0.0));
-        Assert.Null(sum.HeldCycleMeanOf("plate", 0.0, 1e-6, 8));
+        // The sum is not asked at all: it has no answer to give for a name two elements share.
+        Assert.False(field is Einzel.Fields.IHeldConductors);
 
-        // Each element still says what its own holds, which is how the probe and the surface ask.
-        Assert.Equal([100.0, -100.0], sum.Elements.Select(e => ((Einzel.Fields.IHeldConductors)e).HeldPotentialOf("plate", 0.0) ?? double.NaN));
+        // Each element's leaf says what its own holds, which is how the probe and the surface ask.
+        Assert.Equal([0, 1], leaves.Select(l => l.Element));
+        Assert.Equal([100.0, -100.0], leaves.Select(l => l.Held.HeldPotentialOf("plate", 0.0) ?? double.NaN));
         Assert.Equal(-100.0, probe.At(0, new Einzel.Core.Geometry.Vec3(40.5, 5.0, 0.0), 0.0).Status == ProbeStatus.InsideConductor
             ? SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-20, -10, 60, 10], Samples: 161)).Surface.Plateaus.Single(p => p.Element == 1).PotentialV
             : double.NaN);
@@ -1507,8 +1507,198 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         var mirrored = Path.Combine(_root, "mirrored-plate.json");
         File.WriteAllText(mirrored, reflected.ToJsonString());
 
-        var (pair, _, _) = Einzel.Fields.FieldAssembly.BuildMapped(FieldProbe.Open(mirrored).Model);
-        Assert.Equal(40.0, Assert.IsType<Einzel.Fields.SuperposedField>(pair).HeldPotentialOf("slitUpper", 0.0));
+        var (_, _, halves) = Einzel.Fields.FieldAssembly.BuildMapped(FieldProbe.Open(mirrored).Model);
+
+        Assert.Equal([false, true], halves.Select(l => l.Mirrored));
+        Assert.Equal([0, 0], halves.Select(l => l.Element));
+        Assert.Same(halves[0].Held, halves[1].Held);
+        Assert.Equal(40.0, halves[1].Held.HeldPotentialOf("slitUpper", 0.0));
+    }
+
+    /// <summary>
+    /// Each half of a reflected solve is metal only on its own side of the mirror: a conductor
+    /// declared running past the plane ends there, and its image takes over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The declared half is solved in the declared box, and what lies beyond the plane is that
+    /// box's image. A conductor declared from 18 mm to 40 mm against a mirror at 20 mm is
+    /// therefore metal from 18 to 22: the two millimetres on the near side, and their image.
+    /// </para>
+    /// <para>
+    /// The probe asked whether a conductor's ELEMENT was solved at a point, and a reflected
+    /// solve is one element with two halves - so the declared shape counted as metal throughout
+    /// the image's half too, and a point at 30 mm read inside-conductor with a plateau drawn
+    /// from 22 mm to 40 mm over what is vacuum. Asked per leaf, in a cross-section and a volume.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AConductorDeclaredPastTheMirrorPlaneEndsAtItsImage()
+    {
+        var plane = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var solve = plane["fields"]![0]!["solve"]!;
+        solve["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "value": 20, "unit": "mm" }""");
+        solve["electrodes"]![0]!["minX"]!["value"] = 18.0;
+        solve["electrodes"]![0]!["maxX"]!["value"] = 40.0;
+        solve["electrodes"]![0]!["potential"]!["value"] = 40.0;
+        plane["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[59, 0, 0]");
+        var flat = Path.Combine(_root, "past-the-mirror.json");
+        File.WriteAllText(flat, plane.ToJsonString());
+
+        var volume = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "parallel-plate-gap-3d")))!;
+        var solve3d = volume["fields"]![0]!["solve3d"]!;
+        solve3d["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "value": 30, "unit": "mm" }""");
+        solve3d["electrodes"]![1]!["minX"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "value": 28, "unit": "mm" }""");
+        solve3d["electrodes"]![1]!["maxX"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "value": 50, "unit": "mm" }""");
+        var solid = Path.Combine(_root, "past-the-mirror-3d.json");
+        File.WriteAllText(solid, volume.ToJsonString());
+
+        foreach (var (path, near, image, beyond, box, planeName, name, edge) in new[]
+        {
+            (flat, new Einzel.Core.Geometry.Vec3(19.0, 5.0, 0.0), new Einzel.Core.Geometry.Vec3(21.0, 5.0, 0.0), new Einzel.Core.Geometry.Vec3(30.0, 5.0, 0.0), new double[] { -20, -10, 60, 10 }, "xy", "slitUpper", 22.0),
+            (solid, new Einzel.Core.Geometry.Vec3(29.0, 0.0, 5.5), new Einzel.Core.Geometry.Vec3(31.0, 0.0, 5.5), new Einzel.Core.Geometry.Vec3(45.0, 0.0, 5.5), new double[] { -30, -15, 90, 15 }, "xz", "upper", 32.0),
+        })
+        {
+            var probe = FieldProbe.Open(path);
+
+            // On the near side, and in its image: metal.
+            foreach (var point in new[] { near, image })
+            {
+                var row = probe.At(0, point, 0.0);
+                output.WriteLine($"{Path.GetFileName(path)} x = {point.X}: {row.Status} {row.Conductor}");
+
+                Assert.Equal(ProbeStatus.InsideConductor, row.Status);
+                Assert.Equal(name, row.Conductor);
+            }
+
+            // Past the image, inside the declared shape and in the image's half: vacuum.
+            var past = probe.At(0, beyond, 0.0);
+            output.WriteLine($"{Path.GetFileName(path)} x = {beyond.X}: {past.Status}");
+
+            Assert.Equal(ProbeStatus.Ok, past.Status);
+            Assert.Null(ElementAt(probe, beyond));
+
+            // And the plateau stops where the image does.
+            var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: planeName, BoxMm: box, Samples: 161));
+            var reach = Enumerable.Range(0, surface.Inside.Count)
+                .Where(k => surface.Inside[k] == name)
+                .Max(k => surface.Across[k / surface.Deep.Count]);
+
+            output.WriteLine($"  the plateau of {name} reaches x = {reach} mm");
+
+            Assert.InRange(reach, edge - 1.0, edge + 0.5);
+        }
+    }
+
+    /// <summary>
+    /// The instant on the picture names the phase drawn: two instants a quarter of a drive
+    /// cycle apart are captioned differently, and a field with no drive keeps a short caption.
+    /// </summary>
+    [Fact]
+    public void TheCaptionTellsApartInstantsAQuarterCycleApart()
+    {
+        // A 1 MHz drive: a period of one microsecond.
+        Assert.Equal("t=100 µs", SurfaceCommand.Instant(100.0, 1.0));
+        Assert.Equal("t=100.25 µs", SurfaceCommand.Instant(100.25, 1.0));
+        Assert.NotEqual(SurfaceCommand.Instant(100.0, 1.0), SurfaceCommand.Instant(100.25, 1.0));
+
+        // To a thousandth of the period and no further, in whichever unit is shown.
+        Assert.Equal("t=100.251 µs", SurfaceCommand.Instant(100.2512, 1.0));
+        Assert.Equal("t=15.00025 ms", SurfaceCommand.Instant(15000.25, 1.0));
+        Assert.Equal("t=20.000000025 s", SurfaceCommand.Instant(20000000.025, 0.1));
+        Assert.Equal("t=0 µs", SurfaceCommand.Instant(0.0, 1.0));
+
+        // A slow drive needs no more digits than it has phases to tell apart.
+        Assert.Equal("t=100 µs", SurfaceCommand.Instant(100.25, 1e4));
+
+        // No drive, no phase: three figures, as before.
+        Assert.Equal("t=100 µs", SurfaceCommand.Instant(100.25));
+        Assert.Equal("t=2.5 µs", SurfaceCommand.Instant(2.5));
+
+        // And it is the drive's period the picture is captioned with: the shipped quadrupole.
+        var quadrupole = Model("template", "quadrupole-rf");
+        var period = ((Einzel.Fields.ITimeVaryingField)FieldProbe.Open(quadrupole).Field).ShortestPeriodSeconds * 1e6;
+
+        Assert.NotEqual(SurfaceCommand.Instant(100.0, period), SurfaceCommand.Instant(100.0 + (period / 4.0), period));
+    }
+
+    /// <summary>
+    /// The vertical scale stands clear of the surface in every named view, at the same corner
+    /// however the last bit of a cosine falls.
+    /// </summary>
+    /// <remarks>
+    /// Its gap was always along the across axis, which from the front points at the viewer: the
+    /// gap was no pixels at all and the bar stood on the surface's edge. And from the front two
+    /// corners are equally far left, so which one was chosen hung on cos(90 degrees) being
+    /// 6e-17.
+    /// </remarks>
+    [Fact]
+    public void TheScaleStandsClearOfTheSurfaceFromTheFrontAndTheSide()
+    {
+        var (surface, _, _) = SurfaceCommand.Sample(
+            Model("template", "einzel-lens"), new SurfaceRequest(Plane: "xy", Samples: 41));
+
+        var (a0, a1) = (surface.Across[0], surface.Across[^1]);
+        var (d0, d1) = (surface.DeepSign * surface.Deep[0], surface.DeepSign * surface.Deep[^1]);
+        var corners = new[] { (a0, 0.0, d0), (a0, 0.0, d1), (a1, 0.0, d0), (a1, 0.0, d1) };
+
+        foreach (var view in new[] { "front", "side", "iso" })
+        {
+            var (azimuth, elevation) = SurfaceCommand.Views[view];
+            var foot = SurfaceCommand.ScaleFoot(surface, azimuth, elevation);
+
+            // On a picture 1600 pixels wide, framed on the base and the foot together.
+            var matrix = Framing.Around([.. corners, (foot.Across, 0.0, foot.Z)], azimuth, elevation).Matrix(1.6);
+            double Px(double x, double z) => ((matrix[0] * x) + (matrix[8] * z) + matrix[12] + 1.0) * 800.0;
+
+            var gap = corners.Min(c => Px(c.Item1, c.Item3)) - Px(foot.Across, foot.Z);
+            output.WriteLine($"{view}: foot at ({foot.Across:G6}, {foot.Z:G6}), {gap:F1} px left of the surface");
+
+            Assert.True(gap > 20.0, $"{view}: the scale stands {gap:F1} px from the surface's edge");
+
+            // The same corner a hair either side of the view's angle: no coin toss.
+            foreach (var nudge in new[] { -1e-9, 1e-9 })
+            {
+                var near = SurfaceCommand.ScaleFoot(surface, azimuth + nudge, elevation);
+
+                Assert.Equal(foot.Across, near.Across, 9);
+                Assert.Equal(foot.Z, near.Z, 9);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A frame measured once and extended is the frame of all the points measured together, to
+    /// the bit.
+    /// </summary>
+    /// <remarks>
+    /// The label fit re-framed every drawn vertex on each of up to twelve passes; it now
+    /// measures them once and adds the scale's few points per pass. The picture must not move.
+    /// </remarks>
+    [Fact]
+    public void AFrameExtendedIsTheFrameOfEverythingTogether()
+    {
+        var random = new Random(7);
+        (double, double, double) Point() => ((random.NextDouble() * 80) - 40, (random.NextDouble() * 9) - 3, (random.NextDouble() * 50) - 25);
+
+        var drawn = Enumerable.Range(0, 5000).Select(_ => Point()).ToList();
+
+        foreach (var (azimuth, elevation) in SurfaceCommand.Views.Values)
+        {
+            var once = Framing.Extent.Of(drawn, azimuth, elevation);
+
+            for (var pass = 0; pass < 4; pass++)
+            {
+                var extra = Enumerable.Range(0, 5).Select(_ => Point()).Select(p => (p.Item1 * 1.5, p.Item2 * 1.5, p.Item3 * 1.5)).ToList();
+                var together = Framing.Around(drawn.Concat(extra), azimuth, elevation);
+
+                Assert.Equal(together, once.Including(extra).Frame());
+                Assert.Equal(together.Matrix(1.6), once.Including(extra).Frame().Matrix(1.6));
+            }
+
+            // Including leaves the first measurement as it was.
+            Assert.Equal(Framing.Around(drawn, azimuth, elevation), once.Frame());
+        }
     }
 
     /// <summary>

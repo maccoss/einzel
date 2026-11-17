@@ -21,7 +21,7 @@ namespace Einzel.Fields;
 /// <see cref="SignedDistanceToDiscontinuity"/>.
 /// </para>
 /// </remarks>
-public sealed class SuperposedField : IElectrostaticField, IConductorBounded, IHeldConductors
+public sealed class SuperposedField : IElectrostaticField, IConductorBounded
 {
     private readonly IElectrostaticField[] _elements;
 
@@ -86,21 +86,6 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded, IH
 
         return nearestName;
     }
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Only where the name cannot mean two things (<see cref="HeldConductors.Agreed"/>): names
-    /// are unique within one element, and two elements may each have one called <c>plate</c>.
-    /// </remarks>
-    public double? HeldPotentialOf(string conductor, double timeSeconds) =>
-        HeldConductors.Agreed(_elements, conductor, timeSeconds);
-
-    /// <inheritdoc/>
-    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        HeldConductors.AgreedMean(_elements, conductor, fromSeconds, periodSeconds, samples);
-
-    /// <inheritdoc/>
-    public bool HasConductor(string conductor) => HeldConductors.AnyHas(_elements, conductor);
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)
@@ -283,32 +268,40 @@ public static class FieldAssembly
     }
 
     /// <summary>
-    /// Builds the field as <see cref="BuildReported"/> does, and says which of the model's
-    /// field elements each member of the sum came from.
+    /// Builds the field as <see cref="BuildReported"/> does, and hands out its conductor-bearing
+    /// leaves: for every solved element, where its metal is, the solve that says what the metal
+    /// holds, and which half of a reflected solve each piece is.
     /// </summary>
     /// <param name="model">The validated model.</param>
-    /// <returns>
-    /// The assembled field, its warnings, and for each member of the electric sum - in the
-    /// order a <see cref="SuperposedField"/> or <see cref="DrivenSuperposedField"/> holds them,
-    /// or the one member where the sum is a single field - the index in
-    /// <see cref="CompiledModel.Fields"/> of the element it was built from.
-    /// </returns>
+    /// <returns>The assembled field, its warnings, and its leaves in element order.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// An element added a field that has conductors and no leaf for them: a defect in this
+    /// method, raised here so that a new kind of element cannot be drawn with its metal missing.
+    /// </exception>
     /// <remarks>
-    /// Not every element becomes a member: a magnet joins a list of its own and a field-free
-    /// element adds nothing to the sum. So a member's position is not its element's index, and
-    /// only the loop that decides what to add knows the correspondence. A caller that
-    /// reconstructed it by counting elements of the kinds it believed were skipped was wrong
-    /// for a model beginning with a field-free element - every conductor was attributed to
-    /// the element before its own.
+    /// <para>
+    /// Only the loop that builds the field knows what each piece is: which element it came from
+    /// (a magnet joins a list of its own and a field-free element adds nothing, so a member's
+    /// position is not its element's index), that a reflected solve is one solved half and its
+    /// image, that a tilted cross-section is seen through a rotation. A caller that took the
+    /// assembled field apart afterwards had to recognise each wrapper type, and got it wrong
+    /// three ways in turn: elements miscounted after a field-free one, the image half of every
+    /// reflected solve read as free space, and the declared half's shape counted as metal in
+    /// the image's half.
+    /// </para>
+    /// <para>
+    /// So the leaves are made here, by the builders, as the field is. Whatever wraps the sum
+    /// afterwards - a magnet's field around it - changes nothing about them.
+    /// </para>
     /// </remarks>
-    public static (IElectrostaticField Field, IReadOnlyList<Core.Results.ValidityWarning> Warnings, IReadOnlyList<int> MemberElements)
+    public static (IElectrostaticField Field, IReadOnlyList<Core.Results.ValidityWarning> Warnings, IReadOnlyList<FieldLeaf> Leaves)
         BuildMapped(CompiledModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         var elements = new List<IElectrostaticField>(model.Fields.Count);
-        var memberElements = new List<int>(model.Fields.Count);
+        var leaves = new List<FieldLeaf>();
         var magnets = new List<Magnetic.IMagneticField>();
         var warnings = new List<Core.Results.ValidityWarning>();
 
@@ -342,6 +335,8 @@ public static class FieldAssembly
 
                 continue;
             }
+
+            var before = elements.Count;
 
             if (element.Region is { } bounded)
             {
@@ -401,8 +396,9 @@ public static class FieldAssembly
                         ReflectAboutX = solve.ReflectAboutX,
                     };
 
-                    var (built, report3d) = Solved.GeometryBuilder3D.BuildField(geometry);
+                    var (built, report3d, volumeLeaves) = Solved.GeometryBuilder3D.BuildLeaved(geometry);
                     elements.Add(built);
+                    leaves.AddRange(volumeLeaves.Select(l => new FieldLeaf(l.Shape, l.Held, index, l.Mirrored)));
                     Note(warnings, report3d, index, "solved3d");
                     break;
                 }
@@ -411,7 +407,7 @@ public static class FieldAssembly
                 {
                     // The solve happens here, once per build. Nothing about what
                     // the electrodes add up to is known at this level.
-                    var (plane, report2d) = Solved.GeometryBuilder.Build(element.Solve!);
+                    var (plane, report2d, planeLeaves) = Solved.GeometryBuilder.BuildLeaved(element.Solve!);
 
                     // A tilted extrusion axis is applied here rather than baked into the
                     // geometry, because a rotation of a solved field is exact while a
@@ -424,6 +420,18 @@ public static class FieldAssembly
                             element.Solve!.TiltHalfTurns,
                             element.Solve!.TiltCentreX,
                             element.Solve!.TiltCentreZ));
+                    // A leaf's shape stands where the element does: through the same rotation.
+                    leaves.AddRange(planeLeaves.Select(l => new FieldLeaf(
+                        element.Solve!.TiltHalfTurns == 0.0
+                            ? l.Shape
+                            : new RotatedField(
+                                (IElectrostaticField)l.Shape,
+                                element.Solve!.TiltHalfTurns,
+                                element.Solve!.TiltCentreX,
+                                element.Solve!.TiltCentreZ),
+                        l.Held,
+                        index,
+                        l.Mirrored)));
                     Note(warnings, report2d, index, "solved2d");
                     break;
                 }
@@ -433,10 +441,13 @@ public static class FieldAssembly
                         nameof(model), element.Kind, "unhandled field element kind");
             }
 
-            // Whatever this element added to the sum came from this element.
-            while (memberElements.Count < elements.Count)
+            // Every field that has conductors has a leaf saying where and what they hold. An
+            // element kind added above without one would otherwise be drawn and probed with its
+            // metal missing, and nothing would fail.
+            if (elements.Count > before && elements[^1] is IConductorBounded && !leaves.Exists(l => l.Element == index))
             {
-                memberElements.Add(index);
+                throw new InvalidOperationException(
+                    $"field element {index} ({element.Kind}) has conductors and contributed no leaf for them");
             }
         }
 
@@ -467,7 +478,7 @@ public static class FieldAssembly
                 magnets.Count == 1 ? magnets[0] : new Magnetic.SuperposedMagneticField(magnets));
         }
 
-        return (field, warnings, memberElements);
+        return (field, warnings, leaves);
     }
 
     /// <summary>Records a solve that missed its tolerance, per GRD-2.</summary>

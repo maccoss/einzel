@@ -3585,5 +3585,30 @@ Two findings from Stage 1 that bear on the spec:
   exit 6. A source scan fails if a throwing `Parse` returns to the CLI or a `TryParse` appears
   outside the two readers.
 
+  **A tenth review found the probe still taking the assembled field apart after the fact, and the
+  third defect of that kind.** A reflected solve is one element with two halves, and the probe
+  gated a conductor on whether its *element* was solved at a point - so the declared half's shape
+  counted as metal throughout the image's half: a conductor declared from 18 to 40 mm against a
+  mirror at 20 is metal from 18 to 22, and was a plateau out to 40. The fix is at the depth the
+  two before it should have been: **the assembly hands out the leaves as it builds the field**
+  (`FieldAssembly.BuildMapped` returns a `FieldLeaf` per conductor-bearing piece - its shape, the
+  solve that holds it, its element, which half it is), made by the builders, which are the only
+  place that knows a reflected solve is a half and its image. The probe's unwrapping of sums and
+  its special case for a magnet are deleted, and so are the forwarders: seven wrapper and sum
+  types each carried three members passing "what does this conductor hold" inward, and a sum
+  answered for a name by asking whether its members agreed. Only the three solves implement
+  `IHeldConductors` now. `BuildMapped` refuses an element that adds conductors and no leaf, and a
+  test lists every field type that wraps another with how the leaves follow it, so a new wrapper
+  fails until somebody says. Also: the caption on a driven field is written to a thousandth of
+  the drive period, so two instants a quarter cycle apart are not both `t=100 µs`; the scale is
+  set out along the base axis that shows on screen and its corner is chosen with a tolerance,
+  where from the front it stood on the surface's edge at a corner decided by cos 90 = 6e-17; the
+  label fit measures the drawn vertices once and extends that, not twelve walks over a million
+  vertices; the parser asks the verb named which flags are switches, which removes the rule that
+  a name mean the same in every verb instead of policing it; a driven solve's cycle mean and a
+  conductor's held mean share one per-channel mean weight and one decision about when it has no
+  closed form; and a driven field made with no channel answers without an index out of range (the
+  builders always make one, which a test now states).
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

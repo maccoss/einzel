@@ -19,19 +19,6 @@ public sealed class CommandLine
     {
     }
 
-    /// <summary>
-    /// The flags that never take a value, so the argument after one is never taken as its value.
-    /// </summary>
-    /// <remarks>
-    /// The parser cannot tell a switch from an option by looking: "a following argument that is
-    /// not itself an option is this option's value". So <c>render surface --cycle-mean
-    /// models/q.json</c> read the model as the switch's value and printed the usage, and
-    /// <c>--no-scale out.png</c> dropped the file without a word. Not a list of its own: it is
-    /// every switch the verbs' registry names (<see cref="VerbFlags.AllSwitches"/>), so a switch
-    /// is declared once.
-    /// </remarks>
-    public static IReadOnlySet<string> Switches => VerbFlags.AllSwitches;
-
     /// <summary>Positional arguments, excluding the verb.</summary>
     public IReadOnlyList<string> Positional => _positional;
 
@@ -71,6 +58,17 @@ public sealed class CommandLine
 
         var parsed = new CommandLine();
 
+        // Which flags never take a value is the verb's own statement (VerbFlags.ByVerb), read
+        // before anything else: the parser cannot tell a switch from an option by looking - "a
+        // following argument that is not itself an option is this option's value" - so
+        // `render surface --cycle-mean models/q.json` read the model as the switch's value.
+        // Asked of the verb named, so a name may be a switch for one verb and take a value for
+        // another. A command line naming no verb this knows has only --json and --help, which
+        // every verb takes; whatever it is, it is refused or answered with a usage.
+        var switches = VerbFlags.For(args)?.Flags.Switches;
+
+        bool IsSwitch(string flag) => flag is "json" or "help" || (switches?.Contains(flag) ?? false);
+
         for (var i = 1; i < args.Length; i++)
         {
             var argument = args[i];
@@ -93,7 +91,7 @@ public sealed class CommandLine
 
             // A following argument that is not itself an option is this option's
             // value - unless this is a switch, which never has one.
-            if (!Switches.Contains(name) && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            if (!IsSwitch(name) && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
             {
                 parsed._options[name] = args[++i];
                 parsed._all.Add((name, args[i]));

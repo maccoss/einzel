@@ -165,10 +165,10 @@ public sealed class FieldProbe
 
     private readonly IElectrostaticField _field;
     private readonly ITimeVaryingField? _driven;
-    // The leaves of the electric sum - every field that has conductors of its own - and the
-    // model element each came from, built by one function (Leaves) so the two cannot disagree.
-    private readonly IReadOnlyList<IElectrostaticField> _members;
-    private readonly IReadOnlyList<int> _leafElements;
+    // The conductor-bearing leaves of the field, as the assembly that built it handed them out:
+    // where each one's metal is, the solve that says what it holds, its element, and which half
+    // of a reflected solve it is.
+    private readonly IReadOnlyList<FieldLeaf> _leaves;
     private readonly bool _hasOperatingPoints;
     private readonly Einzel.Fields.Magnetic.IMagneticField? _magnetic;
     private readonly CompiledModel _model;
@@ -179,11 +179,11 @@ public sealed class FieldProbe
         CompiledModel model,
         IElectrostaticField field,
         IReadOnlyList<ValidityWarning> warnings,
-        IReadOnlyList<int> memberElements,
+        IReadOnlyList<FieldLeaf> leaves,
         string modelPath,
         string modelHash)
     {
-        (_members, _leafElements) = Leaves(field, memberElements);
+        _leaves = leaves;
 
         // Once: asking a sequenced field for its operating point allocates a held copy of it.
         _hasOperatingPoints = field is ITimeVaryingField timed
@@ -224,61 +224,6 @@ public sealed class FieldProbe
     // the rule that a conductor counts only where its element was solved holds at any size.
     private const int StackElements = 256;
 
-    // THE ONE PLACE the electric sum is taken apart, recording for every leaf the element it
-    // came from. The assembly's sum holds one member per element that adds one
-    // (FieldAssembly.BuildMapped); a member may itself be a sum - a reflected solve is its own
-    // field plus that field's mirror image - and both of its leaves belong to its element. A
-    // version that unwrapped every sum and mapped the leaves by position against the
-    // assembly's per-member list gave a reflected model two leaves and one entry, so the
-    // mirrored half of every reflected solve read as free space.
-    private static (IReadOnlyList<IElectrostaticField> Leaves, IReadOnlyList<int> Elements) Leaves(
-        IElectrostaticField field, IReadOnlyList<int> memberElements)
-    {
-        var electric = field is Einzel.Fields.Magnetic.MagnetizedField magnetized ? magnetized.Electric : field;
-        var leaves = new List<IElectrostaticField>();
-        var elements = new List<int>();
-
-        void Add(IElectrostaticField member, int element)
-        {
-            IReadOnlyList<IElectrostaticField>? parts = member switch
-            {
-                SuperposedField sum => sum.Elements,
-                DrivenSuperposedField sum => sum.Elements,
-                _ => null,
-            };
-
-            if (parts is null)
-            {
-                leaves.Add(member);
-                elements.Add(element);
-                return;
-            }
-
-            foreach (var part in parts)
-            {
-                Add(part, element);
-            }
-        }
-
-        // More than one member: the top of the field is the assembly's own sum, one member per
-        // entry. One member (or none): the field is that member, whatever it is.
-        IReadOnlyList<IElectrostaticField> top = memberElements.Count > 1
-            ? electric switch
-            {
-                SuperposedField sum => sum.Elements,
-                DrivenSuperposedField sum => sum.Elements,
-                _ => [electric],
-            }
-            : [electric];
-
-        for (var i = 0; i < top.Count; i++)
-        {
-            Add(top[i], i < memberElements.Count ? memberElements[i] : -1);
-        }
-
-        return (leaves, elements);
-    }
-
     // Which elements' solves (or regions) contain a point: true for an element with no domain
     // to check, which fills all space. The same test the outside count reports.
     private void Solved(in Vec3 point, Span<bool> inside)
@@ -290,26 +235,20 @@ public sealed class FieldProbe
     }
 
     // ONE WALK of the leaves' conductors, giving two answers: the nearest conductor of any leaf
-    // (what a probe row names, and its distance), and the nearest among the leaves whose
-    // element was solved at the point (the conductor the point is IN). Only those compete for
+    // (what a probe row names, and its distance), and the nearest among the leaves whose own
+    // half was solved at the point (the conductor the point is IN). Only those compete for
     // the second: a declared shape running past its solve would otherwise win wherever it was
     // nearest, and hide a conductor another element really has there. The rule is the
     // smallest signed distance, the first on a tie.
     private void Locate(
-        in Vec3 point, ReadOnlySpan<bool> solved,
-        out int nearest, out double nearestDistance, out int held, out double heldDistance)
+        in Vec3 point, out int nearest, out double nearestDistance, out int held, out double heldDistance)
     {
         nearest = held = -1;
         nearestDistance = heldDistance = double.PositiveInfinity;
 
-        for (var i = 0; i < _members.Count; i++)
+        for (var i = 0; i < _leaves.Count; i++)
         {
-            if (_members[i] is not IConductorBounded bounded)
-            {
-                continue;
-            }
-
-            var d = bounded.SignedDistanceToConductor(in point);
+            var d = _leaves[i].Shape.SignedDistanceToConductor(in point);
 
             if (d < nearestDistance)
             {
@@ -317,14 +256,39 @@ public sealed class FieldProbe
                 nearest = i;
             }
 
-            var element = _leafElements[i];
-
-            if (d < heldDistance && (element < 0 || solved[element]))
+            if (d < heldDistance && InsideLeaf(_leaves[i], in point))
             {
                 heldDistance = d;
                 held = i;
             }
         }
+    }
+
+    // Whether a leaf's own half of its solve holds the point. The declared half is solved in
+    // the declared box and its image in that box's reflection, and each is metal only there: a
+    // shape declared running past the mirror plane is replaced, beyond the plane, by the image
+    // of what is on the near side. A tilted cross-section is asked in its own unrotated frame.
+    // Faces are inside: a face node holds a solved value.
+    private bool InsideLeaf(FieldLeaf leaf, in Vec3 p)
+    {
+        var element = _model.Fields[leaf.Element];
+
+        if (element.Solve is { } plane)
+        {
+            var q = _tilts[leaf.Element] is { } tilt ? tilt.ToLocal(in p) : p;
+            var x = leaf.Mirrored && plane.ReflectAboutX is { } mirror ? (2.0 * mirror) - q.X : q.X;
+
+            return InPlane(plane, x, q.Y, q.Z);
+        }
+
+        if (element.Solve3D is { } volume)
+        {
+            var x = leaf.Mirrored && volume.ReflectAboutX is { } mirror ? (2.0 * mirror) - p.X : p.X;
+
+            return InVolume(volume, x, p.Y, p.Z);
+        }
+
+        return InsideDomain(leaf.Element, in p);
     }
 
     /// <summary>The model, as an absolute path.</summary>
@@ -391,9 +355,9 @@ public sealed class FieldProbe
         }
 
         var model = validation.Model!;
-        var (field, warnings, memberElements) = FieldAssembly.BuildMapped(model);
+        var (field, warnings, leaves) = FieldAssembly.BuildMapped(model);
 
-        return new FieldProbe(model, field, warnings, memberElements, absolute, ContentHash.OfText(modelText));
+        return new FieldProbe(model, field, warnings, leaves, absolute, ContentHash.OfText(modelText));
     }
 
     /// <summary>The box the model's bounded elements occupy, in millimetres, when there is one.</summary>
@@ -722,7 +686,7 @@ public sealed class FieldProbe
             return ProbeStatus.Refused;
         }
 
-        Locate(in point, inside, out var nearest, out var d, out var member, out var depth);
+        Locate(in point, out var nearest, out var d, out var member, out var depth);
 
         var allOutside = _allBounded && outsideCount == Elements.Count;
 
@@ -748,26 +712,26 @@ public sealed class FieldProbe
 
         if (inMetal && resolve != Resolve.None)
         {
-            conductor = (_members[member] as IConductorBounded)?.ConductorAt(in point);
+            conductor = _leaves[member].Shape.ConductorAt(in point);
         }
         else if (resolve == Resolve.Nearest && reported >= 0 && distance is not null)
         {
-            conductor = (_members[reported] as IConductorBounded)?.ConductorAt(in point);
+            conductor = _leaves[reported].Shape.ConductorAt(in point);
         }
 
         // And it says so where the point is inside a declared shape whose element was not solved
         // there, rather than leaving the shape unmentioned.
         if (resolve == Resolve.Nearest && !inMetal && d < 0.0 && nearest >= 0
-            && (_members[nearest] as IConductorBounded)?.ConductorAt(in point) is { } past)
+            && _leaves[nearest].Shape.ConductorAt(in point) is { } past)
         {
             note = string.Create(
                 CultureInfo.InvariantCulture,
-                $"inside the declared shape of '{past}' (element {_leafElements[nearest]}), which runs past the edge of its solve: nothing was solved for it here");
+                $"inside the declared shape of '{past}' (element {_leaves[nearest].Element}), which runs past the edge of its solve: nothing was solved for it here");
         }
 
         if (inMetal && resolve == Resolve.Held && conductor is not null)
         {
-            element = _leafElements[member] is var e and >= 0 ? e : null;
+            element = _leaves[member].Element;
             held = HeldOf(member, conductor, atSeconds, cycleMean);
         }
 
@@ -816,14 +780,15 @@ public sealed class FieldProbe
                 ? null
                 : double.IsFinite(shortest) ? shortest : null;
 
-        // The pieces held one by one from the pieces as built, so piece k of the held field is
-        // piece k held - by construction, not by trusting the composite's own operating point
-        // to keep its members in order.
-        var pieces = new IElectrostaticField[_members.Count];
+        // Each leaf's solve held on its own, so leaf k of the held field is leaf k held - by
+        // construction, not by taking the held composite apart.
+        var pieces = new IHeldConductors[_leaves.Count];
 
         for (var k = 0; k < pieces.Length; k++)
         {
-            pieces[k] = _members[k] is ITimeVaryingField timed ? timed.AtOperatingPoint(atSeconds) : _members[k];
+            pieces[k] = _leaves[k].Held is ITimeVaryingField timed && timed.AtOperatingPoint(atSeconds) is IHeldConductors at
+                ? at
+                : _leaves[k].Held;
         }
 
         var state = new HeldState(atSeconds, held, window, pieces);
@@ -832,7 +797,7 @@ public sealed class FieldProbe
         return state;
     }
 
-    private sealed record HeldState(double At, ITimeVaryingField Field, double? Window, IReadOnlyList<IElectrostaticField> Leaves);
+    private sealed record HeldState(double At, ITimeVaryingField Field, double? Window, IReadOnlyList<IHeldConductors> Leaves);
 
     private HeldState? _held;
 
@@ -898,16 +863,13 @@ public sealed class FieldProbe
     {
         if (!cycleMean || _driven is null)
         {
-            return _members[member] is IHeldConductors held ? held.HeldPotentialOf(conductor, atSeconds) : null;
+            return _leaves[member].Held.HeldPotentialOf(conductor, atSeconds);
         }
 
         var state = HeldAt(atSeconds);
-        var members = state.Leaves;
 
-        Debug.Assert(members.Count == _members.Count, "the held pieces are the built pieces, held");
-
-        return members[member] is IHeldConductors at && state.Window is { } window
-            ? at.HeldCycleMeanOf(conductor, atSeconds, window, CycleMeanSamples)
+        return state.Window is { } window
+            ? state.Leaves[member].HeldCycleMeanOf(conductor, atSeconds, window, CycleMeanSamples)
             : null;
     }
 

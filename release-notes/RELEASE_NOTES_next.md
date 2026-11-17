@@ -170,6 +170,12 @@ become a feature release without being renamed twice.
   sampled across its width, `--samples NxM` sets both counts, `--out` and `--csv` may not be one
   file, and a negative or unplaceably late `--at-us` is refused (also by `probe` and `render
   section`).
+- **`render surface` on a reflected solve stops a conductor at its image.** A conductor declared
+  running past the mirror plane is metal only up to the plane and in its reflection; the part
+  beyond was drawn as a plateau and `probe` called it inside-conductor. The instant on a driven
+  field's picture is written finely enough to tell phases apart (`t=100.25 µs`, where both it and
+  `t=100 µs` were captioned alike), and the scale no longer stands on the surface's edge in
+  `--view front`.
 - **A gallery page** reproducing an einzel lens's published voltage and pressure series
   (`docs/gallery-einzel-lens.md`), with every choice the source leaves open listed.
 - **The `paul-trap` template has endcap holes and a stretch.** Three new parameters, all zero by

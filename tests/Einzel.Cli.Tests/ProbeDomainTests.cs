@@ -310,6 +310,39 @@ public sealed class ProbeDomainTests : IDisposable
         Assert.Equal("ok", inside.Status);
     }
 
+    /// <summary>
+    /// A tilted cross-section's conductors are where the tilt puts them: a point in the turned
+    /// plate is inside it, though the plate as declared, unturned, does not reach it.
+    /// </summary>
+    /// <remarks>
+    /// The assembly hands out each conductor's shape with the solve that holds it, and a shape
+    /// has to stand where its element does - through the same rotation the field is seen through.
+    /// </remarks>
+    [Fact]
+    public void ATiltedCrossSectionsConductorsAreWhereTheTiltPutsThem()
+    {
+        // Forty-five degrees about the model's own tilt axis, asked of the model.
+        var probe = FieldProbe.Open(FaceModel("turned", tiltHalfTurns: 0.25));
+        var solve = probe.Model.Fields[0].Solve!;
+        var tilt = new Einzel.Fields.RotatedField(
+            Einzel.Fields.FieldFreeSpace.Instance, solve.TiltHalfTurns, solve.TiltCentreX, solve.TiltCentreZ);
+
+        static Vec3 Mm(Vec3 metres) => new(metres.X * 1e3, metres.Y * 1e3, metres.Z * 1e3);
+
+        // The plate spans x from -8 to -4 mm and y from 3 to 6 mm in its own frame, and runs
+        // along that frame's z. A point on its mid-line, turned into the world, where the plate
+        // as declared - a slab along the world's z - does not reach.
+        var middle = Enumerable.Range(-20, 41)
+            .Select(k => Mm(tilt.FromLocal(new Vec3(-6.0e-3, 4.5e-3, k * 1.0e-3))))
+            .First(world => world.X is < -9.0 or > -3.0);
+
+        var turned = probe.At(0, middle, 0.0);
+
+        Assert.Equal(ProbeStatus.InsideConductor, turned.Status);
+        Assert.Equal("plate", turned.Conductor);
+        Assert.Equal(-1.5, turned.ConductorDistanceMm!.Value, 9);
+    }
+
     [Fact]
     public void OutsideEveryDomainWinsOverInsideADeclaredConductor()
     {

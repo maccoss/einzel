@@ -28,20 +28,6 @@ public sealed record VerbFlags(
         Global.Contains(flag) || Switches.Contains(flag) || Values.Contains(flag) || Optional.Contains(flag) || Refused.Contains(flag);
 
     /// <summary>
-    /// Every flag that never takes a value, in any verb, with <c>--help</c> and <c>--json</c>:
-    /// what the parser needs to know before it knows the verb, so that the argument after a
-    /// switch is never taken as its value.
-    /// </summary>
-    /// <remarks>
-    /// Derived, so there is one statement of which flags are switches. It is sound only while no
-    /// name is a switch in one verb and takes a value in another, which
-    /// <c>VerbFlagsTests.NoFlagIsASwitchInOneVerbAndAValueInAnother</c> holds.
-    /// </remarks>
-    public static IReadOnlySet<string> AllSwitches => Every.Value;
-
-    private static readonly Lazy<HashSet<string>> Every = new(Union);
-
-    /// <summary>
     /// Flags every verb accepts: <c>--json</c> (CLI-1 - a verb with nothing to put in JSON still
     /// accepts it, so an agent need not special-case one). <c>--help</c> is not checked at all: a
     /// command line asking for it is left to the verb, as it always was.
@@ -132,18 +118,4 @@ public sealed record VerbFlags(
             new HashSet<string>(refused ?? [], StringComparer.Ordinal),
             positionals,
             new HashSet<string>(optional ?? [], StringComparer.Ordinal));
-
-    private static HashSet<string> Union()
-    {
-        // --help is a switch for the parser although no verb is held to it: `run --help
-        // model.json` must not read the model as --help's value.
-        var all = new HashSet<string>(Global, StringComparer.Ordinal) { "help" };
-
-        foreach (var flags in ByVerb.Values)
-        {
-            all.UnionWith(flags.Switches);
-        }
-
-        return all;
-    }
 }
