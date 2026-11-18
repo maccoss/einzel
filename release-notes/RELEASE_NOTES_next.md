@@ -234,10 +234,17 @@ become a feature release without being renamed twice.
   doubled there. The plane and the declared side are the declared half's, the other side the
   image's, judged on the point itself.
 - **A reflected solve's mirror plane is a surface the integrator lands on unless its edge is a
-  mirror**: a solve declaring edge surfaces with a grounded (Dirichlet) edge on the plane gets one
-  surface there, owned by the declared half, decided from the boundary condition when the solve is
-  built rather than from the field at each step. A Neumann edge, or a solve declaring no edge
-  surfaces - every shipped reflected template - gets none, and its flights are unchanged.
+  mirror**: a grounded (Dirichlet) edge or face on the plane gets one surface there, owned by the
+  declared half, in a cross-section whether or not it declares its edges as surfaces and in a
+  volume solve, which declares none of its own. Decided from the boundary condition when the solve
+  is built rather than from the field at each step. A Neumann edge, or a box stopping short of the
+  plane, gets none; both shipped reflected templates have a Neumann edge, and their flights are
+  unchanged.
+- **A cross-section both tilted and reflected runs** again: every command reading one exited 6 with
+  an invalid cast while turning its conductors.
+- **A CSV text cell beginning with `=`, `+`, `-`, `@`, a tab or a carriage return** - a conductor's
+  name in `probe --csv` or `render surface --csv` - is written as `"'=..."`, so a spreadsheet shows
+  it as text rather than running it. Numbers are unchanged.
 - **The note that a word after a bare `--progress` may have been its value** is given for a unit
   after a number in any case (`2.MS`, `5.MM`), and not for a word naming something on disk or a
   name with a unit-like extension (`trap.ps`, `fit.m`).

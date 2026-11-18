@@ -600,7 +600,13 @@ public static class ArtifactFiles
                             report.Add($"the new version of {target} is at {kept}");
                         }
 
-                        if (kept is not null)
+                        if (kept is not null && kept == temporary)
+                        {
+                            // Left at its staging name, which is named after nothing: the advice
+                            // must not send anyone looking for a file named after the target.
+                            advice.Add("move each new version from where the refusal says it is over the file it is the new version of, to complete the set");
+                        }
+                        else if (kept is not null)
                         {
                             advice.Add("move a new version over the file it is named after to complete the set");
                         }
@@ -842,6 +848,12 @@ public static class ArtifactFiles
             }
             catch (Exception moving)
             {
+                if (moving is IOException && File.Exists(temporary) && (File.Exists(kept) || Directory.Exists(kept)))
+                {
+                    // The name was taken between the look and the move: try the next one.
+                    continue;
+                }
+
                 failure = moving.Message;
                 return File.Exists(temporary) ? temporary : null;
             }

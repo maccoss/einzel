@@ -23,7 +23,7 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
 {
     private readonly IElectrostaticField _inner;
     private readonly Reflection _reflection;
-    private readonly PlaneFace _face;
+    private readonly PlaneFace? _face;
 
     /// <summary>The image of a declared half, answering where a reflection says it does.</summary>
     /// <param name="inner">The declared half.</param>
@@ -33,8 +33,9 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _reflection = reflection ?? throw new ArgumentNullException(nameof(reflection));
 
-        // The image does not own the plane: the declared half declares it, once (PlaneFace).
-        _face = reflection.FaceOf(_inner, ownsPlane: false);
+        // The image does not own the plane: the declared half declares it, once (PlaneFace). Where
+        // the halves overlap the image answers everywhere and has no face to read.
+        _face = reflection.Overlaps ? null : reflection.FaceOf(_inner, ownsPlane: false);
     }
 
     /// <summary>The image of a declared half through a plane, answering everywhere.</summary>
@@ -199,7 +200,7 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
     {
         if (!Contributes(in position))
         {
-            return _face.At(in position);
+            return _face!.At(in position);
         }
 
         var mirrored = Reflect(in position);

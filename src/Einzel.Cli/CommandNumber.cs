@@ -39,6 +39,9 @@ public static class CommandNumber
             return false;
         }
 
+        // "NaN" and "Infinity" parse, deliberately: so `--progress 1e400` reaches the reader and is
+        // refused as an interval. A model file called Infinity, with no extension, is the price,
+        // and not a realistic one. Reviewed and kept.
         return double.TryParse(word, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 

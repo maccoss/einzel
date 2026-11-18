@@ -44,8 +44,8 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     /// <inheritdoc/>
     /// <remarks>
     /// The inner field's run - gating only takes field away, so wherever the inner field is free
-    /// the gated one is too - cut at the plane where the ray crosses it and this half declares a
-    /// surface there (<see cref="PlaneFace.Declares"/>). An analytic drift ends where a surface is,
+    /// the gated one is too - cut at the plane where the ray crosses it and this half declares it a
+    /// surface (<see cref="PlaneFace.Declares"/>). An analytic drift ends where a surface is,
     /// and a run that reached past the plane on the strength of an inner field free on both sides
     /// of it would jump the one surface the sum declares there.
     /// </remarks>
@@ -65,20 +65,19 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
             return run;
         }
 
-        var y = position.Y + (toPlane * direction.Y);
-        var z = position.Z + (toPlane * direction.Z);
-        return _face.Declares(y, z) ? toPlane : run;
+        return _face.Declares ? toPlane : run;
     }
 
     /// <inheritdoc/>
     /// <remarks>
     /// Gated as the image's is, by one rule (<see cref="PlaneFace"/>): on the image's side, where
     /// this half contributes nothing, it declares none of its own surfaces - only the plane, where
-    /// it has a face there, and it is the one member of the sum that does.
+    /// the edge on it is not a mirror, and it is the one member of the sum that does. On its own
+    /// side the plane is added to its own surfaces, so a half that declares none still lands there.
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position) =>
         reflection.DeclaredAnswersAt(position.X)
-            ? inner.SignedDistanceToDiscontinuity(in position)
+            ? _face.Answering(in position, inner.SignedDistanceToDiscontinuity(in position))
             : _face.At(in position);
 
     /// <inheritdoc/>

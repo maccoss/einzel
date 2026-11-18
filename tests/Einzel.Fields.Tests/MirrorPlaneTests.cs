@@ -536,10 +536,18 @@ public sealed class MirrorPlaneTests
     {
         double Measure(IElectrostaticField field, double x) => field.SignedDistanceToDiscontinuity(new Vec3(x, 0.0, 0.0));
 
-        // A surface 2 mm past the plane, on the image's side: no change of sign across it.
-        var phantom = new Reflection(Plane, ImageAbove: true).Declared(new Edged(Plane + 0.002));
+        // A surface 2 mm past the plane, on the image's side: no change of sign across it, behind a
+        // mirror edge (no plane surface either) ...
+        var phantom = new Reflection(Plane, ImageAbove: true, EdgeIsContinuous: true).Declared(new Edged(Plane + 0.002));
         Assert.Equal(Math.Sign(Measure(phantom, Plane + 0.001)), Math.Sign(Measure(phantom, Plane + 0.003)));
         Assert.Equal(Measure(phantom, Plane + 0.001), Measure(phantom, Plane + 0.003));
+
+        // ... and behind any other edge, where the plane is the one surface: a change at the plane,
+        // none across the inner field's surface beyond it, the measure the plane's distance.
+        var edged = new Reflection(Plane, ImageAbove: true).Declared(new Edged(Plane + 0.002));
+        Assert.NotEqual(Math.Sign(Measure(edged, Plane - 0.0005)), Math.Sign(Measure(edged, Plane + 0.001)));
+        Assert.Equal(Math.Sign(Measure(edged, Plane + 0.001)), Math.Sign(Measure(edged, Plane + 0.003)));
+        Assert.Equal(0.003, Math.Abs(Measure(edged, Plane + 0.003)), 12);
 
         // The control: the inner field alone does change sign there.
         Assert.NotEqual(Math.Sign(new Edged(Plane + 0.002).SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0, 0))),
@@ -606,17 +614,24 @@ public sealed class MirrorPlaneTests
     /// is no surface, a Dirichlet one is - and a driven solve answers the same for every channel,
     /// since the answer is the geometry's.
     /// </summary>
+    /// <remarks>
+    /// Whether the solve declares its own edges is no part of it: a Dirichlet edge with
+    /// <c>boundaryIsDiscontinuous: false</c> was marked continuous and declared nothing, while the
+    /// union's normal field went from E to -E across it.
+    /// </remarks>
     [Theory]
-    [InlineData(BoundaryKind.Neumann, false)]
-    [InlineData(BoundaryKind.Dirichlet, true)]
-    public void ASolvedEdgeDecidesThePlane(BoundaryKind edge, bool surface)
+    [InlineData(BoundaryKind.Neumann, true, false)]
+    [InlineData(BoundaryKind.Dirichlet, true, true)]
+    [InlineData(BoundaryKind.Neumann, false, false)]
+    [InlineData(BoundaryKind.Dirichlet, false, true)]
+    public void ASolvedEdgeDecidesThePlane(BoundaryKind edge, bool discontinuous, bool surface)
     {
         var solve = new CompiledSolvedField
         {
             MinX = 0.0, MaxX = Plane, MinY = 0.0, MaxY = 0.012,
             CellSize = 0.5e-3, Tolerance = 1e-10,
             RightEdge = edge,
-            BoundaryIsDiscontinuous = true,
+            BoundaryIsDiscontinuous = discontinuous,
             ReflectAboutX = Plane,
             Electrodes =
             [
@@ -634,6 +649,105 @@ public sealed class MirrorPlaneTests
 
         Assert.Equal(surface, before != after);
         Assert.Equal(!surface, GeometryBuilder.ReflectionOf(solve)!.EdgeIsContinuous);
+    }
+
+    /// <summary>
+    /// Where the halves overlap there is no plane face: asking for one is refused, and the image
+    /// is built without one and still answers everywhere.
+    /// </summary>
+    /// <remarks>
+    /// The image built a face for an overlapping reflection and never used it; read, it would have
+    /// taken the declared side's sign from the wrong side of the plane.
+    /// </remarks>
+    [Fact]
+    public void AnOverlappingReflectionHasNoPlaneFace()
+    {
+        var overlapping = new Reflection(Plane, ImageAbove: null);
+        var inner = new Through(new Vec3(1000.0, 0.0, 0.0));
+
+        Assert.Throws<ArgumentException>(() => overlapping.FaceOf(inner, ownsPlane: true));
+        Assert.Throws<ArgumentException>(() => overlapping.FaceOf(inner, ownsPlane: false));
+
+        var image = new ReflectedField(inner, overlapping);
+        var mirrored = new Vec3((2.0 * Plane) - 0.01, 0.0, 0.0);
+        Assert.Equal(inner.SignedDistanceToDiscontinuity(new Vec3(0.01, 0.0, 0.0)), image.SignedDistanceToDiscontinuity(in mirrored), 12);
+    }
+
+    /// <summary>
+    /// A solved cross-section whose box stops short of the plane leaves a gap with no field on
+    /// either side, so the plane is no surface whatever its edge: its edge is its own surface, a
+    /// gap's width from the plane.
+    /// </summary>
+    [Fact]
+    public void ASolveStoppingShortOfThePlaneIsNoSurfaceThere()
+    {
+        var solve = new CompiledSolvedField
+        {
+            MinX = 0.0, MaxX = Plane - 0.002, MinY = 0.0, MaxY = 0.012,
+            CellSize = 0.5e-3, Tolerance = 1e-10,
+            RightEdge = BoundaryKind.Dirichlet,
+            BoundaryIsDiscontinuous = true,
+            ReflectAboutX = Plane,
+            Electrodes =
+            [
+                new CompiledElectrode
+                {
+                    Name = "plate", Shape = ElectrodeShape.Rectangle,
+                    MinX = 0.008, MaxX = 0.012, MinY = 0.0, MaxY = 0.004, Potential = 500.0,
+                },
+            ],
+        };
+
+        var (field, _) = GeometryBuilder.Build(solve);
+        double Sign(double x) => Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(x, 0.006, 0.0)));
+
+        Assert.True(GeometryBuilder.ReflectionOf(solve)!.EdgeIsContinuous);
+        Assert.Equal(Sign(Plane - 2e-4), Sign(Plane + 2e-4));
+
+        // Its own edge, a gap's width short of the plane, and that edge's image, are surfaces.
+        Assert.NotEqual(Sign(Plane - 0.002 - 2e-4), Sign(Plane - 0.002 + 2e-4));
+        Assert.NotEqual(Sign(Plane + 0.002 - 2e-4), Sign(Plane + 0.002 + 2e-4));
+    }
+
+    /// <summary>
+    /// A reflected volume solve has the plane as a surface where its face there is not a mirror,
+    /// though a volume solve declares no surfaces of its own; on a Neumann face, none.
+    /// </summary>
+    /// <remarks>
+    /// The plane was declared only where the half's own measure had a face there, and a volume
+    /// solve has none anywhere: a grounded face on the plane, a plate driving a normal field
+    /// through it, and the union reporting no surface.
+    /// </remarks>
+    [Theory]
+    [InlineData(BoundaryKind.Neumann, false)]
+    [InlineData(BoundaryKind.Dirichlet, true)]
+    public void AVolumeSolveTakesThePlaneFromItsFace(BoundaryKind face, bool surface)
+    {
+        var faces = new List<BoundaryKind> { BoundaryKind.Dirichlet, face, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet };
+        var geometry = new Einzel.Fields.Solved.Geometry3D(
+            0.0, -0.006, -0.006, Plane, 0.006, 0.006, 1e-3,
+            [
+                new CompiledElectrode3D
+                {
+                    Name = "plate", Shape = Electrode3DShape.Box,
+                    MinX = 0.004, MaxX = 0.006, MinY = -0.003, MaxY = 0.003, MinZ = -0.003, MaxZ = 0.003, Potential = 500.0,
+                },
+            ],
+            Tolerance: 1e-8)
+        {
+            Faces = Einzel.Fields.Solved.Geometry3D.FacesOf(faces),
+            ReflectAboutX = Plane,
+        };
+
+        var (field, _) = Einzel.Fields.Solved.GeometryBuilder3D.BuildField(geometry);
+
+        // Between the plate and the plane, where the normal field is not zero on a grounded face.
+        Assert.True(Math.Abs(field.ElectricFieldAt(new Vec3(Plane - 2e-3, 0.0, 0.0)).X) > 1.0);
+
+        var before = Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, 0.0, 0.0)));
+        var after = Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.0, 0.0)));
+
+        Assert.Equal(surface, before != after);
     }
 
     /// <summary>

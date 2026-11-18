@@ -1082,7 +1082,9 @@ with the spelling that carries a unit.
 still` (`--width-px`, `--height-px`, `--view`, `--out`), `probe` (`--at-us`, `--samples`, `--csv`)
 and `export` (`--step-mm`, `--at-us`, `--box-mm`, `--out`); all of these used to drop the flag and
 exit 0.
-`--csv` writes the sampled grid, quoted per RFC 4180. Units are in the flag names, as for the probe; a bare `--offset`,
+`--csv` writes the sampled grid, quoted per RFC 4180; a text cell beginning like a spreadsheet
+formula (`=`, `+`, `-`, `@`, a tab or a carriage return) is written with a single quote before it,
+inside quotes, so it is shown as text rather than run - numbers are never altered. Units are in the flag names, as for the probe; a bare `--offset`,
 `--box` or `--at` is refused. See [Rendering](rendering.md) for the figures and what they show.
 
 ### `einzel export --composite`

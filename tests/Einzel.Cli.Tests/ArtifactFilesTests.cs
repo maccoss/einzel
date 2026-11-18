@@ -459,6 +459,97 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         File.Delete(still);
     }
 
+    // The second of two files fails to replace in a way that cannot be told, so the new versions
+    // are kept aside; keeping runs through the given hook. The refusal, and the second file's path.
+    private (EinzelException Refusal, string Second) KeptAside(Action<string, string> keeping)
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first.vti");
+        var second = Path.Combine(_root, "second.vti");
+        File.WriteAllBytes(first, [1]);
+        File.WriteAllBytes(second, [2]);
+
+        ArtifactFiles.Replacing.Value = (target, backup) =>
+        {
+            if (target != second)
+            {
+                return;
+            }
+
+            File.WriteAllBytes(backup, [7]);
+            ArtifactFiles.Comparing.Value = (_, _) => throw new IOException("locked");
+            throw new IOException("the replace failed part way");
+        };
+        ArtifactFiles.Keeping.Value = keeping;
+
+        try
+        {
+            var refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.WriteAll([(null, first, [8]), (null, second, [9])]));
+            output.WriteLine(refusal.Error.Constraint);
+            output.WriteLine(refusal.Error.Suggestion);
+            return (refusal, second);
+        }
+        finally
+        {
+            ArtifactFiles.Replacing.Value = null;
+            ArtifactFiles.Comparing.Value = null;
+            ArtifactFiles.Keeping.Value = null;
+        }
+    }
+
+    /// <summary>
+    /// A name taken between the look and the move is passed over for the next one, as a name
+    /// already taken is.
+    /// </summary>
+    /// <remarks>Keeping gave up at the first failed move, leaving the new version at a staging name.</remarks>
+    [Fact]
+    public void ANameTakenUnderTheMoveIsPassedOver()
+    {
+        var (refusal, second) = KeptAside((_, kept) =>
+        {
+            if (kept.EndsWith(".new", StringComparison.Ordinal))
+            {
+                File.WriteAllBytes(kept, [5]);
+                throw new IOException("taken under the move");
+            }
+        });
+
+        Assert.Equal([5], File.ReadAllBytes(second + ".new"));
+        Assert.Equal([9], File.ReadAllBytes(second + ".new2"));
+        Assert.Contains($"the new version of {second} is at {second}.new2", refusal.Error.Constraint, StringComparison.Ordinal);
+        Assert.DoesNotContain("could not keep", refusal.Error.Constraint, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Where every name is taken, the refusal says where the new version is - its staging name -
+    /// and its advice does not send anyone to a file named after the target.
+    /// </summary>
+    [Fact]
+    public void ANewVersionLeftAtItsStagingNameIsSaidToBeThere()
+    {
+        var (refusal, second) = KeptAside((_, kept) =>
+        {
+            File.WriteAllBytes(kept, [5]);
+            throw new IOException("taken under the move");
+        });
+
+        const string Still = "it is still at ";
+        var constraint = refusal.Error.Constraint;
+        Assert.Contains($"could not keep the new version of {second}: every name from .new to .new999 is taken; {Still}", constraint, StringComparison.Ordinal);
+        var staged = constraint[(constraint.IndexOf(Still, StringComparison.Ordinal) + Still.Length)..].Split(';')[0].Trim();
+        Assert.Equal([9], File.ReadAllBytes(staged));
+        Assert.Contains($"the new version of {second} is at {staged}", constraint, StringComparison.Ordinal);
+        Assert.DoesNotContain("named after", refusal.Error.Suggestion, StringComparison.Ordinal);
+        Assert.Contains("from where the refusal says it is", refusal.Error.Suggestion, StringComparison.Ordinal);
+
+        foreach (var taken in Directory.GetFiles(_root, "second.vti.new*"))
+        {
+            File.Delete(taken);
+        }
+
+        File.Delete(staged);
+    }
+
     /// <summary>
     /// A set staged one file at a time puts nothing in place until it is committed, and a set
     /// abandoned part way leaves nothing behind: no file, no staging file, no folder it made.

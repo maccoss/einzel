@@ -70,7 +70,9 @@ public sealed class MirrorGapFlightTests
         // The image's run was the distance to the plane alone, zero on the plane, so the drift
         // stopped there and an integrated step crossed the rest.
         var species = IonSpecies.FromMassToCharge(500.0, 1);
-        var field = new Reflection(Plane, ImageAbove: true).Sum(new FreeBox());
+        // A box ending short of the plane is continuous there - nothing on either side - as
+        // GeometryBuilder.ReflectionOf marks it.
+        var field = new Reflection(Plane, ImageAbove: true, EdgeIsContinuous: true).Sum(new FreeBox());
 
         var v0 = species.SpeedAfterAcceleration(Quantity.From(100.0, "V")).SiValue;
         var launch = new PhaseState(new Vec3(startX, 0.0, 0.0), new Vec3(v0, 0.0, 0.0));
@@ -121,6 +123,67 @@ public sealed class MirrorGapFlightTests
         }
     }
 
+    // The faced half as a solve that declares none of its own surfaces - a volume solve, or a
+    // cross-section with boundaryIsDiscontinuous false - so its measure is no surface anywhere.
+    private sealed class Silent : IElectrostaticField
+    {
+        private readonly Faced _faced = new();
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => _faced.ElectricFieldAt(in position);
+
+        public double PotentialAt(in Vec3 position) => _faced.PotentialAt(in position);
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) => double.PositiveInfinity;
+    }
+
+    // The union of the silent half written whole: the same field, with the plane its one surface.
+    private sealed class WholePlaneOnly : IElectrostaticField
+    {
+        private readonly Whole _whole = new();
+
+        public Vec3 ElectricFieldAt(in Vec3 p) => _whole.ElectricFieldAt(in p);
+
+        public double PotentialAt(in Vec3 p) => _whole.PotentialAt(in p);
+
+        public double SignedDistanceToDiscontinuity(in Vec3 p) => Plane - p.X;
+    }
+
+    /// <summary>
+    /// A half that declares no surfaces of its own, on an edge that is not a mirror, still gets the
+    /// plane as a surface - the reflection declares it - and an ion crossing it flies exactly as
+    /// through the same field written whole with the plane landed on. On a mirror edge it gets none.
+    /// </summary>
+    /// <remarks>
+    /// The plane was declared only where the half's own measure had a face there, so a volume solve
+    /// (which declares no surfaces) and a cross-section with <c>boundaryIsDiscontinuous: false</c>
+    /// never declared it, whatever their edge: a grounded face on the plane, the union's normal
+    /// field going from +E to -E, and nothing saying so.
+    /// </remarks>
+    [Fact]
+    public void AHalfDeclaringNoSurfacesStillGetsThePlaneUnlessItIsAMirror()
+    {
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var union = new Reflection(Plane, ImageAbove: true).Sum(new Silent());
+        var mirror = new Reflection(Plane, ImageAbove: true, EdgeIsContinuous: true).Sum(new Silent());
+
+        double Sign(IElectrostaticField f, double x) => Math.Sign(f.SignedDistanceToDiscontinuity(new Vec3(x, 0.0, 0.0)));
+
+        Assert.NotEqual(Sign(union, Plane - 0.0005), Sign(union, Plane + 0.0005));
+        Assert.Equal(Sign(mirror, Plane - 0.0005), Sign(mirror, Plane + 0.0005));
+
+        var v0 = species.SpeedAfterAcceleration(Quantity.From(100.0, "V")).SiValue;
+        var launch = new PhaseState(new Vec3(-0.001, 0.0, 0.0), new Vec3(v0, 0.0, 0.0));
+        var settings = new IntegrationSettings { MaximumFlightTime = 1e-3, RelativeTolerance = 1e-13 };
+        TrajectoryStopFunction detector = (in PhaseState s) => (2.0 * Plane) + 0.001 - s.Position.X;
+
+        var flown = TrajectoryIntegrator.Integrate(launch, species, union, settings, detector);
+        var whole = TrajectoryIntegrator.Integrate(launch, species, new WholePlaneOnly(), settings, detector);
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, flown.Outcome);
+        Assert.Equal(whole.FlightTimeSeconds, flown.FlightTimeSeconds);
+        Assert.Equal(whole.MaximumRelativeEnergyDrift, flown.MaximumRelativeEnergyDrift);
+    }
+
     /// <summary>
     /// Where the union's field jumps at the plane, the sum declares one surface there - its sign
     /// changes across it - and an ion crossing it flies exactly as through the same field written
@@ -169,7 +232,7 @@ public sealed class MirrorGapFlightTests
     public void AFlightThroughTheGapMatchesTheClosedForm()
     {
         var species = IonSpecies.FromMassToCharge(500.0, 1);
-        var field = new Reflection(Plane, ImageAbove: true).Sum(new Box());
+        var field = new Reflection(Plane, ImageAbove: true, EdgeIsContinuous: true).Sum(new Box());
 
         var v0 = species.SpeedAfterAcceleration(Quantity.From(100.0, "V")).SiValue;
         var acceleration = species.ChargeSi * Strength / species.MassSi;

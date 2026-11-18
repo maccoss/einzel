@@ -973,8 +973,11 @@ public static class GeometryBuilder
     /// <returns>The reflection, or null where the solve is not reflected.</returns>
     /// <remarks>
     /// The edge on the plane is continuous by construction where it is Neumann - a mirror holds the
-    /// normal field at zero - or where the solve declares no edge surfaces at all. Every channel of
-    /// a driven or staged solve shares this one answer, since it is the geometry's, not a field's.
+    /// normal field at zero - or where the box stops short of the plane, leaving a gap with no field
+    /// on either side - and only there: a grounded edge is a surface whether or not the solve
+    /// declares its edges as surfaces, since <c>boundaryIsDiscontinuous</c> says what the solve's
+    /// own box declares, not whether the union's field jumps at the plane. Every channel of a driven
+    /// or staged solve shares this one answer, since it is the geometry's, not a field's.
     /// </remarks>
     public static Reflection? ReflectionOf(CompiledSolvedField solve)
     {
@@ -985,7 +988,11 @@ public static class GeometryBuilder
 
         var side = Reflection.SideOf(solve.MinX, solve.MaxX, plane);
         var edge = side == true ? solve.RightEdge : solve.LeftEdge;
-        var continuous = !solve.BoundaryIsDiscontinuous || edge == BoundaryKind.Neumann;
+
+        // A box that stops short of the plane leaves a gap with nothing in it on either side, so
+        // the plane is continuous there whatever the edge; its own edge is the solve's surface.
+        var stopsShort = side == true ? solve.MaxX < plane : side == false && solve.MinX > plane;
+        var continuous = edge == BoundaryKind.Neumann || stopsShort;
 
         return Reflection.Of(plane, solve.MinX, solve.MaxX, continuous);
     }

@@ -467,6 +467,8 @@ public static class Program
         return LeadsLikeANumber(word);
     }
 
+    // Relative to the working directory on purpose: that is where the command itself resolves a
+    // relative path, so the hint says what the command will do with the word. Reviewed and kept.
     private static bool OnDisk(string word)
     {
         try

@@ -68,25 +68,16 @@ public sealed class RotatedField : IElectrostaticField, IConductorBounded
         HalfTurns = halfTurns;
     }
 
-    private RotatedField(IElectrostaticField inner, RotatedField rotation)
-    {
-        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        _cos = rotation._cos;
-        _sin = rotation._sin;
-        centreX = rotation.centreX;
-        centreZ = rotation.centreZ;
-        _rotates = rotation._rotates;
-        HalfTurns = rotation.HalfTurns;
-    }
-
-    /// <summary>Another field through this one's rotation: the same axis, angle, sine and cosine.</summary>
-    /// <param name="other">The field to rotate.</param>
-    /// <returns>It, rotated exactly as this field is.</returns>
+    /// <summary>Conductors through this field's rotation: the same axis, angle, sine and cosine.</summary>
+    /// <param name="other">The conductors to rotate.</param>
+    /// <returns>They, rotated exactly as this field is.</returns>
     /// <remarks>
     /// So a tilted element's conductor leaves stand where its field does by construction, not
-    /// because a second rotation was built from the same arguments and happened to agree.
+    /// because a second rotation was built from the same arguments and happened to agree. Typed
+    /// as conductors, not as a field: a leaf is only conductors - a reflected solve's declared
+    /// half is gated metal with no field of its own - and a cast to a field threw on it.
     /// </remarks>
-    public RotatedField Around(IElectrostaticField other) => new(other, this);
+    public IConductorBounded Around(IConductorBounded other) => new RotatedConductors(other, this);
 
     /// <summary>The rotation this field applies, in half turns.</summary>
     public double HalfTurns { get; }
@@ -207,4 +198,24 @@ public sealed class RotatedField : IElectrostaticField, IConductorBounded
             ? bounded.NearestConductor(ToLocal(in position), out name)
             : double.PositiveInfinity;
     }
+}
+
+/// <summary>Conductors seen through a field's rotation, with nothing else of a field about them.</summary>
+/// <param name="inner">The conductors, in the unrotated frame.</param>
+/// <param name="rotation">The rotation whose frame they stand in.</param>
+public sealed class RotatedConductors(IConductorBounded inner, RotatedField rotation) : IConductorBounded
+{
+    private readonly IConductorBounded _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+
+    /// <summary>The rotation they stand through: the element's own, shared, not a copy of it.</summary>
+    public RotatedField Rotation { get; } = rotation ?? throw new ArgumentNullException(nameof(rotation));
+
+    /// <inheritdoc/>
+    public double SignedDistanceToConductor(in Vec3 position) => _inner.SignedDistanceToConductor(Rotation.ToLocal(in position));
+
+    /// <inheritdoc/>
+    public string? ConductorAt(in Vec3 position) => _inner.ConductorAt(Rotation.ToLocal(in position));
+
+    /// <inheritdoc/>
+    public double NearestConductor(in Vec3 position, out string? name) => _inner.NearestConductor(Rotation.ToLocal(in position), out name);
 }

@@ -295,10 +295,11 @@ public static class GeometryBuilder3D
 
     /// <summary>The geometry's reflection: its plane and how the halves meet, decided once.</summary>
     /// <remarks>
-    /// A volume solve declares no discontinuity surfaces (<see cref="SolvedField3D"/>), so its plane
-    /// is no surface whatever its face condition; it is marked continuous where the face on the
-    /// plane is Neumann, and otherwise left to the safe default, which declares nothing here because
-    /// the half has no face to declare.
+    /// Continuous where the face on the plane is Neumann or the box stops short of it, and a surface
+    /// otherwise. A volume solve
+    /// declares no discontinuity surfaces of its own (<see cref="SolvedField3D"/>), so the plane is
+    /// declared by the reflection itself (<see cref="PlaneFace"/>): with a grounded face on the plane
+    /// the union's normal field goes from E to -E there, and nothing else would say so.
     /// </remarks>
     private static Reflection? ReflectionOf(Geometry3D geometry)
     {
@@ -310,7 +311,10 @@ public static class GeometryBuilder3D
         var side = Reflection.SideOf(geometry.MinX, geometry.MaxX, plane);
         var face = geometry.Faces.Count == 6 ? geometry.Faces[side == true ? 1 : 0] : EdgeCondition.Dirichlet;
 
-        return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann);
+        // A box stopping short of the plane leaves a gap with no field on either side.
+        var gap = side == true ? geometry.MaxX < plane : side == false && geometry.MinX > plane;
+
+        return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann || gap);
     }
 
     private static DirichletMask3D Assemble(

@@ -427,7 +427,7 @@ public static class FieldAssembly
                     // the one built above, and the leaf carries it for whoever asks where in the
                     // unrotated solve a point is.
                     leaves.AddRange(planeLeaves.Select(l => new FieldLeaf(
-                        tilt is null ? l.Shape : tilt.Around((IElectrostaticField)l.Shape),
+                        tilt is null ? l.Shape : tilt.Around(l.Shape),
                         l.Held,
                         index,
                         l.Image,

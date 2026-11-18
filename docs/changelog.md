@@ -3913,5 +3913,19 @@ Two findings from Stage 1 that bear on the spec:
   in any case (`2.MS`, `5.MM`), and never for a word naming something on disk, so `trap.ps` and a
   `1.ps` standing beside the command are files.
 
+  **A thirty-first review, and the plane needed no face of its own.** The plane was declared only
+  where the half's own measure had a face there, so a volume solve - which declares no surfaces -
+  and a cross-section with `boundaryIsDiscontinuous: false` never declared it, whatever their edge.
+  The reflection now declares it itself wherever the edge on the plane is not a mirror: added to the
+  half's own surfaces on its side, and on the image's side the distance from the plane signed to
+  change exactly there; a box stopping short of the plane is continuous, since nothing is on either
+  side. A half declaring no surfaces of its own flies its union exactly as the same field written
+  whole with the plane landed on. Both shipped reflected templates have a Neumann edge, so the four
+  reference flights and the sweep do not move. Also: a cross-section both tilted and reflected ran
+  into an invalid cast turning its declared half's metal, which has no field, and now runs; a name
+  taken between the look and the move is passed over when a new version is kept aside, and one left
+  at its staging name is said to be there; a CSV text cell beginning like a formula is written as
+  text; and an overlapping reflection builds no plane face.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

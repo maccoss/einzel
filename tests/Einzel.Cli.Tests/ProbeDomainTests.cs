@@ -67,7 +67,7 @@ public sealed class ProbeDomainTests : IDisposable
     /// the declared face. A 100 V plate inside makes the field at every face non-zero; a 50 V plate
     /// runs out through the top face, past the domain.
     /// </summary>
-    private string FaceModel(string name = "faces", double tiltHalfTurns = 0.0, bool everywhere = false)
+    private string FaceModel(string name = "faces", double tiltHalfTurns = 0.0, bool everywhere = false, bool reflected = false)
     {
         Directory.CreateDirectory(_root);
         var path = Path.Combine(_root, $"{name}.json");
@@ -93,6 +93,7 @@ public sealed class ProbeDomainTests : IDisposable
               "type": "solved2d",
               "solve": {
                 {{tilt}}
+                {{(reflected ? $"\"reflectAboutX\": {Q(0.3, "mm")}," : string.Empty)}}
                 "minX": {{Q(-12.7, "mm")}},
                 "maxX": {{Q(0.3, "mm")}},
                 "minY": {{Q(0, "mm")}},
@@ -292,6 +293,40 @@ public sealed class ProbeDomainTests : IDisposable
         using var document = Probe(model, "--at-mm", "5000,0,0");
         Assert.Equal("outside-domain", Row(document).GetProperty("status").GetString());
         Assert.Contains("probe.outside-domain", Codes(document));
+    }
+
+    /// <summary>
+    /// A cross-section both tilted and reflected runs, probes and draws: its conductor leaves
+    /// stand through the tilt, and the reflected one's mirrored plate is where the mirror puts it.
+    /// </summary>
+    /// <remarks>
+    /// A reflected solve's declared half is gated metal, conductors with no field of their own,
+    /// and the tilt cast every leaf to a field to rotate it: every command reading such a model
+    /// exited 6 with an invalid cast.
+    /// </remarks>
+    [Fact]
+    public void ATiltedReflectedCrossSectionRunsProbesAndDraws()
+    {
+        var model = FaceModel("tilted-reflected", tiltHalfTurns: 0.05, reflected: true);
+
+        var (run, _, runErr) = Run("run", model, "--json", "--progress", "0", "--project", Path.Combine(_root, "run"));
+        Assert.True(run == 0, runErr);
+
+        // The plate's middle in the unrotated frame and its mirror image about x = 0.3 mm, both
+        // turned into the world: each inside its conductor, the same potential.
+        var cos = Math.Cos(0.05 * Math.PI);
+        var sin = Math.Sin(0.05 * Math.PI);
+        Vec3 World(double x, double y) => new(x * cos, y, -x * sin);
+
+        var probe = FieldProbe.Open(model);
+        var plate = probe.At(0, World(-6.0, 4.5), 0.0);
+        var image = probe.At(1, World(6.6, 4.5), 0.0);
+        Assert.Equal(plate.Conductor, image.Conductor);
+        Assert.NotNull(plate.Conductor);
+        Assert.Equal(plate.PotentialV!.Value, image.PotentialV!.Value, 9);
+
+        var (draw, _, drawErr) = Run("render", "surface", model, "--samples", "41", "--dry-run", "--json");
+        Assert.True(draw == 0, drawErr);
     }
 
     [Fact]
@@ -494,7 +529,8 @@ public sealed class ProbeDomainTests : IDisposable
 
         Assert.NotEmpty(leaves);
         Assert.All(leaves, l => Assert.NotNull(l.Tilt));
-        Assert.All(leaves, l => Assert.Equal(0.01, ((Einzel.Fields.RotatedField)l.Shape).HalfTurns));
+        Assert.All(leaves, l => Assert.Same(l.Tilt, ((Einzel.Fields.RotatedConductors)l.Shape).Rotation));
+        Assert.All(leaves, l => Assert.Equal(0.01, l.Tilt!.HalfTurns));
         Assert.All(leaves, l => Assert.Same(leaves[0].Tilt, l.Tilt));
     }
 
