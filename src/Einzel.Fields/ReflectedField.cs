@@ -163,9 +163,10 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     /// field's surfaces seen through the mirror is declared there - a surface the inner field
     /// declares beyond its edge would otherwise land on the declared side as a phantom the
     /// integrator stops at. The one surface that can be there is the plane, where the image
-    /// starts to answer: declared where the inner field itself has a surface on the plane, as its
-    /// distance from the plane, so the sign changes across the plane exactly as it does with the
-    /// image's own value beyond it; otherwise none.
+    /// starts to answer, and only where the image's field jumps there: where the inner field has a
+    /// face on the plane, declared as the distance from the plane with the sign the inner field
+    /// gives beyond that face. Otherwise the measure is the image's own at the plane, constant
+    /// across this side, so its sign changes nowhere the field is continuous.
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
@@ -173,9 +174,18 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
         {
             var onPlane = new Vec3(planeX, position.Y, position.Z);
 
-            if (Math.Abs(_inner.SignedDistanceToDiscontinuity(in onPlane)) > PlaneSurfaceTolerance)
+            var atPlane = _inner.SignedDistanceToDiscontinuity(in onPlane);
+
+            if (Math.Abs(atPlane) > PlaneSurfaceTolerance)
             {
-                return double.PositiveInfinity;
+                // No face on the plane, so nothing jumps there: the image's own measure where it
+                // starts to answer, held constant across this side - continuous with it at the
+                // plane and changing sign nowhere here. Infinity here, beside a finite value
+                // beyond the plane, was a change of sign at a plane where nothing is
+                // discontinuous - a millimetre from a declared box's real edge when the box
+                // stops short of the plane, the paired-surface layout that once cost an ion
+                // 2.6e-4 of its energy.
+                return atPlane;
             }
 
             // The sign the inner field gives just past its face on the plane - the side this point

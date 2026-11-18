@@ -183,11 +183,26 @@ public sealed record PotentialSurface
     public double SampledHighest { get; init; }
 
     /// <summary>
-    /// The lowest value the field can take, from what the conductors hold (earth included), in
-    /// <see cref="Unit"/>; null where that is not known - a model with an analytic element, which
-    /// fills all space and has no such bound. See <c>FieldProbe.AppliedRange</c>.
+    /// The lowest value the field can take on this plane, from what the conductors hold (earth
+    /// included), in <see cref="Unit"/>: the lowest of the per-node bounds; null where that is not
+    /// known - a model with an analytic element, which fills all space and has no such bound. See
+    /// <c>FieldProbe.AppliedRangeAt</c>.
     /// </summary>
     public double? AppliedLowest { get; init; }
+
+    /// <summary>
+    /// The lowest value the field can take at each node, in <see cref="Unit"/>, in the order of
+    /// <see cref="Values"/>; null where the bound is not known.
+    /// </summary>
+    /// <remarks>
+    /// Per node, because a bound for the whole plane is a bound for its loosest point: an
+    /// overlapping reflected solve is twice its range only where both halves answer, and held to
+    /// that everywhere a 560 V overshoot beside a 500 V face was drawn and not flagged.
+    /// </remarks>
+    public IReadOnlyList<double>? NodeLowest { get; init; }
+
+    /// <summary>The highest value the field can take at each node, as <see cref="NodeLowest"/> is the lowest.</summary>
+    public IReadOnlyList<double>? NodeHighest { get; init; }
 
     /// <summary>The highest value the field can take, as <see cref="AppliedLowest"/> is the lowest.</summary>
     public double? AppliedHighest { get; init; }
@@ -250,6 +265,12 @@ public sealed record PotentialSurface
     public double Drawn(int i, int j)
     {
         var value = At(i, j);
+        var k = (i * Deep.Count) + j;
+
+        if (NodeLowest is { } lows && NodeHighest is { } highs)
+        {
+            return Math.Clamp(value, lows[k], highs[k]);
+        }
 
         return AppliedLowest is { } low && AppliedHighest is { } high ? Math.Clamp(value, low, high) : value;
     }
@@ -702,6 +723,8 @@ public static class SurfaceCommand
         var elements = new int?[nu * nv];
         var depth = new double[nu * nv];
         var held = new double[nu * nv];
+        var boundLow = new double[nu * nv];
+        var boundHigh = new double[nu * nv];
         var outsideRows = new int[nu];
         var refusedRows = new int[nu];
 
@@ -717,6 +740,12 @@ public static class SurfaceCommand
                 var point = FieldProbe.MillimetresToMetres(PlanePoint(across, deep, n, us[i], vs[j], offset));
                 var status = probe.SamplePotential(
                     in point, at, cycleMean, out raw[k], out var distance, out var conductor, out var element, out var volts);
+
+                // What the conductors hold bounds the field at this node: summed over the elements
+                // answering here, each reflected half counted where it answers.
+                (boundLow[k], boundHigh[k]) = probe.AppliedRangeAt(in point, at, cycleMean) is { } local
+                    ? local
+                    : (double.NaN, double.NaN);
 
                 if (status == ProbeStatus.Refused)
                 {
@@ -917,10 +946,23 @@ public static class SurfaceCommand
         // no charge, so nowhere above the highest potential on the boundary or below the lowest.
         var (sampledLow, sampledHigh) = Range(values);
         (double Low, double High)? applied = null;
+        double[]? nodeLow = null;
+        double[]? nodeHigh = null;
 
-        if (probe.AppliedRange(at, cycleMean) is { } volts)
+        if (probe.AppliedRange(at, cycleMean) is not null)
         {
-            applied = factor >= 0.0 ? (factor * volts.Low, factor * volts.High) : (factor * volts.High, factor * volts.Low);
+            // Per node, in the drawn unit; the plane's bound is the loosest of them.
+            nodeLow = new double[raw.Length];
+            nodeHigh = new double[raw.Length];
+
+            for (var k = 0; k < raw.Length; k++)
+            {
+                (nodeLow[k], nodeHigh[k]) = factor >= 0.0
+                    ? (factor * boundLow[k], factor * boundHigh[k])
+                    : (factor * boundHigh[k], factor * boundLow[k]);
+            }
+
+            applied = (nodeLow.Min(), nodeHigh.Max());
         }
 
         var (lowest, highest) = Stated(sampledLow, sampledHigh, applied);
@@ -939,7 +981,7 @@ public static class SurfaceCommand
                     continue;
                 }
 
-                var excess = Math.Max(values[k] - bound.High, bound.Low - values[k]);
+                var excess = Math.Max(values[k] - nodeHigh![k], nodeLow![k] - values[k]);
 
                 if (excess > over)
                 {
@@ -956,7 +998,7 @@ public static class SurfaceCommand
                     "render.interpolant-overshoot",
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"the samples reach {values[worst]:G6} {unit} at {Name(across)} = {us[worst / nv]:G6} mm, {Name(deep)} = {vs[worst % nv]:G6} mm, {over:G4} {unit} outside the {bound.Low:G6} to {bound.High:G6} {unit} the conductors hold: a field with no charge in it is nowhere outside what its boundary holds, so that is the interpolant overshooting beside a step in what the boundary holds - at a conductor's face, and most where its edge meets the earthed edge of its solve - and not the field. The range stated, the height scale and the scale bar are the conductors' range, and the drawing is held to it: the surface is drawn no further than its bar. The raw readings are in the CSV and in sampledLowest and sampledHighest"),
+                        $"the samples reach {values[worst]:G6} {unit} at {Name(across)} = {us[worst / nv]:G6} mm, {Name(deep)} = {vs[worst % nv]:G6} mm, {over:G4} {unit} outside the {nodeLow![worst]:G6} to {nodeHigh![worst]:G6} {unit} the conductors hold there: a field with no charge in it is nowhere outside what its boundary holds, so that is the interpolant overshooting beside a step in what the boundary holds - at a conductor's face, and most where its edge meets the earthed edge of its solve - and not the field. The range stated, the height scale and the scale bar are the conductors' range, and the drawing is held to it: the surface is drawn no further than its bar. The raw readings are in the CSV and in sampledLowest and sampledHighest"),
                     WarningSeverity.Qualified));
             }
         }
@@ -1083,6 +1125,8 @@ public static class SurfaceCommand
             SampledHighest = sampledHigh,
             AppliedLowest = applied?.Low,
             AppliedHighest = applied?.High,
+            NodeLowest = nodeLow,
+            NodeHighest = nodeHigh,
         };
 
         return (surface, probe, warnings);

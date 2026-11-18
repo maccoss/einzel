@@ -376,9 +376,103 @@ public sealed class FieldProbe
     {
         RefuseMeanWithoutCycle(atSeconds, cycleMean);
 
-        // Each element's own range, then summed only over elements that can overlap: two solves
-        // side by side are never both answering at one point, and summing their ranges gave two
-        // 0-1000 V stages a range of 0-2000 V, loosening the clamp past real overshoot.
+        if (ElementRanges(atSeconds, cycleMean) is not { } ranges)
+        {
+            return null;
+        }
+
+        // A reflected solve whose plane lies inside its own box overlaps its image, and somewhere
+        // the field is the two summed: within twice its range there. Summed over elements only
+        // where they can overlap: two solves side by side are never both answering at one point.
+        return Combined([.. ranges.Select(r => _reflections[r.Index] is { Overlaps: true } ? (r.Index, 2.0 * r.Low, 2.0 * r.High) : r)]);
+    }
+
+    /// <summary>
+    /// The range the potential can take at one point, from what the conductors hold: the sum, over
+    /// the elements answering there, of each one's range - a reflected solve's counted once for
+    /// each of its halves that answers at the point.
+    /// </summary>
+    /// <param name="pointMetres">The point, in metres.</param>
+    /// <param name="atSeconds">The instant; for a cycle mean, the operating point.</param>
+    /// <param name="cycleMean">Whether the range is of the mean over one drive cycle.</param>
+    /// <returns>The range in volts, earth included; null where <see cref="AppliedRange"/> is null.</returns>
+    /// <remarks>
+    /// <see cref="AppliedRange"/> is a bound for anywhere, and so for an overlapping reflected
+    /// solve it is twice the element's range everywhere - which let a 560 V overshoot beside a
+    /// 500 V face, far from where the halves overlap, pass under a bound of 1000 V. Asked per
+    /// point, it is doubled only where both halves answer, and an element whose solve does not
+    /// reach the point adds nothing (a solve answers zero outside its box, which earth already
+    /// covers). Never under what the field can be: each half's sum is within its range wherever
+    /// it answers, and it answers nowhere else.
+    /// </remarks>
+    public (double Low, double High)? AppliedRangeAt(in Vec3 pointMetres, double atSeconds, bool cycleMean)
+    {
+        RefuseMeanWithoutCycle(atSeconds, cycleMean);
+
+        if (ElementRanges(atSeconds, cycleMean) is not { } ranges)
+        {
+            return null;
+        }
+
+        double low = 0.0, high = 0.0;
+
+        foreach (var (index, elementLow, elementHigh) in ranges)
+        {
+            var halves = HalvesAnswering(index, in pointMetres);
+            low += halves * elementLow;
+            high += halves * elementHigh;
+        }
+
+        return (low, high);
+    }
+
+    // How many halves of an element's solve answer at a point: one or none for a solve that is not
+    // reflected, and for a reflected one the declared half where it holds the point and the image
+    // where it does and answers there (Reflection.ImageAnswersAt) - two only where they overlap.
+    private int HalvesAnswering(int index, in Vec3 p)
+    {
+        var element = _model.Fields[index];
+        var mirror = _reflections[index];
+
+        if (element.Solve is { } plane)
+        {
+            var q = _tilts[index] is { } tilt ? tilt.ToLocal(in p) : p;
+            var declared = InPlane(plane, q.X, q.Y, q.Z) && (mirror is null || mirror.DeclaredAnswersAt(q.X)) ? 1 : 0;
+            var image = mirror is { } m && m.ImageAnswersAt(q.X) && InPlane(plane, m.ReflectX(q.X), q.Y, q.Z) ? 1 : 0;
+            return declared + image;
+        }
+
+        if (element.Solve3D is { } v)
+        {
+            var declared = InVolume(v, p.X, p.Y, p.Z) && (mirror is null || mirror.DeclaredAnswersAt(p.X)) ? 1 : 0;
+            var image = mirror is { } m && m.ImageAnswersAt(p.X) && InVolume(v, m.ReflectX(p.X), p.Y, p.Z) ? 1 : 0;
+            return declared + image;
+        }
+
+        return InsideDomain(index, in p) ? 1 : 0;
+    }
+
+    // Each element's own range - one half's, for a reflected solve - once per instant: a surface
+    // asks at every node, and each element's range is a walk of its conductors' held potentials.
+    // Null where any element has none to state.
+    private IReadOnlyList<(int Index, double Low, double High)>? ElementRanges(double atSeconds, bool cycleMean)
+    {
+        if (Volatile.Read(ref _ranges) is { } cached && cached.At == atSeconds && cached.CycleMean == cycleMean)
+        {
+            return cached.Ranges;
+        }
+
+        var computed = ComputeElementRanges(atSeconds, cycleMean);
+        Volatile.Write(ref _ranges, new RangeState(atSeconds, cycleMean, computed));
+        return computed;
+    }
+
+    private sealed record RangeState(double At, bool CycleMean, IReadOnlyList<(int Index, double Low, double High)>? Ranges);
+
+    private RangeState? _ranges;
+
+    private List<(int Index, double Low, double High)>? ComputeElementRanges(double atSeconds, bool cycleMean)
+    {
         var ranges = new List<(int Index, double Low, double High)>();
 
         for (var index = 0; index < _model.Fields.Count; index++)
@@ -446,20 +540,10 @@ public sealed class FieldProbe
                 elementHigh = Math.Max(elementHigh, holds);
             }
 
-            // A reflected solve whose plane lies inside its own box runs past the plane and overlaps
-            // its image, and there the field is the two summed (ReflectedField.ImageSide): each
-            // within the element's range, so the sum within twice it. Where the halves meet at the
-            // plane they are a union and the range is the element's own.
-            if (_reflections[index] is { Overlaps: true })
-            {
-                elementLow *= 2.0;
-                elementHigh *= 2.0;
-            }
-
             ranges.Add((index, elementLow, elementHigh));
         }
 
-        return Combined(ranges);
+        return ranges;
     }
 
     // Elements whose occupied boxes meet - touching counts, since a shared face is in both - are

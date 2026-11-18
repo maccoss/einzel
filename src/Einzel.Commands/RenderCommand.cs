@@ -622,20 +622,9 @@ public static class RenderCommand
         {
             // Every frame and the manifest together, or none of them: written one at a time, a
             // failure at frame 37 left a film of 36 new frames and the old rest, and a manifest
-            // describing neither.
-            var files = new List<(string? Flag, string Path, byte[] Content)>(frames.Count + 1);
-
-            for (var i = 0; i < frames.Count; i++)
-            {
-                files.Add((
-                    outFlag,
-                    artifacts[i],
-                    spec.Format == FigureFormat.Pdf
-                        ? PdfWriter.Write(frames[i].Figure.Scene)
-                        : ArtifactFiles.Utf8(SvgWriter.Write(frames[i].Figure.Scene))));
-            }
-
-            files.Add((outFlag, manifest, ArtifactFiles.Utf8(CommandJson.Write(new AnimationManifest
+            // describing neither. Each frame is made and streamed to its staging file in turn, the
+            // manifest last, so the film is never held in memory whole; the commit renames.
+            var manifestBytes = ArtifactFiles.Utf8(CommandJson.Write(new AnimationManifest
             {
                 Model = Path.GetFileName(absolute),
                 ModelHash = hash,
@@ -654,9 +643,27 @@ public static class RenderCommand
                         Phase = f.Frame.PhaseLabel,
                     }),
                 ],
-            }))));
+            }));
 
-            ArtifactFiles.WriteAll(files, absolute, spec0);
+            ArtifactFiles.WriteAll(
+                [.. artifacts.Select(a => (outFlag, a))],
+                (index, stream) =>
+                {
+                    if (index == frames.Count)
+                    {
+                        stream.Write(manifestBytes);
+                    }
+                    else if (spec.Format == FigureFormat.Pdf)
+                    {
+                        stream.Write(PdfWriter.Write(frames[index].Figure.Scene));
+                    }
+                    else
+                    {
+                        stream.Write(ArtifactFiles.Utf8(SvgWriter.Write(frames[index].Figure.Scene)));
+                    }
+                },
+                absolute,
+                spec0);
         }
 
         var byLayer = new SortedDictionary<string, int>(StringComparer.Ordinal);

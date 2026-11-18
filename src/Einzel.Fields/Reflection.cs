@@ -33,6 +33,38 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
     /// <summary>Whether the declared half runs past the plane and overlaps its image, so the two are summed.</summary>
     public bool Overlaps => ImageAbove is null;
 
+    /// <summary>Whether the image answers at an x coordinate.</summary>
+    /// <param name="x">The coordinate, in the declared half's own frame.</param>
+    /// <returns>
+    /// Strictly on the image's side of the plane, judged on the point and not on its reflection;
+    /// everywhere where the halves overlap. The one statement of the rule: the field, the image's
+    /// conductors and the probe's bounds all ask it.
+    /// </returns>
+    public bool ImageAnswersAt(double x) => ImageAbove switch
+    {
+        true => x > PlaneX,
+        false => x < PlaneX,
+        null => true,
+    };
+
+    /// <summary>Whether the declared half answers at an x coordinate: on its own side and on the plane, or everywhere where the halves overlap.</summary>
+    /// <param name="x">The coordinate, in the declared half's own frame.</param>
+    /// <returns>True unless the point is strictly on the image's side of a union.</returns>
+    public bool DeclaredAnswersAt(double x) => ImageAbove is null || !ImageAnswersAt(x);
+
+    /// <summary>The declared half, its conductors answering only where the half does.</summary>
+    /// <param name="declared">The declared half.</param>
+    /// <returns>The half, as it stands in the sum.</returns>
+    /// <remarks>
+    /// The image's conductors were gated on the declared side, and the declared half's were not on
+    /// the image side: a declared electrode running past the plane still stopped ions there, and
+    /// was itemised as a loss, where the image's metal - its reflection of the near side - is what
+    /// stands. Its field is the solve's and unchanged; only where its metal counts follows the
+    /// plane.
+    /// </remarks>
+    public IElectrostaticField Declared(IElectrostaticField declared) =>
+        Overlaps ? declared : new DeclaredHalf(declared, this);
+
     /// <summary>An x coordinate seen through the mirror.</summary>
     /// <param name="x">The coordinate.</param>
     /// <returns><c>2p - x</c>.</returns>
@@ -46,5 +78,5 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
     /// <summary>The declared half and its image, summed.</summary>
     /// <param name="declared">The declared half.</param>
     /// <returns>The whole reflected solve.</returns>
-    public IElectrostaticField Sum(IElectrostaticField declared) => new SuperposedField([declared, Image(declared)]);
+    public IElectrostaticField Sum(IElectrostaticField declared) => new SuperposedField([Declared(declared), Image(declared)]);
 }

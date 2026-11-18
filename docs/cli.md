@@ -974,11 +974,14 @@ way puts back what was there**, where it used to delete it.
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
 unless turned off, so the flag alone is the default interval, as it always was. **A bare
 `--progress` before a positional is still bare**: the next word is its value only if it begins as a
-number does, or if it falls past the positionals the verb takes - so `einzel run --progress
-models/reflectron.json` runs at the default interval, `einzel run models/reflectron.json
---progress soon` is refused at `--progress` as no interval, and `einzel run --progress
-models/reflectron.json extra.json` keeps the first as the model and refuses the second as a stray,
-rather than running it. Every other flag that takes a value is
+number does, or if the verb has more positionals than it takes, in which case every word held
+that way is the flag's and is refused by its reader by name - so `einzel run --progress
+models/reflectron.json` runs at the default interval, while `einzel run --progress soon m.json`,
+`einzel run m.json --progress soon` and `einzel run --progress m.json extra.json` are all refused at
+`--progress`, whatever the order, and none runs a model it did not mean. A command line naming no
+sub-verb (`einzel render --dry-run m.json`, an implicit section) is read with the switches of all
+its verb's sub-verbs, so a switch does not take the model as its value. A flag that takes a value
+is refused bare at any occurrence, not only its last. Every other flag that takes a value is
 refused bare; before this they were read as though absent.
 
 **The whole surface is run as one table on every change.** `CommandLineMatrixTests` drives every

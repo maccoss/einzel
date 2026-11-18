@@ -1678,6 +1678,18 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
             Assert.Equal(ProbeStatus.Ok, past.Status);
             Assert.Null(ElementAt(probe, beyond));
 
+            // And the row says so: no conductor it is "in", no negative distance. It named the
+            // declared electrode at a negative distance, from its shape past the plane.
+            Assert.True(past.ConductorDistanceMm is null || past.ConductorDistanceMm >= 0.0, $"distance {past.ConductorDistanceMm} mm");
+
+            // The ion sees what the probe sees: the assembled field's absorber has no metal there.
+            // The declared half's conductors were not gated at the plane, so the electrode declared
+            // past it stopped ions in the image's vacuum and was itemised as a loss.
+            var metal = (Einzel.Fields.IConductorBounded)Einzel.Fields.FieldAssembly.Build(probe.Model);
+            var beyondMetres = FieldProbe.MillimetresToMetres(beyond);
+            Assert.True(metal.SignedDistanceToConductor(in beyondMetres) > 0.0, "an ion would be stopped in vacuum");
+            Assert.True(metal.SignedDistanceToConductor(FieldProbe.MillimetresToMetres(image)) < 0.0, "the image's metal still stops it");
+
             // And the plateau stops where the image does.
             var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: planeName, BoxMm: box, Samples: 161));
             var reach = Enumerable.Range(0, surface.Inside.Count)

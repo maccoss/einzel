@@ -193,9 +193,12 @@ become a feature release without being renamed twice.
   `agents` flags are checked per sub-verb (`ext list --kind y` is refused). A destination that is
   the model itself, or another destination, is refused; a failed write restores the file that
   was there.
+- **A reflected solve's metal is where its field is, on both sides of the mirror**: an electrode
+  declared past the plane no longer stops ions in the image's half. A surface's bound on what the
+  field can be is taken at each node.
 - **Under `--json` every failure is a JSON document on stdout** - a missing model and an internal
-  error included - and `--json=true` counts. `einzel run --progress m.json extra.json` refuses the
-  stray rather than running `extra.json` with `m.json` read as the interval.
+  error included - and `--json=true` counts. A word that follows a bare `--progress` and is not a
+  number is refused at `--progress` whenever there is a positional too many, whatever the order.
 - **`--box-mm` whose corners are finite but whose width is not** (`-1e308,0,1e308,1`) is
   refused at the flag. Two CLI calls running in one process no longer share the "has written"
   flag that decides whether a refusal is written as JSON.

@@ -267,22 +267,58 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Equal(key, VerbFlags.For(line.Split(' '))?.Key);
     }
     /// <summary>
-    /// A word held after a bare <c>--progress</c> is given back to the flag only where the verb has
-    /// no positional for it: <c>run --progress m.json extra.json</c> keeps m.json as the model and
-    /// leaves extra.json to be refused as a stray, where giving m.json to the flag ran extra.json.
+    /// Where the verb has more positionals than it takes, a word held after a bare
+    /// <c>--progress</c> is the flag's, in either order, and the flag's reader refuses it by name:
+    /// no reading of the line makes it the model while a later word could be.
+    /// </summary>
+    /// <remarks>
+    /// The last round kept a held word that sat inside the positional count, so <c>run
+    /// --progress soon m.json</c> made 'soon' the model and blamed m.json as a stray - an answer
+    /// that depended on the order of the words.
+    /// </remarks>
+    [Theory]
+    [InlineData("run --progress soon m.json", "soon")]
+    [InlineData("run m.json --progress soon", "soon")]
+    [InlineData("run --progress m.json extra.json", "m.json")]
+    public void AHeldWordIsTheFlagsWhereverItStands(string line, string word)
+    {
+        var parsed = CommandLine.Parse(line.Split(' '));
+
+        Assert.Equal(word, parsed.Value("progress"));
+        Assert.Single(parsed.Positional);
+    }
+
+    /// <summary>The control: where the count fits, a bare --progress is bare and the word is the model.</summary>
+    [Fact]
+    public void AHeldWordThatFitsIsThePositional()
+    {
+        var parsed = CommandLine.Parse(["run", "--progress", "m.json"]);
+
+        Assert.Equal(["m.json"], parsed.Positional);
+        Assert.Null(parsed.Value("progress"));
+    }
+
+    /// <summary>
+    /// A command line naming no sub-verb is read with the switches its verb's sub-verbs have:
+    /// <c>render --dry-run m.json</c> keeps m.json as a positional, as SubVerb reads it.
     /// </summary>
     [Fact]
-    public void AHeldWordInAPlaceTheVerbTakesIsNotGivenAway()
+    public void AnImplicitSectionReadsItsSwitches()
     {
-        var wrongModel = CommandLine.Parse(["run", "--progress", "m.json", "extra.json"]);
-        Assert.Equal(["m.json", "extra.json"], wrongModel.Positional);
-        Assert.Null(wrongModel.Value("progress"));
-        Assert.NotNull(Program.CommandLineProblem(["run", "--progress", "m.json", "extra.json"]));
+        var parsed = CommandLine.Parse(["render", "--dry-run", "m.json"]);
 
-        // Past the model, the word is the flag's, and its reader refuses it by name.
-        var late = CommandLine.Parse(["run", "m.json", "--progress", "soon"]);
-        Assert.Equal(["m.json"], late.Positional);
-        Assert.Equal("soon", late.Value("progress"));
+        Assert.Equal(["m.json"], parsed.Positional);
+        Assert.Null(parsed.Value("dry-run"));
+    }
+
+    /// <summary>A flag that takes a value is refused bare at any occurrence, not only its last.</summary>
+    [Fact]
+    public void EveryOccurrenceOfAValueFlagNeedsItsValue()
+    {
+        var problem = Program.CommandLineProblem(["outline", "m.json", "--set", "--set", "r=7"]);
+
+        Assert.NotNull(problem);
+        Assert.Equal("/args/--set", problem!.Path);
     }
 
     /// <summary>Every held word is kept, not only the last: two bare optional flags each keep theirs.</summary>

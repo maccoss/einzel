@@ -67,8 +67,14 @@ public sealed class CommandLine
         // every verb takes; whatever it is, it is refused or answered with a usage.
         var flags = VerbFlags.For(args)?.Flags;
 
-        bool IsSwitch(string flag) => flag is "json" or "help" || (flags?.Switches.Contains(flag) ?? false);
-        bool IsOptional(string flag) => flags?.Optional.Contains(flag) ?? false;
+        // A command line naming no sub-verb this knows - `render --dry-run m.json`, an implicit
+        // section - is read with the switches every sub-verb of its verb has, the set SubVerb
+        // skips by: read with none, --dry-run took the model's path as its value.
+        var family = flags is null && args.Length > 0 ? VerbFlags.Family(args[0]) : null;
+
+        bool IsSwitch(string flag) =>
+            flag is "json" or "help" || (flags?.Switches.Contains(flag) ?? family?.Switches.Contains(flag) ?? false);
+        bool IsOptional(string flag) => flags?.Optional.Contains(flag) ?? family?.Optional.Contains(flag) ?? false;
 
         // Each word after a flag whose value may be left off that does not look like that value:
         // held as a positional for now, and given to its flag after all only if it falls past the
@@ -122,14 +128,15 @@ public sealed class CommandLine
             }
         }
 
-        // Settled: a held word in a place the verb has no positional for is its flag's value after
-        // all, so `run m.json --progress soon` is still refused by the flag's reader, by name, as
-        // a value that is no interval. One in a place the verb does take stays where it is: `run
-        // --progress m.json extra.json` keeps m.json as the model and refuses extra.json as a
-        // stray, where giving m.json to the flag ran extra.json - the wrong model, quietly.
-        if (flags is not null)
+        // Settled: where the verb has more positionals than it takes, every held word is its flag's
+        // value after all, and the flag's reader refuses it by name - none of them is a number.
+        // Whichever order the words came in: `run --progress soon m.json` and `run m.json
+        // --progress soon` are both refused at --progress naming 'soon', and `run --progress
+        // m.json extra.json` is refused at --progress naming m.json, so no reading of the line
+        // runs a model it did not mean. Where the count fits, the words are positionals.
+        if (flags is not null && parsed._positional.Count > flags.Positionals)
         {
-            var given = tentative.Where(held => held.Positional >= flags.Positionals).ToList();
+            var given = tentative;
 
             // Values in the order given, so the last occurrence of a flag is its value as always;
             // then the words out of the positionals from the back, so no index moves under another.

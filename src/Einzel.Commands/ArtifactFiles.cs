@@ -18,7 +18,7 @@ namespace Einzel.Commands;
 /// that is a directory, or whose folder is a file, is known without solving anything.
 /// </para>
 /// <para>
-/// <b>All of them or none</b> (<see cref="WriteAll"/>): each file is written whole to a
+/// <b>All of them or none</b> (<c>WriteAll</c>): each file is written whole to a
 /// temporary file beside its destination, and only when every one of those is on disk are they
 /// renamed into place, each in one step. A command asked for a picture and a table used to write
 /// the picture and then fail on the table, leaving one of the two. What a file system cannot give
@@ -278,35 +278,71 @@ public static class ArtifactFiles
     {
         ArgumentNullException.ThrowIfNull(files);
 
-        CheckAll([.. files.Select(f => (f.Flag, f.Path))], inputs);
+        WriteAll([.. files.Select(f => (f.Flag, f.Path))], (index, stream) => stream.Write(files[index].Content), inputs);
+    }
 
-        var targets = new string[files.Count];
-        var temporary = new string?[files.Count];
+    /// <summary>
+    /// Writes several files, each streamed by the caller as it comes: every one of them, or none,
+    /// as <see cref="WriteAll(IReadOnlyList{ValueTuple{string, string, byte[]}}, string[])"/>,
+    /// holding one file in memory at a time.
+    /// </summary>
+    /// <param name="destinations">Each file's flag (null where the user named none) and destination.</param>
+    /// <param name="write">Writes file <c>index</c> to the stream it is handed.</param>
+    /// <param name="inputs">The files the command reads, none of which a destination may be.</param>
+    /// <exception cref="EinzelException">One could not be written, or a destination is refused.</exception>
+    /// <remarks>
+    /// For a film of hundreds of frames, which buffered whole came to the film's size in memory:
+    /// each frame is now made and written to its staging file in turn. The staging files sit beside
+    /// their destinations under short names, so a rename puts each in place and a path near the
+    /// platform's limit is not pushed past it by a long suffix. What is on disk at the commit is
+    /// the new set and the old one, the old kept by renaming rather than copying - the least an
+    /// all-or-none replacement can hold.
+    /// </remarks>
+    public static void WriteAll(
+        IReadOnlyList<(string? Flag, string Path)> destinations, Action<int, Stream> write, params string?[] inputs)
+    {
+        ArgumentNullException.ThrowIfNull(destinations);
+        ArgumentNullException.ThrowIfNull(write);
 
-        // What this call has put in place, and for each the backup of the file it replaced, if any.
-        var placed = new List<(string Target, string? Backup)>(files.Count);
-        var keepBackups = files.Count > 1;
+        CheckAll(destinations, inputs);
+
+        var count = destinations.Count;
+        var targets = new string[count];
+        var temporary = new string?[count];
+
+        // What this call has put in place, and for each the backup of the file it replaced, if any;
+        // and the folders it made, so a failure leaves none of them behind.
+        var placed = new List<(string Target, string? Backup)>(count);
+        var created = new List<string>();
+        var keepBackups = count > 1;
         var at = 0;
 
         try
         {
-            for (at = 0; at < files.Count; at++)
+            for (at = 0; at < count; at++)
             {
-                targets[at] = Destination(files[at].Flag, files[at].Path);
+                targets[at] = Destination(destinations[at].Flag, destinations[at].Path);
             }
 
             // Every file whole on disk first, beside where it is going...
-            for (at = 0; at < files.Count; at++)
+            for (at = 0; at < count; at++)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(targets[at])!);
-                temporary[at] = $"{targets[at]}.{Guid.NewGuid():N}.tmp";
-                File.WriteAllBytes(temporary[at]!, files[at].Content);
+                var folder = Path.GetDirectoryName(targets[at])!;
+                Create(folder, created);
+                temporary[at] = ShortName(folder, ".tmp");
+
+                Failing.Value?.Invoke("write", at);
+
+                using (var stream = new FileStream(temporary[at]!, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    write(at, stream);
+                }
             }
 
             // ...and only then into place, each in one rename.
-            for (at = 0; at < files.Count; at++)
+            for (at = 0; at < count; at++)
             {
-                BeforePlacing.Value?.Invoke(at);
+                Failing.Value?.Invoke("place", at);
 
                 var target = targets[at];
                 string? backup = null;
@@ -315,7 +351,7 @@ public static class ArtifactFiles
                 {
                     // Replaced in one step, the old file kept under a backup name until every
                     // other file is in place, so a later failure can put it back.
-                    backup = $"{target}.{Guid.NewGuid():N}.bak";
+                    backup = ShortName(Path.GetDirectoryName(target)!, ".bak");
                     File.Replace(temporary[at]!, target, backup, ignoreMetadataErrors: true);
                 }
                 else
@@ -330,9 +366,7 @@ public static class ArtifactFiles
         }
         catch (Exception failure)
         {
-            // None of them, then, whatever went wrong: newest first, each back as it was. Only the
-            // file-system failures were caught, so anything else skipped the rollback and the
-            // backups were deleted on the way out - the set half-written and the originals gone.
+            // None of them, then, whatever went wrong: newest first, each back as it was.
             for (var i = placed.Count - 1; i >= 0; i--)
             {
                 var (target, backup) = placed[i];
@@ -349,13 +383,29 @@ public static class ArtifactFiles
 
             placed.Clear();
 
+            foreach (var left in temporary)
+            {
+                if (left is not null)
+                {
+                    TryDelete(left);
+                }
+            }
+
+            Array.Clear(temporary);
+
+            // And the folders this call made, deepest first, where nothing else has been put in them.
+            for (var i = created.Count - 1; i >= 0; i--)
+            {
+                TryDeleteEmptyFolder(created[i]);
+            }
+
             if (failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
             {
                 // Not a destination that cannot be written: rolled back, and raised as itself.
                 throw;
             }
 
-            var (flag, path, _) = files[Math.Min(at, files.Count - 1)];
+            var (flag, path) = destinations[Math.Min(at, count - 1)];
 
             throw Refusal(flag, Path.GetFullPath(path), failure.Message, null);
         }
@@ -380,12 +430,60 @@ public static class ArtifactFiles
         }
     }
 
+    // Makes a folder and every missing one above it, noting each it made, outermost first.
+    private static void Create(string folder, List<string> created)
+    {
+        var missing = new Stack<string>();
+
+        for (var at = Path.GetFullPath(folder); !string.IsNullOrEmpty(at) && !Directory.Exists(at); at = Path.GetDirectoryName(at))
+        {
+            missing.Push(at);
+        }
+
+        foreach (var dir in missing)
+        {
+            Directory.CreateDirectory(dir);
+            created.Add(dir);
+        }
+    }
+
+    // A short name in a folder for a staging or backup file: a dot, eight hex digits and the
+    // suffix, so the path is the folder's length and fourteen characters, whatever the
+    // destination's name - a long name with a GUID appended could pass the platform's limit.
+    private static string ShortName(string folder, string suffix)
+    {
+        while (true)
+        {
+            var name = Path.Combine(folder, "." + Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant() + suffix);
+
+            if (!File.Exists(name) && !Directory.Exists(name))
+            {
+                return name;
+            }
+        }
+    }
+
+    private static void TryDeleteEmptyFolder(string folder)
+    {
+        try
+        {
+            if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any())
+            {
+                Directory.Delete(folder);
+            }
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            // Left, empty or not; the refusal is still raised.
+        }
+    }
+
     /// <summary>
-    /// Called before each file is put in place, with its index: a test's way to fail a write part
-    /// way through for a reason that is not the file system's. Per async flow, so tests running
-    /// beside each other do not see each other's.
+    /// Called before each file is written ("write") and before each is put in place ("place"),
+    /// with its index: a test's way to fail a set part way through for a reason that is not the
+    /// file system's. Per async flow, so tests running beside each other do not see each other's.
     /// </summary>
-    internal static readonly AsyncLocal<Action<int>?> BeforePlacing = new();
+    internal static readonly AsyncLocal<Action<string, int>?> Failing = new();
 
     // Where a destination's bytes actually go: the file a symbolic link names, followed to the
     // end, or the path itself. An existing read-only file is refused here, before anything is

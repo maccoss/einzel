@@ -422,6 +422,20 @@ public sealed class ProbeDomainTests : IDisposable
 
         Assert.Equal((0.0, 80.0), probe.AppliedRange(0.0, cycleMean: false));
 
+        // Per point, doubled only where both halves answer: the declared box is -20 to 20 mm and
+        // its image 10 to 50 mm, so they overlap from 10 to 20 mm. Doubled everywhere, an
+        // overshoot past 40 V beside the jaw at x = 0 went unflagged under a bound of 80 V.
+        Assert.Equal((0.0, 40.0), probe.AppliedRangeAt(FieldProbe.MillimetresToMetres(new Vec3(-15.0, 5.0, 0.0)), 0.0, cycleMean: false));
+        Assert.Equal((0.0, 80.0), probe.AppliedRangeAt(FieldProbe.MillimetresToMetres(new Vec3(12.0, 5.0, 0.0)), 0.0, cycleMean: false));
+        Assert.Equal((0.0, 40.0), probe.AppliedRangeAt(FieldProbe.MillimetresToMetres(new Vec3(40.0, 5.0, 0.0)), 0.0, cycleMean: false));
+        Assert.Equal((0.0, 0.0), probe.AppliedRangeAt(FieldProbe.MillimetresToMetres(new Vec3(70.0, 5.0, 0.0)), 0.0, cycleMean: false));
+
+        // And the surface holds each node to its own bound.
+        var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-19, -9, 49, 9], Samples: 69));
+        Assert.Equal(surface.Values.Count, surface.NodeHighest!.Count);
+        Assert.Contains(40.0, surface.NodeHighest);
+        Assert.Contains(80.0, surface.NodeHighest);
+
         // The control: the plane on the box's face is a union, and the range is one half's.
         solve["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("{ \"value\": 20, \"unit\": \"mm\" }");
         File.WriteAllText(path, node.ToJsonString());

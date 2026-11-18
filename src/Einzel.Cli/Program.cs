@@ -244,7 +244,9 @@ public static class Program
                 break;
             }
 
-            if (flags.Values.Contains(flag) && options.Value(flag) is null)
+            // Every occurrence, not the last: `--set --set r=7` gave the first --set no value and
+            // only the second was asked.
+            if (flags.Values.Contains(flag) && options.Values(flag).Any(v => v is null))
             {
                 refusal = new EinzelError
                 {

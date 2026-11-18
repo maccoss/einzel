@@ -100,6 +100,7 @@ public sealed class HeldConductorsTests(ITestOutputHelper output)
         var covered = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["ReflectedField"] = "the image leaf of a reflected solve is the declared half's field through this (ConductorLeaf.Of)",
+            ["DeclaredHalf"] = "the declared leaf of a reflected union is the declared half through this (ConductorLeaf.Of), as the sum's member is",
             ["AxisymmetricField"] = "applied by the plane builder before it makes the leaves, so the leaf's shape is the wrapped field",
             ["RotatedField"] = "applied by the assembly to a tilted cross-section and to each of its leaves' shapes alike",
             ["SuperposedField"] = "a sum: of a solve and its image (both leaves handed out by the builder), or of elements (each with its own leaves)",

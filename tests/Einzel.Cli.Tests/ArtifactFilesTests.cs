@@ -52,9 +52,9 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         File.WriteAllBytes(first, [1]);
         File.WriteAllBytes(second, [2]);
 
-        ArtifactFiles.BeforePlacing.Value = index =>
+        ArtifactFiles.Failing.Value = (phase, index) =>
         {
-            if (index == 1)
+            if (phase == "place" && index == 1)
             {
                 throw new InvalidOperationException("failed on purpose");
             }
@@ -66,12 +66,54 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         }
         finally
         {
-            ArtifactFiles.BeforePlacing.Value = null;
+            ArtifactFiles.Failing.Value = null;
         }
 
         Assert.Equal([1], File.ReadAllBytes(first));
         Assert.Equal([2], File.ReadAllBytes(second));
         Assert.Equal(["first.png", "second.csv"], Directory.GetFiles(_root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// A failed set leaves no folder it made, and stages each file under a short name beside its
+    /// destination rather than the destination's name with a GUID appended.
+    /// </summary>
+    /// <remarks>
+    /// The rollback put the files back and left the folders it had made; and a name of 37 more
+    /// characters than the destination's could take a path near the platform's limit past it.
+    /// </remarks>
+    [Fact]
+    public void AFailedSetLeavesNoFolderAndStagesUnderShortNames()
+    {
+        Directory.CreateDirectory(_root);
+        var deep = Path.Combine(_root, "made", "deeper");
+        var first = Path.Combine(deep, "a-rather-long-picture-name.png");
+        var second = Path.Combine(deep, "a-rather-long-table-name.csv");
+        var staged = new List<string>();
+
+        ArtifactFiles.Failing.Value = (phase, index) =>
+        {
+            if (phase == "place" && index == 1)
+            {
+                staged.AddRange(Directory.GetFiles(deep).Select(Path.GetFileName)!);
+                throw new IOException("failed on purpose");
+            }
+        };
+
+        try
+        {
+            Assert.Throws<EinzelException>(() => ArtifactFiles.WriteAll([("out", first, [1]), ("csv", second, [2])]));
+        }
+        finally
+        {
+            ArtifactFiles.Failing.Value = null;
+        }
+
+        output.WriteLine(string.Join(", ", staged));
+
+        Assert.NotEmpty(staged);
+        Assert.All(staged.Where(n => n.EndsWith(".tmp", StringComparison.Ordinal)), n => Assert.Equal(13, n.Length));
+        Assert.False(Directory.Exists(Path.Combine(_root, "made")), "a folder the failed write made was left behind");
     }
 
     /// <summary>A read-only destination is refused and left as it was.</summary>

@@ -138,7 +138,7 @@ public sealed record ConductorLeaf(IConductorBounded Shape, IHeldConductors Held
         }
 
         return reflection is { } mirror
-            ? [new ConductorLeaf(shape, held, null), new ConductorLeaf(mirror.Image(direct), held, mirror)]
+            ? [new ConductorLeaf((IConductorBounded)mirror.Declared(direct), held, null), new ConductorLeaf(mirror.Image(direct), held, mirror)]
             : [new ConductorLeaf(shape, held, null)];
     }
 }

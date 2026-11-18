@@ -840,6 +840,39 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         Assert.False(File.Exists(Path.Combine(folder, "frame-00001.svg")));
         Assert.False(File.Exists(Path.Combine(folder, "frames.json")));
 
+        // A failure part way through writing the film, and another part way through putting it in
+        // place: each leaves the old film as it was, no manifest, and nothing staged beside it.
+        foreach (var phase in new[] { "write", "place" })
+        {
+            Directory.Delete(Path.Combine(folder, "frame-00002.svg"), recursive: true);
+            File.WriteAllText(Path.Combine(folder, "frame-00002.svg"), "old two");
+
+            Einzel.Commands.ArtifactFiles.Failing.Value = (at, index) =>
+            {
+                if (at == phase && index == 3)
+                {
+                    throw new IOException($"failed on purpose while {phase}");
+                }
+            };
+
+            try
+            {
+                Assert.Equal(1, Run(Words("render animation {film} --out {root}/film-out")).ExitCode);
+            }
+            finally
+            {
+                Einzel.Commands.ArtifactFiles.Failing.Value = null;
+            }
+
+            Assert.Equal("old", File.ReadAllText(Path.Combine(folder, "frame-00000.svg")));
+            Assert.Equal("old two", File.ReadAllText(Path.Combine(folder, "frame-00002.svg")));
+            Assert.False(File.Exists(Path.Combine(folder, "frames.json")));
+            Assert.Equal(["frame-00000.svg", "frame-00002.svg"], Directory.GetFiles(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+
+            File.Delete(Path.Combine(folder, "frame-00002.svg"));
+            Directory.CreateDirectory(Path.Combine(folder, "frame-00002.svg"));
+        }
+
         // The control: with nothing in the way the whole film and its manifest are written.
         Directory.Delete(Path.Combine(folder, "frame-00002.svg"));
         Assert.Equal(0, Run(Words("render animation {film} --out {root}/film-out")).ExitCode);

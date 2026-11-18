@@ -142,13 +142,7 @@ public sealed record VerbFlags(
             return null;
         }
 
-        var prefix = args[0] + " ";
-        var family = ByVerb
-            .Where(e => e.Key == args[0] || e.Key.StartsWith(prefix, StringComparison.Ordinal))
-            .Select(e => e.Value)
-            .ToList();
-        var switches = family.SelectMany(f => f.Switches).ToHashSet(StringComparer.Ordinal);
-        var optional = family.SelectMany(f => f.Optional).ToHashSet(StringComparer.Ordinal);
+        var (switches, optional) = Family(args[0])!.Value;
 
         for (var i = 1; i < args.Count; i++)
         {
@@ -179,6 +173,38 @@ public sealed record VerbFlags(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The switches and the flags whose value may be left off, across every sub-verb of a verb
+    /// that has them: what a command line naming no sub-verb is read with.
+    /// </summary>
+    /// <param name="verb">The verb.</param>
+    /// <returns>The two sets; null for a verb with no sub-verbs.</returns>
+    /// <remarks>
+    /// One statement for <see cref="SubVerb"/>, which skips flags by it, and for
+    /// <see cref="CommandLine.Parse"/>, which reads an implicit section by it: the two read
+    /// <c>render --dry-run m.json</c> differently before, and the parser took the model as the
+    /// switch's value.
+    /// </remarks>
+    public static (IReadOnlySet<string> Switches, IReadOnlySet<string> Optional)? Family(string verb)
+    {
+        ArgumentNullException.ThrowIfNull(verb);
+
+        if (verb is not ("render" or "ext" or "agents"))
+        {
+            return null;
+        }
+
+        var prefix = verb + " ";
+        var members = ByVerb
+            .Where(e => e.Key == verb || e.Key.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(e => e.Value)
+            .ToList();
+
+        return (
+            members.SelectMany(f => f.Switches).ToHashSet(StringComparer.Ordinal),
+            members.SelectMany(f => f.Optional).ToHashSet(StringComparer.Ordinal));
     }
 
     /// <summary>

@@ -390,10 +390,15 @@ public sealed class MirrorPlaneTests
         Assert.True(Math.Sign(before) != Math.Sign(after), $"{before} then {after}");
         Assert.Equal(0.001, Math.Abs(before), 12);
 
-        // A surface the inner field declares 2 mm past its edge is no surface on the declared side.
+        // A surface the inner field declares 2 mm past its edge is no surface on the declared side:
+        // the measure there is the image's own at the plane, constant, so it changes sign neither
+        // on this side nor at the plane - where nothing jumps.
         var phantom = new ReflectedField(new Edged(Plane + 0.002), Plane, imageAbove: true);
-        Assert.Equal(double.PositiveInfinity, phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0)));
-        Assert.Equal(double.PositiveInfinity, phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.003, 0.0, 0.0)));
+        var near = phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0));
+        var far = phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.003, 0.0, 0.0));
+        var beyond = phantom.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.0005, 0.0, 0.0));
+        Assert.Equal(near, far);
+        Assert.Equal(Math.Sign(near), Math.Sign(beyond));
 
         // On the image's own side it is the reflection, as before.
         Assert.Equal(

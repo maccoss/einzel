@@ -3742,5 +3742,21 @@ Two findings from Stage 1 that bear on the spec:
   the wider range, not the sum. And the stdout counter writes the wrapped writer's line ending and
   format, byte for byte.
 
+  **An eighteenth review, two findings of which pulled against earlier ones.** The declared half's
+  conductors are now gated at the plane as the image's are (`DeclaredHalf`), so an electrode
+  declared past the mirror no longer stops ions, or names itself on a probe row, in the image's
+  vacuum. Where the image answers nothing its discontinuity measure is now its own value at the
+  plane, held constant, unless the inner field has a face on the plane: infinity there made a
+  change of sign at a plane where nothing jumps when the declared box stops short of it. The
+  surface's bound is per node (`FieldProbe.AppliedRangeAt`): an overlapping reflected solve is
+  twice its range only where both halves answer - a global doubling, which the sixteenth round's
+  fix applied everywhere, hid real overshoot beside a face - and `AppliedRange` stays the bound
+  for anywhere. A word held after a bare `--progress` is the flag's whenever the verb has more
+  positionals than it takes, in either order, and so is refused by name: the seventeenth round
+  kept one inside the count, so `run --progress soon m.json` made 'soon' the model. An implicit
+  `render` section is parsed with its family's switches; a value flag is checked at every
+  occurrence. An animation streams each frame to a short-named staging file beside it and commits
+  by rename, holding one frame in memory; a failed set removes the folders it made.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.
