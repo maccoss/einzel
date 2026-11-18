@@ -108,6 +108,13 @@ public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded
     }
 
     /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        var sample = Sample(in position);
+        _halfPlane.MemberDistancesToDiscontinuity(in sample, distances);
+    }
+
+    /// <inheritdoc/>
     /// <remarks>
     /// An electrode drawn as a rectangle in the half-plane is a ring in space, so
     /// the distance to it is measured from the ion's radius. This is what makes an

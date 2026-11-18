@@ -69,6 +69,10 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
         DiscontinuityDistance.Member(_elements, _members, member, in position);
 
     /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances) =>
+        DiscontinuityDistance.Members(_elements, _members, in position, distances);
+
+    /// <inheritdoc/>
     public double MonochromaticPeriodSeconds
     {
         get
@@ -309,10 +313,9 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The same sign-product tracking <see cref="SuperposedField"/> uses, and for
-    /// the same reason: the magnitude is the distance to the nearest declared jump
-    /// and the sign says which side of the whole arrangement the point is on, so a
-    /// step that crosses two surfaces is correctly seen as crossing neither.
+    /// Combined as <see cref="SuperposedField"/> combines them: the magnitude is the distance to
+    /// the nearest declared jump, for a step cap; landing is by member
+    /// (<see cref="DiscontinuityMembers"/>).
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {

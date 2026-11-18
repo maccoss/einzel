@@ -205,5 +205,12 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
     }
 
     /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        var mirrored = Reflect(in position);
+        _inner.MemberDistancesToDiscontinuity(in mirrored, distances);
+    }
+
+    /// <inheritdoc/>
     public double ResolutionLength => _inner.ResolutionLength;
 }

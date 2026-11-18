@@ -53,7 +53,18 @@ public static class ArtifactFiles
             {
                 // A link that leads to no folder - dangling, or one of a loop - is reported as a file
                 // on Linux; it is said to be what it is.
-                var link = new FileInfo(folder).LinkTarget;
+                // Asking may itself fail, on a folder that cannot be read: it is still a refusal here.
+                string? link;
+
+                try
+                {
+                    link = new FileInfo(folder).LinkTarget;
+                }
+                catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException or ArgumentException)
+                {
+                    link = null;
+                }
+
                 throw Refusal(flag, full, link is null ? $"{folder} is a file, not a folder" : $"{folder} is a link to {link}, which leads to no folder", null);
             }
 
@@ -102,10 +113,14 @@ public static class ArtifactFiles
 
         if (inputs.Unresolved.TryGetValue(Path.GetFileName(Path.TrimEndingDirectorySeparator(resolved)), out var unresolved))
         {
+            var candidates = string.Join(" or ", unresolved.Select(u => $"{u.Path} ({u.Why})"));
+
             throw Refusal(
                 flag,
                 Path.GetFullPath(path),
-                $"it may be {unresolved.Path}, a file this command reads, which could not be followed to tell ({unresolved.Why})",
+                unresolved.Count == 1
+                    ? $"it may be {candidates}, a file this command reads, which could not be followed to tell"
+                    : $"it may be {candidates}, files this command reads, which could not be followed to tell",
                 flag is null ? "name the output with its flag, under another name" : $"give --{flag} a file under another name");
         }
     }
@@ -256,7 +271,7 @@ public static class ArtifactFiles
     {
         public HashSet<string> Resolved { get; } = new(PathComparer);
 
-        public Dictionary<string, (string Path, string Why)> Unresolved { get; } = new(PathComparer);
+        public Dictionary<string, List<(string Path, string Why)>> Unresolved { get; } = new(PathComparer);
     }
 
     private static Inputs InputsAt(string?[] inputs, Resolver resolver)
@@ -278,7 +293,16 @@ public static class ArtifactFiles
             {
                 // Its own spelling counts too, as far as it goes.
                 known.Resolved.Add(Path.TrimEndingDirectorySeparator(FullOrAsGiven(input)));
-                known.Unresolved[Path.GetFileName(Path.TrimEndingDirectorySeparator(input))] = (FullOrAsGiven(input), why!);
+                // Every one of that name, not the last: two inputs under one name that cannot be
+                // followed are two files the destination may be.
+                var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(input));
+
+                if (!known.Unresolved.TryGetValue(name, out var candidates))
+                {
+                    known.Unresolved[name] = candidates = [];
+                }
+
+                candidates.Add((FullOrAsGiven(input), why!));
             }
         }
 
@@ -538,7 +562,13 @@ public static class ArtifactFiles
     /// as it is made, so what the caller holds in memory is one file's worth however many there
     /// are, and what is on disk until the commit is staging files no reader looks at.
     /// </remarks>
-    public static Staged Begin(params string?[] inputs) => new(inputs);
+    public static Staged Begin(params string?[] inputs) => new(inputs, null);
+
+    /// <summary><see cref="Begin"/>, counting the link queries the set makes: a test's way to see what is resolved how often.</summary>
+    /// <param name="onQuery">Called once for every link query.</param>
+    /// <param name="inputs">The files the command reads.</param>
+    /// <returns>An empty set.</returns>
+    internal static Staged BeginCounting(Action onQuery, params string?[] inputs) => new(inputs, onQuery);
 
     /// <summary>
     /// Files staged beside their destinations, put in place together or not at all.
@@ -577,7 +607,17 @@ public static class ArtifactFiles
 
         private bool _finished;
 
-        internal Staged(string?[] inputs) => _inputs = inputs ?? [];
+        // The inputs, resolved once for the set: they are checked again at the commit with
+        // everything else, so nothing that changes during a film goes unseen.
+        private Inputs? _inputsAt;
+
+        private readonly Action? _onQuery;
+
+        internal Staged(string?[] inputs, Action? onQuery)
+        {
+            _inputs = inputs ?? [];
+            _onQuery = onQuery;
+        }
 
         /// <summary>How many files are staged.</summary>
         public int Count => _files.Count;
@@ -603,10 +643,10 @@ public static class ArtifactFiles
             {
                 // Resolved afresh for this call: a film is staged a frame at a time over the length of
                 // a run, and a folder that becomes a link between two frames must be seen.
-                var resolver = new Resolver();
+                var resolver = new Resolver(_onQuery);
                 Check(flag, path);
                 resolved = ResolvedAt(flag, path, resolver);
-                NotAnInput(flag, path, resolved, InputsAt(_inputs, resolver));
+                NotAnInput(flag, path, resolved, _inputsAt ??= InputsAt(_inputs, new Resolver(_onQuery)));
                 key = Path.TrimEndingDirectorySeparator(resolved);
 
                 // A second file at one place: asked here, of a set built a file at a time.
@@ -690,7 +730,7 @@ public static class ArtifactFiles
             // leads. Refused, with nothing placed.
             try
             {
-                var resolver = new Resolver();
+                var resolver = new Resolver(_onQuery);
                 var inputs = InputsAt(_inputs, resolver);
 
                 foreach (var (flag, path, target, _) in _files)

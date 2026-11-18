@@ -237,7 +237,9 @@ become a feature release without being renamed twice.
   discontinuity changing sign, so two surfaces at one place - two abutting solve domains, the two
   halves of a reflection meeting at their plane - are one landing, where combined into one sign
   they cancelled and the ion crossed a real jump with no landing. Every shipped model's flight is
-  unchanged to the last digit.
+  unchanged to the last digit. This holds through every field that wraps another - a driven or
+  sequenced solve, a bounded analytic element - and a bounded element's own plane (a half-space
+  inside its region) is now landed on even where a face of the region is nearer than it.
 - **A reflected solve's mirror plane is a surface the integrator lands on unless its edge is a
   mirror**: a grounded (Dirichlet) edge or face on the plane makes the plane a surface of its own,
   carried by the declared half, wherever an ion crosses it - over the box, where the field jumps,

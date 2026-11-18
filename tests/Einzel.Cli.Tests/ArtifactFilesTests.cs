@@ -982,6 +982,92 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         }
     }
 
+    /// <summary>
+    /// A staged film resolves the files it reads once for the set, not once a frame; each frame's
+    /// destination is resolved afresh, and the commit checks everything again.
+    /// </summary>
+    /// <remarks>
+    /// A resolver made for every frame resolved the inputs every frame too, walking the model's
+    /// folders once per frame of the film.
+    /// </remarks>
+    [Fact]
+    public void AStagedFilmResolvesItsInputsOnce()
+    {
+        var folder = Path.Combine(_root, "film", "a", "b");
+        var deep = Path.Combine(_root, "m", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(deep);
+        var model = Path.Combine(deep, "model.json");
+        File.WriteAllText(model, "{}");
+
+        const int Frames = 50;
+        var queries = 0;
+
+        using (var staged = ArtifactFiles.BeginCounting(() => queries++, model))
+        {
+            for (var i = 0; i < Frames; i++)
+            {
+                staged.Stage("out", Path.Combine(folder, $"frame-{i:D5}.svg"), s => s.Write([1]));
+            }
+
+            staged.Commit();
+        }
+
+        var frameDepth = folder.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Length;
+        var modelDepth = deep.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Length;
+        output.WriteLine($"{queries} link queries for {Frames} frames {frameDepth} folders deep and a model {modelDepth} deep");
+
+        // Each frame's destination walked afresh; the model once while staging and once at the commit.
+        var bound = (Frames * (frameDepth + 2)) + (3 * (modelDepth + 2)) + Frames + frameDepth;
+        Assert.True(queries <= bound, $"{queries} link queries against at most {bound}");
+        Assert.Equal(Frames, Directory.GetFiles(folder).Length);
+    }
+
+    /// <summary>
+    /// Two files the command reads that cannot be followed and share a name are both named: a
+    /// destination of that name may be either.
+    /// </summary>
+    [Fact]
+    public void EveryInputThatCannotBeFollowedIsNamed()
+    {
+        Directory.CreateDirectory(_root);
+        var loops = new[] { ("a1", "a2"), ("b1", "b2") }
+            .Select(p => (Path.Combine(_root, p.Item1), Path.Combine(_root, p.Item2)))
+            .ToList();
+
+        foreach (var (one, two) in loops)
+        {
+            if (!FolderLink(one, two) || !FolderLink(two, one))
+            {
+                output.WriteLine("no loop of links here; nothing to check");
+                return;
+            }
+        }
+
+        try
+        {
+            var inputs = loops.Select(l => Path.Combine(l.Item1, "model.json")).ToArray();
+            var elsewhere = Path.Combine(_root, "other");
+            Directory.CreateDirectory(elsewhere);
+
+            var refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.Write("out", Path.Combine(elsewhere, "model.json"), [1], inputs));
+            output.WriteLine(refusal.Error.Constraint);
+
+            foreach (var input in inputs)
+            {
+                Assert.Contains(input, refusal.Error.Constraint, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            foreach (var (one, two) in loops)
+            {
+                RemoveLink(one);
+                RemoveLink(two);
+            }
+        }
+    }
+
     /// <summary>Whether two paths are one file is answered for any two strings, malformed ones included.</summary>
     /// <remarks>A path the platform cannot make full threw an argument exception out of the comparison.</remarks>
     [Fact]

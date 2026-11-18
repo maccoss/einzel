@@ -112,6 +112,14 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
             ? _electric.MemberDistanceToDiscontinuity(member, in position)
             : _magnetic.SignedDistanceToMagneticDiscontinuity(in position);
 
+    /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        var electric = Math.Max(1, _electric.DiscontinuityMembers);
+        _electric.MemberDistancesToDiscontinuity(in position, distances[..electric]);
+        distances[electric] = _magnetic.SignedDistanceToMagneticDiscontinuity(in position);
+    }
+
     /// <inheritdoc />
     /// <remarks>The magnetic surfaces alone: the electric ones are not jumps in B.</remarks>
     public double SignedDistanceToMagneticDiscontinuity(in Vec3 position) =>

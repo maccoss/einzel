@@ -4000,5 +4000,21 @@ Two findings from Stage 1 that bear on the spec:
   this change was committed - with the old cleanup the same exception, with the new one 28 of 28. A
   link leading to no folder on the way to a destination is said to be one, not "a file".
 
+  **A thirty-sixth review, and members through every wrapper.** Three wrappers still combined
+  their inner field's members into one sign: a driven solve's field over its reflected channel
+  sums, a bounded analytic element, and the ponderomotive well. All pass them through now, with a
+  guard that scans every einzel assembly for a field holding a field and fails if one leaves the
+  member count at the interface's default - the first version of the scan loaded assemblies by
+  naming a type in each, which loads nothing in Release, and so reached four assemblies of eleven
+  and never saw the ponderomotive well. A bounded element is two members, its box and its inner
+  field (infinite outside the box): combined by the nearer surface's sign, a half-space plane inside
+  the region went undeclared wherever a face was nearer than it. The integrator lands with one
+  bisection whose test is whether any member that changed sign over the step has done so yet - the
+  earliest crossing directly - where one bisection per member, then the earliest, cost three times
+  the landing work at a grounded plane (302 evaluations more on the reference test, against 2).
+  Every member is read in one pass, each part filling its own slice, and each pass counts as one
+  evaluation. The staged set resolves its inputs once and each frame's destination afresh, and
+  names every input of a name that could not be followed.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

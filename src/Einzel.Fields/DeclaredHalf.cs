@@ -88,6 +88,17 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
         member < _own ? inner.MemberDistanceToDiscontinuity(member, in position) : reflection.PlaneMeasure(position.X);
 
     /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        inner.MemberDistancesToDiscontinuity(in position, distances[.._own]);
+
+        if (_plane)
+        {
+            distances[_own] = reflection.PlaneMeasure(position.X);
+        }
+    }
+
+    /// <inheritdoc/>
     public double ResolutionLength => inner.ResolutionLength;
 
     /// <inheritdoc/>

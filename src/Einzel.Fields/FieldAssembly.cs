@@ -48,6 +48,10 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded
         DiscontinuityDistance.Member(_elements, _members, member, in position);
 
     /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances) =>
+        DiscontinuityDistance.Members(_elements, _members, in position, distances);
+
+    /// <inheritdoc/>
     /// <remarks>
     /// The nearest conductor over every element that has any. Potentials
     /// superpose; solid bodies do not, they simply coexist, so this is a union
@@ -171,18 +175,14 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded
     /// <inheritdoc/>
     /// <remarks>
     /// <para>
-    /// The magnitude is the distance to the nearest declared discontinuity; the
-    /// sign is the product of the element signs, so crossing any single boundary
-    /// flips it and the integrator localises the crossing by bisection.
+    /// The elements' measures combined (<see cref="DiscontinuityDistance.Combine"/>): the magnitude
+    /// is the distance to the nearest declared discontinuity, which is what a step cap reads.
     /// </para>
     /// <para>
-    /// The known limit: a step crossing two boundaries at once returns the sign to
-    /// where it started and the crossing is missed. That is benign rather than
-    /// silent — the step-size controller sees the resulting error and refines
-    /// until the crossings separate — but it means the exact-landing guarantee
-    /// holds for one boundary per step, not two. Nothing in schema v0.1 can build
-    /// such a geometry; a stacked-ring mirror could, and the fix then is to track
-    /// element regions rather than to sum signs.
+    /// Landing is not decided by it. The integrator tracks every element's members separately
+    /// (<see cref="DiscontinuityMembers"/>), so a step crossing two boundaries at once - which
+    /// returned this sign to where it started and was missed - lands on the earlier, and two
+    /// boundaries at one place are one landing.
     /// </para>
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)

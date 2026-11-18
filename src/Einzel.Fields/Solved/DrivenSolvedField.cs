@@ -666,6 +666,30 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The first channel's, as for the metal: every channel is the same geometry, so a reflected
+    /// channel sum's members - each half's own, the plane - are the same in all of them.
+    /// </remarks>
+    public int DiscontinuityMembers => Metal?.DiscontinuityMembers ?? 1;
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        Metal?.MemberDistanceToDiscontinuity(member, in position) ?? double.PositiveInfinity;
+
+    /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        if (Metal is { } metal)
+        {
+            metal.MemberDistancesToDiscontinuity(in position, distances);
+        }
+        else
+        {
+            distances.Fill(double.PositiveInfinity);
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// Every channel is the same geometry at different potentials, so the metal is
     /// in the same place in all of them and the first is as good as any.
     /// </remarks>

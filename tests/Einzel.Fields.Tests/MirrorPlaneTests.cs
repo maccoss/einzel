@@ -888,6 +888,89 @@ public sealed class MirrorPlaneTests
     }
 
     /// <summary>
+    /// A driven reflected solve passes its halves' members through, so a crossing of the box's edge
+    /// and the plane together - two members changing sign at once, which a combined sign cannot
+    /// see - is still a crossing the integrator lands on.
+    /// </summary>
+    /// <remarks>
+    /// The driven field wrapped its channels' reflected sums and was one member, their combined
+    /// measure: across the corner where the box's top edge meets the plane, the declared half's
+    /// own measure and the plane both change sign, the product does not, and the step crossing
+    /// there landed on neither.
+    /// </remarks>
+    [Fact]
+    public void ADrivenReflectedSolveKeepsItsMembers()
+    {
+        var solve = new CompiledSolvedField
+        {
+            MinX = 0.0, MaxX = Plane, MinY = 0.0, MaxY = 0.012,
+            CellSize = 0.5e-3, Tolerance = 1e-10,
+            RightEdge = BoundaryKind.Dirichlet,
+            BoundaryIsDiscontinuous = true,
+            ReflectAboutX = Plane,
+            Electrodes =
+            [
+                new CompiledElectrode
+                {
+                    Name = "plate", Shape = ElectrodeShape.Rectangle,
+                    MinX = 0.01, MaxX = 0.015, MinY = 0.0, MaxY = 0.004, Potential = 0.0,
+                    Taps = [new CompiledTap(0, 500.0, 0.0)],
+                },
+            ],
+            Drives = [new CompiledDrive(1.0e6, DriveWaveform.Sinusoid, 0.5)],
+        };
+
+        var (field, _) = GeometryBuilder.Build(solve);
+
+        Assert.IsAssignableFrom<ITimeVaryingField>(field);
+        Assert.Equal(3, field.DiscontinuityMembers);
+
+        // From inside the declared box to past the plane above the box: the declared half's own
+        // measure and the plane change sign, the image's does not.
+        var inside = new Vec3(Plane - 0.001, 0.011, 0.0);
+        var past = new Vec3(Plane + 0.001, 0.013, 0.0);
+
+        Assert.Equal(2, MemberChanges(field, inside, past));
+        Assert.Equal(
+            Math.Sign(field.SignedDistanceToDiscontinuity(in inside)),
+            Math.Sign(field.SignedDistanceToDiscontinuity(in past)));
+    }
+
+    /// <summary>
+    /// A half-space field bounded by a region lying across its plane: the plane is a crossing
+    /// wherever it is inside the box, a box face nearer or not; outside the box it is none; and the
+    /// box's own faces are crossings everywhere.
+    /// </summary>
+    /// <remarks>
+    /// The box and the inner field were combined by the nearer surface's sign, so within reach of a
+    /// box face the half-space plane read the box's sign on both sides and was crossed with no
+    /// landing.
+    /// </remarks>
+    [Fact]
+    public void ABoundedHalfSpaceLandsOnItsPlaneNearAFace()
+    {
+        var region = new FieldRegion(0.0, 0.1, -0.01, 0.01, -0.01, 0.01);
+        var inner = HalfSpaceUniformField.Create(
+            new Vec3(0.05, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0), Einzel.Core.Units.Quantity.From(1000.0, "V/m"));
+        var bounded = Einzel.Fields.Analytic.BoundedField.Around(inner, region);
+
+        Assert.Equal(2, bounded.DiscontinuityMembers);
+
+        // A box face 0.1 mm away, the plane 0.5 mm: the plane is crossed.
+        Assert.Equal(1, MemberChanges(bounded, new Vec3(0.0495, 0.0099, 0.0), new Vec3(0.0505, 0.0099, 0.0)));
+
+        // Far from any face, the same.
+        Assert.Equal(1, MemberChanges(bounded, new Vec3(0.0495, 0.0, 0.0), new Vec3(0.0505, 0.0, 0.0)));
+
+        // The plane's continuation outside the box: nothing there.
+        Assert.Equal(0, MemberChanges(bounded, new Vec3(0.0495, 0.02, 0.0), new Vec3(0.0505, 0.02, 0.0)));
+
+        // A box face, on either side of the plane: the box alone.
+        Assert.Equal(1, MemberChanges(bounded, new Vec3(0.02, 0.0095, 0.0), new Vec3(0.02, 0.0105, 0.0)));
+        Assert.Equal(1, MemberChanges(bounded, new Vec3(0.08, 0.0095, 0.0), new Vec3(0.08, 0.0105, 0.0)));
+    }
+
+    /// <summary>
     /// Where the halves overlap the plane is no surface and the declared half is used as it is; the
     /// image answers everywhere with the declared half's measure mirrored.
     /// </summary>

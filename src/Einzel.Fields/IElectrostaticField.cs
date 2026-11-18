@@ -113,6 +113,21 @@ public interface IElectrostaticField
     /// <returns>Its signed distance, in metres, or positive infinity.</returns>
     double MemberDistanceToDiscontinuity(int member, in Vec3 position) => SignedDistanceToDiscontinuity(in position);
 
+    /// <summary>Every member's discontinuity measure at once, in member order.</summary>
+    /// <param name="position">The point, in metres.</param>
+    /// <param name="distances">Filled with one measure per member; as long as <see cref="DiscontinuityMembers"/>.</param>
+    /// <remarks>
+    /// One pass: a sum fills each part's members in its slice, so asking for all of them costs one
+    /// query of each part rather than a scan per member. What the integrator asks at every step.
+    /// </remarks>
+    void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        for (var k = 0; k < distances.Length; k++)
+        {
+            distances[k] = MemberDistanceToDiscontinuity(k, in position);
+        }
+    }
+
     /// <summary>
     /// The length scale on which this field is resolved. Infinite for a field
     /// given in closed form.

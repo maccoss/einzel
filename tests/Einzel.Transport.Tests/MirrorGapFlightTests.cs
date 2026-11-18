@@ -338,6 +338,13 @@ public sealed class MirrorGapFlightTests
         Assert.Equal(TrajectoryOutcome.StopConditionMet, flown.Outcome);
         Assert.Equal(whole.FlightTimeSeconds, flown.FlightTimeSeconds);
         Assert.Equal(whole.MaximumRelativeEnergyDrift, flown.MaximumRelativeEnergyDrift);
+
+        // One bisection for the three members changing at the plane - the half's face, the plane,
+        // the image's face - as for the whole field's one surface: one per changing member, then
+        // the earliest, was three times the landing work, some 600 evaluations more. What may
+        // differ is a pass at the start of a step that sits exactly on the whole field's surface
+        // and not on every member's: counted where the scalar path skips it.
+        Assert.InRange(flown.FieldEvaluations - whole.FieldEvaluations, 0L, 12L);
         Assert.True(relative < 1e-10, $"flight across the plane {flown.FlightTimeSeconds:R} s against {exact:R} s, relative {relative:E3}");
     }
 
