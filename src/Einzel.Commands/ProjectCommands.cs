@@ -58,13 +58,16 @@ public static class ProjectCommands
     /// <returns>The outcome.</returns>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is null or blank.</exception>
     /// <exception cref="EinzelException">No such template or example, or the destination exists.</exception>
-    public static NewOutcome New(string destination, string kind, string name, bool dryRun = false)
+    /// <param name="namePath">
+    /// Where an unknown name is located, as the caller's surface spells it - the flag for the CLI -
+    /// or null for <c>/name</c>, as a tool argument or a dialog field is. The caller's, because this
+    /// command does not know which surface asked.
+    /// </param>
+    public static NewOutcome New(string destination, string kind, string name, bool dryRun = false, string? namePath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
 
-        // Located at the flag that named it, as every other flag error is (FlagPath): `new` has
-        // no other way to be asked for a template or an example.
-        var text = CatalogCommand.Read(kind, name, FlagPath.Of("from-" + kind));
+        var text = namePath is null ? CatalogCommand.Read(kind, name) : CatalogCommand.Read(kind, name, namePath);
         var absolute = Path.GetFullPath(destination);
 
         // Refusing rather than overwriting. A model is the input a whole study

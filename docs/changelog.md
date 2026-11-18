@@ -3844,5 +3844,18 @@ Two findings from Stage 1 that bear on the spec:
   target and a backup both deletes a backup that copies the intact target and names one that does
   not. The conductor gate is `DeclaredMetal`, so a solved field is not an ambiguous argument.
 
+  **A twenty-sixth review.** A failed replace leaving a differing backup now puts it back over the
+  target, naming both where it cannot. Labels on one scale share one notation and one precision,
+  chosen from the span and the largest value; fixed decimals stop at what a double holds there, and
+  a span below that resolution is a flat scale written once. An empty or blank argument is refused
+  at its place instead of exiting 6. Path flags are declared once (`VerbFlags.Paths`) and read
+  through `PathValue`, which refuses an unmarked one. `new` takes the location of an unknown name
+  from its caller, so the shell is not told about a flag it has none of. The backup comparison
+  reads in chunks and cannot throw out of a rollback. A model name that begins with a digit is not
+  taken for a mistyped interval. And of two biased layers the nearer one's colour lands, whatever
+  their order - which moves pixels of a `render surface` picture where its mesh lines, the one
+  biased layer, overlap on screen: 611 to 12,960 of 312,260 bytes on four templates compared
+  against the previous build, where the later line had won.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

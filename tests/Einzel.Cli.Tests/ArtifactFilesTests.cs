@@ -284,29 +284,55 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
-    /// A replace that fails leaving the target and a backup both is cleaned up where the backup is
-    /// a copy of the intact target, and named in the refusal where it is not.
+    /// A replace that fails leaving a backup: a backup that copies the intact target is removed;
+    /// one that differs is put back over the target, which most likely holds the new bytes; and
+    /// where that cannot be done, the refusal names the target and where its original is.
     /// </summary>
+    /// <remarks>
+    /// A differing backup was named and left, with the new bytes standing at the target and the
+    /// refusal not naming the target at all.
+    /// </remarks>
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void AFailedReplaceLeavingABackupIsCleanedOrNamed(bool copy)
+    [InlineData("copy")]
+    [InlineData("original")]
+    [InlineData("blocked")]
+    public void AFailedReplaceLeavingABackupIsResolved(string left)
     {
         Directory.CreateDirectory(_root);
         var first = Path.Combine(_root, "first.vti");
         var second = Path.Combine(_root, "second.vti");
         File.WriteAllBytes(first, [1]);
         File.WriteAllBytes(second, [2]);
-        string? left = null;
+        string? backupAt = null;
 
         ArtifactFiles.Replacing.Value = (target, backup) =>
         {
-            if (target == second)
+            if (target != second)
             {
-                File.WriteAllBytes(backup, copy ? [2] : [7]);
-                left = backup;
-                throw new IOException("unable to remove the replaced file");
+                return;
             }
+
+            backupAt = backup;
+
+            switch (left)
+            {
+                case "copy":
+                    File.WriteAllBytes(backup, [2]);
+                    break;
+                case "original":
+                    // As a replace failing half way leaves it: the original under the backup
+                    // name, and the new bytes at the target.
+                    File.Move(target, backup);
+                    File.WriteAllBytes(target, [9]);
+                    break;
+                default:
+                    // And with something at the target no rename of a file can replace.
+                    File.Move(target, backup);
+                    Directory.CreateDirectory(target);
+                    break;
+            }
+
+            throw new IOException("the replace failed part way");
         };
 
         EinzelException refusal;
@@ -321,19 +347,18 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         }
 
         output.WriteLine(refusal.Error.Constraint);
-
         Assert.Equal([1], File.ReadAllBytes(first));
-        Assert.Equal([2], File.ReadAllBytes(second));
 
-        if (copy)
+        if (left == "blocked")
         {
-            Assert.Equal(["first.vti", "second.vti"], Directory.GetFiles(_root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+            Assert.Contains($"the original of {second} is now at {backupAt}", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.Equal([2], File.ReadAllBytes(backupAt!));
+            Directory.Delete(second);
+            return;
         }
-        else
-        {
-            Assert.True(File.Exists(left));
-            Assert.Contains(left!, refusal.Error.Constraint, StringComparison.Ordinal);
-        }
+
+        Assert.Equal([2], File.ReadAllBytes(second));
+        Assert.Equal(["first.vti", "second.vti"], Directory.GetFiles(_root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
     }
 
     /// <summary>

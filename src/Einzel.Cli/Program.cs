@@ -291,7 +291,7 @@ public static class Program
 
             // A file named by nothing but spaces names no file: refused at its flag, where the
             // path reader would have made one of it and failed inside the engine.
-            var path = PathFlags.Contains(flag) ? values.FirstOrDefault(v => v is { Length: > 0 } && string.IsNullOrWhiteSpace(v)) : null;
+            var path = VerbFlags.IsPath(flag) ? values.FirstOrDefault(v => v is { Length: > 0 } && string.IsNullOrWhiteSpace(v)) : null;
 
             if (path is not null)
             {
@@ -320,6 +320,21 @@ public static class Program
                 };
                 break;
             }
+        }
+
+        // An argument of nothing, or only spaces, is no model, file or name: `run ""` reached
+        // Path.GetFullPath("") and exited 6. Refused at its place among the arguments.
+        if (refusal is null && options.Positional.Select((p, i) => (p, i)).FirstOrDefault(a => string.IsNullOrWhiteSpace(a.p)) is { p: not null } blank)
+        {
+            refusal = new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/args/" + blank.i.ToString(CultureInfo.InvariantCulture),
+                Constraint = blank.p.Length == 0
+                    ? $"argument {blank.i} to {key} is empty"
+                    : $"argument {blank.i} to {key} is only spaces",
+                Suggestion = "give the file or the name the argument stands for",
+            };
         }
 
         if (refusal is null && options.Positional.Count > flags.Positionals)
@@ -356,10 +371,8 @@ public static class Program
     /// or a file given without its flag, so the suggestion names the verb's own switches and
     /// its own flags that take a value.
     /// </remarks>
-    private static readonly string[] FileFlags = ["out", "csv", "input"];
-
-    // The flags whose value is a path: a file to write or read, or the project folder.
-    private static readonly string[] PathFlags = ["out", "csv", "input", "project"];
+    // The flags that name a file, from the one declaration of path flags.
+    private static readonly string[] FileFlags = [.. VerbFlags.Paths.Where(p => p.File).Select(p => p.Flag)];
 
     /// <summary>
     /// What a refusal says about words read as arguments because they followed a bare flag whose
@@ -381,10 +394,23 @@ public static class Program
     }
 
     // Whether a word could be a mistyped number - a digit first, or a sign or a point and then a
-    // digit: '5s', '0,5', '-2x'. A model path rarely is, and a note about one that is not would
-    // send somebody to fix a word that was right.
+    // digit: '5s', '0,5', '-2x' - and not a path: one with a separator in it, or an extension
+    // that begins with a letter (2026-trap.json, 3d/lens). A note about a model name that happens
+    // to start with a digit would send somebody to fix a word that was right.
     internal static bool LooksNumeric(string word)
     {
+        if (word.IndexOfAny(['/', '\\']) >= 0)
+        {
+            return false;
+        }
+
+        var extension = Path.GetExtension(word);
+
+        if (extension.Length > 1 && char.IsAsciiLetter(extension[1]))
+        {
+            return false;
+        }
+
         var body = word.Length > 0 && word[0] is '+' or '-' ? word[1..] : word;
         body = body.Length > 0 && body[0] == '.' ? body[1..] : body;
         return body.Length > 0 && char.IsAsciiDigit(body[0]);
@@ -563,7 +589,7 @@ public static class Program
         }
 
         var studyPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(studyPath);
         var outcome = StudyCommand.Sweep(studyPath, new ProjectLayout(root), options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -653,7 +679,7 @@ public static class Program
         }
 
         var studyPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(studyPath);
         var outcome = StudyCommand.Scan(studyPath, new ProjectLayout(root), options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -741,7 +767,7 @@ public static class Program
         }
 
         var studyPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(studyPath);
         var outcome = StudyCommand.Boundary(studyPath, new ProjectLayout(root), options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -832,7 +858,7 @@ public static class Program
         }
 
         var studyPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(studyPath);
         var outcome = StudyCommand.Optimise(studyPath, new ProjectLayout(root), options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -985,7 +1011,8 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        var outcome = ProjectCommands.New(options.Positional[0], kind, name, options.Has("dry-run"));
+        // Located at the flag that named it, as every other flag error is (FlagPath).
+        var outcome = ProjectCommands.New(options.Positional[0], kind, name, options.Has("dry-run"), FlagPath.Of("from-" + kind));
 
         if (options.Has("json"))
         {
@@ -1145,7 +1172,7 @@ public static class Program
 
     private static int AgentsMd(CommandLine options)
     {
-        var root = options.Value("project") ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
+        var root = options.PathValue("project") ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
         var outcome = ProjectCommands.AgentsMd(root, options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -1162,7 +1189,7 @@ public static class Program
 
     private static int Doctor(CommandLine options)
     {
-        var root = options.Value("project") ?? (options.Positional.Count > 0 ? options.Positional[0] : null);
+        var root = options.PathValue("project") ?? (options.Positional.Count > 0 ? options.Positional[0] : null);
 
         if (root is null && Directory.Exists("models"))
         {
@@ -1718,14 +1745,14 @@ public static class Program
 
         // The table's destination before the field is built: a directory, or the model itself, is
         // known without solving anything.
-        if (options.Value("csv") is { } csvFirst)
+        if (options.PathValue("csv") is { } csvFirst)
         {
             ArtifactFiles.CheckAll([("csv", csvFirst)], options.Positional[0]);
         }
 
         var outcome = ProbeCommand.Execute(options.Positional[0], new ProbeRequest(from, to, samples, at));
 
-        if (options.Value("csv") is { } csv)
+        if (options.PathValue("csv") is { } csv)
         {
             var target = Path.GetFullPath(csv);
 
@@ -1827,7 +1854,7 @@ public static class Program
 
     private static int Test(CommandLine options)
     {
-        var root = options.Value("project")
+        var root = options.PathValue("project")
             ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
 
         var outcome = TestCommand.Execute(root);
@@ -1909,7 +1936,7 @@ public static class Program
     /// </remarks>
     private static int Project(CommandLine options)
     {
-        var root = options.Value("project")
+        var root = options.PathValue("project")
             ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
 
         var outcome = ProjectCommand.Execute(root);
@@ -2030,7 +2057,7 @@ public static class Program
 
     private static int Verify(CommandLine options)
     {
-        var root = options.Value("project")
+        var root = options.PathValue("project")
             ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
 
         var outcome = VerifyCommand.Execute(root);
@@ -2087,7 +2114,7 @@ public static class Program
     /// </remarks>
     private static int Report(CommandLine options)
     {
-        var root = options.Value("project")
+        var root = options.PathValue("project")
             ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
 
         var outcome = ReportCommand.Execute(root);
@@ -2100,7 +2127,7 @@ public static class Program
         // The page goes at the project root rather than into results/, and that is not
         // cosmetic: results/ is what `verify` walks and what this reads, so a report
         // written there would become an input to the next one.
-        var target = options.Value("out")
+        var target = options.PathValue("out")
             ?? Path.Combine(outcome.Root, "report.html");
 
         var page = ReportPage.Write(outcome, Path.GetFileName(outcome.Root.TrimEnd(
@@ -2117,7 +2144,7 @@ public static class Program
         // A named directory is created rather than refused, since `--out reports/tonight.html`
         // is the obvious way to keep a series of them and failing on the first is a poor
         // answer. The default target's directory is the project root and always exists.
-        ArtifactFiles.WriteText(options.Value("out") is null ? null : "out", target, page);
+        ArtifactFiles.WriteText(options.PathValue("out") is null ? null : "out", target, page);
 
         foreach (var run in outcome.Runs)
         {
@@ -2185,7 +2212,7 @@ public static class Program
         }
 
         var modelPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(modelPath);
         var layout = new ProjectLayout(root);
         var dryRun = options.Has("dry-run");
 
@@ -2337,7 +2364,7 @@ public static class Program
             InstantFromFlag = sectionAt is not null,
         };
 
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(modelPath);
 
         if (!TryProgress(options, out var sectionProgress))
         {
@@ -2345,7 +2372,7 @@ public static class Program
         }
 
         var outcome = RenderCommand.Section(
-            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
+            modelPath, new ProjectLayout(root), spec, options.PathValue("out"), options.Has("dry-run"),
             sectionProgress, isSpec ? given : null);
 
         if (options.Has("json"))
@@ -2415,7 +2442,7 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(modelPath);
 
         var outcome = StillCommand.Execute(
             modelPath,
@@ -2424,7 +2451,7 @@ public static class Program
             width,
             height,
             options.Has("see-through"),
-            options.Value("out"),
+            options.PathValue("out"),
             options.Has("dry-run"),
             scale: !options.Has("no-scale"));
 
@@ -2579,7 +2606,7 @@ public static class Program
             deepSamples);
 
         var modelPath = positional[0];
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(modelPath);
 
         // Every flag error the command raises is located at its flag already (FlagPath), as every
         // other verb's is: this verb alone used to translate pointers of its own.
@@ -2590,10 +2617,10 @@ public static class Program
             view,
             width,
             height,
-            options.Value("out"),
+            options.PathValue("out"),
             options.Has("dry-run"),
             scale: !options.Has("no-scale"),
-            csvPath: options.Value("csv"));
+            csvPath: options.PathValue("csv"));
 
         if (options.Has("json"))
         {
@@ -2716,10 +2743,10 @@ public static class Program
                 : spec.Animation,
         };
 
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(modelPath);
 
         var outcome = RenderCommand.Animation(
-            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
+            modelPath, new ProjectLayout(root), spec, options.PathValue("out"), options.Has("dry-run"),
             animationProgress, given);
 
         if (options.Has("json"))
@@ -2801,7 +2828,7 @@ public static class Program
     }
 
     private static ProjectLayout ExtProject(CommandLine options) =>
-        new(options.Value("project") ?? InferProjectRoot(Directory.GetCurrentDirectory()));
+        new(options.PathValue("project") ?? InferProjectRoot(Directory.GetCurrentDirectory()));
 
     private static int ExtList(CommandLine options)
     {
@@ -2862,7 +2889,7 @@ public static class Program
 
         System.Text.Json.Nodes.JsonNode? payload = new System.Text.Json.Nodes.JsonObject();
 
-        if (options.Value("input") is { } file)
+        if (options.PathValue("input") is { } file)
         {
             var text = File.ReadAllText(Path.GetFullPath(file));
 
@@ -3231,7 +3258,7 @@ public static class Program
         }
 
         var modelPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue("project") ?? InferProjectRoot(modelPath);
         var project = new ProjectLayout(root);
 
         // WATCHED BY DEFAULT, and that is the decision rather than the plumbing. A flag

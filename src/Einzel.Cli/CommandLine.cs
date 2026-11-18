@@ -43,6 +43,19 @@ public sealed class CommandLine
     /// <returns>The value, or null.</returns>
     public string? Value(string name) => _options.TryGetValue(name, out var value) ? value : null;
 
+    /// <summary>The value of a flag that names a file or a folder, or null when absent or valueless.</summary>
+    /// <param name="name">The flag, without dashes; it must be one <see cref="VerbFlags.Paths"/> marks.</param>
+    /// <returns>The value, or null.</returns>
+    /// <exception cref="InvalidOperationException">The flag is not marked as a path.</exception>
+    /// <remarks>
+    /// Reading a path through this is what keeps <see cref="VerbFlags.Paths"/> whole: a flag read
+    /// as a path and not marked would escape the checks every path flag gets.
+    /// </remarks>
+    public string? PathValue(string name) =>
+        VerbFlags.IsPath(name)
+            ? Value(name)
+            : throw new InvalidOperationException($"--{name} is read as a path and VerbFlags.Paths does not mark it as one");
+
     /// <summary>Every occurrence of a repeatable option, in the order given.</summary>
     /// <param name="name">The option name, without the leading dashes.</param>
     /// <returns>The values, which may be empty.</returns>

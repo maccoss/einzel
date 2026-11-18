@@ -545,28 +545,20 @@ public static class ArtifactFiles
                 // refusal, not swallowed, since the one copy of the user's file is there.
                 var stranded = new List<(string Target, string Backup)>();
 
-                // Files a failed replace left that are not stranded originals but may be the only
-                // other copy of one: named in the refusal rather than deleted unseen.
-                var leftover = new List<string>();
-
                 if (replacing is { } risk && File.Exists(risk.Backup))
                 {
-                    if (!File.Exists(risk.Target))
-                    {
-                        if (!TryRestore(risk.Backup, risk.Target))
-                        {
-                            stranded.Add(risk);
-                        }
-                    }
-                    else if (SameBytes(risk.Backup, risk.Target))
+                    if (File.Exists(risk.Target) && SameBytes(risk.Backup, risk.Target))
                     {
                         // The replace failed with both still there and the target as it was: the
                         // backup is a copy of it, and nothing needs it.
                         TryDelete(risk.Backup);
                     }
-                    else
+                    else if (!TryRestore(risk.Backup, risk.Target))
                     {
-                        leftover.Add(risk.Backup);
+                        // The target is gone, or holds something else - most likely the new
+                        // bytes, with the original under the backup name. Put back either way, as
+                        // a placed file is; where it cannot be, the refusal names both.
+                        stranded.Add(risk);
                     }
                 }
 
@@ -607,13 +599,7 @@ public static class ArtifactFiles
                     : "; and it could not be put back as it was: "
                         + string.Join("; ", stranded.Select(s => $"the original of {s.Target} is now at {s.Backup}"));
 
-                if (leftover.Count > 0)
-                {
-                    left += "; and the failed replace left " + string.Join(", ", leftover)
-                        + ", which differs from the file it was a backup of - check it before removing it";
-                }
-
-                if (stranded.Count == 0 && leftover.Count == 0
+                if (stranded.Count == 0
                     && failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
                 {
                     // Not a destination that cannot be written: rolled back, and raised as itself.
@@ -624,7 +610,7 @@ public static class ArtifactFiles
                     flag,
                     Path.GetFullPath(path),
                     failure.Message + left,
-                    stranded.Count == 0 && leftover.Count == 0 ? null : "move each original back over the file named beside it; nothing of it was deleted");
+                    stranded.Count == 0 ? null : "move each original back over the file named beside it; nothing of it was deleted");
             }
             finally
             {
@@ -753,19 +739,45 @@ public static class ArtifactFiles
     }
 
     // Whether two files hold the same bytes; false where either cannot be read.
+    // In fixed-size chunks through two streams, so a film's frame is not read whole twice to
+    // compare it. Any failure reads as "not the same", which sends the backup back over the target
+    // - the safe direction - and never lets an exception out of the rollback it is part of.
     private static bool SameBytes(string first, string second)
     {
+#pragma warning disable CA1031 // Inside a rollback: whatever goes wrong, the answer is "not known to be the same".
         try
         {
-            var a = new FileInfo(first);
-            var b = new FileInfo(second);
+            using var a = new FileStream(first, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var b = new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
-            return a.Length == b.Length && File.ReadAllBytes(first).AsSpan().SequenceEqual(File.ReadAllBytes(second));
+            if (a.Length != b.Length)
+            {
+                return false;
+            }
+
+            var x = new byte[81920];
+            var y = new byte[81920];
+
+            while (true)
+            {
+                var read = a.ReadAtLeast(x, x.Length, throwOnEndOfStream: false);
+
+                if (read == 0)
+                {
+                    return true;
+                }
+
+                if (b.ReadAtLeast(y, read, throwOnEndOfStream: false) != read || !x.AsSpan(0, read).SequenceEqual(y.AsSpan(0, read)))
+                {
+                    return false;
+                }
+            }
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        catch (Exception)
         {
             return false;
         }
+#pragma warning restore CA1031
     }
 
     // Whether the backup went back; false where it did not, and the caller says where it is.

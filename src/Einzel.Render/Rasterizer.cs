@@ -72,8 +72,10 @@ public sealed record RasterLine(
 /// <param name="DepthBias">
 /// How much nearer than its geometry the layer is depth-tested, in clip-space depth units: a
 /// wire mesh drawn exactly on a surface has the surface's depth, and without a bias whether a
-/// line pixel survives the test is a coin toss on rounding. Only the test is biased: a layer that
-/// writes depth stores its true depth, so it hides only what is behind its geometry.
+/// line pixel survives the test is a coin toss on rounding. Only the test against what is stored
+/// is biased: a layer that writes depth stores the nearer of its true depth and what was there, and
+/// between two biased layers the nearer one's colour lands, so the picture does not depend on
+/// which was drawn first.
 /// </param>
 /// <param name="Name">What the layer is, for a refusal to name; null where it has no name.</param>
 public sealed record RasterLayer(
@@ -237,7 +239,7 @@ public static class Rasterizer
 
         var rgb = new byte[3 * width * height];
         var canvas = new Canvas(
-            width * supersample, rowsPerBand * supersample, matrix, height * supersample);
+            width * supersample, rowsPerBand * supersample, matrix, height * supersample, layers.Any(l => l.DepthBias > 0.0));
         var annotations = Annotations(overlay, supersample);
 
         for (var top = 0; top < height; top += rowsPerBand)
@@ -358,6 +360,10 @@ public static class Rasterizer
         private readonly int _height;
         private readonly double[] _color;
         private readonly double[] _depth;
+
+        // The true depth of the biased layer whose colour a sample shows, or infinity where none
+        // does; held only when a picture has a biased layer at all.
+        private readonly double[]? _biased;
         private readonly IReadOnlyList<double> _m;
 
         private int _top;
@@ -368,13 +374,15 @@ public static class Rasterizer
         /// <param name="capacity">The most sample rows one band holds.</param>
         /// <param name="matrix">Millimeters to clip space.</param>
         /// <param name="height">Sample rows in the whole picture, which the projection spans.</param>
-        public Canvas(int width, int capacity, IReadOnlyList<double> matrix, int height)
+        /// <param name="biased">Whether any layer is depth-biased, so the biased owners are tracked.</param>
+        public Canvas(int width, int capacity, IReadOnlyList<double> matrix, int height, bool biased = false)
         {
             _width = width;
             _height = height;
             _m = matrix;
             _color = new double[3 * width * capacity];
             _depth = new double[width * capacity];
+            _biased = biased ? new double[width * capacity] : null;
         }
 
         /// <summary>Clears the buffer for the band starting at a sample row.</summary>
@@ -386,6 +394,11 @@ public static class Rasterizer
             var count = _width * rows;
 
             Array.Fill(_depth, double.PositiveInfinity, 0, count);
+
+            if (_biased is not null)
+            {
+                Array.Fill(_biased, double.PositiveInfinity, 0, count);
+            }
 
             for (var i = 0; i < count; i++)
             {
@@ -408,6 +421,50 @@ public static class Rasterizer
             var cz = (_m[2] * x) + (_m[6] * y) + (_m[10] * z) + _m[14];
 
             return ((cx + 1.0) * 0.5 * _width, (1.0 - cy) * 0.5 * _height, cz);
+        }
+
+        /// <summary>
+        /// Whether a sample of a layer is drawn, and if so who now owns its colour.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The rule for a biased layer, so the picture does not depend on the order of the
+        /// layers.</b> A bias lets a layer through a surface it lies on or just behind - a wire mesh
+        /// on the surface it outlines - so against what is stored it is tested up to the bias
+        /// nearer than it is. Against another biased layer it is not: of two biased layers at one
+        /// sample the nearer one's colour lands, whichever was drawn first. Tested only against
+        /// the stored depth, the second of two biased layers within the bias of each other always
+        /// won, so swapping them swapped the picture.
+        /// </para>
+        /// <para>
+        /// An unbiased layer is tested against the stored depth alone, and where it lands it covers
+        /// any biased colour there, so a later biased layer is compared with it as a surface.
+        /// </para>
+        /// </remarks>
+        private bool Lands(int index, double depth, double bias)
+        {
+            if (bias > 0.0)
+            {
+                if (!(depth - bias < _depth[index]) || !(depth < _biased![index]))
+                {
+                    return false;
+                }
+
+                _biased[index] = depth;
+                return true;
+            }
+
+            if (!(depth < _depth[index]))
+            {
+                return false;
+            }
+
+            if (_biased is not null)
+            {
+                _biased[index] = double.PositiveInfinity;
+            }
+
+            return true;
         }
 
         public void Mesh(
@@ -470,7 +527,7 @@ public static class Rasterizer
                         var depth = (w0 * p0.Z) + (w1 * p1.Z) + (w2 * p2.Z);
                         var index = ((py - _top) * _width) + px;
 
-                        if (!(depth - bias < _depth[index]))
+                        if (!Lands(index, depth, bias))
                         {
                             continue;
                         }
@@ -553,7 +610,7 @@ public static class Rasterizer
                         var depth = a.Z + (t * (b.Z - a.Z));
                         var index = ((py - _top) * _width) + px;
 
-                        if (!(depth - bias < _depth[index]))
+                        if (!Lands(index, depth, bias))
                         {
                             continue;
                         }

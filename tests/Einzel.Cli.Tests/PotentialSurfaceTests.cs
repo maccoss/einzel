@@ -2901,7 +2901,7 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     {
         Assert.Equal("3e-8", SurfaceCommand.Format(3e-8));
         Assert.Equal("-1.25e-12", SurfaceCommand.Format(-1.25e-12));
-        Assert.Equal("0.000123", SurfaceCommand.Format(1.23e-4));
+        Assert.Equal("1.23e-4", SurfaceCommand.Format(1.23e-4));
 
         // A narrow scale offset from zero is written in fixed notation, with the decimals that
         // tell its labels apart - not "1.23e+3" for every one of them.
@@ -2909,6 +2909,22 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal("1234.50001", SurfaceCommand.Format(1234.50001, 3e-5));
         Assert.Equal("1234.50003", SurfaceCommand.Format(1234.50003, 3e-5));
         Assert.Equal("-1234.50002", SurfaceCommand.Format(-1234.50002, 3e-5));
+
+        // Never past what a double holds: 1000 V on a span of 1e-13 is a flat scale, written to
+        // the value's own figures and alike, not to fifteen places of rounding.
+        var flat = SurfaceCommand.LabelScale.Of(1000.0, 1000.0 + 1e-13);
+        Assert.True(flat.Flat);
+        Assert.Equal("1000", SurfaceCommand.Format(1000.0000000000001, flat));
+        Assert.Equal("1000", SurfaceCommand.Format(1000.0, flat));
+        Assert.Equal("1000", SurfaceCommand.Format(1000.0000000000001, 1e-13));
+
+        // One notation per scale: ticks either side of a thousandth on one bar are written alike.
+        var ticks = SurfaceCommand.LabelScale.For(0.0012, 1e-6);
+        Assert.Equal("0.0009", SurfaceCommand.Format(0.0009, ticks));
+        Assert.Equal("0.0012", SurfaceCommand.Format(0.0012, ticks));
+        var small = SurfaceCommand.LabelScale.For(0.0009, 1e-6);
+        Assert.Equal("9e-4", SurfaceCommand.Format(0.0009, small));
+        Assert.Equal("8.5e-4", SurfaceCommand.Format(0.00085, small));
 
         // A small value on a small scale carries the figures the scale needs.
         Assert.Equal("1.0001e-4", SurfaceCommand.Format(1.0001e-4, 3e-8));

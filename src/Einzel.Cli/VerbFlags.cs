@@ -35,6 +35,30 @@ public sealed record VerbFlags(
     public static readonly IReadOnlySet<string> Global = new HashSet<string>(StringComparer.Ordinal) { "json" };
 
     /// <summary>
+    /// Every flag whose value is a path, and whether it names a file (true) or a folder (false), in
+    /// the order a suggestion names them.
+    /// </summary>
+    /// <remarks>
+    /// The one statement of which flags are paths. A value of spaces is refused for these and no
+    /// others, a stray argument's suggestion names the first file flag a verb has, and
+    /// <see cref="CommandLine.PathValue"/> refuses to read a flag as a path unless it is here - so
+    /// a path flag added without being marked fails the first time it is read, and
+    /// <c>VerbFlagsTests</c> fails at build time if one is read with <c>Value</c> instead.
+    /// </remarks>
+    public static readonly IReadOnlyList<(string Flag, bool File)> Paths =
+    [
+        ("out", true),
+        ("csv", true),
+        ("input", true),
+        ("project", false),
+    ];
+
+    /// <summary>Whether a flag's value is a path.</summary>
+    /// <param name="flag">The flag, without its dashes.</param>
+    /// <returns>True for a flag in <see cref="Paths"/>.</returns>
+    public static bool IsPath(string flag) => Paths.Any(p => p.Flag == flag);
+
+    /// <summary>
     /// Every verb's flags, keyed by the verb - or, where it has sub-verbs that read different
     /// flags, by the verb and the sub-verb (<c>render surface</c>, <c>ext test</c>,
     /// <c>agents setup</c>). One flag set for all of a verb's sub-verbs accepted

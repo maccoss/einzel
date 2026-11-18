@@ -1485,7 +1485,7 @@ public static class SurfaceCommand
             var textHeight = ScaleIndicator.TextHeightFor(width, height);
             var widest = new[] { low, high, 0.0 }.Concat(surface.Plateaus.Select(p => p.Height))
                 .Where(double.IsFinite)
-                .Max(v => StrokeFont.Width($"{Format(v, high - low)} {surface.Unit}", textHeight));
+                .Max(v => StrokeFont.Width($"{Format(v, LabelScale.Of(low, high))} {surface.Unit}", textHeight));
             var reachPx = Math.Max(StrokeFont.Width("cycle mean", textHeight), widest) + (1.6 * textHeight) + 8.0;
             var liftPx = 3.0 * textHeight;
             var fitted = matrix;
@@ -1674,77 +1674,125 @@ public static class SurfaceCommand
         return text.ToString();
     }
 
-    /// <summary>A height in words: three significant figures, fixed notation, no trailing zeros.</summary>
+    /// <summary>A height in words, as one label read on its own scale.</summary>
     /// <param name="value">The value.</param>
     /// <param name="span">
-    /// The range the value is read against, or zero to use the value's own size: labels on one
-    /// scale share a resolution, so a rounding residue of -0.0002 V beside a 20 V range reads 0.
+    /// The range the value is read against, or zero to use the value's own size. With no other
+    /// labels to agree with, the value is the largest on its scale.
     /// </param>
     /// <returns>Its text, using only characters the stroke font draws; empty for a value that is not finite.</returns>
     /// <remarks>
-    /// <para>
-    /// <b>A nonzero value read at its own size is never written 0.</b> Fixed notation is held to six
-    /// decimals, so below a thousandth of a unit three significant figures need an exponent:
-    /// 3e-8 V came out "0", a zero nothing measured. It is written "3e-8" now, in characters the
-    /// stroke font has.
-    /// </para>
-    /// <para>
-    /// On a shared scale (<paramref name="span"/> given) a value under half the scale's last digit
-    /// still reads 0, deliberately: it is zero to the resolution every label on that scale is read
-    /// at, and a residue printed as -2e-4 beside a 20 V range would state a precision the scale
-    /// does not have. That holds whatever the scale's size: labels on a span of 3e-8 V are written
-    /// in exponent form, labels on a span of 3e-5 V around 1234.5 V in fixed notation with the seven
-    /// decimals that tell them apart, and only what is under the scale's resolution reads 0.
-    /// </para>
+    /// A label beside others on one scale goes through <see cref="LabelScale"/>, which chooses the
+    /// notation and the precision once for all of them.
     /// </remarks>
-    public static string Format(double value, double span = 0.0)
+    public static string Format(double value, double span = 0.0) =>
+        double.IsFinite(value) ? Format(value, LabelScale.For(Math.Abs(value), span > 0.0 && double.IsFinite(span) ? span : 0.0)) : string.Empty;
+
+    /// <summary>A height in words, in the notation and precision its scale chose for every label on it.</summary>
+    /// <param name="value">The value.</param>
+    /// <param name="scale">The scale it is read on.</param>
+    /// <returns>Its text, using only characters the stroke font draws; empty for a value that is not finite.</returns>
+    public static string Format(double value, LabelScale scale)
     {
+        ArgumentNullException.ThrowIfNull(scale);
+
         // Not a number is no label at all: "0" beside a NaN would state a value nothing measured.
         if (!double.IsFinite(value))
         {
             return string.Empty;
         }
 
-        if (value == 0.0)
+        if (value == 0.0 || Math.Abs(value) < scale.Resolution)
         {
             return "0";
         }
 
-        var shared = span > 0.0 && double.IsFinite(span);
-        var magnitude = shared ? span : Math.Abs(value);
-        var exponent = (int)Math.Floor(Math.Log10(magnitude));
-
-        var decimals = 2 - exponent;
-
-        // The scale's last digit - three significant figures, and never coarser than a whole
-        // unit, as fixed notation writes it: under half of it, a value on a shared scale is zero
-        // to that scale's resolution.
-        if (shared && Math.Abs(value) < 0.5 * Math.Pow(10.0, -Math.Max(decimals, 0)))
+        if (scale.Figures is { } figures)
         {
-            return "0";
-        }
-
-        // Exponent form only for a value that is itself small. A narrow span offset from zero -
-        // 1234.50000 to 1234.50003 V - needs seven decimals to tell its labels apart and is
-        // written with them; sent to exponent form for the span's size alone, every label read
-        // "1.23e+3". A small value is written with the figures the span needs, at least three.
-        if (decimals > 6 && Math.Abs(value) < 1e-3)
-        {
-            var figures = Math.Max(3, (int)Math.Floor(Math.Log10(Math.Abs(value))) - exponent + 3);
             return Exponent(value, figures);
         }
 
-        decimals = Math.Clamp(decimals, 0, 15);
-        var text = Math.Round(value, decimals).ToString("F" + decimals.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+        var text = Math.Round(value, scale.Decimals).ToString("F" + scale.Decimals.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 
         if (text.Contains('.', StringComparison.Ordinal))
         {
             text = text.TrimEnd('0').TrimEnd('.');
         }
 
-        // Read at its own size a nonzero value cannot round to zero at three figures; this guards
-        // the rule rather than the arithmetic.
-        return text is "0" or "-0" ? (shared ? "0" : Exponent(value)) : text;
+        // A value at or over the scale's resolution cannot round to zero at its decimals; this
+        // guards the rule rather than the arithmetic.
+        return text is "0" or "-0" ? Exponent(value) : text;
+    }
+
+    /// <summary>
+    /// How every label on one scale is written: chosen once, from the scale's span and its largest
+    /// value, so ticks on one bar never mix notations or precisions.
+    /// </summary>
+    /// <param name="Figures">Significant figures in exponent form, or null for fixed notation.</param>
+    /// <param name="Decimals">Decimal places in fixed notation.</param>
+    /// <param name="Resolution">Below this a value reads 0: under half the scale's last digit.</param>
+    /// <param name="Flat">
+    /// Whether the span is below what a double can resolve at the scale's size, so the labels would
+    /// differ only in noise: written to the value's own three figures, and alike.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>One choice per scale.</b> Choosing per label switched notation at a thousandth of a unit,
+    /// so 0.0009 and 0.0012 on one bar came out in two forms. Exponent form is used only where the
+    /// largest value on the scale is itself small; otherwise fixed notation with the decimals the
+    /// span needs - 1234.5 to 1234.50003 V is written with seven.
+    /// </para>
+    /// <para>
+    /// <b>Never past what a double holds.</b> Fixed decimals are capped by the significant digits
+    /// left at the scale's size, fifteen in all, so 1000 V is never written to a dozen places
+    /// that are rounding. A span below the double's own resolution there is <see cref="Flat"/>.
+    /// </para>
+    /// <para>
+    /// <b>A nonzero value read at its own size is never written 0</b>: 3e-8 V is "3e-8". On a scale
+    /// shared with larger labels a value under half its last digit does read 0, deliberately - it
+    /// is zero to the resolution every label there is read at.
+    /// </para>
+    /// </remarks>
+    public sealed record LabelScale(int? Figures, int Decimals, double Resolution, bool Flat)
+    {
+        /// <summary>The scale for labels between two values.</summary>
+        /// <param name="low">The scale's lower end.</param>
+        /// <param name="high">Its upper end.</param>
+        /// <returns>The choice every label on it is written with.</returns>
+        public static LabelScale Of(double low, double high) =>
+            For(Math.Max(double.IsFinite(low) ? Math.Abs(low) : 0.0, double.IsFinite(high) ? Math.Abs(high) : 0.0), high - low);
+
+        /// <summary>The scale for labels whose largest magnitude and span are given.</summary>
+        /// <param name="largest">The largest magnitude on the scale.</param>
+        /// <param name="span">The range the labels are read against; zero or less for a value read at its own size.</param>
+        /// <returns>The choice every label on it is written with.</returns>
+        public static LabelScale For(double largest, double span)
+        {
+            if (!(largest > 0.0) || !double.IsFinite(largest))
+            {
+                // Nothing but zeros to write, or nothing finite: any choice writes "0".
+                return new LabelScale(null, 0, 0.0, Flat: false);
+            }
+
+            var top = (int)Math.Floor(Math.Log10(largest));
+
+            // Below what a double resolves at this size - a few hundred ulps - the labels would
+            // differ only in rounding: read the scale at the value's own size instead.
+            var ulp = Math.BitIncrement(largest) - largest;
+            var flat = !(span > 0.0) || !double.IsFinite(span) || span < 256.0 * ulp;
+            var reach = flat ? top : (int)Math.Floor(Math.Log10(span));
+
+            if (largest < 1e-3)
+            {
+                var figures = Math.Clamp(top - reach + 3, 3, 15);
+                return new LabelScale(figures, 0, flat ? 0.0 : 0.5 * Math.Pow(10.0, reach - 2), flat);
+            }
+
+            // Fifteen significant digits in all, so no more decimals than are left after the
+            // integer part.
+            var decimals = Math.Clamp(2 - reach, 0, Math.Min(15, Math.Max(0, 14 - top)));
+            return new LabelScale(null, decimals, flat ? 0.0 : 0.5 * Math.Pow(10.0, -decimals), flat);
+        }
     }
 
     // Significant figures in exponent form, three unless more are asked for, in characters the
@@ -2169,6 +2217,7 @@ public static class SurfaceCommand
         var strokes = new List<OverlayStroke> { new([bottom.X, bottom.Y, topPx.X, topPx.Y], ir, ig, ib) };
         var texts = new List<OverlayText>();
         var placed = new List<double>();
+        var labels = LabelScale.Of(low, high);
 
         void Tick(double value, bool force)
         {
@@ -2184,10 +2233,18 @@ public static class SurfaceCommand
                 return;
             }
 
+            var label = $"{Format(value, labels)} {surface.Unit}";
+
+            // A flat scale writes every label alike: one tick and one label, not a column of the
+            // same text over ticks a rounding apart.
+            if (labels.Flat && texts.Any(t => t.Text == label))
+            {
+                return;
+            }
+
             placed.Add(py);
             strokes.Add(new OverlayStroke([px - tick, py, px, py], ir, ig, ib));
 
-            var label = $"{Format(value, high - low)} {surface.Unit}";
             var labelWidth = StrokeFont.Width(label, textHeight);
             texts.Add(new OverlayText(label, px - tick - (0.4 * textHeight) - (0.5 * labelWidth), py, textHeight, ir, ig, ib));
         }

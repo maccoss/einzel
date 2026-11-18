@@ -115,8 +115,8 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     }
 
     private const string Readers = "(?:TryNumberFlag|TryWholeFlag|TryChoiceFlag)";
-    private static readonly Regex ReadPattern = new(@"(?:\.Has|\.Value|\.Values)\(""([a-z0-9-]+)""\)|Try\w*Flag\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
-    private static readonly Regex ValuePattern = new(@"(?:\.Value|\.Values)\(""([a-z0-9-]+)""\)|" + Readers + @"\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    private static readonly Regex ReadPattern = new(@"(?:\.Has|\.Value|\.PathValue|\.Values)\(""([a-z0-9-]+)""\)|Try\w*Flag\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    private static readonly Regex ValuePattern = new(@"(?:\.Value|\.PathValue|\.Values)\(""([a-z0-9-]+)""\)|" + Readers + @"\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
     private static readonly Regex BarePattern = new(@"foreach \(var bare in new\[\] \{([^}]*)\}", RegexOptions.Compiled);
 
     private static HashSet<string> Walk(string method, Dictionary<string, string> bodies, HashSet<string> seen, Regex pattern)
@@ -360,6 +360,9 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     [InlineData("--progress 0,5 m.json", "'0,5'")]
     [InlineData("m.json --progress often", "'often'")]
     [InlineData("--progress modls/r.json", null)]
+    [InlineData("--progress 2026-trap.json", null)]
+    [InlineData("--progress 2026-trap.json extra", null)]
+    [InlineData("--progress 3d/lens", null)]
     [InlineData("--progress m.json extra", null)]
     [InlineData("--progress 1e400 m.json", null)]
     public void AWordThatFollowedABareProgressIsMentionedOnlyWhereItCanBeRight(string flags, string? word)
@@ -560,5 +563,51 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
             Assert.Equal(constraint, problem!.Constraint);
             Assert.DoesNotContain("'='", problem.Constraint, StringComparison.Ordinal);
         }
+    }
+
+    /// <summary>
+    /// Every flag read as a path is marked as one: read through <c>PathValue</c>, which refuses an
+    /// unmarked flag, and never through <c>Value</c>, which would let it escape the checks a path
+    /// flag gets - a value of spaces refused, a stray argument pointed at it.
+    /// </summary>
+    [Fact]
+    public void EveryFlagReadAsAPathIsMarked()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Einzel.Cli", "Program.cs")))
+        {
+            directory = directory.Parent;
+        }
+
+        var source = string.Concat(Directory.GetFiles(Path.Combine(directory!.FullName, "src", "Einzel.Cli"), "*.cs").Select(File.ReadAllText));
+
+        var asPath = Regex.Matches(source, @"\.PathValue\(""([a-z0-9-]+)""\)").Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+        var asValue = Regex.Matches(source, @"\.Value\(""([a-z0-9-]+)""\)").Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+
+        Assert.NotEmpty(asPath);
+        Assert.All(asPath, f => Assert.True(VerbFlags.IsPath(f), $"--{f} is read as a path and not marked in VerbFlags.Paths"));
+        Assert.DoesNotContain(asValue, VerbFlags.IsPath);
+
+        // And reading an unmarked flag as a path is refused, so a mark left off cannot pass quietly.
+        Assert.Throws<InvalidOperationException>(() => CommandLine.Parse(["run", "m.json"]).PathValue("caption"));
+    }
+
+    /// <summary>
+    /// An unknown template is located where the asking surface spelled it: at the flag for the
+    /// command line, and at <c>/name</c> for a caller that passes no path, as the shell does.
+    /// </summary>
+    [Fact]
+    public void AnUnknownTemplateIsLocatedWhereItWasAskedFor()
+    {
+        var destination = Path.Combine(Path.GetTempPath(), "einzel-new-" + Guid.NewGuid().ToString("N") + ".json");
+
+        var shell = Assert.Throws<Einzel.Core.Errors.EinzelException>(() => Einzel.Commands.ProjectCommands.New(destination, "template", "no-such-template"));
+        Assert.Equal("/name", shell.Error.Path);
+
+        var (code, _, stderr) = Cli("new", destination, "--from-template", "no-such-template");
+        Assert.Equal(1, code);
+        Assert.Contains(" at /args/--from-template:", stderr, StringComparison.Ordinal);
+        Assert.False(File.Exists(destination));
     }
 }

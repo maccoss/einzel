@@ -261,7 +261,7 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         output.WriteLine(string.Join(", ", ran.OrderBy(r => r.Key, StringComparer.Ordinal).Select(r => $"{r.Value} {r.Key}")));
 
         // The control: a matrix that ran nothing of one kind passes every assertion about it.
-        foreach (var kind in new[] { "help", "base", "valid", "empty", "spaced", "bare", "bare-optional", "garbage", "unknown", "extra" })
+        foreach (var kind in new[] { "help", "base", "valid", "empty", "empty-argument", "spaced", "bare", "bare-optional", "garbage", "unknown", "extra" })
         {
             Assert.True(ran.GetValueOrDefault(kind) > 0, $"the matrix ran no '{kind}' case");
         }
@@ -278,6 +278,15 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
             yield return new Case(verb, "help", [.. words, "--help"], null);
             yield return new Case(verb, "base", [.. words, .. given], null);
+
+            // An empty argument, and one of spaces, where the verb takes one: refused at its place
+            // among the arguments, where `run ""` reached Path.GetFullPath("") and exited 6.
+            if (flags.Positionals > words.Length - 1)
+            {
+                var at = "/args/" + (words.Length - 1).ToString(CultureInfo.InvariantCulture);
+                yield return new Case(verb, "empty-argument", [.. words, ""], at);
+                yield return new Case(verb, "empty-argument", [.. words, "  "], at);
+            }
 
             foreach (var flag in flags.Switches.Order(StringComparer.Ordinal))
             {

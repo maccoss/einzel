@@ -279,6 +279,35 @@ public sealed class RasterTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// Two biased layers over one surface give the same picture in either order: of the two, the
+    /// nearer one's colour lands, and the bias decides only how either meets the surface.
+    /// </summary>
+    /// <remarks>
+    /// Each was tested against the stored depth alone, so whichever was drawn second passed - the
+    /// bias reaches past the other - and swapping the two swapped the picture.
+    /// </remarks>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TwoBiasedLayersGiveOnePictureInEitherOrder(bool writesDepth)
+    {
+        const double Bias = 0.2;
+
+        var surface = Layer(Square(z: 0.0, 0.5, 0.5, 0.5));
+        var far = new RasterLayer([Square(z: 0.0, 1.0, 0.0, 0.0)], [], 1.0, writesDepth, DepthBias: Bias);
+        var near = new RasterLayer([Square(z: 0.5, 0.0, 1.0, 0.0)], [], 1.0, writesDepth, DepthBias: Bias);
+
+        var one = Rasterizer.Draw([surface, far, near], Scale(10.0), Flat, White, 21, 21);
+        var other = Rasterizer.Draw([surface, near, far], Scale(10.0), Flat, White, 21, 21);
+
+        Assert.Equal((0, 255, 0), At(one, 21, 10, 10));
+        Assert.Equal(one, other);
+
+        // Both still pass the surface they lie on: alone over it, either one is drawn.
+        Assert.Equal((255, 0, 0), At(Rasterizer.Draw([surface, far], Scale(10.0), Flat, White, 21, 21), 21, 10, 10));
+    }
+
     private static RasterLayer Layer(RasterMesh mesh) => new([mesh], [], 1.0, WritesDepth: true);
 
     private static RasterMesh Square(double z, double r, double g, double b) =>
