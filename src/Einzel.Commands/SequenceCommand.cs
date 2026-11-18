@@ -139,7 +139,7 @@ public static class SequenceCommand
 
             phases.Add(new SequencePhase(
                 phase.Name,
-                (phase.EndsAtSeconds - phase.DurationSeconds) * 1e6,
+                CompiledPhase.StartOf(model.Phases, index) * 1e6,
                 phase.EndsAtSeconds * 1e6,
                 phase.DurationSeconds * 1e6,
                 phase.Mode,

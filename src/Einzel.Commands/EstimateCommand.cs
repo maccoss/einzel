@@ -169,6 +169,13 @@ public sealed record EstimateOutcome
     /// </remarks>
     public double TrajectorySeconds { get; init; }
 
+    /// <summary>
+    /// Whether what the trajectories cost was measured. Where it was not - every pilot failed - the
+    /// seconds leave the flights out, and <see cref="AboveThreshold"/> is set so the gate refuses
+    /// rather than pass a figure that is missing a term.
+    /// </summary>
+    public bool TrajectoryMeasured { get; init; } = true;
+
     /// <summary>The study this costs, or null when a model was costed directly.</summary>
     public StudyEstimate? Study { get; init; }
 
@@ -507,19 +514,28 @@ public static class EstimateCommand
     /// The coarsened model and its field, solved once by the caller and shared by every phase it
     /// pilots - the geometry cannot change between phases - or null to solve them here.
     /// </param>
-    private static (double Seconds, string How, bool Measured) PilotFlight(
+    /// <param name="startsAt">
+    /// When that phase begins: the end of the phase before it, as the run takes it, and zero for
+    /// the first or for no phase.
+    /// </param>
+    private static Pilot PilotFlight(
         CompiledModel model,
         double coarsening,
         double? windowSeconds = null,
         double? spanSeconds = null,
         CompiledPhase? phase = null,
-        (CompiledModel Model, Fields.IElectrostaticField Field)? built = null)
+        (CompiledModel Model, Fields.IElectrostaticField Field)? built = null,
+        double startsAt = 0.0)
     {
         try
         {
+            if (FailingPilots.Value)
+            {
+                throw new InvalidOperationException("pilot flights are made to fail for a test");
+            }
+
             var (coarse, solved) = built ?? Coarsened(model, coarsening);
 
-            var startsAt = phase is null ? 0.0 : phase.EndsAtSeconds - phase.DurationSeconds;
             // The run's own shift, so the pilot and the leg see one instrument.
             var field = SequencedRun.Instant(solved, startsAt);
 
@@ -577,24 +593,27 @@ public static class EstimateCommand
 
             // Arrived or absorbed inside the window: the flight is over, so this is not an
             // extrapolation at all - it is the measurement.
+            // Its cost is for the time it flew, which is less than the phase where the ion
+            // arrived early - the rate another phase is charged at is per simulated second covered.
             if (flown.Outcome is Transport.Integration.TrajectoryOutcome.StopConditionMet
                 or Transport.Integration.TrajectoryOutcome.StruckElectrode)
             {
-                return (
+                return new(
                     pilotSeconds,
                     $"the whole flight, measured: it ended as {flown.Outcome} after "
                     + $"{covered * 1e6:G4} us and {flown.AcceptedSteps:N0} steps",
-                    true);
+                    true,
+                    covered);
             }
 
             if (covered <= 0.0)
             {
-                return (0.0, "not measured: the pilot flight covered no time at all", false);
+                return new(0.0, "not measured: the pilot flight covered no time at all", false, 0.0);
             }
 
             var scale = span / covered;
 
-            return (
+            return new(
                 pilotSeconds * scale,
                 $"{flown.AcceptedSteps:N0} steps over {covered * 1e6:G4} us took "
                 + $"{pilotSeconds * 1000.0:F0} ms, scaled to "
@@ -606,12 +625,45 @@ public static class EstimateCommand
                 + ". Flown through a field solved at "
                 + $"{coarsening:G2}x the cell size, so this is a FLOOR wherever the step is "
                 + "capped by resolution rather than by tolerance",
-                true);
+                true,
+                span);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            return (0.0, $"not measured: a pilot flight could not be flown ({exception.GetType().Name})", false);
+            return new(0.0, $"not measured: a pilot flight could not be flown ({exception.GetType().Name})", false, 0.0);
         }
+    }
+
+    /// <summary>What a pilot found a stretch of trajectory flight costs.</summary>
+    /// <param name="Seconds">The cost, in seconds of this machine.</param>
+    /// <param name="How">How it was arrived at, for the basis.</param>
+    /// <param name="Measured">Whether anything was measured; where not, the cost is unknown rather than nothing.</param>
+    /// <param name="CoveredSeconds">
+    /// The simulated time <paramref name="Seconds"/> is the cost of: the span scaled to, or the
+    /// flight itself where the ion arrived or struck before the span was over.
+    /// </param>
+    internal readonly record struct Pilot(double Seconds, string How, bool Measured, double CoveredSeconds);
+
+    /// <summary>Set within a test, through <see cref="FailPilotsForTest"/>, to make every pilot flight fail.</summary>
+    private static readonly AsyncLocal<bool> FailingPilots = new();
+
+    /// <summary>
+    /// Makes every pilot flight in the calling flow fail until disposed, which is how a test
+    /// reaches what the estimate does with a cost it could not measure: no model fails to fly
+    /// that the run itself would fly.
+    /// </summary>
+    /// <returns>What restores pilots when disposed.</returns>
+    internal static IDisposable FailPilotsForTest()
+    {
+        FailingPilots.Value = true;
+        return new Restore();
+    }
+
+    /// <summary>Puts pilots back.</summary>
+    private sealed class Restore : IDisposable
+    {
+        /// <inheritdoc/>
+        public void Dispose() => FailingPilots.Value = false;
     }
 
     /// <summary>The model with every solve coarsened, and its field solved once.</summary>
@@ -859,7 +911,7 @@ public static class EstimateCommand
         // stability limits and needs no pilot.
         var trajectory = calibrate && spans.TrajectorySeconds > 0.0
             ? Pilots(model, spans)
-            : (Seconds: 0.0, How: string.Empty, Measured: true);
+            : new Pilot(0.0, string.Empty, Measured: true, CoveredSeconds: 0.0);
 
         // A CLOUD FLIES ONCE PER ION THROUGH ONE SOLVED FIELD, so the flight is paid as many
         // times as there are ions and the solve is paid once. Costing a single trajectory
@@ -1093,6 +1145,7 @@ public static class EstimateCommand
             ThresholdSeconds = threshold,
             Basis = basis,
             TrajectorySeconds = trajectory.Seconds,
+            TrajectoryMeasured = trajectory.Measured,
             PilotSpread = Math.Max(planeRate.Item3, volumeRate.Item3),
             CycleAveraged = cycleAveraged,
         };
@@ -1239,7 +1292,7 @@ public static class EstimateCommand
     /// incurs. The spread is reported alongside, since a range that varies several-fold is
     /// something the reader should know about whatever the mean is.
     /// </remarks>
-    private static (double Flight, string Spread) SampledFlight(
+    private static (double Flight, string Spread, bool Measured) SampledFlight(
         Core.Model.ModelDocument document,
         string? directory,
         double nominal,
@@ -1276,7 +1329,7 @@ public static class EstimateCommand
                 // whole duration, as the model's own estimate is - not from zero over the whole
                 // flight, which would fly whatever comes first and scale it to everything.
                 var spans = Spans(compiled);
-                var (seconds, _, measured) = spans.TrajectoryPhases.Count > 0
+                var (seconds, _, measured, _) = spans.TrajectoryPhases.Count > 0
                     ? Pilots(compiled, spans, coarsening: 1.0, whole: true)
                     : PilotFlight(compiled, 1.0, compiled.MaximumFlightTimeSi);
 
@@ -1290,8 +1343,9 @@ public static class EstimateCommand
         if (flights.Count == 0)
         {
             // Not even the nominal could be flown - fall back to what the model estimate
-            // measured, which says in its own basis how it was arrived at.
-            return (nominal, string.Empty);
+            // measured, which says in its own basis how it was arrived at, and say that this
+            // measured nothing: the model's own figure may be unmeasured too.
+            return (nominal, string.Empty, false);
         }
 
         var mean = flights.Average();
@@ -1300,7 +1354,7 @@ public static class EstimateCommand
         {
             // The nominal alone, measured the same way the sampled case measures it. There
             // is no range to report a spread across, and the caller says why.
-            return (mean, string.Empty);
+            return (mean, string.Empty, true);
         }
 
         var ratio = flights.Max() / Math.Max(flights.Min(), double.Epsilon);
@@ -1309,7 +1363,8 @@ public static class EstimateCommand
             mean,
             $" The flight was sampled at {flights.Count} points across the study's own range "
             + $"and averaged, because a study that varies the geometry varies its own cost: "
-            + $"here the dearest point was {ratio:F1}x the cheapest.");
+            + $"here the dearest point was {ratio:F1}x the cheapest.",
+            true);
     }
 
 
@@ -1437,11 +1492,12 @@ public static class EstimateCommand
         var sequencedFlights = wholeRun
             && validation.Model is { } sequenced
             && Spans(sequenced) is { TrajectoryPhases.Count: > 0 }
-            && calibrate
-            && model.TrajectorySeconds > 0.0;
+            && calibrate;
 
-        var (flight, spread) = wholeRun && !sequencedFlights
-            ? (0.0, string.Empty)
+        // NOT "the model's pilot measured something": where it failed its trajectory figure is
+        // zero, and gating the re-flight on that left a study billing no flights at all.
+        var (flight, spread, sampled) = wholeRun && !sequencedFlights
+            ? (0.0, string.Empty, model.TrajectoryMeasured)
             : SampledFlight(
                 document,
                 directory,
@@ -1457,6 +1513,11 @@ public static class EstimateCommand
                 : compile + (model.Seconds - model.TrajectorySeconds) + (members * flight);
 
         var seconds = evaluations * perEvaluation;
+
+        // Where the flights were sampled across the range, those are what the study bills, so a
+        // model whose own pilot failed is measured by them; where nothing could be flown at all,
+        // the cost leaves the flights out and says so, and the gate refuses it.
+        var trajectoryMeasured = sampled;
 
         var each = sequencedFlights
             ? "is one whole run of the model, its trajectory phases piloted phase by phase over "
@@ -1477,6 +1538,11 @@ public static class EstimateCommand
                 ? " That count is a ceiling the search may stop short of."
                 : " Every one of those evaluations is computed.")
             + Unsampled(wholeRun, spread, evaluations, Extremes(study).Count)
+            + (trajectoryMeasured
+                ? string.Empty
+                : " What the trajectories cost is NOT MEASURED - no pilot could be flown, at the "
+                + "declared values or across the study's range - so this leaves them out, and the "
+                + "gate refuses it rather than pass a study billed without its flights.")
             + " Process start and just-in-time compilation are not included - a fixed cost, "
             + "which is negligible for a long study and is not for a short one.";
 
@@ -1519,7 +1585,8 @@ public static class EstimateCommand
         {
             Seconds = seconds,
             MemoryMiB = memory,
-            AboveThreshold = seconds > threshold,
+            AboveThreshold = seconds > threshold || !trajectoryMeasured,
+            TrajectoryMeasured = trajectoryMeasured,
             Basis = basis,
 
             // The flight the arithmetic above actually used, not the nominal pilot it
@@ -2209,7 +2276,7 @@ public static class EstimateCommand
     /// What the trajectories cost, how that was arrived at, and whether any of it was measured:
     /// where nothing could be flown the cost is unknown, which the caller must not read as nothing.
     /// </returns>
-    private static (double Seconds, string How, bool Measured) Pilots(
+    private static Pilot Pilots(
         CompiledModel model, TransportSpans spans, double coarsening = PilotCoarsening, bool whole = false)
     {
         (CompiledModel Model, Fields.IElectrostaticField Field) built;
@@ -2222,7 +2289,7 @@ public static class EstimateCommand
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            return (0.0, $"not measured: the pilots' field could not be solved ({exception.GetType().Name})", false);
+            return new(0.0, $"not measured: the pilots' field could not be solved ({exception.GetType().Name})", false, 0.0);
         }
 
         if (spans.TrajectoryPhases.Count == 0)
@@ -2243,7 +2310,8 @@ public static class EstimateCommand
                 windowSeconds: whole ? phase.DurationSeconds : null,
                 spanSeconds: phase.DurationSeconds,
                 phase: phase,
-                built: built));
+                built: built,
+                startsAt: CompiledPhase.StartOf(model.Phases, phase)));
     }
 
     /// <summary>
@@ -2259,8 +2327,7 @@ public static class EstimateCommand
     /// was billed nothing for its trajectories. Where none measured anything the cost is reported
     /// as unknown, for the gate to refuse rather than pass.
     /// </remarks>
-    internal static (double Seconds, string How, bool Measured) PhasePilots(
-        IReadOnlyList<CompiledPhase> phases, Func<CompiledPhase, (double Seconds, string How, bool Measured)> fly)
+    internal static Pilot PhasePilots(IReadOnlyList<CompiledPhase> phases, Func<CompiledPhase, Pilot> fly)
     {
         // By index, not by value: two phases declared alike are two phases and both are flown.
         var indices = Enumerable.Range(0, phases.Count).ToList();
@@ -2277,12 +2344,15 @@ public static class EstimateCommand
         foreach (var i in indices.Where(piloted.Contains))
         {
             var phase = phases[i];
-            var (phaseSeconds, how, measured) = fly(phase);
+            var (phaseSeconds, how, measured, covered) = fly(phase);
 
-            if (measured)
+            if (measured && covered > 0.0)
             {
                 seconds += phaseSeconds;
-                dearest = Math.Max(dearest, phaseSeconds / phase.DurationSeconds);
+
+                // Per simulated second the pilot actually covered: one whose ion arrived early
+                // flew less than its phase, and dividing by the phase understated the rate.
+                dearest = Math.Max(dearest, phaseSeconds / covered);
                 lines.Add(string.Create(Inv, $"phase '{phase.Name}', {phaseSeconds:G3} s: {how}"));
             }
             else
@@ -2296,11 +2366,12 @@ public static class EstimateCommand
 
         if (dearest <= 0.0)
         {
-            return (
+            return new(
                 0.0,
                 "NOT MEASURED: no trajectory phase's pilot could be flown, so what the trajectories "
                 + "cost is unknown, not zero - " + string.Join("; ", lines),
-                false);
+                false,
+                0.0);
         }
 
         if (unpiloted + unmeasured > 0.0)
@@ -2312,12 +2383,13 @@ public static class EstimateCommand
                 + $"measured, at the dearest rate piloted"));
         }
 
-        return (
+        return new(
             seconds,
             $"each trajectory phase piloted through its own field over its own duration, each "
             + $"flown from the source rather than from where the packet is when the phase begins - "
             + string.Join("; ", lines),
-            true);
+            true,
+            phases.Sum(phase => phase.DurationSeconds));
     }
 
     /// <summary>How long a run flies trajectories and how long it steps a density.</summary>
@@ -2478,14 +2550,17 @@ public static class EstimateCommand
         // next phase's. An extraction flown as trajectories pushes with a field a held density
         // never feels, and reading the drift limit there shrank the hold's step by orders of
         // magnitude and billed it accordingly.
+        //
+        // A phase starts where the one before it ended, as the run takes it: recomputed as its end
+        // less its duration it can land an ulp inside the phase before and read that one's field.
         List<double> instants = model.Phases.Count == 0
             ? [0.0]
-            : model.Phases
-                .Where(phase => phase.Mode == "diffusion")
-                .SelectMany(phase => new[]
+            : Enumerable.Range(0, model.Phases.Count)
+                .Where(i => model.Phases[i].Mode == "diffusion")
+                .SelectMany(i => new[]
                 {
-                    phase.EndsAtSeconds - phase.DurationSeconds,
-                    Math.BitDecrement(phase.EndsAtSeconds),
+                    CompiledPhase.StartOf(model.Phases, i),
+                    Math.BitDecrement(model.Phases[i].EndsAtSeconds),
                 })
                 .DefaultIfEmpty(0.0)
                 .ToList();

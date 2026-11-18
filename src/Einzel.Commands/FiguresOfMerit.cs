@@ -1482,7 +1482,7 @@ public static class FiguresOfMerit
 
         var phase = ramping[0];
         var ramp = phase.Ramps[0];
-        var rampStart = phase.EndsAtSeconds - phase.DurationSeconds;
+        var rampStart = CompiledPhase.StartOf(model.Phases, phase);
         var rampEnd = phase.EndsAtSeconds;
         var travel = ramp.End.SiValue - ramp.Start.SiValue;
         var beta = Math.Abs(travel) / phase.DurationSeconds;

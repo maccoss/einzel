@@ -709,7 +709,18 @@ public static class DiffusionRun
     /// The estimate asks this rather than whether a solve declares an electrode at all: a grid
     /// that lies clear of every conductor builds the map, finds nothing in it, and lets it go.
     /// </remarks>
-    internal static bool AnyElectrodeClaims(CompiledModel model, Grid2D grid)
+    internal static bool AnyElectrodeClaims(CompiledModel model, Grid2D grid) =>
+        ConductorNodes(model, grid).Any();
+
+    /// <summary>
+    /// Every node of the density grid inside a conductor, electrode by electrode in declaration
+    /// order and row by row within one - the one scan both <see cref="Absorb"/> and
+    /// <see cref="AnyElectrodeClaims"/> read, so the map billed and the map kept cannot disagree.
+    /// </summary>
+    /// <param name="model">The validated model.</param>
+    /// <param name="grid">The density grid.</param>
+    /// <returns>Each electrode with a node it contains; a node inside two comes once for each.</returns>
+    private static IEnumerable<(CompiledElectrode Electrode, int I, int J)> ConductorNodes(CompiledModel model, Grid2D grid)
     {
         foreach (var element in model.Fields)
         {
@@ -721,14 +732,12 @@ public static class DiffusionRun
                     {
                         if (electrode.Contains(grid.X(i), grid.Y(j)))
                         {
-                            return true;
+                            yield return (electrode, i, j);
                         }
                     }
                 }
             }
         }
-
-        return false;
     }
 
     /// <summary>
@@ -764,54 +773,53 @@ public static class DiffusionRun
 
         var seedLoss = new Dictionary<string, double>(StringComparer.Ordinal);
 
-        foreach (var element in model.Fields)
+        CompiledElectrode? current = null;
+        var index = 0;
+        var claimed = false;
+
+        foreach (var (electrode, i, j) in ConductorNodes(model, grid))
         {
-            foreach (var electrode in element.Solve?.Electrodes ?? [])
+            // A new electrode: the last one is named if it claimed anything, and this one takes
+            // the next name's index.
+            if (!ReferenceEquals(electrode, current))
             {
-                var index = names.Count;
-                var claimed = false;
-
-                for (var j = 0; j < grid.CountY; j++)
-                {
-                    var volume = density.CellVolume(j);
-
-                    for (var i = 0; i < grid.CountX; i++)
-                    {
-                        if (!electrode.Contains(grid.X(i), grid.Y(j)))
-                        {
-                            continue;
-                        }
-
-                        var k = (j * grid.CountX) + i;
-
-                        // First claim wins, so two overlapping electrodes do not
-                        // both bill for the same ions. Which one is arbitrary and
-                        // does not matter: the cell absorbs either way, and the
-                        // total is right.
-                        if (owner[k] >= 0)
-                        {
-                            continue;
-                        }
-
-                        owner[k] = index;
-                        claimed = true;
-
-                        if (density[i, j] > 0.0)
-                        {
-                            seedLoss[electrode.Name] =
-                                seedLoss.GetValueOrDefault(electrode.Name)
-                                + (density[i, j] * volume);
-
-                            density[i, j] = 0.0;
-                        }
-                    }
-                }
-
                 if (claimed)
                 {
-                    names.Add(electrode.Name);
+                    names.Add(current!.Name);
                 }
+
+                current = electrode;
+                index = names.Count;
+                claimed = false;
             }
+
+            var k = (j * grid.CountX) + i;
+
+            // First claim wins, so two overlapping electrodes do not
+            // both bill for the same ions. Which one is arbitrary and
+            // does not matter: the cell absorbs either way, and the
+            // total is right.
+            if (owner[k] >= 0)
+            {
+                continue;
+            }
+
+            owner[k] = index;
+            claimed = true;
+
+            if (density[i, j] > 0.0)
+            {
+                seedLoss[electrode.Name] =
+                    seedLoss.GetValueOrDefault(electrode.Name)
+                    + (density[i, j] * density.CellVolume(j));
+
+                density[i, j] = 0.0;
+            }
+        }
+
+        if (claimed)
+        {
+            names.Add(current!.Name);
         }
 
         return names.Count > 0

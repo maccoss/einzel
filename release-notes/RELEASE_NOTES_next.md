@@ -298,7 +298,9 @@ become a feature release without being renamed twice.
   rather than accepted and billed for copies nothing makes; under `--json` the refusal is JSON.
 - **A diffusive hold beside a strong extraction is no longer billed at the extraction's pace**:
   the drift limit is read at the diffusive phases' own instants, by the run's own shift. A
-  trajectory phase whose pilot fails is never billed nothing.
+  trajectory phase whose pilot fails is never billed nothing, and a study over a model none of
+  whose pilots could be flown is gated rather than billed without its flights
+  (`trajectoryMeasured: false`). `--snapshots 00` is accepted for a study, as `0` is.
 - **A sequenced run is estimated phase by phase**: each trajectory phase by a pilot flown
   through its own field over its own duration, diffusive phases by density steps over theirs, and the basis says both. A
   trajectory model entering a diffusive phase was billed nothing for its density, and a

@@ -24,8 +24,10 @@ namespace Einzel.Testing;
 /// <para>
 /// <b>Waiting is bounded</b>, at <see cref="Patience"/>: a holder that dies leaves the file
 /// closed by the operating system, and one that hangs is stopped by its own budget, but a turn
-/// that never came would hang a test run, so past the bound the turn is taken anyway and the
-/// test runs as it would have without this.
+/// that never came would hang a test run. Past the bound the caller gets a turn that says it was
+/// not had - <see cref="Turn.Quiet"/> false, and why - and must not let a reading taken that way
+/// pass as one taken on a quiet machine: it used to come back as a silent no-op, and the reading
+/// went on as though it had the machine to itself.
 /// </para>
 /// </remarks>
 internal static class QuietMachine
@@ -36,37 +38,69 @@ internal static class QuietMachine
     private static readonly string LockPath = Path.Combine(Path.GetTempPath(), "einzel-tests-quiet-machine.lock");
 
     /// <summary>Waits for the machine-wide turn and holds it until disposed.</summary>
-    /// <returns>What to dispose to give the turn back; nothing to dispose if it was never had.</returns>
-    internal static IDisposable Hold()
+    /// <param name="patience">How long to wait; <see cref="Patience"/> if null.</param>
+    /// <param name="lockPath">
+    /// The lock file; the machine-wide one if null. A test of the turn itself takes its own, so
+    /// it neither waits on nor blocks the measurements the machine-wide one exists to keep apart.
+    /// </param>
+    /// <returns>
+    /// The turn, to dispose to give it back - or, where it could not be had, a turn that says so,
+    /// which the caller must not read a measurement under as though the machine were quiet.
+    /// </returns>
+    internal static Turn Hold(TimeSpan? patience = null, string? lockPath = null)
     {
+        var allowed = patience ?? Patience;
+        var path = lockPath ?? LockPath;
         var clock = Stopwatch.StartNew();
 
         while (true)
         {
             try
             {
-                return new FileStream(LockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                return new Turn(new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None), null);
             }
-            catch (IOException) when (clock.Elapsed < Patience)
+            catch (IOException) when (clock.Elapsed < allowed)
             {
                 Thread.Sleep(100);
             }
             catch (IOException)
             {
-                return new Nothing();
+                return new Turn(
+                    null,
+                    $"the machine was not quiet: another test held the machine-wide turn ({path}) "
+                    + $"for all of the {allowed.TotalMinutes:G3} minutes this one waited");
             }
             catch (UnauthorizedAccessException)
             {
-                // A temporary directory this process may not write to: run without a turn.
-                return new Nothing();
+                return new Turn(
+                    null,
+                    $"the machine was not quiet: the machine-wide turn ({path}) could not be taken, "
+                    + "because this process may not write to the temporary directory");
             }
         }
     }
 
-    private sealed class Nothing : IDisposable
+    /// <summary>A machine-wide turn, held or not.</summary>
+    internal sealed class Turn : IDisposable
     {
-        public void Dispose()
+        private readonly FileStream? _held;
+
+        /// <summary>Takes a turn, held through a lock file or not had at all.</summary>
+        /// <param name="held">The lock file, or null where the turn was not had.</param>
+        /// <param name="notQuietBecause">Why it was not had, or null where it was.</param>
+        internal Turn(FileStream? held, string? notQuietBecause)
         {
+            _held = held;
+            NotQuietBecause = notQuietBecause;
         }
+
+        /// <summary>Whether the turn was had: nothing else measuring or timing ran meanwhile.</summary>
+        internal bool Quiet => _held is not null;
+
+        /// <summary>Why the turn was not had, or null where it was.</summary>
+        internal string? NotQuietBecause { get; }
+
+        /// <inheritdoc/>
+        public void Dispose() => _held?.Dispose();
     }
 }

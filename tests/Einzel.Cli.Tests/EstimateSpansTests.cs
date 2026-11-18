@@ -246,18 +246,123 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         };
 
         var some = EstimateCommand.PhasePilots(
-            phases, phase => phase.Name == "good" ? (4.0, "flown", true) : (0.0, "not measured", false));
+            phases, phase => phase.Name == "good" ? new(4.0, "flown", true, 2e-6) : new(0.0, "not measured", false, 0.0));
 
         // 4 s over 2 us is 2 s a microsecond, so the failed 3 us is charged 6 s.
         Assert.True(some.Measured);
         Assert.Equal(10.0, some.Seconds, 9);
 
-        var none = EstimateCommand.PhasePilots(phases, _ => (0.0, "not measured", false));
+        var none = EstimateCommand.PhasePilots(phases, _ => new(0.0, "not measured", false, 0.0));
 
         output.WriteLine(none.How);
 
         Assert.False(none.Measured);
         Assert.Contains("unknown, not zero", none.How, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A pilot whose ion arrived before its phase was over cost what it did for the time it flew,
+    /// so the rate another phase is charged at is per simulated second covered, not per phase.
+    /// </summary>
+    [Fact]
+    public void ARateIsPerSecondTheFlightCovered()
+    {
+        var phases = new[]
+        {
+            new Core.Model.CompiledPhase("early", 2e-6, "trajectory", 2e-6, []),
+            new Core.Model.CompiledPhase("bad", 3e-6, "trajectory", 5e-6, []),
+        };
+
+        // The ion arrived after 1 us of the 2 us phase, at a cost of 4 s: 4 s a microsecond, so
+        // the failed 3 us is 12 s - not the 6 s that dividing by the whole phase made it.
+        var cost = EstimateCommand.PhasePilots(
+            phases, phase => phase.Name == "early" ? new(4.0, "arrived", true, 1e-6) : new(0.0, "not measured", false, 0.0));
+
+        Assert.Equal(16.0, cost.Seconds, 9);
+    }
+
+    /// <summary>
+    /// A hold after two short phases starts where the second ended, not at its own end less its
+    /// duration, which here rounds to inside the extraction before it.
+    /// </summary>
+    /// <remarks>
+    /// Against the same timeline with the extraction pushing nothing, so that whatever the
+    /// extraction holds cannot matter to the hold: the two estimates must step the hold alike.
+    /// Read in the extraction, the hold's first instant sees two megavolts a metre and is
+    /// stepped thousands of times over.
+    /// </remarks>
+    [Fact]
+    public void AHoldAfterShortPhasesIsReadFromWhereTheyEnded()
+    {
+        int Steps(int extractVolts, out Core.Model.CompiledModel model)
+        {
+            var path = Model("tube-plain", document =>
+            {
+                document["parameters"] = JsonNode.Parse("""{ "pushField": { "value": 0.0, "unit": "V/m" } }""");
+                document["fields"]![0] = JsonNode.Parse("""{ "type": "uniform", "field": { "expression": [ "pushField", "0", "0" ] } }""");
+                document["sequence"] = JsonNode.Parse("""
+                    [ { "name": "settle", "duration": { "value": 0.1, "unit": "us" }, "mode": "trajectory", "set": { "pushField": { "value": 1000, "unit": "V/m" } } },
+                      { "name": "extract", "duration": { "value": 0.1, "unit": "us" }, "mode": "trajectory", "set": { "pushField": { "value": VOLTS, "unit": "V/m" } } },
+                      { "name": "hold", "duration": { "value": 3.3, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+                    """.Replace("VOLTS", extractVolts.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
+            });
+
+            model = Core.Model.ModelValidator.Validate(Io.ModelJson.Parse(File.ReadAllText(path)), null, Path.GetDirectoryName(path)).Model!;
+
+            var estimate = EstimateCommand.Execute(path, calibrate: false);
+
+            return int.Parse(
+                System.Text.RegularExpressions.Regex.Match(estimate.Basis, @"about ([\d,]+) steps over").Groups[1].Value.Replace(",", ""),
+                System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        var pushed = Steps(2_000_000, out var model);
+        var quiet = Steps(0, out _);
+
+        // The hazard is real in these durations: the hold's end less its duration is inside the
+        // extraction.
+        Assert.True(
+            model.Phases[2].EndsAtSeconds - model.Phases[2].DurationSeconds < model.Phases[1].EndsAtSeconds,
+            "these durations round-trip, so the test no longer reaches the case it is about");
+
+        output.WriteLine($"the hold estimated at {pushed} steps beside the extraction, {quiet} beside a quiet one");
+
+        Assert.Equal(quiet, pushed);
+    }
+
+    /// <summary>
+    /// A study over a model none of whose pilots could be flown carries that it was not measured
+    /// and is gated, rather than billed without its flights.
+    /// </summary>
+    [Fact]
+    public void AStudyWhosePilotsFailIsGatedNotBilledWithoutItsFlights()
+    {
+        var model = Model("tube-entered", document =>
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }"""));
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "transitTime", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        EstimateOutcome costed;
+
+        using (EstimateCommand.FailPilotsForTest())
+        {
+            costed = EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(costed.Basis);
+
+        Assert.False(costed.TrajectoryMeasured);
+        Assert.True(costed.AboveThreshold, "a study billed without its flights passed the gate");
+        Assert.Contains("NOT MEASURED", costed.Basis, StringComparison.Ordinal);
+
+        // The control: the same study with pilots that fly is measured and passes the same gate.
+        var flown = EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12);
+
+        Assert.True(flown.TrajectoryMeasured);
+        Assert.False(flown.AboveThreshold);
     }
 
     /// <summary>Two phases declared alike are two phases, and both are piloted.</summary>
@@ -268,7 +373,7 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         var alike = new Core.Model.CompiledPhase("same", 1e-6, "trajectory", 1e-6, none);
         var flown = 0;
 
-        var cost = EstimateCommand.PhasePilots([alike, alike], _ => { flown++; return (1.0, "flown", true); });
+        var cost = EstimateCommand.PhasePilots([alike, alike], _ => { flown++; return new(1.0, "flown", true, 1e-6); });
 
         Assert.Equal(2, flown);
         Assert.Equal(2.0, cost.Seconds, 9);

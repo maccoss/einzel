@@ -148,13 +148,16 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
     }
 
     /// <summary>
-    /// For a study the refusal is that a study records no instants, whatever was written after
-    /// the flag: what the option is about is decided before whether it is well formed.
+    /// A study is refused a number of instants because it records none, and refused what is not a
+    /// number because it is not one - the number parsed first, so <c>00</c> is read as none - and
+    /// either way told to leave the flag out.
     /// </summary>
+    /// <param name="instants">What follows the flag.</param>
+    /// <param name="says">What the refusal says.</param>
     [Theory]
-    [InlineData("3")]
-    [InlineData("three")]
-    public void AStudyIsRefusedSnapshotsWhateverTheyAre(string instants)
+    [InlineData("3", "a study records none")]
+    [InlineData("three", "'three' is not one")]
+    public void AStudyIsRefusedSnapshotsWhateverTheyAre(string instants, string says)
     {
         Directory.CreateDirectory(_root);
 
@@ -167,7 +170,8 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
         output.WriteLine($"exit {exit}: {stderr.Trim()}");
 
         Assert.Equal(1, exit);
-        Assert.Contains("a study records none", stderr, StringComparison.Ordinal);
+        Assert.Contains(says, stderr, StringComparison.Ordinal);
+        Assert.Contains("leave out --snapshots", stderr, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -198,8 +202,17 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
     }
 
     /// <summary>A study asked for no recorded instants is asked for what a study records, and runs.</summary>
-    [Fact]
-    public void AStudyAskedForNoInstantsIsEstimated()
+    /// <remarks>
+    /// The number is what is asked, not its spelling: <c>00</c> is none as well as <c>0</c> is, and
+    /// one instant is refused.
+    /// </remarks>
+    /// <param name="instants">What follows the flag.</param>
+    /// <param name="refused">Whether the study is refused for it.</param>
+    [Theory]
+    [InlineData("0", false)]
+    [InlineData("00", false)]
+    [InlineData("1", true)]
+    public void AStudyAskedForNoInstantsIsEstimated(string instants, bool refused)
     {
         var model = Model("tube-plain");
         var document = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(model))!;
@@ -215,11 +228,19 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
               "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
             """);
 
-        var (exit, _, stderr) = Run("estimate", study, "--no-calibrate", "--snapshots", "0");
+        var (exit, _, stderr) = Run("estimate", study, "--no-calibrate", "--snapshots", instants);
 
         output.WriteLine($"exit {exit}: {stderr.Trim()}");
 
-        Assert.NotEqual(1, exit);
+        if (refused)
+        {
+            Assert.Equal(1, exit);
+            Assert.Contains("a study records none", stderr, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.NotEqual(1, exit);
+        }
     }
 
     private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)

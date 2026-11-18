@@ -3948,3 +3948,23 @@ Two findings from Stage 1 that bear on the spec:
   now has, its 256-interval build took eight of its ten minutes in a Debug child and ran out of
   them under load. Its working set is whole after one re-assembly and it still makes several
   hundred; the 256 child now takes 262 s on core 0, with 169 s of that processor time.
+
+  **A sixteenth review.** A study over a model whose every pilot failed was billed with no
+  trajectory term and passed the gate: the gate's `|| !measured` lived in the model's estimate
+  alone, and the study re-flew its sequenced phases only when the model's own figure was above
+  zero - which a failed pilot makes it. `trajectoryMeasured` now travels on the outcome and
+  through the study, and the study re-flies whenever it is calibrated. A phase starts where the
+  one before it ended (`CompiledPhase.StartOf`), in the estimate, its pilots, the resolving-power
+  figure and the sequence view: recomputed as end less duration, a 3.3 us hold after two 0.1 us
+  phases started 2.1e-22 s inside the extraction and read its 2 MV/m. A pilot's rate is per
+  simulated second it covered, so one whose ion arrived early no longer under-charges the phases
+  billed at it. The billed and kept conductor maps are one scan. A measuring child that could not
+  get the machine-wide turn now measures nothing and fails saying the machine was not quiet,
+  where it used to measure anyway; the timed tests assert the turn too. Making that loud is what
+  showed the turn's own test had been taking the machine-wide lock: losing it once to another
+  process failed the test with the second turn still held, and every measurement after waited its
+  twenty minutes and refused. The turn's tests take lock files of their own now. Children are pinned to
+  the highest-numbered core rather than core 0: three runs of one build took 21.8 to 45.7 s on
+  core 0 and 27.0 to 27.7 s on the last core. Found on the way and not fixed here: a trajectory
+  leg whose field switches at the leg's end with ions still in flight stops with
+  `StepSizeUnderflow` within an attosecond of the switch.

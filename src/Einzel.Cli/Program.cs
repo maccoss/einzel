@@ -144,14 +144,6 @@ public static class Program
         return (int)ExitCode.ValidationFailure;
     }
 
-    /// <summary>
-    /// Writes a command result as JSON, for CLI-2.
-    /// </summary>
-    /// <remarks>
-    /// Results on stdout so a caller may pipe it straight to a parser without
-    /// filtering. Diagnostics go to stderr everywhere else in this file for the
-    /// same reason.
-    /// </remarks>
     /// <summary>The exit code for a refusal, by the class of its error (CLI-3).</summary>
     private static ExitCode ExitFor(EinzelError error) => error.Code switch
     {
@@ -179,6 +171,14 @@ public static class Program
         return (int)ExitFor(error);
     }
 
+    /// <summary>
+    /// Writes a command result as JSON, for CLI-2.
+    /// </summary>
+    /// <remarks>
+    /// Results on stdout so a caller may pipe it straight to a parser without
+    /// filtering. Diagnostics go to stderr everywhere else in this file for the
+    /// same reason.
+    /// </remarks>
     private static int Emit<T>(T outcome, ExitCode code = ExitCode.Success)
     {
         Console.Out.Write(CommandJson.Write(outcome));
@@ -929,20 +929,21 @@ public static class Program
                     isStudy ? "leave out --snapshots: a study records no instants" : "give one, as in --snapshots 60");
             }
 
-            // What the option is about first: a study records no instants, so it is refused any
-            // number but none - which is exactly what a study records, so says nothing false.
-            if (isStudy && instants != "0")
-            {
-                return Refuse(
-                    "--snapshots is about one diffusive run's recorded instants, and a study records none",
-                    "leave out --snapshots, or estimate the model the study names");
-            }
-
             if (!int.TryParse(instants, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out snapshots))
             {
                 return Refuse(
                     $"--snapshots takes a whole number of instants, and '{instants}' is not one",
-                    "give a whole number, as in --snapshots 60");
+                    isStudy ? "leave out --snapshots: a study records no instants" : "give a whole number, as in --snapshots 60");
+            }
+
+            // A study records no instants, so it is refused any number but none - which is
+            // exactly what a study records, so says nothing false. The number parsed, not the
+            // text: `00` is none as well as `0` is.
+            if (isStudy && snapshots > 0)
+            {
+                return Refuse(
+                    "--snapshots is about one diffusive run's recorded instants, and a study records none",
+                    "leave out --snapshots, or estimate the model the study names");
             }
         }
 

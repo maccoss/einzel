@@ -171,17 +171,54 @@ internal static class MeasuringChild
     internal static string Key(string kind, double size, int times = 1) =>
         string.Create(CultureInfo.InvariantCulture, $"{kind}={size:R}") + (times > 1 ? $"*{times}" : "");
 
+    /// <summary>The highest-numbered core this process may run on, as an affinity mask of one bit.</summary>
+    /// <remarks>
+    /// Not core 0, which takes most of the machine's interrupts and is where the scheduler starts
+    /// everything else. Measured on this workstation, three runs of the same 128-interval ramped
+    /// build in a Debug child: core 0 took 21.8 to 45.7 s of wall clock for 18.4 to 28.2 s of
+    /// processor time, the highest core 27.0 to 27.7 s for 26.9 to 27.5 - slower where it is an
+    /// efficiency core, and steady, which is what a budget per case needs. On a runner whose cores
+    /// are alike it is the core least likely to be busy.
+    /// </remarks>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static nint LastCore()
+    {
+        var allowed = (long)Process.GetCurrentProcess().ProcessorAffinity;
+
+        return allowed == 0 ? 1 : (nint)(1L << (63 - System.Numerics.BitOperations.LeadingZeroCount((ulong)allowed)));
+    }
+
     /// <summary>Measures cases in child processes, in the order given.</summary>
     /// <param name="host">The test assembly's builds.</param>
     /// <param name="tier">The tier of JIT code the children run as.</param>
     /// <param name="cases">The cases, each as <see cref="Key"/> writes it.</param>
     /// <param name="budget">How long a child may take; <see cref="ChildBudget.Default"/> if null.</param>
     /// <returns>What was reported; this does not throw, so that a failure is reported where it belongs.</returns>
-    internal static ChildRun Measure(ChildHost host, JitTier tier, IReadOnlyList<string> cases, ChildBudget? budget = null)
+    /// <param name="patience">How long to wait for the machine-wide turn; <see cref="QuietMachine.Patience"/> if null.</param>
+    /// <param name="turnPath">The turn's lock file; the machine-wide one if null, which only a test of the turn changes.</param>
+    internal static ChildRun Measure(
+        ChildHost host,
+        JitTier tier,
+        IReadOnlyList<string> cases,
+        ChildBudget? budget = null,
+        TimeSpan? patience = null,
+        string? turnPath = null)
     {
         // A turn on the machine: one measuring child at a time across every test process, and
         // none while a test that times itself is timing (QuietMachine).
-        using var turn = QuietMachine.Hold();
+        using var turn = QuietMachine.Hold(patience, turnPath);
+
+        // Not had, it is not measured: a reading taken while another child loads the machine is
+        // not the reading these tests are about, and nothing in it would say so.
+        if (!turn.Quiet)
+        {
+            return new ChildRun(
+                $"{turn.NotQuietBecause}, so nothing was measured: a reading taken on a busy machine "
+                + "would pass as one taken on a quiet one",
+                new Dictionary<string, CaseResult>(),
+                string.Empty);
+        }
 
         var results = new Dictionary<string, CaseResult>();
         var text = new List<string>();
@@ -622,7 +659,7 @@ internal static class MeasuringChild
         {
             if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
-                child.ProcessorAffinity = 1;
+                child.ProcessorAffinity = LastCore();
             }
         }
         catch (Exception refused) when (refused is InvalidOperationException or System.ComponentModel.Win32Exception)

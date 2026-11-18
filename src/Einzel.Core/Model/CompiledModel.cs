@@ -335,7 +335,46 @@ public sealed record CompiledPhase(
     double DurationSeconds,
     string Mode,
     double EndsAtSeconds,
-    IReadOnlyList<CompiledRamp> Ramps);
+    IReadOnlyList<CompiledRamp> Ramps)
+{
+    /// <summary>When the phase at an index of a timeline begins: where the one before it ended.</summary>
+    /// <param name="timeline">The phases, in order.</param>
+    /// <param name="index">The phase's index in them.</param>
+    /// <returns>The previous phase's end, or zero for the first.</returns>
+    /// <remarks>
+    /// Not the phase's end less its duration, which is that subtraction rounded and can land an
+    /// ulp inside the phase before - reading the instrument there reads the wrong phase. The run
+    /// starts each phase at the previous one's end, and so does everything that asks.
+    /// </remarks>
+    public static double StartOf(IReadOnlyList<CompiledPhase> timeline, int index)
+    {
+        ArgumentNullException.ThrowIfNull(timeline);
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, timeline.Count);
+
+        return index == 0 ? 0.0 : timeline[index - 1].EndsAtSeconds;
+    }
+
+    /// <summary>When a phase of a timeline begins, found by reference, not by value.</summary>
+    /// <param name="timeline">The phases, in order.</param>
+    /// <param name="phase">One of them, as the timeline holds it.</param>
+    /// <returns>The previous phase's end, or zero for the first.</returns>
+    /// <exception cref="ArgumentException"><paramref name="phase"/> is not in the timeline.</exception>
+    public static double StartOf(IReadOnlyList<CompiledPhase> timeline, CompiledPhase phase)
+    {
+        ArgumentNullException.ThrowIfNull(timeline);
+
+        for (var i = 0; i < timeline.Count; i++)
+        {
+            if (ReferenceEquals(timeline[i], phase))
+            {
+                return StartOf(timeline, i);
+            }
+        }
+
+        throw new ArgumentException($"phase '{phase?.Name}' is not in the timeline", nameof(phase));
+    }
+}
 
 /// <summary>One parameter a phase ramps linearly from where it stands to a declared end.</summary>
 /// <param name="Parameter">The parameter's name, as the document declares it.</param>

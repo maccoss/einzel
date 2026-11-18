@@ -84,6 +84,8 @@ public sealed class SweepSolveCostTests(ITestOutputHelper output)
         // under different loads measures the load (Einzel.Testing.QuietMachine).
         using var turn = Einzel.Testing.QuietMachine.Hold();
 
+        Assert.True(turn.Quiet, turn.NotQuietBecause);
+
         // Warm the path so the first timed window is not paying for jitting it.
         FiguresOfMerit.Evaluator("resolvingPower", energySpread: 0.03, ions: 3)(model);
 
