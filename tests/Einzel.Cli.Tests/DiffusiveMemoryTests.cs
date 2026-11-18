@@ -233,6 +233,65 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
         Assert.Equal(sizeof(int), map, 6);
     }
 
+    /// <summary>
+    /// The conductor scan visits only each electrode's bounding box and finds exactly the nodes a
+    /// scan of the whole grid finds, declaration by declaration - and two declarations sharing one
+    /// compiled electrode are two declarations, each with its own index.
+    /// </summary>
+    [Fact]
+    public void TheConductorScanFindsEveryNodeByDeclaration()
+    {
+        foreach (var template in new[] { "quadrupole", "linear-ion-trap", "einzel-lens" })
+        {
+            var model = Core.Model.ModelValidator.Validate(
+                Io.ModelJson.Parse(Library.DeviceTemplates.Read(template)), null, null).Model!;
+            var solve = model.Fields.First(field => field.Solve is not null).Solve!;
+            var grid = new Fields.Solved.Grid2D(solve.MinX, solve.MinY, (solve.MaxX - solve.MinX) / 96.0, (solve.MaxY - solve.MinY) / 96.0, 97, 97);
+
+            var scanned = DiffusionRun.ConductorNodes(model, grid).Select(n => (n.Declaration, n.I, n.J)).ToHashSet();
+            var whole = new HashSet<(int, int, int)>();
+            var declaration = -1;
+
+            foreach (var element in model.Fields)
+            {
+                foreach (var electrode in element.Solve?.Electrodes ?? [])
+                {
+                    declaration++;
+
+                    for (var j = 0; j < grid.CountY; j++)
+                    {
+                        for (var i = 0; i < grid.CountX; i++)
+                        {
+                            if (electrode.Contains(grid.X(i), grid.Y(j)))
+                            {
+                                whole.Add((declaration, i, j));
+                            }
+                        }
+                    }
+                }
+            }
+
+            output.WriteLine($"{template}: {whole.Count} conductor nodes");
+
+            Assert.NotEmpty(whole);
+            Assert.True(whole.SetEquals(scanned), $"{template}: the bounded scan found a different set of nodes");
+        }
+
+        // One compiled electrode declared twice is two declarations.
+        var bore = Core.Model.ModelValidator.Validate(
+            Io.ModelJson.Parse(RunMemoryCases.Document("bore-plain", 32)), null, null).Model!;
+        var at = bore.Fields.ToList().FindIndex(field => field.Solve is { Electrodes.Count: > 0 });
+        var wall = bore.Fields[at].Solve!.Electrodes[0];
+        var twice = bore with
+        {
+            Fields = [.. bore.Fields.Select((field, k) => k == at ? field with { Solve = field.Solve! with { Electrodes = [wall, wall] } } : field)],
+        };
+
+        var declarations = DiffusionRun.ConductorNodes(twice, DiffusionRun.GridFor(twice)).Select(n => n.Declaration).Distinct().Order().ToList();
+
+        Assert.Equal([0, 1], declarations);
+    }
+
     /// <summary>What the estimate says a run holds, in bytes: every term, the solved field's included.</summary>
     private static double Stated(string kind, int intervals)
     {

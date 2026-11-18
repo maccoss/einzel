@@ -708,6 +708,9 @@ public static class DiffusionRun
     /// <remarks>
     /// The estimate asks this rather than whether a solve declares an electrode at all: a grid
     /// that lies clear of every conductor builds the map, finds nothing in it, and lets it go.
+    /// It stops at the first claim, and the scan visits only the nodes inside each electrode's
+    /// own bounding box, so the answer costs a few nodes where a conductor reaches the grid and
+    /// nothing where it does not.
     /// </remarks>
     internal static bool AnyElectrodeClaims(CompiledModel model, Grid2D grid) =>
         ConductorNodes(model, grid).Any();
@@ -719,26 +722,75 @@ public static class DiffusionRun
     /// </summary>
     /// <param name="model">The validated model.</param>
     /// <param name="grid">The density grid.</param>
-    /// <returns>Each electrode with a node it contains; a node inside two comes once for each.</returns>
-    private static IEnumerable<(CompiledElectrode Electrode, int I, int J)> ConductorNodes(CompiledModel model, Grid2D grid)
+    /// <returns>
+    /// Each declaration's place among all of the model's electrodes, the electrode, and a node it
+    /// contains; a node inside two comes once for each. The place, not the instance, says which
+    /// declaration a node belongs to: two declarations may share one compiled electrode.
+    /// </returns>
+    /// <remarks>
+    /// Only the nodes inside an electrode's bounding box, widened by a node each way, are asked:
+    /// none outside it can be inside the conductor, and an edge profile, which holds no interior
+    /// at all, is not asked about any.
+    /// </remarks>
+    internal static IEnumerable<(int Declaration, CompiledElectrode Electrode, int I, int J)> ConductorNodes(
+        CompiledModel model, Grid2D grid)
     {
+        var declaration = -1;
+
         foreach (var element in model.Fields)
         {
             foreach (var electrode in element.Solve?.Electrodes ?? [])
             {
-                for (var j = 0; j < grid.CountY; j++)
+                declaration++;
+
+                if (Box(electrode) is not var (minX, minY, maxX, maxY))
                 {
-                    for (var i = 0; i < grid.CountX; i++)
+                    continue;
+                }
+
+                // Clamped as doubles before they become indices, so a box far off the grid - or one
+                // without bounds - cannot overflow on the way.
+                var fromI = (int)Math.Clamp(Math.Floor((minX - grid.X(0)) / grid.SpacingX) - 1.0, 0.0, grid.CountX);
+                var toI = (int)Math.Clamp(Math.Ceiling((maxX - grid.X(0)) / grid.SpacingX) + 1.0, -1.0, grid.CountX - 1);
+                var fromJ = (int)Math.Clamp(Math.Floor((minY - grid.Y(0)) / grid.SpacingY) - 1.0, 0.0, grid.CountY);
+                var toJ = (int)Math.Clamp(Math.Ceiling((maxY - grid.Y(0)) / grid.SpacingY) + 1.0, -1.0, grid.CountY - 1);
+
+                for (var j = fromJ; j <= toJ; j++)
+                {
+                    for (var i = fromI; i <= toI; i++)
                     {
                         if (electrode.Contains(grid.X(i), grid.Y(j)))
                         {
-                            yield return (electrode, i, j);
+                            yield return (declaration, electrode, i, j);
                         }
                     }
                 }
             }
         }
     }
+
+    /// <summary>An electrode's bounding box, or null for one with no interior to contain a node.</summary>
+    /// <param name="electrode">The electrode.</param>
+    /// <returns>Its extent in metres, or null for an edge profile.</returns>
+    private static (double MinX, double MinY, double MaxX, double MaxY)? Box(CompiledElectrode electrode) =>
+        electrode.Shape switch
+        {
+            ElectrodeShape.Rectangle => (electrode.MinX, electrode.MinY, electrode.MaxX, electrode.MaxY),
+            ElectrodeShape.Disc => (
+                electrode.CentreX - electrode.Radius,
+                electrode.CentreY - electrode.Radius,
+                electrode.CentreX + electrode.Radius,
+                electrode.CentreY + electrode.Radius),
+            ElectrodeShape.Polygon when electrode.Vertices.Count > 0 => (
+                electrode.Vertices.Min(v => v.X),
+                electrode.Vertices.Min(v => v.Y),
+                electrode.Vertices.Max(v => v.X),
+                electrode.Vertices.Max(v => v.Y)),
+            ElectrodeShape.EdgeProfile or ElectrodeShape.Polygon => null,
+
+            // A shape this does not know is scanned whole rather than guessed at.
+            _ => (double.NegativeInfinity, double.NegativeInfinity, double.PositiveInfinity, double.PositiveInfinity),
+        };
 
     /// <summary>
     /// The conductors, as cells that keep absorbing, plus whatever the seed already
@@ -774,14 +826,16 @@ public static class DiffusionRun
         var seedLoss = new Dictionary<string, double>(StringComparer.Ordinal);
 
         CompiledElectrode? current = null;
+        var at = -1;
         var index = 0;
         var claimed = false;
 
-        foreach (var (electrode, i, j) in ConductorNodes(model, grid))
+        foreach (var (declaration, electrode, i, j) in ConductorNodes(model, grid))
         {
-            // A new electrode: the last one is named if it claimed anything, and this one takes
-            // the next name's index.
-            if (!ReferenceEquals(electrode, current))
+            // A new declaration: the last one is named if it claimed anything, and this one takes
+            // the next name's index. By declaration, not by instance - two declarations sharing
+            // one compiled electrode are two, as they were when each had a loop of its own.
+            if (declaration != at)
             {
                 if (claimed)
                 {
@@ -789,6 +843,7 @@ public static class DiffusionRun
                 }
 
                 current = electrode;
+                at = declaration;
                 index = names.Count;
                 claimed = false;
             }

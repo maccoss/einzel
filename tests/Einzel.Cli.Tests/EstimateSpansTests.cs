@@ -365,6 +365,146 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         Assert.False(flown.AboveThreshold);
     }
 
+    /// <summary>
+    /// A pilot that struck at once timed mostly its own setup, and the phases charged at its rate
+    /// are not billed that setup per nanosecond of flight.
+    /// </summary>
+    [Fact]
+    public void APilotThatStruckAtOnceDoesNotPriceTheRestAtItsSetup()
+    {
+        // Eight piloted phases of a millisecond, each struck after a nanosecond at 2 ms of setup,
+        // and a ninth, shorter one charged at the dearest rate.
+        var phases = Enumerable.Range(0, 9)
+            .Select(i => new Core.Model.CompiledPhase($"p{i}", i < 8 ? 1e-3 : 0.5e-3, "trajectory", (i + 1) * 1e-3, []))
+            .ToArray();
+
+        var cost = EstimateCommand.PhasePilots(phases, _ => new(2e-3, "struck", true, 1e-9));
+
+        output.WriteLine($"{cost.Seconds:G4} s: {cost.How}");
+
+        // 16 ms piloted, and the ninth at 2 ms per tenth of a phase: 10 ms. At the struck flight's
+        // own rate it would have been 1,000 s.
+        Assert.Equal(0.026, cost.Seconds, 9);
+    }
+
+    /// <summary>
+    /// A study over a sequenced model bills the flights its figure of merit flies, not the
+    /// model's cloud: the flights per evaluation come from the study, as they do unsequenced.
+    /// </summary>
+    [Fact]
+    public void ASequencedStudyBillsItsFiguresFlights()
+    {
+        var model = Model("tube-entered", document =>
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }"""));
+
+        double PerEvaluation(int ions, out StudyEstimate study)
+        {
+            var path = Write($"study{ions}", $$"""
+                { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "transmission", "ions": {{ions}},
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            // Every flight costs a second, so the flight term is the count of flights billed.
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                var costed = EstimateCommand.ForStudy(path, calibrate: true, threshold: 1e12);
+
+                study = costed.Study!;
+                return costed.Study!.SecondsPerEvaluation;
+            }
+        }
+
+        var many = PerEvaluation(1000, out var manyStudy);
+        var few = PerEvaluation(10, out _);
+
+        output.WriteLine($"{many:F3} s an evaluation at 1000 ions, {few:F3} at 10; {manyStudy.Members} members");
+
+        Assert.Equal(1000, manyStudy.Members);
+        Assert.Equal(990.0, many - few, 0);
+    }
+
+    /// <summary>
+    /// A pilot that was measured and cost nothing to speak of is a measurement, not a failure:
+    /// a cheap study is costed and passes the gate rather than being refused as unmeasured.
+    /// </summary>
+    [Fact]
+    public void APilotThatCostNothingIsMeasured()
+    {
+        var model = Model("tube-entered", document =>
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }"""));
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "transitTime", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        EstimateOutcome costed;
+
+        using (EstimateCommand.PilotsForTest(new(0.0, "nothing, for a test", true, 1.0)))
+        {
+            costed = EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(costed.Basis);
+
+        Assert.True(costed.TrajectoryMeasured);
+        Assert.False(costed.AboveThreshold);
+        Assert.DoesNotContain("NOT MEASURED", costed.Basis, StringComparison.Ordinal);
+    }
+
+    /// <summary>A test's pilot override, nested, gives back the one before it rather than none.</summary>
+    [Fact]
+    public void APilotOverrideRestoresTheOneBefore()
+    {
+        var phases = new[] { new Core.Model.CompiledPhase("p", 1e-6, "trajectory", 1e-6, []) };
+
+        using (EstimateCommand.PilotsForTest(new(3.0, "outer", true, 1e-6)))
+        {
+            using (EstimateCommand.FailPilotsForTest())
+            {
+            }
+
+            var model = Core.Model.ModelValidator.Validate(
+                Io.ModelJson.Parse(File.ReadAllText(Model("tube-entered"))), null, _root).Model!;
+
+            // Still the outer override: the flight is 3 s, not a real pilot and not a failure.
+            var flown = EstimateCommand.Execute(Model("tube-entered"), calibrate: true, threshold: 1e12);
+
+            Assert.True(flown.TrajectoryMeasured);
+            Assert.Equal(3.0, flown.TrajectorySeconds, 9);
+            Assert.NotEmpty(model.Phases);
+        }
+    }
+
+    /// <summary>
+    /// The drift limit is read only inside the diffusive phases: a phase with no length gives no
+    /// instant, where its end less an ulp lay in the extraction before it.
+    /// </summary>
+    /// <remarks>
+    /// Against the timeline rather than a model, because a model cannot carry such a phase as far
+    /// as the estimate: its field refuses two phase boundaries at one instant.
+    /// </remarks>
+    [Fact]
+    public void APhaseWithNoLengthIsNotReadInThePhaseBefore()
+    {
+        IReadOnlyList<Core.Model.CompiledRamp> none = [];
+        Core.Model.CompiledPhase[] phases =
+        [
+            new("hold", 3e-6, "diffusion", 3e-6, none),
+            new("extract", 3e-6, "trajectory", 6e-6, none),
+            new("blip", 0.0, "diffusion", 6e-6, none),
+            new("settle", 1e-6, "diffusion", 7e-6, none),
+        ];
+
+        var instants = EstimateCommand.DiffusiveInstants(phases);
+
+        output.WriteLine(string.Join(", ", instants.Select(t => t.ToString("R", System.Globalization.CultureInfo.InvariantCulture))));
+
+        Assert.DoesNotContain(instants, t => t >= 3e-6 && t < 6e-6);
+        Assert.Equal([0.0, Math.BitDecrement(3e-6), 6e-6, Math.BitDecrement(7e-6)], instants);
+    }
+
     /// <summary>Two phases declared alike are two phases, and both are piloted.</summary>
     [Fact]
     public void PhasesDeclaredAlikeAreEachPiloted()

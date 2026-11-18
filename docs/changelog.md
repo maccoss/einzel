@@ -3900,7 +3900,7 @@ Two findings from Stage 1 that bear on the spec:
   where it was flown from zero through whatever came first: on a hold-then-extract tube the
   pilot now takes 49 steps under a gentle extraction and 193 under a strong one, where both
   crossed the same hold. `--snapshots` is refused for a mixture, whose run records no instants,
-  and the refusal is located at `/snapshots` rather than at the model's mode. A non-finite
+  and the refusal is located at `/args/--snapshots` rather than at the model's mode. A non-finite
   density is refused by its own exception type, `NonFiniteDensityException`, which the sequence
   catches to locate it, rather than by an error code and an unlocated path. The timeline's path
   comes out of the call that resolves the timeline instead of a second resolution.
@@ -3942,7 +3942,7 @@ Two findings from Stage 1 that bear on the spec:
   phases are chosen by index; a calibrated study over a sequenced model re-flies its trajectory
   phases phase by phase across its range. The conductor map is billed only where an electrode
   claims a node of the density grid, the test the run keeps it by. `--snapshots 0` is accepted
-  for a study, and every refusal of the flag is an AGT-3 error at `/snapshots`, JSON under
+  for a study, and every refusal of the flag is an AGT-3 error at `/args/--snapshots`, JSON under
   `--json`. A non-finite density with no known producing phase names none.
   The ramped memory case is shorter (1 + 2 us, from 2 + 4): on the one core a measuring child
   now has, its 256-interval build took eight of its ten minutes in a Debug child and ran out of
@@ -3968,3 +3968,21 @@ Two findings from Stage 1 that bear on the spec:
   core 0 and 27.0 to 27.7 s on the last core. Found on the way and not fixed here: a trajectory
   leg whose field switches at the leg's end with ions still in flight stops with
   `StepSizeUnderflow` within an attosecond of the switch.
+
+  **A seventeenth review.** A calibrated study over a sequenced model billed its model's cloud
+  of flights where its figure of merit declared its own: 64 where `transmission` at 1,000 ions
+  flies 1,000. Every study now replaces the model's cloud flights with the figure's, and a model
+  costed unsequenced with a cloud is no longer billed all but one of its cloud flights twice. A
+  pilot measured at no cost is a measurement: one that rounded to nothing used to be dropped, so
+  a cheap study read NOT MEASURED and was gated. A pilot's rate is taken over at least a tenth of
+  its phase, so one that struck after a nanosecond at 2 ms of setup no longer prices the phases
+  charged at it at 2 ms a nanosecond - 1,000 s for a half-millisecond phase, now 10 ms. The
+  resolving power's ramp slope is taken over the same interval as its start; a diffusive phase
+  with no length gives no instant (a model cannot reach the estimate with one: its field refuses
+  two boundaries at one instant, as an internal error, which is recorded and left). The conductor
+  scan visits only each electrode's bounding box, stops at the first claim when only asked whether
+  there is one, and numbers its nodes by declaration rather than by compiled instance. A refusal
+  of `--snapshots` is at `/args/--snapshots`, the spelling flag mistakes take everywhere. And the
+  face-operator reuse test, which asserts a re-assembly allocates nothing, read 7,344 bytes in one
+  window of a Debug run of the whole suite and none on repeat: it now takes the least of five
+  windows, as the allocation tests here already do, and still requires zero.

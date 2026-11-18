@@ -529,9 +529,9 @@ public static class EstimateCommand
     {
         try
         {
-            if (FailingPilots.Value)
+            if (ForcedPilot.Value is { } forced)
             {
-                throw new InvalidOperationException("pilot flights are made to fail for a test");
+                return forced;
             }
 
             var (coarse, solved) = built ?? Coarsened(model, coarsening);
@@ -644,8 +644,8 @@ public static class EstimateCommand
     /// </param>
     internal readonly record struct Pilot(double Seconds, string How, bool Measured, double CoveredSeconds);
 
-    /// <summary>Set within a test, through <see cref="FailPilotsForTest"/>, to make every pilot flight fail.</summary>
-    private static readonly AsyncLocal<bool> FailingPilots = new();
+    /// <summary>Set within a test, through <see cref="PilotsForTest"/>, to what every pilot flight reports.</summary>
+    private static readonly AsyncLocal<Pilot?> ForcedPilot = new();
 
     /// <summary>
     /// Makes every pilot flight in the calling flow fail until disposed, which is how a test
@@ -653,17 +653,28 @@ public static class EstimateCommand
     /// that the run itself would fly.
     /// </summary>
     /// <returns>What restores pilots when disposed.</returns>
-    internal static IDisposable FailPilotsForTest()
+    internal static IDisposable FailPilotsForTest() =>
+        PilotsForTest(new Pilot(0.0, "not measured: pilot flights are made to fail for a test", false, 0.0));
+
+    /// <summary>
+    /// Makes every pilot flight in the calling flow report <paramref name="pilot"/> until disposed,
+    /// so a test can hold the flight term at a known value and check the arithmetic around it.
+    /// </summary>
+    /// <param name="pilot">What each pilot reports.</param>
+    /// <returns>What restores the pilots that were in force before, when disposed.</returns>
+    internal static IDisposable PilotsForTest(Pilot pilot)
     {
-        FailingPilots.Value = true;
-        return new Restore();
+        var before = ForcedPilot.Value;
+        ForcedPilot.Value = pilot;
+        return new Restore(before);
     }
 
-    /// <summary>Puts pilots back.</summary>
-    private sealed class Restore : IDisposable
+    /// <summary>Puts back the pilots that were in force when the override was taken, nested or not.</summary>
+    /// <param name="before">What was in force.</param>
+    private sealed class Restore(Pilot? before) : IDisposable
     {
         /// <inheritdoc/>
-        public void Dispose() => FailingPilots.Value = false;
+        public void Dispose() => ForcedPilot.Value = before;
     }
 
     /// <summary>The model with every solve coarsened, and its field solved once.</summary>
@@ -827,7 +838,7 @@ public static class EstimateCommand
             throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
             {
                 Code = Core.Errors.ErrorCodes.SchemaInvalid,
-                Path = "/snapshots",
+                Path = "/args/--snapshots",
                 Constraint = string.Create(
                     Inv,
                     $"recorded instants are copies of a diffusive run's density, and this run uses no diffusive mode ({string.Join(", ", model.Modes.Order(StringComparer.Ordinal))}), so {snapshots} of them cannot apply"),
@@ -842,7 +853,7 @@ public static class EstimateCommand
             throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
             {
                 Code = Core.Errors.ErrorCodes.SchemaInvalid,
-                Path = "/snapshots",
+                Path = "/args/--snapshots",
                 Constraint = string.Create(
                     Inv,
                     $"a run of {model.Species.Count} species records its densities at no instant, so {snapshots} recorded instant(s) cannot apply"),
@@ -1333,7 +1344,9 @@ public static class EstimateCommand
                     ? Pilots(compiled, spans, coarsening: 1.0, whole: true)
                     : PilotFlight(compiled, 1.0, compiled.MaximumFlightTimeSi);
 
-                if (measured && seconds > 0.0)
+                // Measured is measured, whatever it cost: a flight cheap enough to round to nothing
+                // is a flight that costs nothing, not one nobody could fly.
+                if (measured)
                 {
                     flights.Add(seconds);
                 }
@@ -1506,11 +1519,11 @@ public static class EstimateCommand
 
         var flown = validation.Model is { } compiledModel ? Flown(compiledModel, Spans(compiledModel)) : 1;
 
-        var perEvaluation = sequencedFlights
-            ? compile + model.Seconds - (flown * model.TrajectorySeconds) + (flown * flight)
-            : wholeRun
-                ? compile + model.Seconds
-                : compile + (model.Seconds - model.TrajectorySeconds) + (members * flight);
+        // The model's own figure carries its cloud's flights (`flown` of them); a study replaces
+        // them with the flights its figure of merit asks for (`members`), sequenced or not.
+        var perEvaluation = sequencedFlights || !wholeRun
+            ? compile + model.Seconds - (flown * model.TrajectorySeconds) + (members * flight)
+            : compile + model.Seconds;
 
         var seconds = evaluations * perEvaluation;
 
@@ -1521,7 +1534,8 @@ public static class EstimateCommand
 
         var each = sequencedFlights
             ? "is one whole run of the model, its trajectory phases piloted phase by phase over "
-            + "their own durations where the study goes rather than at the declared values alone"
+            + "their own durations where the study goes rather than at the declared values alone, "
+            + $"for the {members} trajector{(members == 1 ? "y" : "ies")} its figure of merit flies"
             : wholeRun
             ? "is one whole run of the model - a density stepped, or a packet advanced in "
             + "lockstep - so its flights are already inside the figure above and are not "
@@ -2250,6 +2264,36 @@ public static class EstimateCommand
     /// </remarks>
     private const int MostPilotedPhases = 8;
 
+    /// <summary>The instants a run's drift limit is read at: each diffusive phase's start and its last instant.</summary>
+    /// <param name="phases">The timeline, or none for a run that is not sequenced.</param>
+    /// <returns>The instants, or zero alone where nothing is sequenced or no diffusive phase has a length.</returns>
+    /// <remarks>
+    /// A phase starts where the one before it ended, as the run takes it: recomputed as its end
+    /// less its duration it can land an ulp inside the phase before and read that one's field. And a
+    /// phase with no length has no instants: the last before an end that is also its start would
+    /// be in the phase before. With a length, the last instant before the end is never before
+    /// the start, so it needs no clamp.
+    /// </remarks>
+    internal static List<double> DiffusiveInstants(IReadOnlyList<CompiledPhase> phases) =>
+        phases.Count == 0
+            ? [0.0]
+            : Enumerable.Range(0, phases.Count)
+                .Where(i => phases[i].Mode == "diffusion"
+                    && phases[i].EndsAtSeconds > CompiledPhase.StartOf(phases, i))
+                .SelectMany(i => new[]
+                {
+                    CompiledPhase.StartOf(phases, i),
+                    Math.BitDecrement(phases[i].EndsAtSeconds),
+                })
+                .DefaultIfEmpty(0.0)
+                .ToList();
+
+    /// <summary>
+    /// The least fraction of its phase a pilot's rate is taken over, so one that ended at once is
+    /// not read as its setup cost per nanosecond of flight.
+    /// </summary>
+    private const double LeastCoveredFraction = 0.1;
+
     /// <summary>
     /// What a run's trajectories cost: one pilot over its whole flight, or for a sequence one pilot
     /// through each trajectory phase over that phase's own duration, summed.
@@ -2338,6 +2382,7 @@ public static class EstimateCommand
 
         var seconds = 0.0;
         var dearest = 0.0;
+        var anyMeasured = false;
         var unmeasured = 0.0;
         var lines = new List<string>();
 
@@ -2349,10 +2394,16 @@ public static class EstimateCommand
             if (measured && covered > 0.0)
             {
                 seconds += phaseSeconds;
+                anyMeasured = true;
 
                 // Per simulated second the pilot actually covered: one whose ion arrived early
-                // flew less than its phase, and dividing by the phase understated the rate.
-                dearest = Math.Max(dearest, phaseSeconds / covered);
+                // flew less than its phase, and dividing by the phase understated the rate. But
+                // not per less than a tenth of the phase: a pilot that struck at once timed its
+                // own setup over almost no flight, and that ratio, extrapolated to the phases
+                // charged at it, billed nanoseconds of flight as milliseconds of setup each.
+                dearest = Math.Max(
+                    dearest,
+                    phaseSeconds / Math.Max(covered, phase.DurationSeconds * LeastCoveredFraction));
                 lines.Add(string.Create(Inv, $"phase '{phase.Name}', {phaseSeconds:G3} s: {how}"));
             }
             else
@@ -2364,7 +2415,7 @@ public static class EstimateCommand
 
         var unpiloted = indices.Where(i => !piloted.Contains(i)).Sum(i => phases[i].DurationSeconds);
 
-        if (dearest <= 0.0)
+        if (!anyMeasured)
         {
             return new(
                 0.0,
@@ -2550,20 +2601,7 @@ public static class EstimateCommand
         // next phase's. An extraction flown as trajectories pushes with a field a held density
         // never feels, and reading the drift limit there shrank the hold's step by orders of
         // magnitude and billed it accordingly.
-        //
-        // A phase starts where the one before it ended, as the run takes it: recomputed as its end
-        // less its duration it can land an ulp inside the phase before and read that one's field.
-        List<double> instants = model.Phases.Count == 0
-            ? [0.0]
-            : Enumerable.Range(0, model.Phases.Count)
-                .Where(i => model.Phases[i].Mode == "diffusion")
-                .SelectMany(i => new[]
-                {
-                    CompiledPhase.StartOf(model.Phases, i),
-                    Math.BitDecrement(model.Phases[i].EndsAtSeconds),
-                })
-                .DefaultIfEmpty(0.0)
-                .ToList();
+        var instants = DiffusiveInstants(model.Phases);
 
         // Whether the run will step through a cycle average, which is also whether it builds
         // the ponderomotive well cache - seven arrays over the density grid.

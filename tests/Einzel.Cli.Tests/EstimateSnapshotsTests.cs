@@ -94,7 +94,7 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
         output.WriteLine(refused.Error.ToString());
 
         Assert.Equal(ErrorCodes.SchemaInvalid, refused.Error.Code);
-        Assert.Equal("/snapshots", refused.Error.Path);
+        Assert.Equal("/args/--snapshots", refused.Error.Path);
         Assert.Contains("no diffusive mode", refused.Error.Constraint, StringComparison.Ordinal);
 
         // None asked for is the ordinary estimate.
@@ -142,7 +142,7 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
 
         output.WriteLine(refused.Error.ToString());
 
-        Assert.Equal("/snapshots", refused.Error.Path);
+        Assert.Equal("/args/--snapshots", refused.Error.Path);
         Assert.Contains("2 species", refused.Error.Constraint, StringComparison.Ordinal);
         Assert.True(EstimateCommand.Execute(mixture, calibrate: false).MemoryMiB > 0.0);
     }
@@ -197,7 +197,7 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
 
         var error = System.Text.Json.Nodes.JsonNode.Parse(stdout)!["errors"]![0]!;
 
-        Assert.Equal("/snapshots", error["path"]!.GetValue<string>());
+        Assert.Equal("/args/--snapshots", error["path"]!.GetValue<string>());
         Assert.Contains(says, error["constraint"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 

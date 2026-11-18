@@ -910,7 +910,7 @@ public static class Program
         int Refuse(string constraint, string suggestion) => RefuseEstimate(json, new EinzelError
         {
             Code = ErrorCodes.SchemaInvalid,
-            Path = "/snapshots",
+            Path = "/args/--snapshots",
             Constraint = constraint,
             Suggestion = suggestion,
         });

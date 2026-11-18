@@ -300,7 +300,9 @@ become a feature release without being renamed twice.
   the drift limit is read at the diffusive phases' own instants, by the run's own shift. A
   trajectory phase whose pilot fails is never billed nothing, and a study over a model none of
   whose pilots could be flown is gated rather than billed without its flights
-  (`trajectoryMeasured: false`). `--snapshots 00` is accepted for a study, as `0` is.
+  (`trajectoryMeasured: false`). `--snapshots 00` is accepted for a study, as `0` is, and a
+  refusal of the flag is located at `/args/--snapshots`. A study over a sequenced model bills
+  the flights its figure of merit asks for rather than the model's cloud.
 - **A sequenced run is estimated phase by phase**: each trajectory phase by a pilot flown
   through its own field over its own duration, diffusive phases by density steps over theirs, and the basis says both. A
   trajectory model entering a diffusive phase was billed nothing for its density, and a

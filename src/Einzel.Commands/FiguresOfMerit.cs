@@ -1485,7 +1485,9 @@ public static class FiguresOfMerit
         var rampStart = CompiledPhase.StartOf(model.Phases, phase);
         var rampEnd = phase.EndsAtSeconds;
         var travel = ramp.End.SiValue - ramp.Start.SiValue;
-        var beta = Math.Abs(travel) / phase.DurationSeconds;
+
+        // Over the interval the ramp is taken across, so the slope and the start agree.
+        var beta = Math.Abs(travel) / (rampEnd - rampStart);
 
         if (!(beta > 0.0))
         {
