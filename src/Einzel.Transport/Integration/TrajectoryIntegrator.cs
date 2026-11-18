@@ -660,6 +660,15 @@ public static class TrajectoryIntegrator
         TrajectoryStopFunction boundarySurface,
         ref long fieldEvaluations)
     {
+        var members = field.DiscontinuityMembers;
+
+        if (members > 1)
+        {
+            return MemberLandingStep(
+                in state, in derivative, in candidate, step, field, chargeToMass, timeSeconds, members,
+                ref fieldEvaluations);
+        }
+
         var before = boundarySurface(in state);
         fieldEvaluations++;
 
@@ -680,8 +689,80 @@ public static class TrajectoryIntegrator
         }
 
         return LandingStep(
-            in state, in derivative, step, field, chargeToMass, boundarySurface, before, timeSeconds,
+            in state, in derivative, step, field, chargeToMass, new Delegated(boundarySurface), before, timeSeconds,
             ref fieldEvaluations);
+    }
+
+    // A field tracking several discontinuity measures: a crossing is any one of them changing sign,
+    // and the earliest is landed on. Combined into one sign instead, two members changing sign at
+    // one place cancel - two abutting solve domains, two halves of a reflection meeting at their
+    // plane - and a real surface is crossed with no landing (Stage 4's rule 1). A bisection reads
+    // only the sign of the surface it is given, and a member changes sign exactly where the
+    // combined sign would for a single crossing, so a flight crossing one surface per step lands
+    // where it always did.
+    private static double MemberLandingStep(
+        in PhaseState state,
+        in PhaseDerivative derivative,
+        in PhaseState candidate,
+        double step,
+        IElectrostaticField field,
+        double chargeToMass,
+        double timeSeconds,
+        int members,
+        ref long fieldEvaluations)
+    {
+        var earliest = double.PositiveInfinity;
+        var from = state.Position;
+        var to = candidate.Position;
+
+        // Counted as the combined measure was: one evaluation at each end.
+        fieldEvaluations += 2;
+
+        for (var k = 0; k < members; k++)
+        {
+            var before = field.MemberDistanceToDiscontinuity(k, in from);
+
+            // Smooth, or sitting on this member's surface having just landed there.
+            if (!double.IsFinite(before) || before == 0.0)
+            {
+                continue;
+            }
+
+            var after = field.MemberDistanceToDiscontinuity(k, in to);
+
+            if (!double.IsFinite(after) || Math.Sign(after) == Math.Sign(before))
+            {
+                continue;
+            }
+
+            var landing = LandingStep(
+                in state, in derivative, step, field, chargeToMass, new Member(field, k), before, timeSeconds,
+                ref fieldEvaluations);
+
+            earliest = Math.Min(earliest, landing);
+        }
+
+        return earliest;
+    }
+
+    // What a landing bisects on: a surface function, without allocating one per crossing.
+    private interface ILandingSurface
+    {
+        double At(in PhaseState state);
+    }
+
+    private readonly struct Delegated(TrajectoryStopFunction surface) : ILandingSurface
+    {
+        public double At(in PhaseState state) => surface(in state);
+    }
+
+    private readonly struct Member(IElectrostaticField field, int member) : ILandingSurface
+    {
+        public double At(in PhaseState state)
+        {
+            var position = state.Position;
+            return field.MemberDistanceToDiscontinuity(member, in position);
+        }
     }
 
     private static double StopLandingStep(
@@ -708,7 +789,7 @@ public static class TrajectoryIntegrator
         }
 
         return LandingStep(
-            in state, in derivative, step, field, chargeToMass, stopWhenNegative, before, timeSeconds,
+            in state, in derivative, step, field, chargeToMass, new Delegated(stopWhenNegative), before, timeSeconds,
             ref fieldEvaluations);
     }
 
@@ -723,16 +804,17 @@ public static class TrajectoryIntegrator
     /// curvature near a turning point. It costs about fifty probes per landing,
     /// which against two landings per flight is not worth optimising.
     /// </remarks>
-    private static double LandingStep(
+    private static double LandingStep<TSurface>(
         in PhaseState start,
         in PhaseDerivative startDerivative,
         double bracketingStep,
         IElectrostaticField field,
         double chargeToMass,
-        TrajectoryStopFunction surface,
+        TSurface surface,
         double valueAtStart,
         double timeSeconds,
         ref long fieldEvaluations)
+        where TSurface : struct, ILandingSurface
     {
         var low = 0.0;
         var high = bracketingStep;
@@ -752,7 +834,7 @@ public static class TrajectoryIntegrator
                 out var probe, out _, out _, out _, timeSeconds);
             fieldEvaluations += 6;
 
-            var value = surface(in probe);
+            var value = surface.At(in probe);
 
             if (value == 0.0)
             {

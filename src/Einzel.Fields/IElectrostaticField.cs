@@ -88,6 +88,31 @@ public interface IElectrostaticField
     /// </remarks>
     double SignedDistanceToDiscontinuity(in Vec3 position) => double.PositiveInfinity;
 
+    /// <summary>How many discontinuity measures this field tracks separately.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A crossing is any member changing sign</b>, and the integrator lands on the earliest. One
+    /// measure for a field that is not composed of others; the members of each part for a sum,
+    /// and through a wrapper the members of what it wraps. <see cref="SignedDistanceToDiscontinuity"/>
+    /// stays the members combined (<see cref="DiscontinuityDistance.Combine"/>): its magnitude is the
+    /// distance to the nearest surface of any member, which is what a step cap wants.
+    /// </para>
+    /// <para>
+    /// <b>Why separately.</b> Combined, the members' signs multiply, so two surfaces at one place -
+    /// two abutting solve domains, two halves of a reflection meeting at their plane - cancel, and a
+    /// real surface is crossed with no landing: Stage 4's rule 1. Tracked separately, two surfaces
+    /// at one place are one landing, and a member's own forced change of sign costs at most a
+    /// landing more, never one less.
+    /// </para>
+    /// </remarks>
+    int DiscontinuityMembers => 1;
+
+    /// <summary>One member's discontinuity measure (<see cref="DiscontinuityMembers"/>).</summary>
+    /// <param name="member">Which, from zero.</param>
+    /// <param name="position">The point, in metres.</param>
+    /// <returns>Its signed distance, in metres, or positive infinity.</returns>
+    double MemberDistanceToDiscontinuity(int member, in Vec3 position) => SignedDistanceToDiscontinuity(in position);
+
     /// <summary>
     /// The length scale on which this field is resolved. Infinite for a field
     /// given in closed form.

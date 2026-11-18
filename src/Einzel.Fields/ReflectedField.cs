@@ -23,7 +23,6 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
 {
     private readonly IElectrostaticField _inner;
     private readonly Reflection _reflection;
-    private readonly PlaneFace? _face;
 
     /// <summary>The image of a declared half, answering where a reflection says it does.</summary>
     /// <param name="inner">The declared half.</param>
@@ -32,10 +31,6 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _reflection = reflection ?? throw new ArgumentNullException(nameof(reflection));
-
-        // The image does not own the plane: the declared half declares it, once (PlaneFace). Where
-        // the halves overlap the image answers everywhere and has no face to read.
-        _face = reflection.Overlaps ? null : reflection.FaceOf(_inner, ownsPlane: false);
     }
 
     /// <summary>The image of a declared half through a plane, answering everywhere.</summary>
@@ -186,25 +181,27 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Where the image answers nothing it has no discontinuity of its own, so none of the inner
-    /// field's surfaces seen through the mirror is declared there - a surface the inner field
-    /// declares beyond its edge would otherwise land on the declared side as a phantom the
-    /// integrator stops at. Nor does the image declare the plane: where the plane is a surface -
-    /// an edge that is not continuous by construction - the declared half is the one member that declares it (<see cref="PlaneFace"/>), since
-    /// the sum multiplies its members' signs and two surfaces at one place cancel. So on the
-    /// declared side the image's measure is its own at the plane where it has no face there, and
-    /// otherwise the distance from the plane signed as the image is just past the plane on its own
-    /// side - its sign changes nowhere on this side, nor at the plane.
+    /// The declared half's measure seen through the mirror, on both sides of the plane: the image
+    /// declares exactly the mirror of what the declared half declares, and nothing else - not the
+    /// plane, which the declared half carries as a member of its own where it is a surface. Gated
+    /// to its own side, as it was, the image had to carry one sign over the other side, and every
+    /// way of choosing that sign either cancelled a surface of the declared half at the rim or
+    /// declared one the declared side does not have.
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
-        if (!Contributes(in position))
-        {
-            return _face!.At(in position);
-        }
-
         var mirrored = Reflect(in position);
         return _inner.SignedDistanceToDiscontinuity(in mirrored);
+    }
+
+    /// <inheritdoc/>
+    public int DiscontinuityMembers => Math.Max(1, _inner.DiscontinuityMembers);
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        var mirrored = Reflect(in position);
+        return _inner.MemberDistanceToDiscontinuity(member, in mirrored);
     }
 
     /// <inheritdoc/>

@@ -332,6 +332,13 @@ public sealed class SequencedField : ITimeVaryingField
         _states[0].SignedDistanceToDiscontinuity(position);
 
     /// <inheritdoc/>
+    public int DiscontinuityMembers => _states[0].DiscontinuityMembers;
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        _states[0].MemberDistanceToDiscontinuity(member, position);
+
+    /// <inheritdoc/>
     /// <remarks>
     /// Zero rather than the first state's answer. A field-free run length is a promise
     /// about a whole straight segment, and a switch part-way along it would break that

@@ -178,6 +178,16 @@ public sealed class RotatedField : IElectrostaticField, IConductorBounded
     }
 
     /// <inheritdoc/>
+    public int DiscontinuityMembers => _inner.DiscontinuityMembers;
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        var local = ToLocal(in position);
+        return _inner.MemberDistanceToDiscontinuity(member, in local);
+    }
+
+    /// <inheritdoc/>
     public double ResolutionLength => _inner.ResolutionLength;
 
     /// <inheritdoc/>

@@ -1003,27 +1003,7 @@ public static class GeometryBuilder
         // so a compiled solve built without it - false by default - cannot lose the plane.
         var continuous = edge == BoundaryKind.Neumann || stopsShort;
 
-        // The box's part of the plane: across y (a radius, for an axisymmetric solve), and every z,
-        // since a cross-section repeats along it - where each half's sign on its other side is read.
-        PlaneRegion face;
-
-        if (solve.Symmetry == SolveSymmetry.Cylindrical)
-        {
-            // Its real radial extent: a radius is not negative, and a cylindrical solve reaching below
-            // the axis would have been refused before it was built.
-            if (solve.MinY < 0.0)
-            {
-                throw new InvalidOperationException($"a cylindrical solve's radial extent starts at {solve.MinY} m, below the axis");
-            }
-
-            face = new PlaneRegion(solve.MinY, solve.MaxY, double.NegativeInfinity, double.PositiveInfinity, radial: true);
-        }
-        else
-        {
-            face = new PlaneRegion(solve.MinY, solve.MaxY, double.NegativeInfinity, double.PositiveInfinity);
-        }
-
-        return Reflection.Of(plane, solve.MinX, solve.MaxX, continuous, face);
+        return Reflection.Of(plane, solve.MinX, solve.MaxX, continuous);
     }
 
     /// <summary>What building a declared geometry will hold in memory, worked out without building it.</summary>

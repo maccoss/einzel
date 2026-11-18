@@ -51,7 +51,10 @@ public static class ArtifactFiles
         {
             if (File.Exists(folder))
             {
-                throw Refusal(flag, full, $"{folder} is a file, not a folder", null);
+                // A link that leads to no folder - dangling, or one of a loop - is reported as a file
+                // on Linux; it is said to be what it is.
+                var link = new FileInfo(folder).LinkTarget;
+                throw Refusal(flag, full, link is null ? $"{folder} is a file, not a folder" : $"{folder} is a link to {link}, which leads to no folder", null);
             }
 
             if (Directory.Exists(folder))
@@ -83,16 +86,27 @@ public static class ArtifactFiles
         NotAnInput(flag, path, ResolvedAt(flag, path, resolver), InputsAt(inputs, resolver));
     }
 
-    // Refuses a resolved destination that is one of the resolved inputs.
-    private static void NotAnInput(string? flag, string path, string resolved, HashSet<string> inputs)
+    // Refuses a resolved destination that is one of the resolved inputs, or that has the name of an
+    // input that could not be followed: that one may be the same file reached another way, and
+    // nothing can show it is not, so the write is refused rather than allowed to pass.
+    private static void NotAnInput(string? flag, string path, string resolved, Inputs inputs)
     {
-        if (inputs.Contains(Path.TrimEndingDirectorySeparator(resolved)))
+        if (inputs.Resolved.Contains(Path.TrimEndingDirectorySeparator(resolved)))
         {
             throw Refusal(
                 flag,
                 Path.GetFullPath(path),
                 "it is the file this command reads, and writing there would replace it",
                 flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
+        }
+
+        if (inputs.Unresolved.TryGetValue(Path.GetFileName(Path.TrimEndingDirectorySeparator(resolved)), out var unresolved))
+        {
+            throw Refusal(
+                flag,
+                Path.GetFullPath(path),
+                $"it may be {unresolved.Path}, a file this command reads, which could not be followed to tell ({unresolved.Why})",
+                flag is null ? "name the output with its flag, under another name" : $"give --{flag} a file under another name");
         }
     }
 
@@ -194,7 +208,7 @@ public static class ArtifactFiles
         {
             return resolver.Path(path);
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException or ArgumentException)
         {
             throw Refusal(
                 flag,
@@ -204,17 +218,22 @@ public static class ArtifactFiles
         }
     }
 
-    // A file the command reads, resolved where it can be and taken as it stands where not: an
-    // input that cannot be followed is not one any destination could be found to be.
-    private static string InputAt(string input, Resolver resolver)
+    // A path resolved where it can be and taken as it stands where not - for Same, which answers
+    // whatever the path is.
+    private static string InputAt(string input, Resolver resolver) => TryResolve(input, resolver, out _) ?? FullOrAsGiven(input);
+
+    // A path resolved, or null with why it could not be.
+    private static string? TryResolve(string path, Resolver resolver, out string? why)
     {
         try
         {
-            return resolver.Path(input);
+            why = null;
+            return resolver.Path(path);
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException or ArgumentException)
         {
-            return FullOrAsGiven(input);
+            why = failure.Message;
+            return null;
         }
     }
 
@@ -230,11 +249,41 @@ public static class ArtifactFiles
         }
     }
 
-    // The resolved files the command reads, each resolved once, looked up by the file system's rule.
-    private static HashSet<string> InputsAt(string?[] inputs, Resolver resolver) =>
-        new(
-            inputs.Where(i => i is not null).Select(i => Path.TrimEndingDirectorySeparator(InputAt(i!, resolver))),
-            PathComparer);
+    // The files the command reads, each resolved once: those that resolve, looked up by the file
+    // system's rule, and those that do not, by name - one that cannot be followed may be the very
+    // file a destination reaches through a link, and nothing can show it is not.
+    private sealed class Inputs
+    {
+        public HashSet<string> Resolved { get; } = new(PathComparer);
+
+        public Dictionary<string, (string Path, string Why)> Unresolved { get; } = new(PathComparer);
+    }
+
+    private static Inputs InputsAt(string?[] inputs, Resolver resolver)
+    {
+        var known = new Inputs();
+
+        foreach (var input in inputs)
+        {
+            if (input is null)
+            {
+                continue;
+            }
+
+            if (TryResolve(input, resolver, out var why) is { } resolved)
+            {
+                known.Resolved.Add(Path.TrimEndingDirectorySeparator(resolved));
+            }
+            else
+            {
+                // Its own spelling counts too, as far as it goes.
+                known.Resolved.Add(Path.TrimEndingDirectorySeparator(FullOrAsGiven(input)));
+                known.Unresolved[Path.GetFileName(Path.TrimEndingDirectorySeparator(input))] = (FullOrAsGiven(input), why!);
+            }
+        }
+
+        return known;
+    }
 
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
@@ -244,16 +293,11 @@ public static class ArtifactFiles
     // write will say so.
     private const int MaximumLinkHops = 40;
 
-    /// <summary>
-    /// Called once for every link query a resolution makes: a test's way to count them, so a film of
-    /// hundreds of frames in one folder is seen to ask about that folder once.
-    /// </summary>
-    internal static readonly AsyncLocal<Action?> LinkQuery = new();
-
     // Resolves paths, remembering every folder it has resolved: one call's destinations and inputs
     // share their folders, and a film's hundreds of frames would otherwise walk the same ancestors
-    // once each.
-    private sealed class Resolver
+    // once each. One per call, never longer - a folder can become a link between two calls. The
+    // probe is called once for every link query, which is how a test counts them.
+    private sealed class Resolver(Action? onQuery = null)
     {
         private readonly Dictionary<string, string> _folders = new(PathComparer);
 
@@ -265,7 +309,7 @@ public static class ArtifactFiles
             {
                 var folder = System.IO.Path.GetDirectoryName(full);
                 var inFolder = folder is null ? full : System.IO.Path.Combine(Folder(folder), System.IO.Path.GetFileName(full));
-                LinkQuery.Value?.Invoke();
+                onQuery?.Invoke();
                 var info = new FileInfo(inFolder);
 
                 if (info.LinkTarget is null || info.ResolveLinkTarget(returnFinalTarget: true) is not { } final)
@@ -303,7 +347,7 @@ public static class ArtifactFiles
                 return here;
             }
 
-            LinkQuery.Value?.Invoke();
+            onQuery?.Invoke();
             var info = new DirectoryInfo(here);
 
             return info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } final
@@ -345,9 +389,16 @@ public static class ArtifactFiles
     public static void CheckAll(IReadOnlyList<(string? Flag, string Path)> destinations, params string?[] inputs) =>
         Checked(destinations, inputs);
 
+    /// <summary><see cref="CheckAll"/>, counting the link queries it makes: a test's way to see the folders shared.</summary>
+    /// <param name="destinations">The destinations.</param>
+    /// <param name="onQuery">Called once for every link query.</param>
+    /// <param name="inputs">The files the command reads.</param>
+    internal static void CheckAllCounting(IReadOnlyList<(string? Flag, string Path)> destinations, Action onQuery, params string?[] inputs) =>
+        Checked(destinations, inputs, onQuery);
+
     // The checks, returning each destination as resolved, so a caller that goes on to write them
     // follows each link once rather than again for every file.
-    private static string[] Checked(IReadOnlyList<(string? Flag, string Path)> destinations, string?[] inputs)
+    private static string[] Checked(IReadOnlyList<(string? Flag, string Path)> destinations, string?[] inputs, Action? onQuery = null)
     {
         ArgumentNullException.ThrowIfNull(destinations);
 
@@ -356,7 +407,7 @@ public static class ArtifactFiles
         // Each destination resolved once and looked up, not compared with every other: a film is
         // hundreds of frames, and every comparison follows links on disk. One resolver for the call,
         // so the frames' shared folders are walked once, and the inputs resolved once for all of them.
-        var resolver = new Resolver();
+        var resolver = new Resolver(onQuery);
         var resolvedInputs = InputsAt(inputs, resolver);
         var seen = new Dictionary<string, int>(PathComparer);
 
@@ -526,11 +577,6 @@ public static class ArtifactFiles
 
         private bool _finished;
 
-        // One resolver for the set's life, so files staged one at a time share their folders, and
-        // the inputs resolved once, when the first file is staged.
-        private readonly Resolver _resolver = new();
-        private HashSet<string>? _resolvedInputs;
-
         internal Staged(string?[] inputs) => _inputs = inputs ?? [];
 
         /// <summary>How many files are staged.</summary>
@@ -555,9 +601,12 @@ public static class ArtifactFiles
 
             try
             {
+                // Resolved afresh for this call: a film is staged a frame at a time over the length of
+                // a run, and a folder that becomes a link between two frames must be seen.
+                var resolver = new Resolver();
                 Check(flag, path);
-                resolved = ResolvedAt(flag, path, _resolver);
-                NotAnInput(flag, path, resolved, _resolvedInputs ??= InputsAt(_inputs, _resolver));
+                resolved = ResolvedAt(flag, path, resolver);
+                NotAnInput(flag, path, resolved, InputsAt(_inputs, resolver));
                 key = Path.TrimEndingDirectorySeparator(resolved);
 
                 // A second file at one place: asked here, of a set built a file at a time.
@@ -634,6 +683,37 @@ public static class ArtifactFiles
         public void Commit()
         {
             ObjectDisposedException.ThrowIf(_finished, this);
+
+            // Every destination resolved again before anything is placed: a file is staged beside the
+            // target its path named then, and if a folder on the way has since become a link, or a
+            // link been pointed elsewhere, renaming it there would write where the path no longer
+            // leads. Refused, with nothing placed.
+            try
+            {
+                var resolver = new Resolver();
+                var inputs = InputsAt(_inputs, resolver);
+
+                foreach (var (flag, path, target, _) in _files)
+                {
+                    var now = ResolvedAt(flag, path, resolver);
+
+                    if (!PathComparer.Equals(Path.TrimEndingDirectorySeparator(now), Path.TrimEndingDirectorySeparator(target)))
+                    {
+                        throw Refusal(
+                            flag,
+                            FullOrAsGiven(path),
+                            $"it names {now} now, and its file was made for {target}: a folder or link on its way changed while the files were made",
+                            "run the command again");
+                    }
+
+                    NotAnInput(flag, path, now, inputs);
+                }
+            }
+            catch
+            {
+                Abort();
+                throw;
+            }
 
             var count = _files.Count;
             var placed = new List<(string Target, string? Backup)>(count);

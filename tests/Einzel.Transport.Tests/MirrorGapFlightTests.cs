@@ -216,8 +216,7 @@ public sealed class MirrorGapFlightTests
     public void ThePlaneIsOneSurfaceInsideAndBeyondTheBox()
     {
         var species = IonSpecies.FromMassToCharge(500.0, 1);
-        var face = new PlaneRegion(-0.001, 0.001, double.NegativeInfinity, double.PositiveInfinity);
-        var union = new Reflection(Plane, ImageAbove: true, Face: face).Sum(new Patch());
+        var union = new Reflection(Plane, ImageAbove: true).Sum(new Patch());
 
         double Sign(double x, double y) => Math.Sign(union.SignedDistanceToDiscontinuity(new Vec3(x, y, 0.0)));
 
@@ -250,6 +249,52 @@ public sealed class MirrorGapFlightTests
 
         Assert.Equal(TrajectoryOutcome.StopConditionMet, landed.Outcome);
         Assert.Equal(whole.FlightTimeSeconds, landed.FlightTimeSeconds);
+    }
+
+    // A neighbouring element with a real jump at the plane's x everywhere: a field along x past it,
+    // nothing before it, the plane its one surface.
+    private sealed class Neighbour : IElectrostaticField
+    {
+        public Vec3 ElectricFieldAt(in Vec3 p) => p.X > Plane ? new Vec3(Strength, 0.0, 0.0) : default;
+
+        public double PotentialAt(in Vec3 p) => p.X > Plane ? -Strength * (p.X - Plane) : 0.0;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 p) => Plane - p.X;
+    }
+
+    /// <summary>
+    /// The plane continued beyond the box, where the union's field does not jump, costs at most a
+    /// landing: a neighbouring element's real surface lying there is landed on exactly as it is
+    /// with no union beside it.
+    /// </summary>
+    /// <remarks>
+    /// Combined into one sign, the union's plane and the neighbour's surface at the same place
+    /// cancelled, and the ion crossed the neighbour's jump with no landing. Tracked as members, two
+    /// changes at one place are one landing.
+    /// </remarks>
+    [Fact]
+    public void ThePlaneBeyondTheBoxNeverCancelsANeighbour()
+    {
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var union = new Reflection(Plane, ImageAbove: true).Sum(new Patch());
+        var together = new SuperposedField([union, new Neighbour()]);
+
+        // Combined, the two cancel beyond the box: the sign is the same on both sides.
+        Assert.Equal(
+            Math.Sign(together.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.0005, 0.005, 0.0))),
+            Math.Sign(together.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.0005, 0.005, 0.0))));
+
+        var v0 = species.SpeedAfterAcceleration(Quantity.From(100.0, "V")).SiValue;
+        var settings = new IntegrationSettings { MaximumFlightTime = 1e-3, RelativeTolerance = 1e-13 };
+        TrajectoryStopFunction detector = (in PhaseState s) => (2.0 * Plane) + 0.001 - s.Position.X;
+        var launch = new PhaseState(new Vec3(-0.001, 0.005, 0.0), new Vec3(v0, 0.0, 0.0));
+
+        var beside = TrajectoryIntegrator.Integrate(launch, species, together, settings, detector);
+        var alone = TrajectoryIntegrator.Integrate(launch, species, new Neighbour(), settings, detector);
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, beside.Outcome);
+        Assert.Equal(alone.FlightTimeSeconds, beside.FlightTimeSeconds);
+        Assert.Equal(alone.MaximumRelativeEnergyDrift, beside.MaximumRelativeEnergyDrift);
     }
 
     /// <summary>

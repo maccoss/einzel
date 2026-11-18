@@ -32,6 +32,7 @@ namespace Einzel.Fields;
 public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 {
     private readonly IElectrostaticField[] _elements;
+    private readonly int[] _members;
 
     /// <summary>Creates a driven superposition.</summary>
     /// <param name="elements">The elements to sum, at least one of them driven.</param>
@@ -45,6 +46,7 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
         ArgumentNullException.ThrowIfNull(elements);
 
         _elements = [.. elements];
+        _members = DiscontinuityDistance.MemberOffsets(_elements);
 
         if (!Array.Exists(_elements, e => e is ITimeVaryingField))
         {
@@ -58,6 +60,13 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 
     /// <summary>The elements being summed.</summary>
     public IReadOnlyList<IElectrostaticField> Elements => _elements;
+
+    /// <inheritdoc/>
+    public int DiscontinuityMembers => _members[^1];
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        DiscontinuityDistance.Member(_elements, _members, member, in position);
 
     /// <inheritdoc/>
     public double MonochromaticPeriodSeconds

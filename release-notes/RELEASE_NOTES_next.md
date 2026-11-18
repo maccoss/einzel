@@ -233,12 +233,16 @@ become a feature release without being renamed twice.
   power-of-two plane the image's reflected coordinate rounded back onto the plane and the sum
   doubled there. The plane and the declared side are the declared half's, the other side the
   image's, judged on the point itself.
+- **A field made of parts lands on each part's surfaces separately.** A crossing is any part's
+  discontinuity changing sign, so two surfaces at one place - two abutting solve domains, the two
+  halves of a reflection meeting at their plane - are one landing, where combined into one sign
+  they cancelled and the ion crossed a real jump with no landing. Every shipped model's flight is
+  unchanged to the last digit.
 - **A reflected solve's mirror plane is a surface the integrator lands on unless its edge is a
-  mirror**: a grounded (Dirichlet) edge or face on the plane makes the plane one surface, owned by
-  the declared half, wherever an ion crosses it - over the box, where the field jumps, and beyond
-  it, where the one change of sign a mirror cannot avoid is put and the drift is cut. Apart from
-  the plane, a reflected solve declares exactly the mirror image of what its declared side
-  declares, and nothing on the faces of the image's box. Decided by the plane edge's own condition
+  mirror**: a grounded (Dirichlet) edge or face on the plane makes the plane a surface of its own,
+  carried by the declared half, wherever an ion crosses it - over the box, where the field jumps,
+  and beyond it, where it costs a landing and nothing more. Apart from the plane, a reflected
+  solve declares exactly the mirror image of what its declared side declares. Decided by the plane edge's own condition
   alone, when the solve is built: a volume solve gets it on a grounded face, and so does a
   cross-section whatever its `boundaryIsDiscontinuous`, which speaks for its far edges. **A
   reflected cross-section with a grounded plane edge now lands on the plane, and its flights may
@@ -261,7 +265,9 @@ become a feature release without being renamed twice.
 - **A destination reached through a linked folder is the file it is**: an input there is refused
   as that input, where only a link that was the file itself was followed before. A destination
   reached through a loop of links, or below a folder that cannot be read, is refused at its flag
-  rather than ending the command as an internal error.
+  rather than ending the command as an internal error; a destination named like an input that
+  cannot be followed is refused, since it may be that input; and a set of files whose link was
+  pointed elsewhere while they were made is refused at the commit, with nothing placed.
 - **Files are replaced in one rename**, written through a symbolic link, and a read-only
   destination is refused; every destination - including the render spec a figure was drawn from -
   is checked before the work, `--dry-run` included. A file no flag named is refused with its own

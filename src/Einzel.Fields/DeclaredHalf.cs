@@ -18,13 +18,14 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
 {
     private readonly GatedMetal? _metal = inner is IConductorBounded metal ? new GatedMetal(metal, reflection) : null;
 
-    // The declared half owns the plane: where its edge there is not continuous by construction,
-    // it is the one member that declares the surface (PlaneFace).
-    // Made only for a union: where the halves overlap there is no side to gate, and the sum uses
-    // the declared half as it is (Reflection.Declared).
-    private readonly PlaneFace _face = reflection.Overlaps
+    // Whether this half carries the plane as a discontinuity member of its own: made only for a
+    // union - where the halves overlap there is no side to gate, and the sum uses the declared half
+    // as it is (Reflection.Declared).
+    private readonly bool _plane = reflection.Overlaps
         ? throw new ArgumentException("a declared half is gated only in a union; where the halves overlap it is used as it is", nameof(reflection))
-        : reflection.FaceOf(inner, ownsPlane: true);
+        : reflection.DeclaresPlane;
+
+    private readonly int _own = Math.Max(1, inner.DiscontinuityMembers);
 
     /// <inheritdoc/>
     /// <remarks>
@@ -44,45 +45,47 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     /// <inheritdoc/>
     /// <remarks>
     /// The inner field's run - gating only takes field away, so wherever the inner field is free
-    /// the gated one is too - cut at the plane where the ray crosses it and this half declares a
-    /// surface there (<see cref="PlaneFace.ChangesSignAt"/>): a drift jumping a change of sign skips a
-    /// landing. The plane is the only place this half's measure changes sign on the side it answers
-    /// nothing, so it is the only place a run of the inner field is cut. An analytic drift ends where a surface is,
-    /// and a run that reached past the plane on the strength of an inner field free on both sides
-    /// of it would jump the one surface the sum declares there.
+    /// the gated one is too - cut where the ray crosses the plane, if the plane is a surface: a
+    /// drift that reached past it would jump the plane member's change of sign.
     /// </remarks>
     public double FieldFreeRunLength(in Vec3 position, in Vec3 direction)
     {
         var run = inner.FieldFreeRunLength(in position, in direction);
 
-        if (!(run > 0.0) || direction.X == 0.0)
+        if (!_plane || !(run > 0.0) || direction.X == 0.0)
         {
             return run;
         }
 
         var toPlane = (reflection.PlaneX - position.X) / direction.X;
-
-        if (!(toPlane > 0.0) || !(toPlane < run))
-        {
-            return run;
-        }
-
-        var y = position.Y + (toPlane * direction.Y);
-        var z = position.Z + (toPlane * direction.Z);
-        return _face.ChangesSignAt(y, z) ? toPlane : run;
+        return toPlane > 0.0 && toPlane < run ? toPlane : run;
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Gated as the image's is, by one rule (<see cref="PlaneFace"/>): on the image's side, where
-    /// this half contributes nothing, it declares none of its own surfaces - only the plane, where
-    /// the edge on it is not a mirror, and it is the one member of the sum that does. On its own
-    /// side the plane is added to its own surfaces, so a half that declares none still lands there.
+    /// Its members combined (<see cref="DiscontinuityDistance.Combine"/>): the inner field's own
+    /// and, where the plane is a surface, the plane.
     /// </remarks>
-    public double SignedDistanceToDiscontinuity(in Vec3 position) =>
-        reflection.DeclaredAnswersAt(position.X)
-            ? _face.Answering(in position, inner.SignedDistanceToDiscontinuity(in position))
-            : _face.At(in position);
+    public double SignedDistanceToDiscontinuity(in Vec3 position)
+    {
+        var own = inner.SignedDistanceToDiscontinuity(in position);
+        return _plane ? DiscontinuityDistance.Combine(own, reflection.PlaneMeasure(position.X)) : own;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The inner field's own members, as they are on both sides of the plane - it declares the
+    /// surfaces it has, and the image declares their mirror - and, where the edge on the plane is
+    /// not a mirror, the plane, as one member of its own. Tracked separately, a surface of the
+    /// half's own that lies on the plane and the plane itself are one landing there, never two
+    /// that cancel; and the plane beyond the box, where nothing jumps, costs a landing and cannot
+    /// cancel a neighbouring element's surface there.
+    /// </remarks>
+    public int DiscontinuityMembers => _own + (_plane ? 1 : 0);
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        member < _own ? inner.MemberDistanceToDiscontinuity(member, in position) : reflection.PlaneMeasure(position.X);
 
     /// <inheritdoc/>
     public double ResolutionLength => inner.ResolutionLength;

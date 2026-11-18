@@ -706,13 +706,8 @@ public static class SurfaceCommand
         // is drawn at the true positions either way.
         var nu = request.Samples;
         var step = (u1 - u0) / (nu - 1);
-        // The same spacing as across, where there is one: a box with no extent has no ratio to take,
-        // and the fewest samples the shorter side may have.
-        var ratio = (v1 - v0) / step;
         var nv = request.DeepSamples
-            ?? (double.IsFinite(ratio)
-                ? (int)Math.Clamp(Math.Round(ratio) + 1.0, Math.Min(MinimumDeepSamples, nu), MaximumSamples)
-                : Math.Min(MinimumDeepSamples, nu));
+            ?? Math.Clamp((int)Math.Round((v1 - v0) / step) + 1, Math.Min(MinimumDeepSamples, nu), MaximumSamples);
 
         var us = Grid(u0, u1, nu);
         var vs = Grid(v0, v1, nv);
@@ -1960,17 +1955,12 @@ public static class SurfaceCommand
         var spacing = Math.Max(across, deep) / Math.Max(1, meshLines);
 
         // A whole number of samples, from one to as many as there are. An axis with one sample, or
-        // with no extent, has no spacing to divide by: the ratio was infinite and the stride the
-        // largest int there is, a stride no axis has.
+        // with no extent, has no spacing to divide by: the ratio is not finite, and the stride was
+        // the largest int there is, a stride no axis has.
         static int Of(double extent, int count, double spacing)
         {
-            if (count < 2 || !(extent > 0.0) || !(spacing > 0.0) || !double.IsFinite(extent) || !double.IsFinite(spacing))
-            {
-                return 1;
-            }
-
-            var ratio = spacing / (extent / (count - 1));
-            return double.IsFinite(ratio) ? (int)Math.Clamp(Math.Round(ratio), 1.0, count) : 1;
+            var ratio = spacing / (extent / Math.Max(1, count - 1));
+            return double.IsFinite(ratio) ? (int)Math.Clamp(Math.Round(ratio), 1.0, Math.Max(1, count)) : 1;
         }
 
         return (Of(across, surface.Across.Count, spacing), Of(deep, surface.Deep.Count, spacing));

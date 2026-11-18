@@ -700,6 +700,22 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         Assert.Equal("/args/--csv", both.Error.Path);
     }
 
+    // Removes a link to a folder, not what it names. On Linux a link is unlinked as a file:
+    // Directory.Delete follows it to check it is a folder, so the second link of a loop - dangling
+    // once the first is gone - threw "could not find a part of the path" from the test's own
+    // cleanup. A Windows junction is removed as a folder.
+    private static void RemoveLink(string link)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.Delete(link);
+        }
+        else
+        {
+            File.Delete(link);
+        }
+    }
+
     // A directory junction, which Windows makes without privilege; false where it could not.
     private bool Junction(string link, string target)
     {
@@ -806,7 +822,7 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         finally
         {
             // The link alone, not what it names: a recursive delete refuses a junction.
-            Directory.Delete(linked);
+            RemoveLink(linked);
         }
     }
 
@@ -843,6 +859,10 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
             Assert.Equal("/args/--out", refusal.Error.Path);
             Assert.NotEqual(ErrorCodes.InternalError, refusal.Error.Code);
 
+            // Said to be a link that leads nowhere (Linux reports one as a file) or one that could not
+            // be followed (Windows) - never a file.
+            Assert.Matches("leads to no folder|could not be followed", refusal.Error.Constraint);
+
             var checkedToo = Assert.Throws<EinzelException>(() => ArtifactFiles.CheckAll([("csv", Path.Combine(second, "x.csv"))]));
             Assert.Equal("/args/--csv", checkedToo.Error.Path);
         }
@@ -852,7 +872,7 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
             {
                 if (new DirectoryInfo(link).LinkTarget is not null)
                 {
-                    Directory.Delete(link);
+                    RemoveLink(link);
                 }
             }
         }
@@ -904,22 +924,118 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
 
         var frames = Enumerable.Range(0, 300).Select(i => ((string?)"out", Path.Combine(folder, $"frame-{i:D5}.svg"))).ToList();
         var queries = 0;
-        ArtifactFiles.LinkQuery.Value = () => queries++;
-
-        try
-        {
-            ArtifactFiles.CheckAll(frames, model);
-        }
-        finally
-        {
-            ArtifactFiles.LinkQuery.Value = null;
-        }
+        ArtifactFiles.CheckAllCounting(frames, () => queries++, model);
 
         var depth = folder.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Length;
         output.WriteLine($"{queries} link queries for {frames.Count} frames {depth} folders deep");
 
         // A file query each, the folder chain once, and the model once.
         Assert.True(queries <= frames.Count + (2 * depth) + 4, $"{queries} link queries");
+    }
+
+    // A link from one folder to another, as this machine can make one: a symbolic link, or a
+    // junction on Windows without the privilege. False where neither can be made.
+    private bool FolderLink(string link, string target) =>
+        Linked(() => Directory.CreateSymbolicLink(link, target)) || (OperatingSystem.IsWindows() && Junction(link, target));
+
+    /// <summary>
+    /// A file the command reads that cannot be followed may be the file a destination reaches some
+    /// other way, so a destination with its name is refused - and one with another name is not.
+    /// </summary>
+    /// <remarks>
+    /// The input was compared as it stood, so where its folder could not be asked about it matched
+    /// nothing and a destination reaching it through a link passed the check.
+    /// </remarks>
+    [Fact]
+    public void AnInputThatCannotBeFollowedIsNotLetPass()
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first");
+        var second = Path.Combine(_root, "second");
+
+        if (!FolderLink(first, second) || !FolderLink(second, first))
+        {
+            output.WriteLine("no loop of links here; nothing to check");
+            return;
+        }
+
+        try
+        {
+            var input = Path.Combine(first, "model.json");
+            var elsewhere = Path.Combine(_root, "other");
+            Directory.CreateDirectory(elsewhere);
+
+            var refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.Write("out", Path.Combine(elsewhere, "model.json"), [1], input));
+            output.WriteLine(refusal.Error.Constraint);
+            Assert.Equal("/args/--out", refusal.Error.Path);
+            Assert.Contains("could not be followed", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(elsewhere, "model.json")));
+
+            // The control: another name is written.
+            ArtifactFiles.Write("out", Path.Combine(elsewhere, "figure.png"), [2], input);
+            Assert.Equal([2], File.ReadAllBytes(Path.Combine(elsewhere, "figure.png")));
+        }
+        finally
+        {
+            RemoveLink(first);
+            RemoveLink(second);
+        }
+    }
+
+    /// <summary>Whether two paths are one file is answered for any two strings, malformed ones included.</summary>
+    /// <remarks>A path the platform cannot make full threw an argument exception out of the comparison.</remarks>
+    [Fact]
+    public void SameAnswersForAnyPath()
+    {
+        Assert.False(ArtifactFiles.Same("bad\0path.png", Path.Combine(_root, "x.png")));
+        Assert.True(ArtifactFiles.Same("bad\0path.png", "bad\0path.png"));
+    }
+
+    /// <summary>
+    /// A link pointed somewhere else while a film is being made is seen: the frame staged after it
+    /// resolves afresh, and the commit, finding a destination that no longer leads where its file was
+    /// made, places nothing.
+    /// </summary>
+    /// <remarks>
+    /// One resolver lived for the whole film, so the later frame went where the link used to lead,
+    /// and the commit renamed both there.
+    /// </remarks>
+    [Fact]
+    public void ALinkPointedElsewhereMidFilmIsSeen()
+    {
+        var before = Path.Combine(_root, "before");
+        var after = Path.Combine(_root, "after");
+        var link = Path.Combine(_root, "film");
+        Directory.CreateDirectory(before);
+        Directory.CreateDirectory(after);
+
+        if (!FolderLink(link, before))
+        {
+            return;
+        }
+
+        try
+        {
+            using var staged = ArtifactFiles.Begin();
+            staged.Stage("out", Path.Combine(link, "frame-00000.svg"), s => s.Write([1]));
+
+            RemoveLink(link);
+            Assert.True(FolderLink(link, after));
+
+            staged.Stage("out", Path.Combine(link, "frame-00001.svg"), s => s.Write([2]));
+
+            var refusal = Assert.Throws<EinzelException>(staged.Commit);
+            output.WriteLine(refusal.Error.Constraint);
+            Assert.Equal("/args/--out", refusal.Error.Path);
+
+            // Nothing placed, on either side of the change, and no staging file left behind.
+            Assert.Empty(Directory.GetFiles(before));
+            Assert.Empty(Directory.GetFiles(after));
+        }
+        finally
+        {
+            RemoveLink(link);
+        }
     }
 
     /// <summary>

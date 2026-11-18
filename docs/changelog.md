@@ -3977,5 +3977,28 @@ Two findings from Stage 1 that bear on the spec:
   cannot be made by a `with` either; and a surface's mesh stride is a whole number of samples from one
   to as many as there are, where an axis with one sample or no extent gave the largest int there is.
 
+  **A thirty-fifth review, and the representation rather than another patch.** Five rounds had
+  traded one phantom or cancellation for another at the mirror plane, and the cause was not the
+  reflection: a composite's discontinuity was one sign, the product of its members', so two members
+  changing sign at one place cancelled (Stage 4's rule 1), and one sign function cannot bound a
+  patch of a plane. A field now reports its discontinuity members (`DiscontinuityMembers`,
+  `MemberDistanceToDiscontinuity`), sums and wrappers pass them through, and the integrator lands
+  on the earliest member to change sign. Measured before anything else moved: the four reference
+  flights and every shipped model's run are bit-identical, since a bisection reads only the sign of
+  the surface it is given and a member changes sign exactly where the product does for one crossing
+  a step. Then the reflection could be simple: each half's own measure on both sides (the image's
+  the declared half's mirrored), and on a grounded edge the plane as a member of the declared half,
+  everywhere on it - beyond the box it costs a landing and, tracked apart, can never cancel a
+  neighbouring element's surface there. `PlaneFace` and `PlaneRegion` are gone, and with them the
+  representative sign that missed the plane wherever the half's own sign differed from it. Also: a
+  destination named like an input that cannot be followed is refused; the path comparison answers
+  for any string; a staged set resolves its paths per call and again at commit, so a link pointed
+  elsewhere mid-film places nothing; and the link-query probe is passed to the resolver rather than
+  held in a global. The link tests' first run on Linux failed in their own cleanup: `Directory.Delete`
+  follows a link to check it is a folder, so the second link of a loop, dangling once the first was
+  gone, threw. Links are now unlinked as files there, and every link test was run on Linux before
+  this change was committed - with the old cleanup the same exception, with the new one 28 of 28. A
+  link leading to no folder on the way to a destination is said to be one, not "a file".
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

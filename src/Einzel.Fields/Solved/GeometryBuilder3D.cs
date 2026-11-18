@@ -299,7 +299,7 @@ public static class GeometryBuilder3D
     /// otherwise. A volume solve has no
     /// <c>boundaryIsDiscontinuous</c> to say otherwise. A volume solve
     /// declares no discontinuity surfaces of its own (<see cref="SolvedField3D"/>), so the plane is
-    /// declared by the reflection itself (<see cref="PlaneFace"/>): with a grounded face on the plane
+    /// declared by the reflection itself (<see cref="Reflection.DeclaresPlane"/>): with a grounded face on the plane
     /// the union's normal field goes from E to -E there, and nothing else would say so.
     /// </remarks>
     private static Reflection? ReflectionOf(Geometry3D geometry)
@@ -317,10 +317,7 @@ public static class GeometryBuilder3D
         var tolerance = 1e-9 * geometry.CellSize;
         var gap = side == true ? plane - geometry.MaxX > tolerance : side == false && geometry.MinX - plane > tolerance;
 
-        // The box's part of the plane, where each half's sign on its other side is read.
-        var region = new PlaneRegion(geometry.MinY, geometry.MaxY, geometry.MinZ, geometry.MaxZ);
-
-        return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann || gap, region);
+        return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann || gap);
     }
 
     private static DirichletMask3D Assemble(

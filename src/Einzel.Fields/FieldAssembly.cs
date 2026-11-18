@@ -24,6 +24,7 @@ namespace Einzel.Fields;
 public sealed class SuperposedField : IElectrostaticField, IConductorBounded
 {
     private readonly IElectrostaticField[] _elements;
+    private readonly int[] _members;
 
     /// <summary>Creates a superposition.</summary>
     /// <param name="elements">The elements to sum.</param>
@@ -32,10 +33,19 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded
     {
         ArgumentNullException.ThrowIfNull(elements);
         _elements = [.. elements];
+        _members = DiscontinuityDistance.MemberOffsets(_elements);
     }
 
     /// <summary>The elements being summed.</summary>
     public IReadOnlyList<IElectrostaticField> Elements => _elements;
+
+    /// <inheritdoc/>
+    /// <remarks>Every element's members, each tracked on its own, so two surfaces at one place do not cancel.</remarks>
+    public int DiscontinuityMembers => _members[^1];
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        DiscontinuityDistance.Member(_elements, _members, member, in position);
 
     /// <inheritdoc/>
     /// <remarks>
