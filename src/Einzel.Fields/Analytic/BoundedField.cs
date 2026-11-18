@@ -132,9 +132,13 @@ public class BoundedField : IElectrostaticField
     /// <para>
     /// The box surface, so the integrator lands exactly on it - the same first-class event a
     /// declared field discontinuity already is (spec section 11) - and the inner field's own
-    /// members inside the box, infinite outside it: outside the box this element is not there, so
-    /// it has no surfaces out there either, and a member that is infinite on one side of the box
-    /// face changes sign nowhere the box member does not already land.
+    /// members, as they are, inside the box and out. Continuous across the box face, so a step that
+    /// crosses an inner surface and leaves the box together still sees the inner surface crossed,
+    /// and a bisection probe that bows outside the box reads the inner member's own sign there.
+    /// Infinite outside the box, as it was, the member left the step's test wherever its end was
+    /// outside - an inner plane crossed on the way out was never landed on - and a probe outside
+    /// read an infinity as past. The cost is that an inner surface continued outside the box, where
+    /// this element has no field, is a landing more; a landing, never one less.
     /// </para>
     /// <para>
     /// Combined into one measure by the nearer surface's sign, as it was, a half-space plane inside
@@ -146,23 +150,13 @@ public class BoundedField : IElectrostaticField
 
     /// <inheritdoc />
     public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
-        member == 0 ? Region.SignedDistance(in position)
-            : Region.Contains(in position) ? _inner.MemberDistanceToDiscontinuity(member - 1, in position)
-            : double.PositiveInfinity;
+        member == 0 ? Region.SignedDistance(in position) : _inner.MemberDistanceToDiscontinuity(member - 1, in position);
 
     /// <inheritdoc />
     public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
     {
         distances[0] = Region.SignedDistance(in position);
-
-        if (Region.Contains(in position))
-        {
-            _inner.MemberDistancesToDiscontinuity(in position, distances[1..]);
-        }
-        else
-        {
-            distances[1..].Fill(double.PositiveInfinity);
-        }
+        _inner.MemberDistancesToDiscontinuity(in position, distances[1..]);
     }
 
     /// <inheritdoc />

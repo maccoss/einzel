@@ -60,7 +60,7 @@ public static class ArtifactFiles
                 {
                     link = new FileInfo(folder).LinkTarget;
                 }
-                catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException or ArgumentException)
+                catch (Exception failure) when (CannotFollow(failure))
                 {
                     link = null;
                 }
@@ -223,7 +223,7 @@ public static class ArtifactFiles
         {
             return resolver.Path(path);
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException or ArgumentException)
+        catch (Exception failure) when (CannotFollow(failure))
         {
             throw Refusal(
                 flag,
@@ -245,12 +245,18 @@ public static class ArtifactFiles
             why = null;
             return resolver.Path(path);
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException or ArgumentException)
+        catch (Exception failure) when (CannotFollow(failure))
         {
             why = failure.Message;
             return null;
         }
     }
+
+    // What following a path can fail with that is the path's fault rather than einzel's: a loop of
+    // links, a folder that cannot be read, a name the platform cannot take. One test for every
+    // place a path is followed, so they cannot come to disagree about what is a refusal.
+    private static bool CannotFollow(Exception failure) =>
+        failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException or ArgumentException;
 
     private static string FullOrAsGiven(string path)
     {
@@ -607,10 +613,6 @@ public static class ArtifactFiles
 
         private bool _finished;
 
-        // The inputs, resolved once for the set: they are checked again at the commit with
-        // everything else, so nothing that changes during a film goes unseen.
-        private Inputs? _inputsAt;
-
         private readonly Action? _onQuery;
 
         internal Staged(string?[] inputs, Action? onQuery)
@@ -643,10 +645,14 @@ public static class ArtifactFiles
             {
                 // Resolved afresh for this call: a film is staged a frame at a time over the length of
                 // a run, and a folder that becomes a link between two frames must be seen.
+                // One resolver for this call, the destination and the inputs sharing its folders - a
+                // resolver lives for one call, and a link that changes between two frames must be
+                // seen at the frame it changed for, not only at the commit. The inputs are few, and
+                // what makes a film cheap is the folders they share with its frames.
                 var resolver = new Resolver(_onQuery);
                 Check(flag, path);
                 resolved = ResolvedAt(flag, path, resolver);
-                NotAnInput(flag, path, resolved, _inputsAt ??= InputsAt(_inputs, new Resolver(_onQuery)));
+                NotAnInput(flag, path, resolved, InputsAt(_inputs, resolver));
                 key = Path.TrimEndingDirectorySeparator(resolved);
 
                 // A second file at one place: asked here, of a set built a file at a time.

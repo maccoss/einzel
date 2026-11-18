@@ -4016,5 +4016,20 @@ Two findings from Stage 1 that bear on the spec:
   evaluation. The staged set resolves its inputs once and each frame's destination afresh, and
   names every input of a name that could not be followed.
 
+  **A thirty-seventh review, and the integrator's own cases.** A member infinite outside a bounded
+  element's box left the step's test wherever the step ended outside, so a step crossing the
+  element's own plane and leaving its box together (9.9 to 10.6 mm, the plane at 10, the face at
+  10.5) landed on the face and crossed the plane with no landing; and a bisection probe bowing
+  outside read the infinity as a crossing. The inner member is now the inner field's own value
+  everywhere - a landing more where its surface continues outside the box, never one less - and the
+  integrator reads an infinity by its sign rather than leaving the member out. A probe exactly on a
+  later member's surface no longer counts as on it when an earlier member is already past, which
+  landed on the later surface and straddled the earlier. A step's start is read from the last
+  step's end where nothing moved it: 467 evaluations fewer on the grounded-plane reference flight,
+  the same flight to the last digit. Each tested with a flight, and each test checked by putting the
+  fault back. Also: a staged frame resolves the files the command reads in the same call as its
+  destination, sharing their folders, so a frame that has become an input is refused at its stage;
+  one predicate for what following a path may fail with; and a comment ends with its text.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

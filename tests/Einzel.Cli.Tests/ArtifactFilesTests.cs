@@ -983,15 +983,12 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
-    /// A staged film resolves the files it reads once for the set, not once a frame; each frame's
-    /// destination is resolved afresh, and the commit checks everything again.
+    /// A staged film resolves each frame's destination and the files it reads in one call, sharing
+    /// the folders they have in common - the cost of a frame is its own folders and the model's
+    /// beyond them, not two whole walks.
     /// </summary>
-    /// <remarks>
-    /// A resolver made for every frame resolved the inputs every frame too, walking the model's
-    /// folders once per frame of the film.
-    /// </remarks>
     [Fact]
-    public void AStagedFilmResolvesItsInputsOnce()
+    public void AStagedFrameSharesItsFoldersWithItsInputs()
     {
         var folder = Path.Combine(_root, "film", "a", "b");
         var deep = Path.Combine(_root, "m", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
@@ -1013,14 +1010,59 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
             staged.Commit();
         }
 
-        var frameDepth = folder.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Length;
-        var modelDepth = deep.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Length;
-        output.WriteLine($"{queries} link queries for {Frames} frames {frameDepth} folders deep and a model {modelDepth} deep");
+        static int Depth(string path) => path.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Length;
+        var shared = Depth(_root);
+        var own = Depth(folder) - shared;
+        var modelOwn = Depth(deep) - shared;
+        output.WriteLine($"{queries} link queries for {Frames} frames: {shared} folders shared, {own} the frames' own, {modelOwn} the model's");
 
-        // Each frame's destination walked afresh; the model once while staging and once at the commit.
-        var bound = (Frames * (frameDepth + 2)) + (3 * (modelDepth + 2)) + Frames + frameDepth;
+        // Per frame: the shared folders once, the frame's own and the model's own, and a file query
+        // each; the commit, one resolver, about the same once. Two whole walks a frame would add the
+        // shared folders a second time on every frame.
+        var bound = ((Frames + 1) * (shared + own + modelOwn + 2)) + (2 * Frames);
         Assert.True(queries <= bound, $"{queries} link queries against at most {bound}");
         Assert.Equal(Frames, Directory.GetFiles(folder).Length);
+    }
+
+    /// <summary>
+    /// A frame whose destination has become a file the command reads - a link changed between two
+    /// frames - is refused at that frame, not only when the set is committed.
+    /// </summary>
+    /// <remarks>
+    /// The inputs were resolved once for the set, so the collision was seen only at the commit.
+    /// </remarks>
+    [Fact]
+    public void AFrameThatHasBecomeAnInputIsRefusedAtItsStage()
+    {
+        var frames = Path.Combine(_root, "frames");
+        var elsewhere = Path.Combine(_root, "elsewhere");
+        var link = Path.Combine(_root, "input");
+        Directory.CreateDirectory(frames);
+        Directory.CreateDirectory(elsewhere);
+
+        if (!FolderLink(link, elsewhere))
+        {
+            return;
+        }
+
+        try
+        {
+            // The command reads input/frame-00001.svg, which is elsewhere's until the link is moved.
+            var input = Path.Combine(link, "frame-00001.svg");
+            using var staged = ArtifactFiles.Begin(input);
+            staged.Stage("out", Path.Combine(frames, "frame-00000.svg"), s => s.Write([1]));
+
+            RemoveLink(link);
+            Assert.True(FolderLink(link, frames));
+
+            var refusal = Assert.Throws<EinzelException>(() => staged.Stage("out", Path.Combine(frames, "frame-00001.svg"), s => s.Write([2])));
+            output.WriteLine(refusal.Error.Constraint);
+            Assert.Contains("it is the file this command reads", refusal.Error.Constraint, StringComparison.Ordinal);
+        }
+        finally
+        {
+            RemoveLink(link);
+        }
     }
 
     /// <summary>

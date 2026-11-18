@@ -938,8 +938,8 @@ public sealed class MirrorPlaneTests
 
     /// <summary>
     /// A half-space field bounded by a region lying across its plane: the plane is a crossing
-    /// wherever it is inside the box, a box face nearer or not; outside the box it is none; and the
-    /// box's own faces are crossings everywhere.
+    /// wherever it is inside the box, a box face nearer or not, and continued outside it at the cost
+    /// of a landing; and the box's own faces are crossings everywhere.
     /// </summary>
     /// <remarks>
     /// The box and the inner field were combined by the nearer surface's sign, so within reach of a
@@ -962,8 +962,10 @@ public sealed class MirrorPlaneTests
         // Far from any face, the same.
         Assert.Equal(1, MemberChanges(bounded, new Vec3(0.0495, 0.0, 0.0), new Vec3(0.0505, 0.0, 0.0)));
 
-        // The plane's continuation outside the box: nothing there.
-        Assert.Equal(0, MemberChanges(bounded, new Vec3(0.0495, 0.02, 0.0), new Vec3(0.0505, 0.02, 0.0)));
+        // The plane's continuation outside the box, where this element has no field: the inner
+        // member's own sign, continuous across the face, so a landing more - never a crossing of
+        // the box invented by an infinity read as a sign.
+        Assert.Equal(1, MemberChanges(bounded, new Vec3(0.0495, 0.02, 0.0), new Vec3(0.0505, 0.02, 0.0)));
 
         // A box face, on either side of the plane: the box alone.
         Assert.Equal(1, MemberChanges(bounded, new Vec3(0.02, 0.0095, 0.0), new Vec3(0.02, 0.0105, 0.0)));

@@ -243,12 +243,15 @@ public static class Rasterizer
         // constructor or `with` made it.
         for (var l = 0; l < layers.Count; l++)
         {
+            // What a refusal calls the layer: its name, or its place in the list.
+            var label = layers[l].Name is { } named ? $"'{named}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
             for (var i = 0; i < layers[l].Meshes.Count; i++)
             {
                 if (layers[l].Meshes[i].ColorsProblem() is { } problem)
                 {
                     throw new ArgumentException(
-                        $"layer {(layers[l].Name is { } name ? $"'{name}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture))}, mesh {i}: {problem}",
+                        $"layer {label}, mesh {i}: {problem}",
                         nameof(layers));
                 }
             }
@@ -257,7 +260,6 @@ public static class Rasterizer
             // outlines - and is resolved as one fragment a sample. A translucent one would fully
             // hide another biased layer behind it, which is not what translucent means; refused by
             // name rather than drawn wrong.
-            var label = layers[l].Name is { } named ? $"'{named}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             // A bias is a non-negative distance and an opacity a fraction: a NaN or a negative bias
             // drew nothing or everything with no word, and an opacity past one blended outside the
@@ -279,7 +281,7 @@ public static class Rasterizer
             if (layers[l].DepthBias > 0.0 && !(layers[l].Alpha >= 1.0))
             {
                 throw new ArgumentException(
-                    $"layer {(layers[l].Name is { } name ? $"'{name}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture))}: a depth-biased layer must be opaque, and this one has an opacity of {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    $"layer {label}: a depth-biased layer must be opaque, and this one has an opacity of {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                     nameof(layers));
             }
 
@@ -288,7 +290,7 @@ public static class Rasterizer
                 if (layers[l].Lines[i].SegmentColorsProblem() is { } problem)
                 {
                     throw new ArgumentException(
-                        $"layer {(layers[l].Name is { } name ? $"'{name}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture))}, line {i}: {problem}",
+                        $"layer {label}, line {i}: {problem}",
                         nameof(layers));
                 }
             }

@@ -699,9 +699,17 @@ public static class TrajectoryIntegrator
     // The members' measures at the start of a step, at its end, and at a bisection's probe.
     private sealed class MemberScratch(int count)
     {
-        public double[] Start { get; } = new double[count];
+        public double[] Start { get; set; } = new double[count];
 
-        public double[] End { get; } = new double[count];
+        public double[] End { get; set; } = new double[count];
+
+        // A bisection's probes, apart from End, so a step's end stays readable as the next start.
+        public double[] Probe { get; } = new double[count];
+
+        // Where End was read, if it still holds that point's measures: an accepted step that landed
+        // on nothing ends where the next one starts, and reading the same point twice is a query
+        // made for nothing.
+        public Vec3? EndAt { get; set; }
     }
 
     // A field tracking several discontinuity measures: a crossing is any one of them changing sign,
@@ -711,8 +719,8 @@ public static class TrajectoryIntegrator
     // their plane - and a real surface is crossed with no landing (Stage 4's rule 1). With one member
     // changing in a step, the test is that member's sign, which changes exactly where the combined
     // sign did, so a flight crossing one surface per step lands where it always did. Every member is
-    // read in one pass (MemberDistancesToDiscontinuity), counted as one evaluation, as the combined
-    // measure always was.
+    // read in one pass (MemberDistancesToDiscontinuity), counted as one evaluation, and a point read
+    // at the end of one step is not read again at the start of the next.
     private static double MemberLandingStep(
         in PhaseState state,
         in PhaseDerivative derivative,
@@ -726,11 +734,22 @@ public static class TrajectoryIntegrator
     {
         var from = state.Position;
         var to = candidate.Position;
+
+        if (members.EndAt is { } known && known == from)
+        {
+            // The last step's end is this one's start: its buffer becomes the start, and the start's
+            // becomes the end the next read goes into.
+            (members.Start, members.End) = (members.End, members.Start);
+        }
+        else
+        {
+            field.MemberDistancesToDiscontinuity(in from, members.Start);
+            fieldEvaluations++;
+        }
+
+        members.EndAt = null;
         var start = members.Start;
         var end = members.End;
-
-        field.MemberDistancesToDiscontinuity(in from, start);
-        fieldEvaluations++;
 
         // As the single measure: nothing to cross where no member is a finite distance from a
         // surface it is not already on, and then no second pass.
@@ -748,27 +767,35 @@ public static class TrajectoryIntegrator
 
         field.MemberDistancesToDiscontinuity(in to, end);
         fieldEvaluations++;
+        members.EndAt = to;
 
+        // The start buffer is read for the bisection's test, so this step's crossings are marked in a
+        // copy of it - the probe buffer's start, reused - and the start itself is left whole.
         var crossing = false;
+        var marked = members.Probe;
 
         for (var k = 0; k < start.Length; k++)
         {
-            // Smooth, sitting on this member's surface having just landed there, or not changing sign
-            // over the step: left out of the bisection's test, marked as not a number.
-            if (!double.IsFinite(start[k]) || start[k] == 0.0 || !double.IsFinite(end[k]) || Math.Sign(end[k]) == Math.Sign(start[k]))
-            {
-                start[k] = double.NaN;
-                continue;
-            }
-
-            crossing = true;
+            // Sitting on this member's surface having just landed there, or not changing sign over
+            // the step: left out of the bisection's test, marked as not a number. An infinity is a
+            // sign like any other: a member infinite at one end and finite at the other has changed
+            // sign or not by the signs alone.
+            marked[k] = double.IsNaN(start[k]) || start[k] == 0.0 || double.IsNaN(end[k]) || Math.Sign(end[k]) == Math.Sign(start[k])
+                ? double.NaN
+                : start[k];
+            crossing |= !double.IsNaN(marked[k]);
         }
 
-        return crossing
-            ? LandingStep(
-                in state, in derivative, step, field, chargeToMass, new Members(field, start, end), timeSeconds,
-                ref fieldEvaluations)
-            : double.PositiveInfinity;
+        if (!crossing)
+        {
+            return double.PositiveInfinity;
+        }
+
+        // The bisection reads its probes into the start buffer, which this step no longer needs; the
+        // end stays whole for the next step.
+        return LandingStep(
+            in state, in derivative, step, field, chargeToMass, new Members(field, marked, start), timeSeconds,
+            ref fieldEvaluations);
     }
 
     // What a landing bisects on: which side of the crossing a probe is - zero exactly on it, one on
@@ -788,7 +815,10 @@ public static class TrajectoryIntegrator
     }
 
     // Past the crossing as soon as any member that changes sign over the step has changed it: the
-    // earliest of them. The probe's measures go into the end buffer, which is not read again.
+    // earliest of them. Every member is asked whether it is past before any is asked whether it is
+    // exactly on its surface: a probe exactly on a later member's surface, with an earlier member
+    // already past, is past - returned as on, it landed on the later surface and straddled the
+    // earlier. An infinity reads by its sign.
     private readonly struct Members(IElectrostaticField field, double[] start, double[] probe) : ILandingSurface
     {
         public int Side(in PhaseState state)
@@ -796,7 +826,7 @@ public static class TrajectoryIntegrator
             var position = state.Position;
             field.MemberDistancesToDiscontinuity(in position, probe);
 
-            var past = false;
+            var on = false;
 
             for (var k = 0; k < start.Length; k++)
             {
@@ -807,13 +837,15 @@ public static class TrajectoryIntegrator
 
                 if (probe[k] == 0.0)
                 {
-                    return 0;
+                    on = true;
                 }
-
-                past |= Math.Sign(probe[k]) != Math.Sign(start[k]);
+                else if (Math.Sign(probe[k]) != Math.Sign(start[k]))
+                {
+                    return -1;
+                }
             }
 
-            return past ? -1 : 1;
+            return on ? 0 : 1;
         }
     }
 

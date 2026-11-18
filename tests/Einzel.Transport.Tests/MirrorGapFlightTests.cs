@@ -1,4 +1,5 @@
 using Einzel.Core.Geometry;
+using Einzel.Core.Model;
 using Einzel.Core.Units;
 using Einzel.Fields;
 using Einzel.Transport.Integration;
@@ -15,7 +16,7 @@ namespace Einzel.Transport.Tests;
 /// beyond the plane: a change of sign at 10 mm with nothing discontinuous there, between the real
 /// edges at 9 and 11 mm - the paired-surface layout that once cost an ion 2.6e-4 of its energy.
 /// </remarks>
-public sealed class MirrorGapFlightTests
+public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     private const double Edge = 0.009;
     private const double Plane = 0.010;
@@ -297,6 +298,173 @@ public sealed class MirrorGapFlightTests
         Assert.Equal(alone.MaximumRelativeEnergyDrift, beside.MaximumRelativeEnergyDrift);
     }
 
+    // The first landing a flight made: the first sample forced by a landing, after the launch.
+    private static double FirstLandingX(PhaseState launch, IElectrostaticField field, double step, double detectorX)
+    {
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var recorder = new TrajectoryRecorder(1e9);
+        var settings = new IntegrationSettings { MaximumFlightTime = 100.0, InitialStep = step, MaximumStep = step };
+        TrajectoryStopFunction detector = (in PhaseState s) => detectorX - s.Position.X;
+
+        var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, recorder);
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
+        return recorder.Samples.Skip(1).First().Position.X;
+    }
+
+    /// <summary>
+    /// A step that crosses a bounded element's own plane and leaves its box together lands on the
+    /// plane, the earlier of the two.
+    /// </summary>
+    /// <remarks>
+    /// The inner field's member was infinite outside the box and a member whose end was infinite
+    /// left the step's test, so the step from 9.9 to 10.6 mm - the plane at 10, the box's face at
+    /// 10.5 - landed on the face and crossed the plane with no landing.
+    /// </remarks>
+    [Fact]
+    public void AnInnerPlaneCrossedOnTheWayOutOfItsBoxIsLandedOn()
+    {
+        var region = new FieldRegion(0.0, 0.0105, -0.01, 0.01, -0.01, 0.01);
+        var inner = HalfSpaceUniformField.Create(new Vec3(0.010, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0), Quantity.From(0.0, "V/m"));
+        var bounded = Einzel.Fields.Analytic.BoundedField.Around(inner, region);
+
+        // 1000 m/s, one step of 0.7 us: 9.9 mm to 10.6 mm.
+        var launch = new PhaseState(new Vec3(0.0099, 0.0, 0.0), new Vec3(1000.0, 0.0, 0.0));
+        var first = FirstLandingX(launch, bounded, 7e-7, 0.02);
+
+        Assert.Equal(0.010, first, 9);
+
+        // The inner member is continuous across the box face - its own sign on both sides - so a
+        // probe that bows outside the box reads that sign, and not an infinity counted as a crossing.
+        var insideFace = new Vec3(0.0104, 0.0, 0.0);
+        var outsideFace = new Vec3(0.0106, 0.0, 0.0);
+        Assert.Equal(
+            Math.Sign(bounded.MemberDistanceToDiscontinuity(1, in insideFace)),
+            Math.Sign(bounded.MemberDistanceToDiscontinuity(1, in outsideFace)));
+        Assert.True(double.IsFinite(bounded.MemberDistanceToDiscontinuity(1, in outsideFace)));
+    }
+
+    // Two planes, the second reading exactly zero over a band around it - so a probe there reads as
+    // on it - and no field.
+    private sealed class TwoPlanes(double first, double second) : IElectrostaticField
+    {
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) =>
+            DiscontinuityDistance.Combine(MemberDistanceToDiscontinuity(0, in position), MemberDistanceToDiscontinuity(1, in position));
+
+        public int DiscontinuityMembers => 2;
+
+        // The later surface is member 0, so a probe asked "on?" before "past?" meets it first.
+        public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+            member == 1 ? first - position.X
+                : Math.Abs(second - position.X) < 1e-6 ? 0.0
+                : second - position.X;
+    }
+
+    /// <summary>
+    /// A bisection probe exactly on a later member's surface, with an earlier member already
+    /// passed, is past: the flight lands on the earlier surface.
+    /// </summary>
+    /// <remarks>
+    /// The probe returned "on a surface" at the first member reading exactly zero, before asking
+    /// whether another had already changed sign, and the flight landed on the later surface,
+    /// straddling the earlier one.
+    /// </remarks>
+    [Fact]
+    public void AProbeOnALaterSurfaceDoesNotStraddleAnEarlierOne()
+    {
+        // 1 m/s, one step of 1 s from 0 to 1 m: the first probe, at half a step, is at 0.5 m - on the
+        // second plane - with the first, at 0.25 m, already crossed.
+        var launch = new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
+        var first = FirstLandingX(launch, new TwoPlanes(0.25, 0.5), 1.0, 2.0);
+
+        Assert.Equal(0.25, first, 9);
+    }
+
+    // Planes, one member each, counting how many times all their measures are read in one pass.
+    private sealed class CountingPlanes(params double[] planes) : IElectrostaticField
+    {
+        public int Passes { get; private set; }
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) => planes[0] - position.X;
+
+        public int DiscontinuityMembers => planes.Length;
+
+        public double MemberDistanceToDiscontinuity(int member, in Vec3 position) => planes[member] - position.X;
+
+        public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+        {
+            Passes++;
+
+            for (var k = 0; k < planes.Length; k++)
+            {
+                distances[k] = planes[k] - position.X;
+            }
+        }
+    }
+
+    // A member negative before a surface and infinite past it - a sign like any other - beside a
+    // member that never changes.
+    private sealed class InfinitePast(double surface) : IElectrostaticField
+    {
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public int DiscontinuityMembers => 2;
+
+        public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+            member == 1 ? 1.0 : position.X < surface ? position.X - surface : double.PositiveInfinity;
+    }
+
+    /// <summary>
+    /// A member whose measure is infinite at one end of a step and finite, of the other sign, at
+    /// the other has changed sign: the flight lands there.
+    /// </summary>
+    /// <remarks>
+    /// A member with an infinite end left the step's test, so its surface was crossed with no landing.
+    /// </remarks>
+    [Fact]
+    public void AnInfiniteMeasureIsASign()
+    {
+        var launch = new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
+
+        Assert.Equal(0.5, FirstLandingX(launch, new InfinitePast(0.5), 1.0, 2.0), 9);
+    }
+
+    /// <summary>
+    /// A step crossing several members' surfaces is one bisection, to the earliest: two landings
+    /// in a flight cost two bisections' probes, not one per member crossed.
+    /// </summary>
+    /// <remarks>
+    /// A bisection per changing member, then the earliest, was the landing work times the number of
+    /// members crossing in the step - three at a grounded plane, where the half's face, the plane and
+    /// the image's face all change together.
+    /// </remarks>
+    [Fact]
+    public void ALandingIsOneBisectionHoweverManyMembersCross()
+    {
+        // Three members changing sign at one place, against one member changing there beside one
+        // that never does: the same flight, the same landing, and - one bisection either way - the
+        // same number of passes.
+        var launch = new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
+        var three = new CountingPlanes(0.25, 0.25, 0.25);
+        var one = new CountingPlanes(0.25, 100.0);
+
+        Assert.Equal(0.25, FirstLandingX(launch, three, 1.0, 2.0), 9);
+        Assert.Equal(0.25, FirstLandingX(launch, one, 1.0, 2.0), 9);
+
+        output.WriteLine($"{three.Passes} passes with three members crossing together, {one.Passes} with one");
+        Assert.Equal(one.Passes, three.Passes);
+    }
+
     /// <summary>
     /// Where the union's field jumps at the plane, the sum declares one surface there - its sign
     /// changes across it - and an ion crossing it flies exactly as through the same field written
@@ -339,12 +507,11 @@ public sealed class MirrorGapFlightTests
         Assert.Equal(whole.FlightTimeSeconds, flown.FlightTimeSeconds);
         Assert.Equal(whole.MaximumRelativeEnergyDrift, flown.MaximumRelativeEnergyDrift);
 
-        // One bisection for the three members changing at the plane - the half's face, the plane,
-        // the image's face - as for the whole field's one surface: one per changing member, then
-        // the earliest, was three times the landing work, some 600 evaluations more. What may
-        // differ is a pass at the start of a step that sits exactly on the whole field's surface
-        // and not on every member's: counted where the scalar path skips it.
-        Assert.InRange(flown.FieldEvaluations - whole.FieldEvaluations, 0L, 12L);
+        // No more work than the whole field: a step's start is read from the last step's end where
+        // nothing moved it, so the union does less (the count of bisections is checked apart, in
+        // ALandingIsOneBisectionHoweverManyMembersCross).
+        output.WriteLine($"{flown.FieldEvaluations} field evaluations for the union, {whole.FieldEvaluations} for the whole field");
+        Assert.True(flown.FieldEvaluations <= whole.FieldEvaluations, $"{flown.FieldEvaluations} against {whole.FieldEvaluations}");
         Assert.True(relative < 1e-10, $"flight across the plane {flown.FlightTimeSeconds:R} s against {exact:R} s, relative {relative:E3}");
     }
 

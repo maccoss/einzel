@@ -60,7 +60,9 @@ public static class Csv
     public static string Comment(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        return "# " + text.ReplaceLineEndings("\n# ") + "\n";
+
+        // A message ending in a line break would otherwise end in an empty "# " line.
+        return "# " + text.TrimEnd('\r', '\n').ReplaceLineEndings("\n# ") + "\n";
     }
 
     /// <summary>A warning as comment lines: its severity, code and message, in the invariant culture.</summary>
