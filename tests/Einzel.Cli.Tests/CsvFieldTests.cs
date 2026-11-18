@@ -22,8 +22,8 @@ public sealed class CsvFieldTests
 
     /// <summary>
     /// A text cell beginning like a formula is written as text a spreadsheet will not evaluate: a
-    /// single quote before it, inside quotes. A cell that only holds such a character later is not,
-    /// nor is a plain name after a sign: <c>-x</c> and <c>-xRod</c> are written exactly.
+    /// single quote before it, inside quotes - a plain name after a sign too, as OWASP's guidance
+    /// has it. A cell that only holds such a character later is not.
     /// </summary>
     /// <remarks>
     /// A conductor named <c>=HYPERLINK(...)</c> was written bare, and a spreadsheet opening the
@@ -35,10 +35,10 @@ public sealed class CsvFieldTests
     [InlineData("-1+1", "\"'-1+1\"")]
     [InlineData("+SUM(A1)", "\"'+SUM(A1)\"")]
     [InlineData("-.5", "\"'-.5\"")]
-    [InlineData("-x", "-x")]
-    [InlineData("+y", "+y")]
-    [InlineData("-xRod", "-xRod")]
-    [InlineData("-", "-")]
+    [InlineData("-x", "\"'-x\"")]
+    [InlineData("+y", "\"'+y\"")]
+    [InlineData("-xRod", "\"'-xRod\"")]
+    [InlineData("-", "\"'-\"")]
     [InlineData("@SUM(A1)", "\"'@SUM(A1)\"")]
     [InlineData("\t=1", "\"'\t=1\"")]
     [InlineData("\r=1", "\"'\r=1\"")]
@@ -103,6 +103,18 @@ public sealed class CsvFieldTests
         Assert.All(lines[..header], l => Assert.StartsWith("# ", l, StringComparison.Ordinal));
         Assert.Equal(2, lines.Length - header);
         Assert.Equal("# third", lines[2]);
+    }
+
+    /// <summary>
+    /// A warning is written as a comment the same way by every CSV writer: severity, code and
+    /// message, invariant, every line a comment.
+    /// </summary>
+    [Fact]
+    public void AWarningIsOneCommentSpelling()
+    {
+        var warning = new ValidityWarning("probe.test", "a 1.5 V step\nand more", WarningSeverity.ValidityViolation);
+
+        Assert.Equal("# ValidityViolation: probe.test: a 1.5 V step\n# and more\n", Csv.Comment(warning));
     }
 
     [Fact]

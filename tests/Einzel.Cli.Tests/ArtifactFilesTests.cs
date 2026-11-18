@@ -700,6 +700,116 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         Assert.Equal("/args/--csv", both.Error.Path);
     }
 
+    // A directory junction, which Windows makes without privilege; false where it could not.
+    private bool Junction(string link, string target)
+    {
+        using var make = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        })!;
+
+        make.WaitForExit();
+        output.WriteLine($"junction: exit {make.ExitCode}");
+        return make.ExitCode == 0 && new DirectoryInfo(link).LinkTarget is not null;
+    }
+
+    // Makes a link, or says on the test's output that this machine cannot and returns false.
+    private bool Linked(Action make)
+    {
+        try
+        {
+            make();
+            return true;
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            // Windows without developer mode cannot make one; Linux CI always can.
+            output.WriteLine($"no symbolic link here ({failure.Message}); nothing to check");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// A link to a file not there yet, and a chain of links, are written through to the end: the
+    /// file is made where the last link points and every link stays a link.
+    /// </summary>
+    [Fact]
+    public void ADanglingLinkAndAChainAreWrittenThroughAndKept()
+    {
+        Directory.CreateDirectory(_root);
+        var missing = Path.Combine(_root, "made.png");
+        var dangling = Path.Combine(_root, "dangling.png");
+
+        if (!Linked(() => File.CreateSymbolicLink(dangling, missing)))
+        {
+            return;
+        }
+
+        ArtifactFiles.Write("out", dangling, [3]);
+
+        Assert.NotNull(new FileInfo(dangling).LinkTarget);
+        Assert.Equal([3], File.ReadAllBytes(missing));
+
+        var real = Path.Combine(_root, "real.csv");
+        var middle = Path.Combine(_root, "middle.csv");
+        var first = Path.Combine(_root, "first.csv");
+        File.WriteAllBytes(real, [1]);
+        File.CreateSymbolicLink(middle, real);
+        File.CreateSymbolicLink(first, middle);
+
+        ArtifactFiles.WriteAll([("csv", first, [4]), ("out", dangling, [5])]);
+
+        Assert.NotNull(new FileInfo(first).LinkTarget);
+        Assert.NotNull(new FileInfo(middle).LinkTarget);
+        Assert.Equal([4], File.ReadAllBytes(real));
+        Assert.Equal([5], File.ReadAllBytes(missing));
+        Assert.Empty(Directory.GetFiles(_root, "*.tmp"));
+    }
+
+    /// <summary>
+    /// A destination reached through a linked folder is the file it is: an input there is that
+    /// input, and the write goes into the folder the link names.
+    /// </summary>
+    /// <remarks>
+    /// Only a link that was the file itself was followed, so <c>--out linked/model.json</c> and the
+    /// model at <c>real/model.json</c> compared as two files and the write replaced the model.
+    /// </remarks>
+    [Fact]
+    public void AnInputReachedThroughALinkedFolderIsThatInput()
+    {
+        var real = Path.Combine(_root, "real");
+        var linked = Path.Combine(_root, "linked");
+        Directory.CreateDirectory(real);
+        var model = Path.Combine(real, "model.json");
+        File.WriteAllText(model, "{}");
+
+        // A junction where a symbolic link cannot be made: Windows makes one without privilege, and
+        // .NET reports it as a link, so the folder case runs on every machine.
+        if (!Linked(() => Directory.CreateSymbolicLink(linked, real)) && !(OperatingSystem.IsWindows() && Junction(linked, real)))
+        {
+            return;
+        }
+
+        try
+        {
+            var refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.Write("out", Path.Combine(linked, "model.json"), [1], model));
+            Assert.Equal("/args/--out", refusal.Error.Path);
+            Assert.Equal("{}", File.ReadAllText(model));
+
+            // Another file through the same folder link is written into the folder it names.
+            ArtifactFiles.Write("out", Path.Combine(linked, "figure.png"), [6]);
+            Assert.Equal([6], File.ReadAllBytes(Path.Combine(real, "figure.png")));
+            Assert.NotNull(new DirectoryInfo(linked).LinkTarget);
+        }
+        finally
+        {
+            // The link alone, not what it names: a recursive delete refuses a junction.
+            Directory.Delete(linked);
+        }
+    }
+
     /// <summary>
     /// A replaced file is never absent: a reader watching the destination through the whole write
     /// always finds a file there, old or new.

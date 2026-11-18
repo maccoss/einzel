@@ -3942,5 +3942,24 @@ Two findings from Stage 1 that bear on the spec:
   exactly; a probe CSV's multi-line warning stays all comments; and a rotated field's conductor
   queries are its rotated conductors'.
 
+  **A thirty-third review, and a rim no two members change sign on.** The plane is decided by the
+  plane edge's own condition: `boundaryIsDiscontinuous` speaks for a solve's far edges and cannot
+  vouch for the edge on the mirror, which is interior to the union, and is no longer read for it.
+  Working out what the region-bounded plane did at its rim found more than the review did: the
+  member answering nothing on a side held its own measure at the plane, which changes sign along
+  the rim exactly where the answering half's box edge does, so the two cancelled and a reflected
+  cross-section declaring its edges lost both top edges - on a mirror edge as on a grounded one.
+  That member's sign is now read just inside the box's part of the plane, constant across the rim.
+  Where the half has a face of its own on a grounded plane the declared box, the image's box and
+  the outside meet at the rim, a sign cannot change across all three boundaries there, and the one
+  unavoidable change is put on the plane beyond the box, made by one member, with the drift cut
+  there; a volume solve, which declares no surfaces of its own, has its plane patch closed by the
+  image box's faces, where the field does drop to nothing, so nothing is left without a surface.
+  Also: every CSV text cell beginning with `= + - @`, a tab or a carriage return is guarded again,
+  as OWASP has it; one `Csv.Comment` spelling for a warning; a destination reached through a
+  linked folder is resolved like one that is a link; a radial plane region is built from the solve's
+  real radial extent; and the window's composition is pinned to carry no depth bias, which it does
+  not read.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

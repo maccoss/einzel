@@ -164,15 +164,55 @@ public static class ArtifactFiles
         Path.TrimEndingDirectorySeparator(Resolved(second)),
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    // A path as a full path, followed through a symbolic link to the end where it is one.
+    // A path as a full path, followed through every symbolic link on it to the end: the file's own,
+    // and every folder's it is reached through. The one place a destination is resolved, so what a
+    // write goes to and what Same compares are the same path: a file is staged beside the resolved
+    // target and renamed onto it, so a link is written through and stays a link, and a destination
+    // reached through a linked folder is known for the input it is. Following only the file's own
+    // link let `--out linked/model.json` through as a different file from `real/model.json`, and the
+    // write replaced the model.
     private static string Resolved(string path)
     {
         var full = Path.GetFullPath(path);
-        var info = new FileInfo(full);
+
+        for (var hops = 0; hops < MaximumLinkHops; hops++)
+        {
+            var folder = Path.GetDirectoryName(full);
+            var inFolder = folder is null ? full : Path.Combine(ResolvedFolder(folder, 0), Path.GetFileName(full));
+            var info = new FileInfo(inFolder);
+
+            if (info.LinkTarget is null || info.ResolveLinkTarget(returnFinalTarget: true) is not { } final)
+            {
+                return inFolder;
+            }
+
+            // The final target may itself be reached through linked folders: resolved again.
+            full = Path.GetFullPath(final.FullName);
+        }
+
+        return full;
+    }
+
+    // How many links a path is followed through before it is taken as it stands: a loop of links
+    // is not a path anything can be written to, and the write will say so.
+    private const int MaximumLinkHops = 40;
+
+    // A folder with every link on its way resolved, from the root down.
+    private static string ResolvedFolder(string folder, int hops)
+    {
+        var parent = Path.GetDirectoryName(folder);
+        var here = parent is null ? folder : Path.Combine(ResolvedFolder(parent, hops), Path.GetFileName(folder));
+
+        if (hops >= MaximumLinkHops)
+        {
+            return here;
+        }
+
+        var info = new DirectoryInfo(here);
 
         return info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } final
-            ? Path.GetFullPath(final.FullName)
-            : full;
+            ? ResolvedFolder(Path.GetFullPath(final.FullName), hops + 1)
+            : here;
     }
 
     /// <summary>Writes one file, whole or not at all.</summary>

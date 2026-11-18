@@ -227,6 +227,10 @@ public sealed class RenderStillTests(ITestOutputHelper output) : IDisposable
                 var still = Einzel.Render.Rasterizer.DrawOrder(window.Select(StillCommand.Raster), l => l.Alpha, l => l.DepthBias);
 
                 Assert.Equal(still.Select(l => l.Name), window.Select(l => l.Name));
+
+                // The window does not read a depth bias, so nothing it draws may carry one.
+                Assert.All(window, l => Assert.Equal(0.0, l.DepthBias));
+                Assert.Equal(0.0, ViewportPicture.DensityLayer(scene).DepthBias);
             }
         }
 

@@ -973,10 +973,10 @@ public static class GeometryBuilder
     /// <returns>The reflection, or null where the solve is not reflected.</returns>
     /// <remarks>
     /// The edge on the plane is continuous by construction where it is Neumann - a mirror holds the
-    /// normal field at zero - where the box stops short of the plane, leaving a gap with no field
-    /// on either side - and where the author declared <c>boundaryIsDiscontinuous: false</c>, which
-    /// asserts the field has decayed at the edges (Stage 4's rule 1). Otherwise the plane is a
-    /// surface over the part of it the box covers. Every channel of a driven or staged solve shares
+    /// normal field at zero - and where the box stops short of the plane, leaving a gap with no
+    /// field on either side. Otherwise the plane is a surface over the part of it the box covers,
+    /// whatever <c>boundaryIsDiscontinuous</c> says: that speaks for the box's far edges, not for
+    /// the edge on the mirror, which is interior to the union. Every channel of a driven or staged solve shares
     /// this one answer, since it is the geometry's, not a field's.
     /// </remarks>
     public static Reflection? ReflectionOf(CompiledSolvedField solve)
@@ -996,15 +996,34 @@ public static class GeometryBuilder
         var tolerance = 1e-9 * solve.CellSize;
         var stopsShort = side == true ? plane - solve.MaxX > tolerance : side == false && solve.MinX - plane > tolerance;
 
-        // The author's boundaryIsDiscontinuous: false asserts the field has decayed at the edges -
-        // Stage 4's rule 1 - so no jump at the plane either, whatever the edge condition.
-        var continuous = !solve.BoundaryIsDiscontinuous || edge == BoundaryKind.Neumann || stopsShort;
+        // Decided by the plane edge's own condition, and by nothing else: boundaryIsDiscontinuous
+        // speaks for the box's far edges as a group, and cannot vouch for the edge on the mirror,
+        // which is interior to the union - a grounded edge there gives E to -E across it whatever
+        // the far edges do (a half einzel lens cut at its centre electrode). Not read here at all,
+        // so a compiled solve built without it - false by default - cannot lose the plane.
+        var continuous = edge == BoundaryKind.Neumann || stopsShort;
 
         // The plane is a surface only over the part the box covers: across y (a radius, for an
-        // axisymmetric solve), and every z, since a cross-section repeats along it.
-        var face = solve.Symmetry == SolveSymmetry.Cylindrical
-            ? new PlaneRegion(solve.MinY - tolerance, solve.MaxY + tolerance, double.NegativeInfinity, double.PositiveInfinity, Radial: true)
-            : new PlaneRegion(solve.MinY - tolerance, solve.MaxY + tolerance, double.NegativeInfinity, double.PositiveInfinity);
+        // axisymmetric solve), and every z, since a cross-section repeats along it. The far x edge
+        // bounds the image's box.
+        var far = side == true ? solve.MinX : solve.MaxX;
+        PlaneRegion face;
+
+        if (solve.Symmetry == SolveSymmetry.Cylindrical)
+        {
+            // Its real radial extent: a radius is not negative, and a cylindrical solve reaching below
+            // the axis would have been refused before it was built.
+            if (solve.MinY < 0.0)
+            {
+                throw new InvalidOperationException($"a cylindrical solve's radial extent starts at {solve.MinY} m, below the axis");
+            }
+
+            face = new PlaneRegion(Math.Max(0.0, solve.MinY - tolerance), solve.MaxY + tolerance, double.NegativeInfinity, double.PositiveInfinity, Radial: true, FarX: far);
+        }
+        else
+        {
+            face = new PlaneRegion(solve.MinY - tolerance, solve.MaxY + tolerance, double.NegativeInfinity, double.PositiveInfinity, FarX: far);
+        }
 
         return Reflection.Of(plane, solve.MinX, solve.MaxX, continuous, face);
     }

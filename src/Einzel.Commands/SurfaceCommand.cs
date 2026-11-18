@@ -1655,7 +1655,7 @@ public static class SurfaceCommand
         // would be read as a row of the table.
         foreach (var warning in warnings)
         {
-            text.Append(Csv.Comment($"{warning.Severity}: {warning.Code}: {warning.Message}"));
+            text.Append(Csv.Comment(warning));
         }
 
         text.Append(invariant, $"{surface.AcrossAxis}_mm,{surface.DeepAxis}_mm,{(surface.Unit == "V" ? "potential_V" : "potential_energy_eV")},conductor\n");

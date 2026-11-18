@@ -24,13 +24,12 @@ public static class Csv
     /// shows as the text and a CSV reader reads with the quote as its first character.
     /// </para>
     /// <para>
-    /// <c>=</c>, <c>@</c>, a tab and a carriage return are always guarded. A leading <c>+</c> or
-    /// <c>-</c> is guarded only where the cell reads as an expression - a digit or a point after the
-    /// sign, or an operator or parenthesis anywhere after it - so <c>-1+1</c> and <c>+SUM(A1)</c> are
-    /// guarded and a plain name such as <c>-x</c> or <c>-xRod</c> is written exactly. The guard
-    /// alters what a CSV reader sees; the <c>--json</c> form of the same command carries every name
-    /// exactly and is the one to read a name from. For text cells only: numbers are written by the
-    /// commands directly, never through here, so a negative number keeps its leading minus.
+    /// Every text cell beginning with one of those characters is guarded, as OWASP's guidance on CSV
+    /// injection has it - a plain name such as <c>-xRod</c> included, since what a spreadsheet makes
+    /// of a cell is the spreadsheet's to decide. The guard alters what a CSV reader sees; the
+    /// <c>--json</c> form of the same command carries every name exactly and is the one to read a
+    /// name from. For text cells only: numbers are written by the commands directly, never through
+    /// here, so a negative number keeps its leading minus.
     /// </para>
     /// </remarks>
     public static string Field(string? field)
@@ -40,7 +39,7 @@ public static class Csv
             return string.Empty;
         }
 
-        if (ReadsAsFormula(field))
+        if (field.Length > 0 && field[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
         {
             return "\"'" + field.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
         }
@@ -49,8 +48,6 @@ public static class Csv
             ? field
             : "\"" + field.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
-
-    private static readonly System.Buffers.SearchValues<char> Operators = System.Buffers.SearchValues.Create("+-*/^&=<>%()");
 
     /// <summary>A comment line, every line of it a comment.</summary>
     /// <param name="text">The text, which may run over several lines.</param>
@@ -66,24 +63,13 @@ public static class Csv
         return "# " + text.ReplaceLineEndings("\n# ") + "\n";
     }
 
-    // Whether a spreadsheet would take the cell for a formula: see Field.
-    private static bool ReadsAsFormula(string field)
+    /// <summary>A warning as comment lines: its severity, code and message, in the invariant culture.</summary>
+    /// <param name="warning">The warning.</param>
+    /// <returns>The comment, every line of it a comment.</returns>
+    /// <remarks>One spelling for every CSV a command writes, so the probe's profile and the surface table cannot drift apart.</remarks>
+    public static string Comment(Einzel.Core.Results.ValidityWarning warning)
     {
-        if (field.Length == 0)
-        {
-            return false;
-        }
-
-        if (field[0] is '=' or '@' or '\t' or '\r')
-        {
-            return true;
-        }
-
-        if (field[0] is not ('+' or '-') || field.Length == 1)
-        {
-            return false;
-        }
-
-        return char.IsAsciiDigit(field[1]) || field[1] == '.' || field.AsSpan(1).IndexOfAny(Operators) >= 0;
+        ArgumentNullException.ThrowIfNull(warning);
+        return Comment(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{warning.Severity}: {warning.Code}: {warning.Message}"));
     }
 }

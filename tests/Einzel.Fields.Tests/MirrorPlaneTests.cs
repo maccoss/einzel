@@ -615,17 +615,17 @@ public sealed class MirrorPlaneTests
     /// since the answer is the geometry's.
     /// </summary>
     /// <remarks>
-    /// <c>boundaryIsDiscontinuous: false</c> is the author's statement that the field has decayed
-    /// at the edges (Stage 4's rule 1), honoured at the plane too: no surface, whatever the edge. An
-    /// edge an ulp short of the plane - meant to lie on it - is on it: a stop-short test comparing
-    /// the two exactly took it for a gap and declared nothing. And beyond the box's y the plane is no
-    /// surface: neither half has field there.
+    /// Decided by the plane edge's own condition: <c>boundaryIsDiscontinuous</c> speaks for the
+    /// box's far edges and cannot vouch for the edge on the mirror, so a grounded edge there is a
+    /// surface with the flag false too - which is also what a compiled solve built without the flag
+    /// has. An edge an ulp short of the plane - meant to lie on it - is on it: a stop-short test
+    /// comparing the two exactly took it for a gap and declared nothing.
     /// </remarks>
     [Theory]
     [InlineData(BoundaryKind.Neumann, true, 0.0, false)]
     [InlineData(BoundaryKind.Dirichlet, true, 0.0, true)]
     [InlineData(BoundaryKind.Neumann, false, 0.0, false)]
-    [InlineData(BoundaryKind.Dirichlet, false, 0.0, false)]
+    [InlineData(BoundaryKind.Dirichlet, false, 0.0, true)]
     [InlineData(BoundaryKind.Dirichlet, true, 1e-14, true)]
     public void ASolvedEdgeDecidesThePlane(BoundaryKind edge, bool discontinuous, double shortBy, bool surface)
     {
@@ -653,11 +653,94 @@ public sealed class MirrorPlaneTests
         Assert.Equal(surface, before != after);
         Assert.Equal(!surface, GeometryBuilder.ReflectionOf(solve)!.EdgeIsContinuous);
 
-        // Above the box, where neither half has field: no surface at the plane, and a drift along x
-        // across it is not cut there.
+        // Above the box, where neither half has field, the plane is no surface - except for the one
+        // change of sign a cross-section declaring its own edges cannot avoid, with a grounded edge
+        // on the plane (see AReflectedCrossSectionsRimIsOneSurfaceEach).
+        var phantom = surface && discontinuous;
         Assert.Equal(
-            Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, 0.02, 0.0))),
-            Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.02, 0.0))));
+            phantom,
+            Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, 0.02, 0.0)))
+                != Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.02, 0.0))));
+    }
+
+    // How many times a field's discontinuity measure changes sign along a segment, sampled finely.
+    private static int SignChanges(IElectrostaticField field, Vec3 from, Vec3 to, int samples = 4000)
+    {
+        var changes = 0;
+        var last = 0;
+
+        for (var i = 0; i <= samples; i++)
+        {
+            var t = (double)i / samples;
+            var p = new Vec3(from.X + (t * (to.X - from.X)), from.Y + (t * (to.Y - from.Y)), from.Z + (t * (to.Z - from.Z)));
+            var sign = Math.Sign(field.SignedDistanceToDiscontinuity(in p));
+
+            if (sign != 0 && last != 0 && sign != last)
+            {
+                changes++;
+            }
+
+            if (sign != 0)
+            {
+                last = sign;
+            }
+        }
+
+        return changes;
+    }
+
+    /// <summary>
+    /// A reflected cross-section declaring its own edges keeps each box edge as one surface across
+    /// the rim where the plane's part ends, on both sides of the plane and whatever the plane edge
+    /// is; with a grounded plane edge the one change of sign no surface stands behind is the plane
+    /// beyond the box, and a drift is cut there.
+    /// </summary>
+    /// <remarks>
+    /// The member answering nothing on a side held its own measure at the plane, which changes sign
+    /// along the rim exactly where the answering half's box edge does; the sum multiplies its
+    /// members' signs, so the two cancelled and both top edges were lost - a box edge an ion flew
+    /// through without landing, on a mirror edge as on a grounded one.
+    /// </remarks>
+    [Theory]
+    [InlineData(BoundaryKind.Neumann)]
+    [InlineData(BoundaryKind.Dirichlet)]
+    public void AReflectedCrossSectionsRimIsOneSurfaceEach(BoundaryKind edge)
+    {
+        var solve = new CompiledSolvedField
+        {
+            MinX = 0.0, MaxX = Plane, MinY = 0.0, MaxY = 0.012,
+            CellSize = 0.5e-3, Tolerance = 1e-10,
+            RightEdge = edge,
+            BoundaryIsDiscontinuous = true,
+            ReflectAboutX = Plane,
+            Electrodes =
+            [
+                new CompiledElectrode
+                {
+                    Name = "plate", Shape = ElectrodeShape.Rectangle,
+                    MinX = 0.01, MaxX = 0.015, MinY = 0.0, MaxY = 0.004, Potential = 500.0,
+                },
+            ],
+        };
+
+        var (field, _) = GeometryBuilder.Build(solve);
+
+        // Up through the top edge, on the declared side and on the image's: one surface each.
+        foreach (var x in new[] { Plane - 0.002, Plane + 0.002 })
+        {
+            Assert.Equal(1, SignChanges(field, new Vec3(x, 0.006, 0.0), new Vec3(x, 0.03, 0.0)));
+        }
+
+        // Along x inside the box: the far edges, and the plane where it is grounded.
+        Assert.Equal(edge == BoundaryKind.Dirichlet ? 1 : 0, SignChanges(field, new Vec3(Plane - 0.002, 0.006, 0.0), new Vec3(Plane + 0.002, 0.006, 0.0)));
+
+        // Along x above the box: nothing on a mirror; the unavoidable one at the plane on a grounded
+        // edge, and the drift cut there rather than jumped.
+        var above = SignChanges(field, new Vec3(Plane - 0.002, 0.02, 0.0), new Vec3(Plane + 0.002, 0.02, 0.0));
+        var run = field.FieldFreeRunLength(new Vec3(Plane - 0.002, 0.02, 0.0), new Vec3(1.0, 0.0, 0.0));
+
+        Assert.Equal(edge == BoundaryKind.Dirichlet ? 1 : 0, above);
+        Assert.Equal(edge == BoundaryKind.Dirichlet, run <= 0.002 + 1e-12);
     }
 
     /// <summary>
@@ -766,6 +849,21 @@ public sealed class MirrorPlaneTests
                 Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, y, z))),
                 Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, y, z))));
         }
+
+        // Across the rim. A volume declares no surfaces of its own, so on the declared side crossing
+        // the box's edge changes nothing; on the image's side the plane's part is closed by the
+        // image box's faces - where the field does drop to nothing - so crossing the edge there is
+        // one surface, and beyond the image box's far face it is none.
+        var declared = SignChanges(field, new Vec3(Plane - 0.002, 0.0, 0.0), new Vec3(Plane - 0.002, 0.012, 0.0));
+        var image = SignChanges(field, new Vec3(Plane + 0.002, 0.0, 0.0), new Vec3(Plane + 0.002, 0.012, 0.0));
+        var beyond = SignChanges(field, new Vec3((2.0 * Plane) + 0.002, 0.0, 0.0), new Vec3((2.0 * Plane) + 0.002, 0.012, 0.0));
+
+        Assert.Equal(0, declared);
+        Assert.Equal(surface ? 1 : 0, image);
+        Assert.Equal(0, beyond);
+
+        // And along x through the image box: the plane, then its far face.
+        Assert.Equal(surface ? 2 : 0, SignChanges(field, new Vec3(Plane - 0.002, 0.0, 0.0), new Vec3((2.0 * Plane) + 0.002, 0.0, 0.0)));
     }
 
     /// <summary>

@@ -319,7 +319,8 @@ public static class GeometryBuilder3D
 
         // A surface only over the part of the plane the box covers.
         var region = new PlaneRegion(
-            geometry.MinY - tolerance, geometry.MaxY + tolerance, geometry.MinZ - tolerance, geometry.MaxZ + tolerance);
+            geometry.MinY - tolerance, geometry.MaxY + tolerance, geometry.MinZ - tolerance, geometry.MaxZ + tolerance,
+            FarX: side == true ? geometry.MinX : geometry.MaxX);
 
         return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann || gap, region);
     }

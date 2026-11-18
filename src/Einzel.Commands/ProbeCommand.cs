@@ -1490,7 +1490,7 @@ public static class ProbeCommand
         // be read as a row of the table.
         foreach (var warning in outcome.Warnings)
         {
-            text.Append(Csv.Comment(string.Create(invariant, $"{warning.Severity}: {warning.Code}: {warning.Message}")));
+            text.Append(Csv.Comment(warning));
         }
 
         // B columns only for a model that declares a magnet, so every other model's CSV is the

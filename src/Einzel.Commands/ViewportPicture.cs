@@ -243,6 +243,14 @@ public static class ViewportPicture
     /// <summary>Layers in the order a still draws them (<see cref="Rasterizer.DrawOrder{T}"/>).</summary>
     /// <param name="layers">The layers.</param>
     /// <returns>Them, opaque first, then depth-biased, then translucent, list order kept within each.</returns>
+    /// <remarks>
+    /// The window draws in list order and does not read <see cref="PictureLayer.DepthBias"/>, so the
+    /// two agree because what the window draws carries no bias: the window draws only
+    /// <see cref="Compose"/> and <see cref="DensityLayer"/>, neither of which makes a biased layer,
+    /// and the one biased layer there is - <c>render surface</c>'s wire mesh - is drawn by stills
+    /// alone. Pinned by a test, so a biased layer reaching the window is caught rather than drawn
+    /// unbiased.
+    /// </remarks>
     public static IReadOnlyList<PictureLayer> InDrawOrder(IEnumerable<PictureLayer> layers) =>
         Rasterizer.DrawOrder(layers, l => l.Alpha, l => l.DepthBias);
 

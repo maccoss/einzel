@@ -1082,11 +1082,10 @@ with the spelling that carries a unit.
 still` (`--width-px`, `--height-px`, `--view`, `--out`), `probe` (`--at-us`, `--samples`, `--csv`)
 and `export` (`--step-mm`, `--at-us`, `--box-mm`, `--out`); all of these used to drop the flag and
 exit 0.
-`--csv` writes the sampled grid, quoted per RFC 4180; a text cell a spreadsheet would run as a
-formula is written with a single quote before it, inside quotes, so it is shown as text: one
-beginning with `=`, `@`, a tab or a carriage return, or with `+` or `-` followed by a digit, a point,
-an operator or a parenthesis. A plain name after a sign (`-x`, `-xRod`) is written exactly, numbers
-are never altered, and the `--json` form carries every name exactly. A warning running over several
+`--csv` writes the sampled grid, quoted per RFC 4180; a text cell beginning with `=`, `+`, `-`, `@`,
+a tab or a carriage return is written with a single quote before it, inside quotes, so a spreadsheet
+shows it as text rather than running it (OWASP's guidance on CSV injection). Numbers are never
+altered, and the `--json` form carries every name exactly. A warning running over several
 lines is written as several comment lines, in this table and in `probe --csv`. Units are in the flag names, as for the probe; a bare `--offset`,
 `--box` or `--at` is refused. See [Rendering](rendering.md) for the figures and what they show.
 

@@ -23,9 +23,10 @@ namespace Einzel.Fields;
 /// </para>
 /// </remarks>
 /// <param name="EdgeIsContinuous">
-/// Whether the union's field is continuous across the plane - a Neumann (mirror) edge, a box
-/// stopping short of the plane, or a cross-section whose author declared
-/// <c>boundaryIsDiscontinuous: false</c> - so the plane is no surface. False, the safe default,
+/// Whether the union's field is continuous across the plane - a Neumann (mirror) edge, or a box
+/// stopping short of the plane - so the plane is no surface. Decided by the plane edge's own
+/// condition alone: a solve's <c>boundaryIsDiscontinuous</c> speaks for its far edges, not for this
+/// one, which is interior to the union. False, the safe default,
 /// makes the plane a surface the declared half declares over <paramref name="Face"/>, whatever
 /// surfaces the half's own field declares: an extra landing where the field happens to be
 /// continuous costs a step, where a missed jump costs accuracy.
@@ -169,8 +170,8 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove, bool EdgeIsCont
 /// <para>
 /// <b>Whether the plane is a surface is the edge's, decided once.</b> The union's normal field goes
 /// from E to -E across the plane, so it jumps unless the half's edge on the plane holds the normal
-/// field at zero - a Neumann mirror - or the author has said the field has decayed at the edge
-/// (a cross-section's <c>boundaryIsDiscontinuous: false</c>, Stage 4's rule 1). Where it does not,
+/// field at zero - a Neumann mirror; <c>boundaryIsDiscontinuous</c> speaks for a solve's far edges
+/// and cannot vouch for this one, which is interior to the union. Where it does not,
 /// the reflection declares the plane itself, over the part of it the solve's box covers, whether or
 /// not the half's own field declares any surface there: a volume solve declares none. Beyond the
 /// box neither half has field, so the plane is no surface there. That is a property of the
@@ -194,6 +195,7 @@ public sealed class PlaneFace
     private readonly double _plane;
     private readonly double _length;
     private readonly double _inside;
+    private readonly bool _imageAbove;
 
     // Whether this half declares the plane: the owner, where the field is not continuous across it
     // by construction. Decided once, from the boundary condition, and independent of whether the
@@ -218,6 +220,7 @@ public sealed class PlaneFace
         _plane = reflection.PlaneX;
         _declares = ownsPlane && !reflection.EdgeIsContinuous;
         _region = reflection.Face;
+        _imageAbove = reflection.ImageAbove == true;
 
         // The half's length scale: its resolution where it has one, else the plane's distance from
         // the origin, else a millimetre - an analytic field at the origin has no scale of its own.
@@ -226,7 +229,7 @@ public sealed class PlaneFace
             : 1e-3;
 
         // In the half's own frame: just inside the declared side.
-        var imageSide = reflection.ImageAbove == true ? 1.0 : -1.0;
+        var imageSide = _imageAbove ? 1.0 : -1.0;
         _inside = _plane - (imageSide * PastFraction * _length);
     }
 
@@ -238,7 +241,32 @@ public sealed class PlaneFace
     /// the solve's box covers (<see cref="Reflection.Face"/>). A geometric rule, read from the box
     /// and the boundary condition and from no field value.
     /// </returns>
-    public bool Declares(double y, double z) => _declares && (_region?.Covers(y, z) ?? true);
+    public bool Declares(double y, double z) => _declares && Covers(y, z);
+
+    /// <summary>Whether the union's measure changes sign at the plane beneath a point.</summary>
+    /// <param name="y">The point's y.</param>
+    /// <param name="z">The point's z.</param>
+    /// <returns>
+    /// True where this half declares the plane (<see cref="Declares"/>), and - for an owner whose
+    /// half has a face of its own on the plane - on the plane beyond the box too, the one change of
+    /// sign no physical surface stands behind and none can be avoided (see <see cref="At"/>). A drift
+    /// is cut wherever this is true, so no change of sign is jumped.
+    /// </returns>
+    public bool ChangesSignAt(double y, double z)
+    {
+        if (!_declares)
+        {
+            return false;
+        }
+
+        if (Covers(y, z))
+        {
+            return true;
+        }
+
+        var (qy, qz) = Clamped(y, z);
+        return IsFace(_inner.SignedDistanceToDiscontinuity(new Vec3(_plane, qy, qz)));
+    }
 
     /// <summary>The measure on the side where the half answers, with the plane added where it declares it.</summary>
     /// <param name="position">The point.</param>
@@ -255,38 +283,107 @@ public sealed class PlaneFace
     /// <param name="position">The point.</param>
     /// <returns>The measure.</returns>
     /// <remarks>
-    /// Where this half declares the plane: the distance from it, signed opposite to the half's
-    /// measure just inside the declared side - one change of sign, exactly at the plane, whatever
-    /// the half's own surfaces are. Otherwise, where the half has no face on the plane beneath the
-    /// point, its own measure at the plane held constant across this side, and where it has one, the
-    /// distance from the plane signed as the half is just inside - no change at the plane. Read at
-    /// the point's own place; nothing a query writes is held.
+    /// <para>
+    /// <b>Two members must never change sign on the same rim, and a sign may change only where a
+    /// surface is.</b> A sum multiplies its members' signs, so two changes in one place cancel. The
+    /// sign here is therefore read at the point moved just inside the box's part of the plane, so it
+    /// is constant across the rim where the box ends: the other half's own box edge there is the
+    /// only change, and is not cancelled. Reading it at the point itself - its own measure at the
+    /// plane, held - changed sign along the rim exactly where the answering half's box edge does,
+    /// and the two cancelled: a reflected cross-section declaring its edges lost both its top edges.
+    /// </para>
+    /// <para>
+    /// <b>The owner, where the half has a face of its own on the plane</b> - a cross-section declaring
+    /// its edges: the distance from the plane signed opposite to the half just inside, constant
+    /// across the rim, so the image's own box carries the image's edges. The declared box, the
+    /// image's box and the outside all meet at the rim, and a sign cannot change across all three
+    /// boundaries there, so one change of sign with no surface behind it cannot be avoided: it is the
+    /// plane beyond the box, made by the image alone, where neither half has field.
+    /// </para>
+    /// <para>
+    /// <b>The owner, where the half has no face on the plane</b> - a volume solve, which declares no
+    /// surfaces of its own: the plane's part is closed with the image box's other faces, where the
+    /// field drops to nothing, so every change of sign is at a surface and none is beyond the box.
+    /// </para>
+    /// <para>
+    /// <b>Not the owner</b>: no change of sign at the plane - over the box's part, as before, its own
+    /// measure at the plane held, or the distance signed as it is just inside where it has a face
+    /// there; beyond it, the sign read just inside the box's part with the magnitude kept.
+    /// </para>
     /// </remarks>
     public double At(in Vec3 position)
     {
         var distance = Math.Abs(position.X - _plane);
+        var covered = Covers(position.Y, position.Z);
+        var (qy, qz) = covered ? (position.Y, position.Z) : Clamped(position.Y, position.Z);
 
-        if (Declares(position.Y, position.Z))
+        if (_declares)
         {
-            // The sign Answering has just inside - the half's own where it is a number, positive
-            // where it declares nothing, since Combine then takes the plane's distance - flipped.
-            var own = _inner.SignedDistanceToDiscontinuity(new Vec3(_inside, position.Y, position.Z));
-            return double.IsFinite(own) && own < 0.0 ? distance : -distance;
+            // The sign the owner has just inside - its own where that is a number, positive where it
+            // declares nothing, since Answering then takes the plane's distance.
+            var just = _inner.SignedDistanceToDiscontinuity(new Vec3(_inside, qy, qz));
+            var inside = double.IsFinite(just) && just < 0.0 ? -1.0 : 1.0;
+
+            if (IsFace(_inner.SignedDistanceToDiscontinuity(new Vec3(_plane, qy, qz))))
+            {
+                return -inside * distance;
+            }
+
+            var box = ImageBox(in position);
+            return box > 0.0 ? -inside * box : inside * Math.Abs(box);
         }
 
-        var atPlane = _inner.SignedDistanceToDiscontinuity(new Vec3(_plane, position.Y, position.Z));
-
-        if (!IsFace(atPlane))
+        if (covered)
         {
-            return atPlane;
+            var atPlane = _inner.SignedDistanceToDiscontinuity(new Vec3(_plane, position.Y, position.Z));
+
+            if (!IsFace(atPlane))
+            {
+                return atPlane;
+            }
+
+            return Math.CopySign(distance, _inner.SignedDistanceToDiscontinuity(new Vec3(_inside, position.Y, position.Z)));
         }
 
-        return Math.CopySign(distance, _inner.SignedDistanceToDiscontinuity(new Vec3(_inside, position.Y, position.Z)));
+        // Beyond the box's part: the sign read just inside it, the magnitude this point's own.
+        var nearest = _inner.SignedDistanceToDiscontinuity(new Vec3(_plane, qy, qz));
+        var sign = IsFace(nearest) ? _inner.SignedDistanceToDiscontinuity(new Vec3(_inside, qy, qz)) : nearest;
+        var here = _inner.SignedDistanceToDiscontinuity(new Vec3(_plane, position.Y, position.Z));
+        return Math.CopySign(IsFace(here) ? distance : Math.Abs(here), sign);
     }
 
     // Whether the half's measure on the plane makes the plane a face of its own: within a tolerance
     // of zero.
     private bool IsFace(double atPlane) => Math.Abs(atPlane) <= FaceTolerance * _length;
+
+    private bool Covers(double y, double z) => _region?.Covers(y, z) ?? true;
+
+    // A point of the plane moved just inside the box's part, by the distance the sign is read past
+    // the plane - well inside the rounding the region was widened by.
+    private (double Y, double Z) Clamped(double y, double z) =>
+        _region is { } region ? region.Clamp(y, z, PastFraction * _length) : (y, z);
+
+    // Signed distance to the image's box - the plane's part, between the plane and the declared
+    // box's far edge reflected - positive inside: what closes the plane's part for a half with no
+    // surfaces of its own.
+    private double ImageBox(in Vec3 position)
+    {
+        var far = _region?.FarX is { } declaredFar ? (2.0 * _plane) - declaredFar : (_imageAbove ? double.PositiveInfinity : double.NegativeInfinity);
+        var low = Math.Min(_plane, far);
+        var high = Math.Max(_plane, far);
+
+        var across = Math.Min(position.X - low, high - position.X);
+        var (inY, inZ) = _region is { } region ? region.Depth(position.Y, position.Z) : (double.PositiveInfinity, double.PositiveInfinity);
+        var inside = Math.Min(across, Math.Min(inY, inZ));
+
+        if (inside >= 0.0)
+        {
+            return inside;
+        }
+
+        static double Out(double depth) => depth < 0.0 ? -depth : 0.0;
+        return -Math.Sqrt((Out(across) * Out(across)) + (Out(inY) * Out(inY)) + (Out(inZ) * Out(inZ)));
+    }
 }
 
 /// <summary>The part of a mirror plane a reflected solve's box covers.</summary>
@@ -296,14 +393,24 @@ public sealed class PlaneFace
 /// <param name="MaxZ">The high z bound.</param>
 /// <param name="Radial">
 /// Whether the bounds on y are a radius about the x axis - an axisymmetric solve, which covers the
-/// disc its half-plane sweeps - with z unused.
+/// disc its half-plane sweeps - with z unused. A radius is not negative: a radial region with a
+/// negative least radius is refused.
+/// </param>
+/// <param name="FarX">
+/// The declared box's edge away from the plane, which reflected bounds the image's box; null where
+/// the box is unbounded that way.
 /// </param>
 /// <remarks>
 /// Inclusive: a point on the box's edge is covered. Builders widen the bounds by a rounding (a
 /// billionth of the cell) so an edge meant to lie on the box is on it.
 /// </remarks>
-public sealed record PlaneRegion(double MinY, double MaxY, double MinZ, double MaxZ, bool Radial = false)
+public sealed record PlaneRegion(double MinY, double MaxY, double MinZ, double MaxZ, bool Radial = false, double? FarX = null)
 {
+    /// <summary>The radial bounds are radii, so the least is not negative.</summary>
+    public double MinY { get; } = Radial && MinY < 0.0
+        ? throw new ArgumentOutOfRangeException(nameof(MinY), MinY, "a radial region's least radius is not negative")
+        : MinY;
+
     /// <summary>Whether the region covers a point of the plane.</summary>
     /// <param name="y">The point's y.</param>
     /// <param name="z">The point's z.</param>
@@ -317,5 +424,48 @@ public sealed record PlaneRegion(double MinY, double MaxY, double MinZ, double M
         }
 
         return y >= MinY && y <= MaxY && z >= MinZ && z <= MaxZ;
+    }
+
+    /// <summary>A point of the plane moved into the region, a margin inside its bounds.</summary>
+    /// <param name="y">The point's y.</param>
+    /// <param name="z">The point's z.</param>
+    /// <param name="margin">How far inside the bounds; less where the region is thinner than twice it.</param>
+    /// <returns>The nearest such point.</returns>
+    public (double Y, double Z) Clamp(double y, double z, double margin)
+    {
+        static double Into(double v, double low, double high, double margin)
+        {
+            if (!double.IsFinite(low) && !double.IsFinite(high))
+            {
+                return v;
+            }
+
+            var m = double.IsFinite(low) && double.IsFinite(high) ? Math.Min(margin, 0.5 * (high - low)) : margin;
+            return Math.Clamp(v, double.IsFinite(low) ? low + m : double.NegativeInfinity, double.IsFinite(high) ? high - m : double.PositiveInfinity);
+        }
+
+        if (Radial)
+        {
+            var r = Math.Sqrt((y * y) + (z * z));
+            var to = Into(r, MinY, MaxY, margin);
+            return r > 0.0 ? (y * to / r, z * to / r) : (to, 0.0);
+        }
+
+        return (Into(y, MinY, MaxY, margin), Into(z, MinZ, MaxZ, margin));
+    }
+
+    /// <summary>How far inside the region's bounds a point lies across y and across z; negative outside.</summary>
+    /// <param name="y">The point's y.</param>
+    /// <param name="z">The point's z.</param>
+    /// <returns>The two depths; infinite along an unbounded direction, and z's infinite for a radial region.</returns>
+    public (double Y, double Z) Depth(double y, double z)
+    {
+        if (Radial)
+        {
+            var r = Math.Sqrt((y * y) + (z * z));
+            return (Math.Min(r - MinY, MaxY - r), double.PositiveInfinity);
+        }
+
+        return (Math.Min(y - MinY, MaxY - y), Math.Min(z - MinZ, MaxZ - z));
     }
 }
