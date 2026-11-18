@@ -60,7 +60,9 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
     /// which conductor owns each node as well. Then the implicit scheme; an RF drive, whose
     /// cycle-averaged well is cached; four recorded instants; two species, each with all of it
     /// again; two species sharing a self-field; and a sequence whose second phase ramps the
-    /// wall's potential, re-assembling the operator at every step, through the sequenced path.
+    /// wall's potential, re-assembling the operator at every step, through the sequenced path;
+    /// and a trajectory model whose sequence enters the diffusive description from a cloud, which
+    /// is billed only if the estimate asks every mode the run uses.
     /// </para>
     /// <para>
     /// Each asserts that the run was the one it meant - that the ramped one re-assembled, that
@@ -77,6 +79,7 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
     [InlineData("tube-mixture")]
     [InlineData("tube-mixture-charged")]
     [InlineData("bore-ramped")]
+    [InlineData("tube-entered")]
     public void ADiffusiveRunHoldsWhatTheEstimateCharges(string kind)
     {
         var small = runs.Optimized(output, kind, Small);
@@ -99,6 +102,13 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
                 Assert.True(
                     run.Fact("assemblies") >= 100,
                     $"the operator was assembled {run.Fact("assemblies")} time(s), so the ramp did not re-assemble it as it went");
+            }
+
+            if (kind == "tube-entered")
+            {
+                Assert.True(
+                    run.Fact("conversions") == 1,
+                    $"the packet crossed {run.Fact("conversions")} mode boundaries, so it did not enter the density description once");
             }
 
             if (kind == "tube-mixture-charged")

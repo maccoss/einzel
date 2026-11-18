@@ -352,7 +352,9 @@ public static class PacketConversion
     /// search for not-a-number happens to stop.
     /// </para>
     /// </remarks>
-    /// <exception cref="EinzelException">The density is not finite somewhere.</exception>
+    /// <exception cref="EinzelException">
+    /// The density is not finite somewhere: unlocated, naming the cell, for the caller to locate.
+    /// </exception>
     private static double[] Cumulative(DensityField density, out (int I, int J)[] cells)
     {
         var grid = density.Grid;
@@ -371,13 +373,17 @@ public static class PacketConversion
                     throw new EinzelException(new EinzelError
                     {
                         Code = ErrorCodes.ConvergenceFailed,
-                        Path = "/sequence",
+
+                        // Unlocated: this is a general conversion and does not know which part of
+                        // a document the density came from. A caller that does locates it
+                        // (EinzelError.At) and says what to change.
+                        Path = "/",
                         Constraint = string.Create(
                             System.Globalization.CultureInfo.InvariantCulture,
-                            $"a density handed to a trajectory phase is finite in every cell, and it is not in cell ({i}, {j}), at x = {grid.X(i):G6} m, y = {grid.Y(j):G6} m"),
+                            $"a density converted to trajectories is finite in every cell, and it is not in cell ({i}, {j}), at x = {grid.X(i):G6} m, y = {grid.Y(j):G6} m"),
                         Observed = new ObservedValue(density[i, j], "m^-3"),
-                        Suggestion = "the diffusive phase before this boundary did not stay finite: shorten its step "
-                            + "(transport.densityStep), or look at the field and the mobility near that cell",
+                        Suggestion = "whatever produced this density did not stay finite in that cell; "
+                            + "ions are drawn only from a density that is a number everywhere",
                     });
                 }
 

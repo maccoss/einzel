@@ -27,9 +27,14 @@ internal delegate void GridArrayWatcher(Array array, long bytes);
 /// and the size is worked out here from the element type rather than stated by a caller. The
 /// fields, masks, cut links and operators get every array from <see cref="New{T}"/> and grow
 /// one with <see cref="Resize{T}"/>; so do the densities, the step's coefficients and face
-/// operator, the self-field and the well cache of a diffusive run. <c>GridArraySourceTests</c>
-/// parses <c>Einzel.Fields</c> and <c>Einzel.Transport</c> and refuses storage the size of a
-/// grid allocated any other way; its remarks say exactly what it can and cannot show.
+/// operator, the self-field and the well cache of a diffusive run, an imported gas field, a
+/// diffusive run's conductor map and a field sampled for export. <c>GridArraySourceTests</c>
+/// parses <c>Einzel.Fields</c>, <c>Einzel.Transport</c> and <c>Einzel.Io</c> and refuses
+/// storage the size of a grid allocated any other way, and storage for bare numbers whose size
+/// it cannot show to be a count of things; it parses <c>Einzel.Commands</c> too and refuses
+/// there the first only - an allocation whose size it can show to be a grid's - because what
+/// that assembly sizes at run time is mostly counts that arrive from outside it. Its remarks
+/// say exactly what it can and cannot show.
 /// </para>
 /// <para>
 /// <b>Allocating is public and watching is not.</b> The arrays are allocated in

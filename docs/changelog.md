@@ -3829,8 +3829,9 @@ Two findings from Stage 1 that bear on the spec:
   The harness's live figure had none of this - no warm-up, no verdict, concurrent collection
   left on. It reports the whole interval with the tests' verdict, warms up once, and starts
   itself again under the collector the children run under; **a collector written into its
-  project file could not be turned off from the environment**, since the runtime reads its
-  configuration first, so the project states none. The host for a child is looked for on the
+  project file could not be turned off from the environment**: measured on .NET 10,
+  `System.GC.Concurrent: true` in the runtime configuration survives `DOTNET_gcConcurrent=0`
+  (though `System.GC.Server` yields to `DOTNET_gcServer`), so the project states none. The host for a child is looked for on the
   path again, last, the runtime check being what makes that safe. Fourteen environment entries
   that unset variables in an environment already emptied are gone.
 
@@ -3843,3 +3844,32 @@ Two findings from Stage 1 that bear on the spec:
   that configuration, as not billed. `Einzel.Fields` reading whether `GridArrays` is watched
   does not compile. The forty from earlier rounds still fail, and one number a species is still
   passed by the scan.
+
+  **An eleventh review, and CI failing the repetition tests on both runners.** Two failures of
+  one premise - that the same build read twice reads the same - and neither was the engine.
+  On Linux the first of four solves read 152 bytes more than the rest, and locally 32, every
+  time: run once on nothing first, the measurement read all four the same (1,626,344 four times
+  over), so the excess was the measurement's own first use, kept, in the first reading and in
+  no baseline before it. Every child now measures nothing once before it measures. On Windows
+  a charged bore run's fourth repetition held 33,824 bytes of grid arrays fewer - a 65 by 65
+  coarse level, by its size - because the most of a build's arrays alive at once was taken over
+  the readings actually made, and a reading is skipped wherever the bound says it cannot raise
+  the least, which other threads move. A repeated case is now read at every array: 5,149
+  readings a run, the same 5,214,616 bytes each of four, twice. The same skipping made a ramped
+  run's count of other threads' bytes "between two readings" swing from 25 to 70 kB - a few
+  kilobytes a step of its parallel coefficient sweep, over however many steps went unread - so
+  that count is now taken at every occasion to read, taken or skipped: about 6 kB.
+
+  The estimate asks every mode the run uses, so a trajectory model entering a diffusive phase
+  is billed its density (`tube-entered`, 247.84 to 248.18 against 248) over that phase, and
+  `--snapshots` where no density is stepped is refused. A mixture's summed charge is refilled
+  in place (160 bytes asked again, where a grid is 33,800). Entering the density description
+  is done in a frame of its own that clears the caller's reference to the trajectories and
+  says it converted, so the conversion is counted where it happens; its warnings come first,
+  as before. The conversion to trajectories refuses a non-finite density unlocated, and the
+  sequence locates it and names the phase. The face operator's name is a pointer's size, not
+  eight. An export sizes its arrays from a lattice the source scan knows for a grid, so an
+  array of it made any other way is refused there as in the conductor map and the sequenced
+  leg - each shown by adding one. And the harness's comment was half wrong in the other
+  direction: `DOTNET_gcConcurrent=0` does not override `System.GC.Concurrent: true` on .NET 10,
+  measured, though `DOTNET_gcServer` does override `System.GC.Server`.

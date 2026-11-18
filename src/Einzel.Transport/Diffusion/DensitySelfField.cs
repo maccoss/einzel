@@ -51,6 +51,12 @@ public sealed class DensitySelfField
     private readonly double _tolerance;
     private readonly double[] _potential;
     private double[]? _solvedFor;
+
+    // A mixture's net charge density, made once and refilled at every refresh. Asked for at
+    // every step of a mixture's loop and mostly answered "no change", so a fresh array there
+    // was a grid of garbage a step - and, alive through a refresh that did solve, one more
+    // array in a reading of what the run holds.
+    private double[]? _rho;
     private double _solvedCharge;
 
     /// <summary>Builds the self-field solver for a tracked region.</summary>
@@ -323,7 +329,7 @@ public sealed class DensitySelfField
         }
 
         var cells = _grid.CountX * _grid.CountY;
-        var rho = GridArrays.New<double>(cells);
+        var rho = _rho ??= GridArrays.New<double>(cells);
 
         // The net charge density, and the magnitude present, in one pass.
         var magnitude = 0.0;

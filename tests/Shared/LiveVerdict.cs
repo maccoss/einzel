@@ -18,7 +18,7 @@ internal static class LiveVerdict
     internal const string Disturbed = "INCONCLUSIVE, the measurement was disturbed";
 
     /// <summary>
-    /// The most another thread may allocate between two readings before the measurement is taken
+    /// The most another thread may allocate between two occasions to read before the measurement is taken
     /// not to be the build's alone.
     /// </summary>
     /// <remarks>
@@ -88,19 +88,20 @@ internal static class LiveVerdict
 
     /// <summary>
     /// Why a measurement cannot be taken as the build's alone, or null if it can: another thread
-    /// allocated, between two readings, more than anything but a grid array would come to.
+    /// allocated, between two occasions to read, more than anything but a grid array would come to.
     /// </summary>
     /// <remarks>
     /// The backstop behind <c>GridArrays</c>, which records by name any grid array allocated off
     /// the measuring thread: an array a build allocated on a worker <i>without</i> going through
     /// it would be neither read at nor bounded, only counted among what other threads allocated.
-    /// Asked of the most between two readings, not of the total, which grows with how many
+    /// Asked of the most between two occasions to read - each grid array and each checkpoint,
+    /// whether the reading was taken or skipped - not of the total, which grows with how many
     /// collections a build needs - twenty thousand, for one test - where an array allocated on a
     /// worker arrives all at once.
     /// </remarks>
     internal static string? NotItsOwn(string what, LivePeak peak) => peak.ForeignBurst <= MostForeignBurst
         ? null
-        : ($"{what}: {Disturbed} - another thread allocated {N0(peak.ForeignBurst)} bytes between two readings "
+        : ($"{what}: {Disturbed} - another thread allocated {N0(peak.ForeignBurst)} bytes between two occasions to read "
             + $"({N0(peak.Foreign)} in all). Either the measuring process was not the build's alone, or the code measured "
             + "now allocates on worker threads outside GridArrays, where the live set is neither read nor bounded.");
 }

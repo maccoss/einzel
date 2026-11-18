@@ -338,10 +338,15 @@ public static class EstimateCommand
     /// count, a three-species run was billed a third of what it holds.
     /// </para>
     /// </remarks>
-    private const double DiffusiveBytesPerNode = (3 * sizeof(double)) + (6 * sizeof(double)) + FaceOperatorBytesPerNode;
+    private static double DiffusiveBytesPerNode => (3 * sizeof(double)) + (6 * sizeof(double)) + FaceOperatorBytesPerNode;
 
     /// <summary>The face operator: four faces of four doubles, two flags and a name, and one outward rate.</summary>
-    private const double FaceOperatorBytesPerNode = (4 * ((4 * sizeof(double)) + (2 * sizeof(bool)) + 8)) + sizeof(double);
+    /// <remarks>
+    /// The name is a reference, so its size is the pointer's: eight bytes on a 64-bit process,
+    /// four on a 32-bit one.
+    /// </remarks>
+    private static readonly double FaceOperatorBytesPerNode =
+        (4 * ((4 * sizeof(double)) + (2 * sizeof(bool)) + IntPtr.Size)) + sizeof(double);
 
     /// <summary>One recorded instant: a copy of the density, kept until the run returns.</summary>
     /// <remarks>
@@ -712,6 +717,23 @@ public static class EstimateCommand
         }
 
         var model = validation.Model!;
+
+        // A recorded instant is a copy of a density, so a run that steps none records none. Asked
+        // of every mode the run uses, as the billing below is: a trajectory model whose sequence
+        // enters a diffusive phase records densities there.
+        if (snapshots > 0 && !model.Modes.Contains("diffusion"))
+        {
+            throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
+            {
+                Code = Core.Errors.ErrorCodes.SchemaInvalid,
+                Path = "/transport/mode",
+                Constraint = string.Create(
+                    Inv,
+                    $"recorded instants are copies of a diffusive run's density, and this run uses no diffusive mode ({string.Join(", ", model.Modes.Order(StringComparer.Ordinal))}), so {snapshots} of them cannot apply"),
+                Suggestion = "leave out --snapshots, or estimate a model that steps a density",
+            });
+        }
+
         var elements = new List<ElementEstimate>();
         var seconds = 0.0;
 
@@ -915,7 +937,10 @@ public static class EstimateCommand
         double? diffusiveMemory = null;
         var cycleAveraged = false;
 
-        if (model.TransportMode == "diffusion")
+        // Whenever the run steps a density anywhere, not only when the model's own mode is
+        // diffusive: a trajectory model whose sequence enters a diffusive phase holds the same
+        // working set there, and was billed nothing for it - snapshots included.
+        if (model.Modes.Contains("diffusion"))
         {
             var diffusive = Diffusive(
                 model, Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory(), snapshots);
@@ -1492,7 +1517,7 @@ public static class EstimateCommand
                 continue;
             }
 
-            double? density = compiled.TransportMode == "diffusion"
+            double? density = compiled.Modes.Contains("diffusion")
                 ? DiffusiveMemoryMiB(compiled, DiffusionRun.GridFor(compiled), averaged)
                 : null;
 
@@ -2036,6 +2061,17 @@ public static class EstimateCommand
     /// </remarks>
     private const double EstimatedSteps = 1e4;
 
+    /// <summary>How long a density is stepped for: the whole flight, or a sequence's diffusive phases.</summary>
+    /// <remarks>
+    /// A model whose own mode is diffusive steps the density for its declared flight, as it
+    /// always has. A trajectory model steps one only through the phases that name the diffusive
+    /// mode, so those are what its stepping costs; the rest of its flight is trajectories.
+    /// </remarks>
+    private static double DiffusiveSeconds(CompiledModel model) =>
+        model.TransportMode == "diffusion"
+            ? model.MaximumFlightTimeSi
+            : model.Phases.Where(p => p.Mode == "diffusion").Sum(p => p.DurationSeconds);
+
     /// <summary>
     /// What a diffusive run will cost, from the mesh and the mobility alone.
     /// </summary>
@@ -2206,7 +2242,7 @@ public static class EstimateCommand
 
         var step = implicitly ? stable * model.DensityStep.Gain : stable;
 
-        var steps = Math.Max(1.0, Math.Ceiling(model.MaximumFlightTimeSi / step));
+        var steps = Math.Max(1.0, Math.Ceiling(DiffusiveSeconds(model) / step));
 
         // Measured at 3.0 on the shipped funnel across gains from 4 to 256, rising to
         // 4.9 at 1024. A sweep costs about what an explicit step costs - it is the

@@ -9,10 +9,14 @@
       runtime's own default - workstation, concurrent - and the peak working set IS a property
       of the collector, so a run under another is another measurement. A `live` run starts
       itself again with the collector set by environment variable to workstation and not
-      concurrent, as the memory tests' children run - and a collector written into this
-      project would go into the runtime configuration, which the runtime reads before the
-      environment: with ConcurrentGarbageCollection stated here the live run could not turn
-      it off. See README.md.
+      concurrent, as the memory tests' children run. A collector written here would go into
+      runtimeconfig.json as System.GC.Concurrent, and that one is not overridden by the
+      environment: measured on .NET 10, a program built with it true reports Interactive
+      under DOTNET_gcConcurrent=0, and Batch under the same variable with nothing in its
+      configuration. (DOTNET_gcServer=1 does override System.GC.Server=false, so the two
+      settings do not behave alike, and a general rule about which source wins would be
+      wrong for one of them.) The live run also checks what it got and refuses otherwise.
+      See README.md.
     -->
   </PropertyGroup>
 

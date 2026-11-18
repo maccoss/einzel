@@ -55,7 +55,8 @@ internal sealed record Refused(SyntaxNode Node, Shown Shown);
 /// </list>
 /// <para>
 /// <b>A size is a grid's</b> when, followed back through the code, it reaches a member of
-/// <c>Grid2D</c> or <c>Grid3D</c>, or the length of an array <c>GridArrays</c> allocated.
+/// <c>Grid2D</c>, <c>Grid3D</c> or an export's <c>SampledLattice</c>, or the length of an array
+/// <c>GridArrays</c> allocated.
 /// <b>A size is small</b> when every path back ends in a constant, in the length of a collection
 /// of things or of a string, or in the processor count. Anything else is not shown.
 /// </para>
@@ -88,7 +89,9 @@ internal sealed record Refused(SyntaxNode Node, Shown Shown);
 /// </remarks>
 internal sealed class GridSizeScan
 {
-    private static readonly HashSet<string> GridTypes = ["Grid2D", "Grid3D"];
+    // The solvers' two grids, and the lattice a sampled export writes, which is a grid too but
+    // may be one layer thick where Grid3D needs three nodes an axis.
+    private static readonly HashSet<string> GridTypes = ["Grid2D", "Grid3D", "SampledLattice"];
 
     private static readonly HashSet<string> CopyingCalls =
     [

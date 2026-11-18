@@ -30,6 +30,10 @@ namespace Einzel.Cli.Tests;
 /// <item><c>mixture</c> and <c>mixture-charged</c> - two species, and their shared self-field.</item>
 /// <item><c>ramped</c> - a sequence whose second phase ramps the wall's potential, so the
 /// operator is re-assembled as it goes, through the sequenced path.</item>
+/// <item><c>entered</c> - a trajectory model whose sequence flies a small cloud briefly and then
+/// enters the diffusive description, converting it: the density's working set on a model
+/// whose own mode is not diffusive. The cloud is the same size on both grids, so what the
+/// trajectory leg holds cancels in the slope.</item>
 /// </list>
 /// <para>
 /// The field is assembled when the case is made, before anything is measured: what is measured
@@ -109,6 +113,17 @@ internal static class RunMemoryCases
                     """);
                 break;
 
+            case "entered" when geometry == "tube":
+                document["transport"]!["mode"] = "trajectory";
+                document["source"]!["cloud"]!["ions"] = 64;
+                document["sequence"] = JsonNode.Parse(string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $$"""
+                    [ { "name": "fly", "duration": { "value": 0.05, "unit": "us" }, "mode": "trajectory" },
+                      { "name": "drift", "duration": { "value": {{FlightMicroseconds - 0.05}}, "unit": "us" }, "mode": "diffusion" } ]
+                    """));
+                break;
+
             default:
                 throw new ArgumentException($"no run is called '{kind}'", nameof(kind));
         }
@@ -139,6 +154,7 @@ internal static class RunMemoryCases
         var solves = 0;
         var steps = 0;
         var assemblies = 0;
+        var conversions = 0;
 
         Func<object> run = kind switch
         {
@@ -153,6 +169,7 @@ internal static class RunMemoryCases
             {
                 var outcome = SequencedRun.Execute(model, field, GasFlowImport.Resolve(model.Gas, "."), new BetweenSteps());
                 assemblies = outcome.Phases.Sum(phase => phase.Assemblies);
+                conversions = outcome.Conversions;
                 return outcome;
             },
             _ => () =>
@@ -176,6 +193,7 @@ internal static class RunMemoryCases
                 ["solves"] = solves,
                 ["steps"] = steps,
                 ["assemblies"] = assemblies,
+                ["conversions"] = conversions,
                 ["nodes"] = DiffusionRun.GridFor(model).NodeCount,
             });
     }

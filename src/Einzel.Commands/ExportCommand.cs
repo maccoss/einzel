@@ -54,6 +54,20 @@ public sealed record ExportOutcome
 /// </remarks>
 public static class ExportCommand
 {
+    /// <summary>The lattice a sampled export writes: nodes along each axis, both ends included.</summary>
+    /// <param name="CountX">Nodes along x.</param>
+    /// <param name="CountY">Nodes along y.</param>
+    /// <param name="CountZ">Nodes along z.</param>
+    /// <remarks>
+    /// Not a <c>Grid3D</c>, which needs three nodes an axis where an export may be one layer
+    /// thick. Named so that <c>GridArraySourceTests</c> knows its node count for a grid's.
+    /// </remarks>
+    private readonly record struct SampledLattice(int CountX, int CountY, int CountZ)
+    {
+        /// <summary>Every node of the lattice.</summary>
+        public long NodeCount => (long)CountX * CountY * CountZ;
+    }
+
     /// <summary>The most nodes a sampled export may write.</summary>
     public const long MaximumSampledNodes = 8_000_000;
 
@@ -214,13 +228,16 @@ public static class ExportCommand
             };
         }
 
-        // As many as the nodes of the grid being written, so from where such arrays come from.
-        var potential = GridArrays.New<double>(nodes);
-        var field = GridArrays.New<double>(3 * nodes);
+        // As many as the nodes of the grid being written, so from where such arrays come from -
+        // and sized from the lattice rather than from the running product, so that the source
+        // scan can see the size is a grid's and refuse an array of it made any other way.
+        var lattice = new SampledLattice(counts[0], counts[1], counts[2]);
+        var potential = GridArrays.New<double>(lattice.NodeCount);
+        var field = GridArrays.New<double>(3 * lattice.NodeCount);
 
         // B only for a model that declares a magnet: a magnet adds no potential and no E, so
         // without it "the field an ion sees" would be written as zeros inside a sector.
-        var flux = probe.Magnetic ? GridArrays.New<double>(3 * nodes) : null;
+        var flux = probe.Magnetic ? GridArrays.New<double>(3 * lattice.NodeCount) : null;
         var at = (atUs ?? 0.0) * 1e-6;
         long refused = 0;
         long outside = 0;

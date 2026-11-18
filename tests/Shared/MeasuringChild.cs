@@ -443,7 +443,21 @@ internal static class MeasuringChild
 
             measured.Build();
 
-            var peak = LiveSet.Peak(measured.Build, measured.CollectEveryArray, measured.Capacity);
+            // A build measured more than once is read at every grid array, so that the most of
+            // its own arrays alive at once is the most at any of them - the same every time
+            // for the same build - rather than the most at the readings the live set's bound
+            // happened to call for, which other threads move: a charged bore run read 33,824
+            // bytes of arrays fewer once, a coarse level alive at a reading that was skipped.
+            var every = measured.CollectEveryArray || times > 1;
+
+            // And the measurement is run once on nothing first, discarded, so that what its own
+            // first use allocates and keeps - 32 bytes here, 152 on a Linux runner, in the
+            // reading and not in any baseline before it - is in the baseline of the reading that
+            // counts and not added to the first build's.
+
+            _ = LiveSet.Peak(WarmMeasurement, every, measured.Capacity);
+
+            var peak = LiveSet.Peak(measured.Build, every, measured.Capacity);
             var facts = measured.Facts?.Invoke() ?? [];
             var again = new List<LivePeak>();
 
@@ -451,7 +465,7 @@ internal static class MeasuringChild
             // that the next one adds to shows as readings that do not agree.
             for (var more = 1; more < times; more++)
             {
-                again.Add(LiveSet.Peak(measured.Build, measured.CollectEveryArray, measured.Capacity));
+                again.Add(LiveSet.Peak(measured.Build, every, measured.Capacity));
             }
 
             return new CaseResult(item, new MeasuredBuild(peak, facts, times > 1 ? again : null), null);
@@ -461,6 +475,16 @@ internal static class MeasuringChild
             return new CaseResult(item, null, failed.ToString());
         }
 #pragma warning restore CA1031
+    }
+
+    /// <summary>A build of nothing but two small grid arrays and a reading between them.</summary>
+    private static object WarmMeasurement()
+    {
+        var first = Einzel.Core.Numerics.GridArrays.New<double>(16);
+
+        LiveSet.Checkpoint();
+
+        return (first, Einzel.Core.Numerics.GridArrays.New<double>(16));
     }
 
     /// <summary>The builds that exist to test this harness: a child that dies, hangs, is slow, or complains.</summary>

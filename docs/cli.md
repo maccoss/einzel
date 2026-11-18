@@ -1407,6 +1407,7 @@ some restriction buffers, and nothing measured it.
 | a cycle-averaged well's cache, per species, where the run is driven | + 56 | 303.86 to 304.14 against 304; 55.92 to 56.11 over the undriven run |
 | each further species of a mixture | + 248 | 495.91 to 496.09 against 496 with two |
 | each instant the density is recorded at (`--snapshots`) | + 8 | 279.88 to 280.12 against 280 with four |
+| a trajectory model whose sequence enters a diffusive phase | the same terms, over its diffusive phases | 247.84 to 248.18 against 248 (a drift tube, a cloud of 64 converted) |
 | mean-field self-field, once whatever the species count | 62, and 70 for a mixture | 61.0 to 61.5 on the tube and the bore at 129 by 129, 61.2 to 61.4 at 257 by 257; with two species 565.19 to 565.39 against 566 |
 
 **The coarse levels are charged at their real size.** A grid coarsens by halving each axis's
@@ -1435,7 +1436,7 @@ volume tests' is 0.90.
 estimate works out what a run holds from the model - its scheme, its drives, its species, its
 space charge, its conductors - and from how many instants it is told the run records
 (`einzel estimate --snapshots <n>`; a run records none, a render at an instant one, an animation
-one a frame). Each row above is a run in a child process read at two grids, and each term is
+one a frame). `--snapshots` on a model that steps no density in any phase is refused (`SCHEMA_INVALID` at `/transport/mode`), not billed nothing; the question is asked of every mode the run uses, as the billing is. Each row above is a run in a child process read at two grids, and each term is
 also read as the difference between the run with it and the run without, so that an array too
 many in a 56-byte term is not hidden inside a 304-byte run.
 

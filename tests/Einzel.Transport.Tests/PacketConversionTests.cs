@@ -210,6 +210,11 @@ public sealed class PacketConversionTests(ITestOutputHelper output)
 
         Assert.Equal(Einzel.Core.Errors.ErrorCodes.ConvergenceFailed, refused.Error.Code);
         Assert.Contains("cell (5, 3)", refused.Error.Constraint, StringComparison.Ordinal);
+
+        // A general conversion does not know where the density came from: unlocated, for the
+        // caller that does to locate.
+        Assert.Equal("/", refused.Error.Path);
+        Assert.DoesNotContain("densityStep", refused.Error.Suggestion, StringComparison.Ordinal);
     }
 
     /// <summary>

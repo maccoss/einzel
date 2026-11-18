@@ -29,7 +29,7 @@ internal static class MemoryVerdict
     }
 
     /// <summary>
-    /// Fails a measurement during which another thread allocated, between two readings, more than
+    /// Fails a measurement during which another thread allocated, between two occasions to read, more than
     /// anything but a grid array would come to (<see cref="LiveVerdict.NotItsOwn"/>).
     /// </summary>
     internal static void TheBuildsOwn(string name, LivePeak peak)
@@ -52,11 +52,15 @@ internal static class MemoryVerdict
     /// do. <see cref="LivePeak.Retained"/> is the build's own grid arrays still alive after the
     /// build has returned and its result has been let go, which is nothing unless something
     /// outlives the run. And the build's arrays alive at its peak are the same number of bytes
-    /// every time, exactly, since nothing is sampled.
+    /// every time, exactly - read at every array, which a repeated case is, rather than at the
+    /// readings the bound calls for, whose choice other threads move.
     /// </para>
     /// <para>
-    /// The process's own readings may differ by what the build allocated outside its arrays,
-    /// which is the width of the interval, and by no more.
+    /// <b>And the least is the same every time, exactly.</b> The measurement is run once on
+    /// nothing before the first build is measured, so what its own first use keeps is in every
+    /// baseline. Without that the first reading was 32 bytes over the rest here and 152 on a
+    /// Linux runner, inside a 56-byte interval here and outside it there - so agreement to
+    /// within the interval's width passed locally what failed on CI.
     /// </para>
     /// </remarks>
     internal static void Repeatable(string what, IReadOnlyList<LivePeak> runs)
@@ -75,12 +79,10 @@ internal static class MemoryVerdict
                 $"{what}: run {run + 1} held {runs[run].Tracked:N0} bytes of grid arrays at its most and the first "
                 + $"{runs[0].Tracked:N0}: repetitions of one build held different arrays");
 
-            var width = Math.Max(runs[run].Bound - runs[run].Least, runs[0].Bound - runs[0].Least);
-
             Assert.True(
-                Math.Abs(runs[run].Least - runs[0].Least) <= width,
-                $"{what}: run {run + 1} read at least {runs[run].Least:N0} bytes and the first {runs[0].Least:N0}, "
-                + $"further apart than either interval is wide ({width:N0})");
+                runs[run].Least == runs[0].Least,
+                $"{what}: run {run + 1} read at least {runs[run].Least:N0} bytes and the first {runs[0].Least:N0}: "
+                + "repetitions of one build read differently");
         }
     }
 

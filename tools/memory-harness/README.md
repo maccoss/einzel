@@ -47,9 +47,12 @@ with a workstation, non-concurrent collector and with tiered compilation off, so
 full collections are the ones it forces and nothing is held by first-tier code, and it refuses
 to report if the collector is anything else. The work is run once unmeasured first, so that
 what a first call allocates for itself and keeps is in the baseline. The project sets no
-collector of its own for this reason: one written into the project goes into the runtime
-configuration, which the runtime reads before the environment, and a live run could then not
-turn concurrent collection off. A one-step diffusive run with a self-field reads under its
+collector of its own for this reason: one written into the project goes into
+`runtimeconfig.json` as `System.GC.Concurrent`, and that setting is not overridden by
+`DOTNET_gcConcurrent` - measured on .NET 10, a program built with it true reports `Interactive`
+under `DOTNET_gcConcurrent=0` and `Batch` with nothing in its configuration - so a live run could
+then not turn concurrent collection off. (`DOTNET_gcServer` does override `System.GC.Server`; the
+two settings do not behave alike.) A one-step diffusive run with a self-field reads under its
 statement, which is a whole flight's; pass `declared`.
 
 **Default: the peak working set**, `Process.PeakWorkingSet64` after the work minus before it. That

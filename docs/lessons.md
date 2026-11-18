@@ -6036,3 +6036,20 @@ of the run's objects - so the frame was the root, and no variable in it named th
   it - or let the last use be the object itself rather than a copy of it.
 - **Run the memory tests in both configurations.** The two disagree about liveness, and the
   estimate is a statement about the code, not about the optimizer.
+
+## A maximum over the readings taken is a maximum over a choice
+
+The live-set measurement skips a reading wherever its bound proves the reading could not raise
+the least, and that proof is sound for the least. It was then used for two other quantities that
+it is not sound for: the most of a build's own grid arrays alive at once, and the most other
+threads allocated between two readings. Both are maxima over whichever readings were taken, and
+which were taken depends on what the process's live set happened to be. A charged run's fourth
+repetition read a coarse level fewer; a ramped run's count of other threads' bytes swung from
+25 to 70 kB between runs of one build.
+
+- **A skip proven harmless for one statistic is not proven harmless for another.** Ask, of each
+  quantity a measurement reports, whether it is computed over every instant or over the
+  instants a rule selected.
+- **The first use of a measurement is part of the first measurement.** Whatever the measuring
+  code allocates and keeps the first time it runs is in that reading and in no baseline before
+  it - 32 bytes on one machine, 152 on another. Run it once on nothing first.

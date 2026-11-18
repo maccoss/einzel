@@ -255,7 +255,7 @@ Console.WriteLine(JsonSerializer.Serialize(new
     // The rest of the measurement, as the memory tests have it: the largest reading of the
     // process, the work's own grid arrays at their most, how many there were and how many were
     // read at, what the work's thread allocated outside them, what other threads allocated in
-    // all and at most between two readings, and what of the work's arrays was still alive after
+    // all and at most between two occasions to read, and what of the work's arrays was still alive after
     // it returned and its result was let go.
     liveHeldMiB = livePeak?.Held / Mebi,
     liveGridArraysMiB = livePeak?.Tracked / Mebi,

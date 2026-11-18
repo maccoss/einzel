@@ -23,7 +23,7 @@ namespace Einzel.Testing;
 /// </param>
 /// <param name="Silent">Everything the build thread allocated other than through <see cref="GridArrays"/>.</param>
 /// <param name="Foreign">Bytes other threads allocated while the measurement ran.</param>
-/// <param name="ForeignBurst">The most of those allocated between two readings.</param>
+/// <param name="ForeignBurst">The most of those allocated between two occasions to read: two grid arrays, or a grid array and a checkpoint, whether the reading was taken or skipped.</param>
 /// <param name="Retained">
 /// What the build's own grid arrays still alive come to once the build has returned and what
 /// it returned has been let go, in bytes: nothing, unless the build left an array somewhere
@@ -207,6 +207,16 @@ internal static class LiveSet
 
         void Read(Array? array, long bytes)
         {
+            // What other threads allocated since the last occasion to read, taken or skipped.
+            // The burst is the most between two occasions, not between two readings: a reading
+            // is skipped wherever the bound shows it could not raise the least, so how many are
+            // skipped depends on what the live set happens to be - and a ramped run, whose
+            // coefficient sweep spreads across cores at every step, read 70,256 bytes of other
+            // threads' between two readings once and 25,216 the time before, a few kilobytes a
+            // step over however many steps went unread. A grid array allocated on a worker,
+            // which is what the burst is the backstop for, arrives between two occasions either way.
+            Others();
+
             // Room to follow it, made outside what is charged to the build: the thread's counter
             // is moved past what growing the storage allocated.
             if (followed.Full)
