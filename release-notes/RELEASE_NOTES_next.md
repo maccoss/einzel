@@ -235,16 +235,23 @@ become a feature release without being renamed twice.
   image's, judged on the point itself.
 - **A reflected solve's mirror plane is a surface the integrator lands on unless its edge is a
   mirror**: a grounded (Dirichlet) edge or face on the plane gets one surface there, owned by the
-  declared half, in a cross-section whether or not it declares its edges as surfaces and in a
-  volume solve, which declares none of its own. Decided from the boundary condition when the solve
-  is built rather than from the field at each step. A Neumann edge, or a box stopping short of the
-  plane, gets none; both shipped reflected templates have a Neumann edge, and their flights are
-  unchanged.
+  declared half, over the part of the plane the solve's box covers and nowhere beyond it - a
+  crossing outside the box is one field-free drift. A volume solve, which declares no surfaces of
+  its own, gets it on a grounded face; a cross-section declaring `boundaryIsDiscontinuous: false`
+  does not, since that asserts the field has decayed at its edges. Decided from the boundary
+  condition when the solve is built rather than from the field at each step. A Neumann edge, or a
+  box stopping short of the plane by more than a rounding, gets none; both shipped reflected
+  templates have a Neumann edge, and their flights are unchanged.
 - **A cross-section both tilted and reflected runs** again: every command reading one exited 6 with
   an invalid cast while turning its conductors.
-- **A CSV text cell beginning with `=`, `+`, `-`, `@`, a tab or a carriage return** - a conductor's
-  name in `probe --csv` or `render surface --csv` - is written as `"'=..."`, so a spreadsheet shows
-  it as text rather than running it. Numbers are unchanged.
+- **A CSV text cell a spreadsheet would run as a formula** - a conductor's name in `probe --csv` or
+  `render surface --csv` beginning with `=`, `@`, a tab or a carriage return, or with `+` or `-`
+  followed by a digit, a point, an operator or a parenthesis - is written as `"'=..."`, so it is
+  shown as text. A plain name after a sign (`-x`, `-xRod`) is written exactly, numbers are never
+  altered, and `--json` carries every name exactly. A warning running over several lines stays all
+  comments in `probe --csv`, as it already did in `render surface --csv`.
+- **The window draws its layers in the order a still does**: opaque, then depth-biased, then
+  translucent, by one rule.
 - **The note that a word after a bare `--progress` may have been its value** is given for a unit
   after a number in any case (`2.MS`, `5.MM`), and not for a word naming something on disk or a
   name with a unit-like extension (`trap.ps`, `fit.m`).

@@ -3927,5 +3927,20 @@ Two findings from Stage 1 that bear on the spec:
   at its staging name is said to be there; a CSV text cell beginning like a formula is written as
   text; and an overlapping reflection builds no plane face.
 
+  **A thirty-second review, and the plane bounded by the box.** Declared at every y and z, the plane
+  gave an ion crossing it far outside the solve's box a landing and a cut drift on every crossing,
+  where neither half has field. It is a surface now only over the part of the plane the box covers
+  (`PlaneRegion`, a disc for an axisymmetric solve), still decided from geometry and the boundary
+  condition and from no field value: a crossing outside is one analytic advance, the same to the
+  bit as through the union with no plane surface. A cross-section declaring
+  `boundaryIsDiscontinuous: false` gets no plane surface again, whatever its edge - that flag is
+  the author's statement that the field has decayed at the edges - while a volume solve keeps the
+  face rule. An edge short of the plane by no more than a billionth of the cell counts as on it.
+  Also: the pass order of a picture's layers is one rule (`Rasterizer.PassOf`) that the composition
+  the window draws in list order is put in, so a still and the window agree; a leading `+` or `-` in
+  a CSV text cell is guarded only where the cell reads as an expression, so `-xRod` is written
+  exactly; a probe CSV's multi-line warning stays all comments; and a rotated field's conductor
+  queries are its rotated conductors'.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

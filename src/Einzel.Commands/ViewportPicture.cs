@@ -1,3 +1,5 @@
+using Einzel.Render;
+
 namespace Einzel.Commands;
 
 /// <summary>One colored triangle mesh in a composed picture.</summary>
@@ -227,14 +229,22 @@ public static class ViewportPicture
 
         var opacity = Math.Clamp(conductorOpacity, 0.0, 1.0);
 
-        return
+        // In the rasterizer's pass order, so the window - which draws its layers in list order -
+        // draws them as the still does: one rule, not two that happen to agree today.
+        return InDrawOrder(
         [
             new PictureLayer("field", [], Field(outcome), 1.0, WritesDepth: true),
             new PictureLayer("paths", [], Paths(outcome), 1.0, WritesDepth: true),
             new PictureLayer("conductors", Conductors(outcome), [], opacity, WritesDepth: opacity >= 1.0),
             new PictureLayer("density", Density(outcome), [], DensityOpacity, WritesDepth: false),
-        ];
+        ]);
     }
+
+    /// <summary>Layers in the order a still draws them (<see cref="Rasterizer.DrawOrder{T}"/>).</summary>
+    /// <param name="layers">The layers.</param>
+    /// <returns>Them, opaque first, then depth-biased, then translucent, list order kept within each.</returns>
+    public static IReadOnlyList<PictureLayer> InDrawOrder(IEnumerable<PictureLayer> layers) =>
+        Rasterizer.DrawOrder(layers, l => l.Alpha, l => l.DepthBias);
 
     /// <summary>The density layer alone, for a frame of a run that is still going.</summary>
     /// <param name="outcome">The frame.</param>

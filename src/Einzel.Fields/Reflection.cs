@@ -23,13 +23,19 @@ namespace Einzel.Fields;
 /// </para>
 /// </remarks>
 /// <param name="EdgeIsContinuous">
-/// Whether the declared half's edge on the plane keeps the union's field continuous across it by
-/// construction - a Neumann (mirror) edge - so the plane is no surface. False, the safe default,
-/// makes the plane a surface the declared half declares, whatever surfaces the half's own field
-/// declares: an extra landing where the field happens to be continuous costs a step, where a missed
-/// jump costs accuracy.
+/// Whether the union's field is continuous across the plane - a Neumann (mirror) edge, a box
+/// stopping short of the plane, or a cross-section whose author declared
+/// <c>boundaryIsDiscontinuous: false</c> - so the plane is no surface. False, the safe default,
+/// makes the plane a surface the declared half declares over <paramref name="Face"/>, whatever
+/// surfaces the half's own field declares: an extra landing where the field happens to be
+/// continuous costs a step, where a missed jump costs accuracy.
 /// </param>
-public sealed record Reflection(double PlaneX, bool? ImageAbove, bool EdgeIsContinuous = false)
+/// <param name="Face">
+/// The part of the plane the solve's box covers, where a non-mirror edge makes the plane a surface;
+/// null for the whole plane. Beyond it neither half has field on either side, so the plane is no
+/// surface there and a drift across it is not cut.
+/// </param>
+public sealed record Reflection(double PlaneX, bool? ImageAbove, bool EdgeIsContinuous = false, PlaneRegion? Face = null)
 {
     /// <summary>The reflection of a solve, or none.</summary>
     /// <param name="planeX">The declared mirror plane, or null where the solve is not reflected.</param>
@@ -40,8 +46,9 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove, bool EdgeIsCont
     /// Whether the edge on the plane is continuous by construction - a Neumann edge. Decided from the
     /// boundary condition, once, by whoever builds the solve.
     /// </param>
-    public static Reflection? Of(double? planeX, double minX, double maxX, bool edgeIsContinuous = false) =>
-        planeX is { } plane ? new Reflection(plane, SideOf(minX, maxX, plane), edgeIsContinuous) : null;
+    /// <param name="face">The part of the plane the solve's box covers; null for the whole plane.</param>
+    public static Reflection? Of(double? planeX, double minX, double maxX, bool edgeIsContinuous = false, PlaneRegion? face = null) =>
+        planeX is { } plane ? new Reflection(plane, SideOf(minX, maxX, plane), edgeIsContinuous, face) : null;
 
     /// <summary>How a declared half and its image meet at the plane: the side the image takes, or none.</summary>
     /// <param name="minX">The low x edge of the declared half.</param>
@@ -162,10 +169,11 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove, bool EdgeIsCont
 /// <para>
 /// <b>Whether the plane is a surface is the edge's, decided once.</b> The union's normal field goes
 /// from E to -E across the plane, so it jumps unless the half's edge on the plane holds the normal
-/// field at zero - a Neumann mirror. Where it does not, the reflection declares the plane itself,
-/// whether or not the half's own field declares any surface there: a volume solve declares none, and
-/// a cross-section's <c>boundaryIsDiscontinuous</c> says what its own box declares, not whether the
-/// union jumps. That is a property of the
+/// field at zero - a Neumann mirror - or the author has said the field has decayed at the edge
+/// (a cross-section's <c>boundaryIsDiscontinuous: false</c>, Stage 4's rule 1). Where it does not,
+/// the reflection declares the plane itself, over the part of it the solve's box covers, whether or
+/// not the half's own field declares any surface there: a volume solve declares none. Beyond the
+/// box neither half has field, so the plane is no surface there. That is a property of the
 /// boundary condition, known when the solve is built (<see cref="Reflection.EdgeIsContinuous"/>), not
 /// of a field value: deciding it from the field at each point read a driven solve's first channel
 /// rather than its weighted sum, flipped wherever the normal field crossed zero along the plane,
@@ -187,11 +195,13 @@ public sealed class PlaneFace
     private readonly double _length;
     private readonly double _inside;
 
-    // Whether this half declares the plane: the owner, on an edge that is not a mirror. Decided
-    // once, from the boundary condition, and independent of whether the half's own field declares
-    // any surface there - a volume solve declares none, and a cross-section declaring none of its
-    // edges may still have a grounded one on the plane.
+    // Whether this half declares the plane: the owner, where the field is not continuous across it
+    // by construction. Decided once, from the boundary condition, and independent of whether the
+    // half's own field declares any surface there - a volume solve declares none.
     private readonly bool _declares;
+
+    // Where on the plane it declares it: the part the solve's box covers, or all of it.
+    private readonly PlaneRegion? _region;
 
     internal PlaneFace(IElectrostaticField inner, Reflection reflection, bool ownsPlane)
     {
@@ -207,6 +217,7 @@ public sealed class PlaneFace
 
         _plane = reflection.PlaneX;
         _declares = ownsPlane && !reflection.EdgeIsContinuous;
+        _region = reflection.Face;
 
         // The half's length scale: its resolution where it has one, else the plane's distance from
         // the origin, else a millimetre - an analytic field at the origin has no scale of its own.
@@ -219,9 +230,15 @@ public sealed class PlaneFace
         _inside = _plane - (imageSide * PastFraction * _length);
     }
 
-    /// <summary>Whether this half declares the plane as a surface.</summary>
-    /// <remarks>True for the owner where the edge on the plane is not a mirror; the same everywhere on the plane.</remarks>
-    public bool Declares => _declares;
+    /// <summary>Whether this half declares the plane as a surface beneath a point.</summary>
+    /// <param name="y">The point's y.</param>
+    /// <param name="z">The point's z.</param>
+    /// <returns>
+    /// True for the owner, where the edge on the plane is not a mirror, over the part of the plane
+    /// the solve's box covers (<see cref="Reflection.Face"/>). A geometric rule, read from the box
+    /// and the boundary condition and from no field value.
+    /// </returns>
+    public bool Declares(double y, double z) => _declares && (_region?.Covers(y, z) ?? true);
 
     /// <summary>The measure on the side where the half answers, with the plane added where it declares it.</summary>
     /// <param name="position">The point.</param>
@@ -232,7 +249,7 @@ public sealed class PlaneFace
     /// the sign is the half's own and the magnitude never exceeds how far the plane is.
     /// </returns>
     public double Answering(in Vec3 position, double own) =>
-        _declares ? DiscontinuityDistance.Combine(own, Math.Abs(position.X - _plane)) : own;
+        Declares(position.Y, position.Z) ? DiscontinuityDistance.Combine(own, Math.Abs(position.X - _plane)) : own;
 
     /// <summary>The measure at a point on the side where the half answers nothing.</summary>
     /// <param name="position">The point.</param>
@@ -249,7 +266,7 @@ public sealed class PlaneFace
     {
         var distance = Math.Abs(position.X - _plane);
 
-        if (_declares)
+        if (Declares(position.Y, position.Z))
         {
             // The sign Answering has just inside - the half's own where it is a number, positive
             // where it declares nothing, since Combine then takes the plane's distance - flipped.
@@ -270,4 +287,35 @@ public sealed class PlaneFace
     // Whether the half's measure on the plane makes the plane a face of its own: within a tolerance
     // of zero.
     private bool IsFace(double atPlane) => Math.Abs(atPlane) <= FaceTolerance * _length;
+}
+
+/// <summary>The part of a mirror plane a reflected solve's box covers.</summary>
+/// <param name="MinY">The low y bound, or the least radius where <paramref name="Radial"/>.</param>
+/// <param name="MaxY">The high y bound, or the greatest radius where <paramref name="Radial"/>.</param>
+/// <param name="MinZ">The low z bound.</param>
+/// <param name="MaxZ">The high z bound.</param>
+/// <param name="Radial">
+/// Whether the bounds on y are a radius about the x axis - an axisymmetric solve, which covers the
+/// disc its half-plane sweeps - with z unused.
+/// </param>
+/// <remarks>
+/// Inclusive: a point on the box's edge is covered. Builders widen the bounds by a rounding (a
+/// billionth of the cell) so an edge meant to lie on the box is on it.
+/// </remarks>
+public sealed record PlaneRegion(double MinY, double MaxY, double MinZ, double MaxZ, bool Radial = false)
+{
+    /// <summary>Whether the region covers a point of the plane.</summary>
+    /// <param name="y">The point's y.</param>
+    /// <param name="z">The point's z.</param>
+    /// <returns>True inside or on the bounds.</returns>
+    public bool Covers(double y, double z)
+    {
+        if (Radial)
+        {
+            var r = Math.Sqrt((y * y) + (z * z));
+            return r >= MinY && r <= MaxY;
+        }
+
+        return y >= MinY && y <= MaxY && z >= MinZ && z <= MaxZ;
+    }
 }

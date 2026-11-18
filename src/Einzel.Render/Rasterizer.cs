@@ -150,6 +150,36 @@ public sealed record RasterLighting(Func<double, double, double, double> Surface
 /// </remarks>
 public static class Rasterizer
 {
+    /// <summary>The pass a layer is drawn in: one rule, which the still and the window both draw by.</summary>
+    /// <param name="alpha">How opaque the layer is.</param>
+    /// <param name="depthBias">Its depth bias.</param>
+    /// <returns>Biased where it has a bias, otherwise opaque or translucent by its alpha.</returns>
+    /// <remarks>
+    /// The rasterizer draws every opaque layer, then the biased ones, then the translucent ones,
+    /// whatever order they are listed in. A window drawing layers in list order agrees with it only
+    /// where the list is already in this order, so the command layer emits it so
+    /// (<see cref="DrawOrder{T}"/>), and a still and the window cannot disagree about what veils what.
+    /// </remarks>
+    public static RasterPass PassOf(double alpha, double depthBias) =>
+        depthBias > 0.0 ? RasterPass.Biased
+            : alpha >= 1.0 ? RasterPass.Opaque
+            : RasterPass.Translucent;
+
+    /// <summary>Layers in the order the rasterizer draws them: by pass, list order kept within one.</summary>
+    /// <typeparam name="T">The layer type.</typeparam>
+    /// <param name="layers">The layers.</param>
+    /// <param name="alpha">A layer's opacity.</param>
+    /// <param name="depthBias">A layer's depth bias.</param>
+    /// <returns>Them, opaque first, then biased, then translucent.</returns>
+    public static IReadOnlyList<T> DrawOrder<T>(IEnumerable<T> layers, Func<T, double> alpha, Func<T, double> depthBias)
+    {
+        ArgumentNullException.ThrowIfNull(layers);
+        ArgumentNullException.ThrowIfNull(alpha);
+        ArgumentNullException.ThrowIfNull(depthBias);
+
+        return [.. layers.OrderBy(l => PassOf(alpha(l), depthBias(l)))];
+    }
+
     /// <summary>Draws layers, in order, into an RGB image.</summary>
     /// <param name="layers">What to draw, in the order to draw it.</param>
     /// <param name="matrix">Column-major 4x4 from millimetres to clip space.</param>
@@ -269,9 +299,9 @@ public static class Rasterizer
         var rowsPerBand = (int)Math.Clamp(samplesPerBand / samplesPerRow, 1L, height);
 
         var rgb = new byte[3 * width * height];
-        var biased = layers.Where(l => l.DepthBias > 0.0).ToList();
-        var opaque = layers.Where(l => !(l.DepthBias > 0.0) && l.Alpha >= 1.0).ToList();
-        var translucent = layers.Where(l => !(l.DepthBias > 0.0) && !(l.Alpha >= 1.0)).ToList();
+        var biased = layers.Where(l => PassOf(l.Alpha, l.DepthBias) == RasterPass.Biased).ToList();
+        var opaque = layers.Where(l => PassOf(l.Alpha, l.DepthBias) == RasterPass.Opaque).ToList();
+        var translucent = layers.Where(l => PassOf(l.Alpha, l.DepthBias) == RasterPass.Translucent).ToList();
 
         var canvas = new Canvas(
             width * supersample, rowsPerBand * supersample, matrix, height * supersample, biased.Count > 0);
@@ -816,4 +846,17 @@ public static class Rasterizer
         private static double Edge(double ax, double ay, double bx, double by, double px, double py) =>
             ((bx - ax) * (py - ay)) - ((by - ay) * (px - ax));
     }
+}
+
+/// <summary>The pass a raster layer is drawn in, in the order the passes run.</summary>
+public enum RasterPass
+{
+    /// <summary>Opaque, unbiased: drawn first, into depth.</summary>
+    Opaque,
+
+    /// <summary>Depth-biased: resolved together against the opaque depth.</summary>
+    Biased,
+
+    /// <summary>Translucent: drawn last, over both.</summary>
+    Translucent,
 }

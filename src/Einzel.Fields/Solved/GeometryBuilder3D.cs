@@ -296,7 +296,8 @@ public static class GeometryBuilder3D
     /// <summary>The geometry's reflection: its plane and how the halves meet, decided once.</summary>
     /// <remarks>
     /// Continuous where the face on the plane is Neumann or the box stops short of it, and a surface
-    /// otherwise. A volume solve
+    /// otherwise, over the part of the plane the box covers. A volume solve has no
+    /// <c>boundaryIsDiscontinuous</c> to say otherwise. A volume solve
     /// declares no discontinuity surfaces of its own (<see cref="SolvedField3D"/>), so the plane is
     /// declared by the reflection itself (<see cref="PlaneFace"/>): with a grounded face on the plane
     /// the union's normal field goes from E to -E there, and nothing else would say so.
@@ -311,10 +312,16 @@ public static class GeometryBuilder3D
         var side = Reflection.SideOf(geometry.MinX, geometry.MaxX, plane);
         var face = geometry.Faces.Count == 6 ? geometry.Faces[side == true ? 1 : 0] : EdgeCondition.Dirichlet;
 
-        // A box stopping short of the plane leaves a gap with no field on either side.
-        var gap = side == true ? geometry.MaxX < plane : side == false && geometry.MinX > plane;
+        // A box stopping short of the plane - by more than a billionth of the cell, so an edge meant
+        // to lie on it is on it - leaves a gap with no field on either side.
+        var tolerance = 1e-9 * geometry.CellSize;
+        var gap = side == true ? plane - geometry.MaxX > tolerance : side == false && geometry.MinX - plane > tolerance;
 
-        return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann || gap);
+        // A surface only over the part of the plane the box covers.
+        var region = new PlaneRegion(
+            geometry.MinY - tolerance, geometry.MaxY + tolerance, geometry.MinZ - tolerance, geometry.MaxZ + tolerance);
+
+        return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann || gap, region);
     }
 
     private static DirichletMask3D Assemble(

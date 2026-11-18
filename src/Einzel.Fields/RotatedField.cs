@@ -48,6 +48,8 @@ public sealed class RotatedField : IElectrostaticField, IConductorBounded
     // bits. Asserted by ZeroRotationIsTheIdentity rather than assumed.
     private readonly bool _rotates;
 
+    private readonly RotatedConductors? _conductors;
+
     /// <summary>Rotates a field.</summary>
     /// <param name="inner">The field of the unrotated geometry.</param>
     /// <param name="halfTurns">
@@ -66,6 +68,10 @@ public sealed class RotatedField : IElectrostaticField, IConductorBounded
         this.centreZ = centreZ;
         _rotates = halfTurns != 0.0;
         HalfTurns = halfTurns;
+
+        // The conductor queries are the conductors' own, through this rotation: one statement of
+        // how a rotated conductor answers, shared with a tilted element's leaves (Around).
+        _conductors = inner is IConductorBounded bounded ? new RotatedConductors(bounded, this) : null;
     }
 
     /// <summary>Conductors through this field's rotation: the same axis, angle, sine and cosine.</summary>
@@ -181,22 +187,16 @@ public sealed class RotatedField : IElectrostaticField, IConductorBounded
     /// rotated electrode at the right place.
     /// </remarks>
     public double SignedDistanceToConductor(in Vec3 position) =>
-        _inner is IConductorBounded bounded
-            ? bounded.SignedDistanceToConductor(ToLocal(in position))
-            : double.PositiveInfinity;
+        _conductors?.SignedDistanceToConductor(in position) ?? double.PositiveInfinity;
 
     /// <inheritdoc/>
-    public string? ConductorAt(in Vec3 position) =>
-        _inner is IConductorBounded bounded ? bounded.ConductorAt(ToLocal(in position)) : null;
+    public string? ConductorAt(in Vec3 position) => _conductors?.ConductorAt(in position);
 
     /// <inheritdoc/>
     public double NearestConductor(in Vec3 position, out string? name)
     {
         name = null;
-
-        return _inner is IConductorBounded bounded
-            ? bounded.NearestConductor(ToLocal(in position), out name)
-            : double.PositiveInfinity;
+        return _conductors?.NearestConductor(in position, out name) ?? double.PositiveInfinity;
     }
 }
 

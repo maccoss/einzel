@@ -1486,9 +1486,11 @@ public static class ProbeCommand
             text.Append(invariant, $"# field at t = {instant:G17} us\n");
         }
 
+        // A message may run over several lines; each one stays a comment, or the second line would
+        // be read as a row of the table.
         foreach (var warning in outcome.Warnings)
         {
-            text.Append(invariant, $"# {warning.Severity}: {warning.Code}: {warning.Message}\n");
+            text.Append(Csv.Comment(string.Create(invariant, $"{warning.Severity}: {warning.Code}: {warning.Message}")));
         }
 
         // B columns only for a model that declares a magnet, so every other model's CSV is the

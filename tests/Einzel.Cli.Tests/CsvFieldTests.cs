@@ -22,7 +22,8 @@ public sealed class CsvFieldTests
 
     /// <summary>
     /// A text cell beginning like a formula is written as text a spreadsheet will not evaluate: a
-    /// single quote before it, inside quotes. A cell that only holds such a character later is not.
+    /// single quote before it, inside quotes. A cell that only holds such a character later is not,
+    /// nor is a plain name after a sign: <c>-x</c> and <c>-xRod</c> are written exactly.
     /// </summary>
     /// <remarks>
     /// A conductor named <c>=HYPERLINK(...)</c> was written bare, and a spreadsheet opening the
@@ -31,7 +32,13 @@ public sealed class CsvFieldTests
     [Theory]
     [InlineData("=HYPERLINK(\"x\")", "\"'=HYPERLINK(\"\"x\"\")\"")]
     [InlineData("+1", "\"'+1\"")]
-    [InlineData("-plate", "\"'-plate\"")]
+    [InlineData("-1+1", "\"'-1+1\"")]
+    [InlineData("+SUM(A1)", "\"'+SUM(A1)\"")]
+    [InlineData("-.5", "\"'-.5\"")]
+    [InlineData("-x", "-x")]
+    [InlineData("+y", "+y")]
+    [InlineData("-xRod", "-xRod")]
+    [InlineData("-", "-")]
     [InlineData("@SUM(A1)", "\"'@SUM(A1)\"")]
     [InlineData("\t=1", "\"'\t=1\"")]
     [InlineData("\r=1", "\"'\r=1\"")]
@@ -64,6 +71,38 @@ public sealed class CsvFieldTests
         Assert.Contains("-1.5,-2", row, StringComparison.Ordinal);
         Assert.Contains(",-5", row, StringComparison.Ordinal);
         Assert.EndsWith(",insideConductor,\"'=cmd\"", row, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A warning running over several lines stays all comments in a probe profile, as in the
+    /// surface table: no line of it is read as a row.
+    /// </summary>
+    /// <remarks>The probe wrote the message whole after one <c>#</c>, so its second line was a row.</remarks>
+    [Fact]
+    public void AProbeProfilesMultiLineWarningIsAllComments()
+    {
+        var outcome = new ProbeOutcome
+        {
+            ModelPath = "m.json",
+            TimeVarying = false,
+            Elements = [],
+            Samples =
+            [
+                new ProbeSample(0, [1.0, 2.0, 3.0], 5.0, [0.0, 0.0, 0.0], 0.0, "ok", null, 0.0, [], null),
+            ],
+            Warnings =
+            [
+                new ValidityWarning("probe.test", "first line\nsecond, line\r\nthird", WarningSeverity.Qualified),
+            ],
+        };
+
+        var lines = ProbeCommand.ToCsv(outcome).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var header = Array.FindIndex(lines, l => l.StartsWith("x_mm,", StringComparison.Ordinal));
+
+        Assert.Equal(3, header);
+        Assert.All(lines[..header], l => Assert.StartsWith("# ", l, StringComparison.Ordinal));
+        Assert.Equal(2, lines.Length - header);
+        Assert.Equal("# third", lines[2]);
     }
 
     [Fact]

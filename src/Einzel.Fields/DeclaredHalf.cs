@@ -44,8 +44,9 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     /// <inheritdoc/>
     /// <remarks>
     /// The inner field's run - gating only takes field away, so wherever the inner field is free
-    /// the gated one is too - cut at the plane where the ray crosses it and this half declares it a
-    /// surface (<see cref="PlaneFace.Declares"/>). An analytic drift ends where a surface is,
+    /// the gated one is too - cut at the plane where the ray crosses it and this half declares a
+    /// surface there (<see cref="PlaneFace.Declares"/>): only over the part of the plane the solve's
+    /// box covers, so a drift crossing it beyond the box is one advance. An analytic drift ends where a surface is,
     /// and a run that reached past the plane on the strength of an inner field free on both sides
     /// of it would jump the one surface the sum declares there.
     /// </remarks>
@@ -65,7 +66,9 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
             return run;
         }
 
-        return _face.Declares ? toPlane : run;
+        var y = position.Y + (toPlane * direction.Y);
+        var z = position.Z + (toPlane * direction.Z);
+        return _face.Declares(y, z) ? toPlane : run;
     }
 
     /// <inheritdoc/>

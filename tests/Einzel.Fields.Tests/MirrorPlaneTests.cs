@@ -615,20 +615,23 @@ public sealed class MirrorPlaneTests
     /// since the answer is the geometry's.
     /// </summary>
     /// <remarks>
-    /// Whether the solve declares its own edges is no part of it: a Dirichlet edge with
-    /// <c>boundaryIsDiscontinuous: false</c> was marked continuous and declared nothing, while the
-    /// union's normal field went from E to -E across it.
+    /// <c>boundaryIsDiscontinuous: false</c> is the author's statement that the field has decayed
+    /// at the edges (Stage 4's rule 1), honoured at the plane too: no surface, whatever the edge. An
+    /// edge an ulp short of the plane - meant to lie on it - is on it: a stop-short test comparing
+    /// the two exactly took it for a gap and declared nothing. And beyond the box's y the plane is no
+    /// surface: neither half has field there.
     /// </remarks>
     [Theory]
-    [InlineData(BoundaryKind.Neumann, true, false)]
-    [InlineData(BoundaryKind.Dirichlet, true, true)]
-    [InlineData(BoundaryKind.Neumann, false, false)]
-    [InlineData(BoundaryKind.Dirichlet, false, true)]
-    public void ASolvedEdgeDecidesThePlane(BoundaryKind edge, bool discontinuous, bool surface)
+    [InlineData(BoundaryKind.Neumann, true, 0.0, false)]
+    [InlineData(BoundaryKind.Dirichlet, true, 0.0, true)]
+    [InlineData(BoundaryKind.Neumann, false, 0.0, false)]
+    [InlineData(BoundaryKind.Dirichlet, false, 0.0, false)]
+    [InlineData(BoundaryKind.Dirichlet, true, 1e-14, true)]
+    public void ASolvedEdgeDecidesThePlane(BoundaryKind edge, bool discontinuous, double shortBy, bool surface)
     {
         var solve = new CompiledSolvedField
         {
-            MinX = 0.0, MaxX = Plane, MinY = 0.0, MaxY = 0.012,
+            MinX = 0.0, MaxX = Plane - shortBy, MinY = 0.0, MaxY = 0.012,
             CellSize = 0.5e-3, Tolerance = 1e-10,
             RightEdge = edge,
             BoundaryIsDiscontinuous = discontinuous,
@@ -649,6 +652,12 @@ public sealed class MirrorPlaneTests
 
         Assert.Equal(surface, before != after);
         Assert.Equal(!surface, GeometryBuilder.ReflectionOf(solve)!.EdgeIsContinuous);
+
+        // Above the box, where neither half has field: no surface at the plane, and a drift along x
+        // across it is not cut there.
+        Assert.Equal(
+            Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, 0.02, 0.0))),
+            Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.02, 0.0))));
     }
 
     /// <summary>
@@ -719,13 +728,14 @@ public sealed class MirrorPlaneTests
     /// through it, and the union reporting no surface.
     /// </remarks>
     [Theory]
-    [InlineData(BoundaryKind.Neumann, false)]
-    [InlineData(BoundaryKind.Dirichlet, true)]
-    public void AVolumeSolveTakesThePlaneFromItsFace(BoundaryKind face, bool surface)
+    [InlineData(BoundaryKind.Neumann, 0.0, false)]
+    [InlineData(BoundaryKind.Dirichlet, 0.0, true)]
+    [InlineData(BoundaryKind.Dirichlet, 1e-14, true)]
+    public void AVolumeSolveTakesThePlaneFromItsFace(BoundaryKind face, double shortBy, bool surface)
     {
         var faces = new List<BoundaryKind> { BoundaryKind.Dirichlet, face, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet };
         var geometry = new Einzel.Fields.Solved.Geometry3D(
-            0.0, -0.006, -0.006, Plane, 0.006, 0.006, 1e-3,
+            0.0, -0.006, -0.006, Plane - shortBy, 0.006, 0.006, 1e-3,
             [
                 new CompiledElectrode3D
                 {
@@ -748,6 +758,14 @@ public sealed class MirrorPlaneTests
         var after = Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.0, 0.0)));
 
         Assert.Equal(surface, before != after);
+
+        // Beyond the box in y or z, where neither half has field: no surface.
+        foreach (var (y, z) in new[] { (0.01, 0.0), (0.0, 0.01) })
+        {
+            Assert.Equal(
+                Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, y, z))),
+                Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, y, z))));
+        }
     }
 
     /// <summary>
