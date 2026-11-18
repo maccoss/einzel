@@ -1485,7 +1485,7 @@ public static class SurfaceCommand
             var textHeight = ScaleIndicator.TextHeightFor(width, height);
             var widest = new[] { low, high, 0.0 }.Concat(surface.Plateaus.Select(p => p.Height))
                 .Where(double.IsFinite)
-                .Max(v => StrokeFont.Width($"{Format(v, LabelScale.Of(low, high))} {surface.Unit}", textHeight));
+                .Max(v => StrokeFont.Width($"{Format(v, LabelScale.OfBar(low, high))} {surface.Unit}", textHeight));
             var reachPx = Math.Max(StrokeFont.Width("cycle mean", textHeight), widest) + (1.6 * textHeight) + 8.0;
             var liftPx = 3.0 * textHeight;
             var fitted = matrix;
@@ -1761,6 +1761,17 @@ public static class SurfaceCommand
         /// <returns>The choice every label on it is written with.</returns>
         public static LabelScale Of(double low, double high) =>
             For(Math.Max(double.IsFinite(low) ? Math.Abs(low) : 0.0, double.IsFinite(high) ? Math.Abs(high) : 0.0), high - low);
+
+        /// <summary>The scale for the labels of a bar drawn from earth to a range's ends.</summary>
+        /// <param name="low">The range's lower end.</param>
+        /// <param name="high">Its upper end.</param>
+        /// <returns>The choice, from the span the bar actually draws: earth to the farther end.</returns>
+        /// <remarks>
+        /// A surface's bar runs from <c>min(low, 0)</c> to <c>max(high, 0)</c>, and its labels are
+        /// read against that: precision taken from <c>high - low</c> alone labelled a 0 to 1234.5 V
+        /// bar "1234.50003" for a range a few microvolts wide.
+        /// </remarks>
+        public static LabelScale OfBar(double low, double high) => Of(Math.Min(low, 0.0), Math.Max(high, 0.0));
 
         /// <summary>The scale for labels whose largest magnitude and span are given.</summary>
         /// <param name="largest">The largest magnitude on the scale.</param>
@@ -2216,47 +2227,27 @@ public static class SurfaceCommand
 
         var strokes = new List<OverlayStroke> { new([bottom.X, bottom.Y, topPx.X, topPx.Y], ir, ig, ib) };
         var texts = new List<OverlayText>();
-        var placed = new List<double>();
-        var labels = LabelScale.Of(low, high);
 
-        void Tick(double value, bool force)
-        {
-            if (!double.IsFinite(value))
-            {
-                return;
-            }
-
-            var (px, py) = Pixel(bar.X, value * mmPerUnit, bar.Z);
-
-            if (!force && placed.Any(p => Math.Abs(p - py) < 1.5 * textHeight))
-            {
-                return;
-            }
-
-            var label = $"{Format(value, labels)} {surface.Unit}";
-
-            // A flat scale writes every label alike: one tick and one label, not a column of the
-            // same text over ticks a rounding apart.
-            if (labels.Flat && texts.Any(t => t.Text == label))
-            {
-                return;
-            }
-
-            placed.Add(py);
-            strokes.Add(new OverlayStroke([px - tick, py, px, py], ir, ig, ib));
-
-            var labelWidth = StrokeFont.Width(label, textHeight);
-            texts.Add(new OverlayText(label, px - tick - (0.4 * textHeight) - (0.5 * labelWidth), py, textHeight, ir, ig, ib));
-        }
-
-        foreach (var value in ScaleTicks(
+        var values = ScaleTicks(
             low,
             high,
             surface.Plateaus.OrderByDescending(p => p.Samples).Select(p => p.Height),
             v => Pixel(bar.X, v * mmPerUnit, bar.Z).Y,
-            textHeight))
+            textHeight);
+
+        foreach (var (value, label) in ScaleMarks(low, high, values, surface.Unit))
         {
-            Tick(value, force: true);
+            var (px, py) = Pixel(bar.X, value * mmPerUnit, bar.Z);
+
+            // Every requested mark keeps its tick; a label is left off only where it would repeat
+            // one already written.
+            strokes.Add(new OverlayStroke([px - tick, py, px, py], ir, ig, ib));
+
+            if (label is not null)
+            {
+                var labelWidth = StrokeFont.Width(label, textHeight);
+                texts.Add(new OverlayText(label, px - tick - (0.4 * textHeight) - (0.5 * labelWidth), py, textHeight, ir, ig, ib));
+            }
         }
 
         // What instant the heights are, above the bar: a picture of a driven field is a frame.
@@ -2270,6 +2261,42 @@ public static class SurfaceCommand
         }
 
         return new RasterOverlay(strokes, texts, ScaleIndicator.LineWidthPx);
+    }
+
+    /// <summary>
+    /// The scale's marks and what each is labelled: written with one notation and precision from
+    /// the span the bar draws, and a label that would repeat one already written left off - its
+    /// tick still drawn.
+    /// </summary>
+    /// <param name="low">The lowest value of the surface.</param>
+    /// <param name="high">The highest value of the surface.</param>
+    /// <param name="values">The values marked, as <see cref="ScaleTicks"/> chose them.</param>
+    /// <param name="unit">The unit, after each label.</param>
+    /// <returns>Each value, with its label or null where it shares the label above it.</returns>
+    /// <remarks>
+    /// Two marks a rounding apart - on a bar from earth to 1000 V, the top and a plateau a
+    /// nanovolt below it - write the same text, and the first version dropped the repeat together
+    /// with its tick on a flat scale: a requested mark, earth or a plateau, gone without a word.
+    /// Every mark is kept; repeated text is merged into the one label.
+    /// </remarks>
+    internal static IReadOnlyList<(double Value, string? Label)> ScaleMarks(double low, double high, IEnumerable<double> values, string unit)
+    {
+        var labels = LabelScale.OfBar(low, high);
+        var written = new HashSet<string>(StringComparer.Ordinal);
+        var marks = new List<(double, string?)>();
+
+        foreach (var value in values)
+        {
+            if (!double.IsFinite(value))
+            {
+                continue;
+            }
+
+            var label = $"{Format(value, labels)} {unit}";
+            marks.Add((value, written.Add(label) ? label : null));
+        }
+
+        return marks;
     }
 
     /// <summary>

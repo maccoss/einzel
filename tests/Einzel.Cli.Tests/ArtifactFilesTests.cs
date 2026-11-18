@@ -296,6 +296,7 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     [InlineData("copy")]
     [InlineData("original")]
     [InlineData("blocked")]
+    [InlineData("unreadable")]
     public void AFailedReplaceLeavingABackupIsResolved(string left)
     {
         Directory.CreateDirectory(_root);
@@ -325,6 +326,12 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
                     File.Move(target, backup);
                     File.WriteAllBytes(target, [9]);
                     break;
+                case "unreadable":
+                    // A backup beside an untouched target that cannot be compared with it - a
+                    // file locked against reading. Whether it was replaced cannot be told.
+                    File.WriteAllBytes(backup, [7]);
+                    ArtifactFiles.Comparing.Value = (_, _) => throw new IOException("locked");
+                    break;
                 default:
                     // And with something at the target no rename of a file can replace.
                     File.Move(target, backup);
@@ -344,10 +351,21 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         finally
         {
             ArtifactFiles.Replacing.Value = null;
+            ArtifactFiles.Comparing.Value = null;
         }
 
         output.WriteLine(refusal.Error.Constraint);
         Assert.Equal([1], File.ReadAllBytes(first));
+
+        if (left == "unreadable")
+        {
+            // Neither touched: the target is not restored over, and the backup is not deleted.
+            Assert.Equal([2], File.ReadAllBytes(second));
+            Assert.Equal([7], File.ReadAllBytes(backupAt!));
+            Assert.Contains($"could not be told whether {second} was replaced: a copy of its original is at {backupAt}", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.DoesNotContain("is now at", refusal.Error.Constraint, StringComparison.Ordinal);
+            return;
+        }
 
         if (left == "blocked")
         {

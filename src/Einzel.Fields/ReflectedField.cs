@@ -194,48 +194,12 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
     {
         if (!Contributes(in position))
         {
-            var onPlane = new Vec3(_reflection.PlaneX, position.Y, position.Z);
-
-            var atPlane = _inner.SignedDistanceToDiscontinuity(in onPlane);
-            var length = Length;
-
-            if (Math.Abs(atPlane) > FaceTolerance * length)
-            {
-                // No face on the plane, so nothing jumps there: the image's own measure where it
-                // starts to answer, held constant across this side - continuous with it at the
-                // plane and changing sign nowhere here. Infinity here, beside a finite value
-                // beyond the plane, was a change of sign at a plane where nothing is
-                // discontinuous - a millimetre from a declared box's real edge when the box
-                // stops short of the plane, the paired-surface layout that once cost an ion
-                // 2.6e-4 of its energy.
-                return atPlane;
-            }
-
-            // The sign the inner field gives just past its face on the plane - the side this point
-            // mirrors to - so the change of sign is at the plane whichever way round the inner
-            // field counts, and no further surface of the inner field reaches this side.
-            var past = new Vec3(_reflection.PlaneX + ((_reflection.ImageAbove == true ? 1.0 : -1.0) * PastFraction * length), position.Y, position.Z);
-            return Math.CopySign(Math.Abs(position.X - _reflection.PlaneX), _inner.SignedDistanceToDiscontinuity(in past));
+            return _reflection.WhereAbsent(_inner, in position);
         }
 
         var mirrored = Reflect(in position);
         return _inner.SignedDistanceToDiscontinuity(in mirrored);
     }
-
-    // Both as fractions of the inner field's own length scale, as the shared-face check takes
-    // 1e-9 of the finest spacing: how near zero its discontinuity measure must be on the plane for
-    // the plane to be a face, and how far past the plane its sign is read. Fixed lengths in metres
-    // were too tight for a kilometre of geometry and too loose for a micron.
-    private const double FaceTolerance = 1e-9;
-    private const double PastFraction = 1e-6;
-
-    // The inner field's length scale: its resolution where it has one, else the plane's own
-    // distance from the origin, else a millimetre - an analytic field at the origin has no scale
-    // of its own to take.
-    private double Length =>
-        double.IsFinite(_inner.ResolutionLength) && _inner.ResolutionLength > 0.0 ? _inner.ResolutionLength
-        : _reflection.PlaneX != 0.0 ? Math.Abs(_reflection.PlaneX)
-        : 1e-3;
 
     /// <inheritdoc/>
     public double ResolutionLength => _inner.ResolutionLength;

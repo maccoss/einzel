@@ -67,7 +67,7 @@ public static class ProjectCommands
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
 
-        var text = namePath is null ? CatalogCommand.Read(kind, name) : CatalogCommand.Read(kind, name, namePath);
+        var text = CatalogCommand.Read(kind, name, namePath ?? CatalogCommand.NamePath);
         var absolute = Path.GetFullPath(destination);
 
         // Refusing rather than overwriting. A model is the input a whole study

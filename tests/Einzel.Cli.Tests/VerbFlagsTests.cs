@@ -115,8 +115,8 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     }
 
     private const string Readers = "(?:TryNumberFlag|TryWholeFlag|TryChoiceFlag)";
-    private static readonly Regex ReadPattern = new(@"(?:\.Has|\.Value|\.PathValue|\.Values)\(""([a-z0-9-]+)""\)|Try\w*Flag\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
-    private static readonly Regex ValuePattern = new(@"(?:\.Value|\.PathValue|\.Values)\(""([a-z0-9-]+)""\)|" + Readers + @"\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    private static readonly Regex ReadPattern = new(@"(?:\.Has|\.Value|\.Values)\(""([a-z0-9-]+)""\)|\.PathValue\(PathOption\.([A-Za-z]+)\)|Try\w*Flag\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
+    private static readonly Regex ValuePattern = new(@"(?:\.Value|\.Values)\(""([a-z0-9-]+)""\)|\.PathValue\(PathOption\.([A-Za-z]+)\)|" + Readers + @"\(options, ""([a-z0-9-]+)""", RegexOptions.Compiled);
     private static readonly Regex BarePattern = new(@"foreach \(var bare in new\[\] \{([^}]*)\}", RegexOptions.Compiled);
 
     private static HashSet<string> Walk(string method, Dictionary<string, string> bodies, HashSet<string> seen, Regex pattern)
@@ -139,7 +139,11 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
             }
             else
             {
-                found.Add(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value);
+                // A path flag is read by its typed key, PathOption.Project, and named here as the
+                // command line spells it.
+                found.Add(m.Groups[1].Success ? m.Groups[1].Value
+                    : m.Groups[2].Success ? VerbFlags.NameOf(Enum.Parse<PathOption>(m.Groups[2].Value))
+                    : m.Groups[3].Value);
             }
         }
 
@@ -363,6 +367,8 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     [InlineData("--progress 2026-trap.json", null)]
     [InlineData("--progress 2026-trap.json extra", null)]
     [InlineData("--progress 3d/lens", null)]
+    [InlineData("--progress 1.e5x m.json", "'1.e5x'")]
+    [InlineData("--progress 2.s", "'2.s'")]
     [InlineData("--progress m.json extra", null)]
     [InlineData("--progress 1e400 m.json", null)]
     public void AWordThatFollowedABareProgressIsMentionedOnlyWhereItCanBeRight(string flags, string? word)
@@ -566,10 +572,14 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// Every flag read as a path is marked as one: read through <c>PathValue</c>, which refuses an
-    /// unmarked flag, and never through <c>Value</c>, which would let it escape the checks a path
-    /// flag gets - a value of spaces refused, a stray argument pointed at it.
+    /// Every flag read as a path is marked as one: read through the typed <c>PathValue</c>, whose
+    /// keys are the declaration, and never through <c>Value</c>, which would let it escape the
+    /// checks a path flag gets - a value of spaces refused, a stray argument pointed at it.
     /// </summary>
+    /// <remarks>
+    /// <c>PathValue</c> took a string and threw for an unmarked one, which a user would have met as
+    /// an internal error. Typed by <see cref="PathOption"/>, an unmarked path read does not compile.
+    /// </remarks>
     [Fact]
     public void EveryFlagReadAsAPathIsMarked()
     {
@@ -582,15 +592,16 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
 
         var source = string.Concat(Directory.GetFiles(Path.Combine(directory!.FullName, "src", "Einzel.Cli"), "*.cs").Select(File.ReadAllText));
 
-        var asPath = Regex.Matches(source, @"\.PathValue\(""([a-z0-9-]+)""\)").Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+        var asPath = Regex.Matches(source, @"\.PathValue\(PathOption\.([A-Za-z]+)\)").Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
         var asValue = Regex.Matches(source, @"\.Value\(""([a-z0-9-]+)""\)").Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
 
         Assert.NotEmpty(asPath);
-        Assert.All(asPath, f => Assert.True(VerbFlags.IsPath(f), $"--{f} is read as a path and not marked in VerbFlags.Paths"));
         Assert.DoesNotContain(asValue, VerbFlags.IsPath);
 
-        // And reading an unmarked flag as a path is refused, so a mark left off cannot pass quietly.
-        Assert.Throws<InvalidOperationException>(() => CommandLine.Parse(["run", "m.json"]).PathValue("caption"));
+        // Every key is declared once, and the lookups built from the declaration agree with it.
+        Assert.Equal(Enum.GetValues<PathOption>().Order(), VerbFlags.Paths.Select(p => p.Key).Order());
+        Assert.Equal(VerbFlags.Paths.Select(p => p.Flag).ToHashSet(), VerbFlags.PathNames.ToHashSet());
+        Assert.Equal(["out", "csv", "input"], VerbFlags.FileNames);
     }
 
     /// <summary>

@@ -545,19 +545,30 @@ public static class ArtifactFiles
                 // refusal, not swallowed, since the one copy of the user's file is there.
                 var stranded = new List<(string Target, string Backup)>();
 
+                // A file a failed replace left where it could not be told whether the target was
+                // replaced: both kept and named, since restoring over an untouched original - one
+                // only locked against reading - would be the loss this exists to prevent.
+                var unknown = new List<(string Target, string Backup)>();
+
                 if (replacing is { } risk && File.Exists(risk.Backup))
                 {
-                    if (File.Exists(risk.Target) && SameBytes(risk.Backup, risk.Target))
+                    var same = File.Exists(risk.Target) ? Compare(risk.Backup, risk.Target) : Sameness.Different;
+
+                    if (same == Sameness.Same)
                     {
                         // The replace failed with both still there and the target as it was: the
                         // backup is a copy of it, and nothing needs it.
                         TryDelete(risk.Backup);
                     }
+                    else if (same == Sameness.Unknown)
+                    {
+                        unknown.Add(risk);
+                    }
                     else if (!TryRestore(risk.Backup, risk.Target))
                     {
                         // The target is gone, or holds something else - most likely the new
-                        // bytes, with the original under the backup name. Put back either way, as
-                        // a placed file is; where it cannot be, the refusal names both.
+                        // bytes, with the original under the backup name. Put back as a placed
+                        // file is; where it cannot be, the refusal names both.
                         stranded.Add(risk);
                     }
                 }
@@ -599,7 +610,10 @@ public static class ArtifactFiles
                     : "; and it could not be put back as it was: "
                         + string.Join("; ", stranded.Select(s => $"the original of {s.Target} is now at {s.Backup}"));
 
-                if (stranded.Count == 0
+                left += string.Concat(unknown.Select(u =>
+                    $"; and it could not be told whether {u.Target} was replaced: a copy of its original is at {u.Backup}"));
+
+                if (stranded.Count == 0 && unknown.Count == 0
                     && failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
                 {
                     // Not a destination that cannot be written: rolled back, and raised as itself.
@@ -610,7 +624,9 @@ public static class ArtifactFiles
                     flag,
                     Path.GetFullPath(path),
                     failure.Message + left,
-                    stranded.Count == 0 ? null : "move each original back over the file named beside it; nothing of it was deleted");
+                    stranded.Count == 0 && unknown.Count == 0
+                        ? null
+                        : "compare each file with the copy named beside it and keep the one you want; nothing of either was deleted");
             }
             finally
             {
@@ -739,20 +755,30 @@ public static class ArtifactFiles
     }
 
     // Whether two files hold the same bytes; false where either cannot be read.
-    // In fixed-size chunks through two streams, so a film's frame is not read whole twice to
-    // compare it. Any failure reads as "not the same", which sends the backup back over the target
-    // - the safe direction - and never lets an exception out of the rollback it is part of.
-    private static bool SameBytes(string first, string second)
+    // What a comparison of two files found: the same bytes, different bytes, or nothing either way.
+    private enum Sameness
     {
-#pragma warning disable CA1031 // Inside a rollback: whatever goes wrong, the answer is "not known to be the same".
+        Same,
+        Different,
+        Unknown,
+    }
+
+    // In fixed-size chunks through two streams, so a film's frame is not read whole twice. A file
+    // that cannot be read is Unknown - never "different", which would send the backup over a
+    // target that may be the untouched original - and nothing escapes the rollback it is part of.
+    private static Sameness Compare(string first, string second)
+    {
+#pragma warning disable CA1031 // Inside a rollback: whatever goes wrong, the answer is "not known".
         try
         {
+            Comparing.Value?.Invoke(first, second);
+
             using var a = new FileStream(first, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var b = new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
             if (a.Length != b.Length)
             {
-                return false;
+                return Sameness.Different;
             }
 
             var x = new byte[81920];
@@ -764,21 +790,32 @@ public static class ArtifactFiles
 
                 if (read == 0)
                 {
-                    return true;
+                    return Sameness.Same;
                 }
 
-                if (b.ReadAtLeast(y, read, throwOnEndOfStream: false) != read || !x.AsSpan(0, read).SequenceEqual(y.AsSpan(0, read)))
+                if (b.ReadAtLeast(y, read, throwOnEndOfStream: false) != read)
                 {
-                    return false;
+                    return Sameness.Unknown;
+                }
+
+                if (!x.AsSpan(0, read).SequenceEqual(y.AsSpan(0, read)))
+                {
+                    return Sameness.Different;
                 }
             }
         }
         catch (Exception)
         {
-            return false;
+            return Sameness.Unknown;
         }
 #pragma warning restore CA1031
     }
+
+    /// <summary>
+    /// Called with each pair of files a rollback compares: a test's way to make the comparison
+    /// fail, as a file locked against reading does.
+    /// </summary>
+    internal static readonly AsyncLocal<Action<string, string>?> Comparing = new();
 
     // Whether the backup went back; false where it did not, and the caller says where it is.
     private static bool TryRestore(string backup, string path)

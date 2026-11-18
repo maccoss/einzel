@@ -514,4 +514,32 @@ public sealed class MirrorPlaneTests
         Assert.Equal(double.PositiveInfinity, metal.SignedDistanceToConductor(in inside));
         Assert.Null(metal.ConductorAt(in inside));
     }
+
+    /// <summary>
+    /// The declared half declares no surface where it contributes nothing - on the image's side -
+    /// but the plane itself where it has a face there, as the image does on the declared side.
+    /// </summary>
+    /// <remarks>
+    /// Its field and potential were gated on the image's side and its discontinuities were not, so
+    /// a surface the inner field declares beyond its edge stood there as a phantom.
+    /// </remarks>
+    [Fact]
+    public void WhereTheDeclaredHalfIsAbsentItAddsNoSurface()
+    {
+        double Measure(IElectrostaticField field, double x) => field.SignedDistanceToDiscontinuity(new Vec3(x, 0.0, 0.0));
+
+        // A surface 2 mm past the plane, on the image's side: no change of sign across it.
+        var phantom = new Reflection(Plane, ImageAbove: true).Declared(new Edged(Plane + 0.002));
+        Assert.Equal(Math.Sign(Measure(phantom, Plane + 0.001)), Math.Sign(Measure(phantom, Plane + 0.003)));
+        Assert.Equal(Measure(phantom, Plane + 0.001), Measure(phantom, Plane + 0.003));
+
+        // The control: the inner field alone does change sign there.
+        Assert.NotEqual(Math.Sign(new Edged(Plane + 0.002).SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0, 0))),
+            Math.Sign(new Edged(Plane + 0.002).SignedDistanceToDiscontinuity(new Vec3(Plane + 0.003, 0, 0))));
+
+        // A face on the plane is kept: one surface there, its sign changing across it.
+        var faced = new Reflection(Plane, ImageAbove: true).Declared(new Edged(Plane));
+        Assert.NotEqual(Math.Sign(Measure(faced, Plane - 0.001)), Math.Sign(Measure(faced, Plane + 0.001)));
+        Assert.Equal(0.001, Math.Abs(Measure(faced, Plane + 0.001)), 12);
+    }
 }

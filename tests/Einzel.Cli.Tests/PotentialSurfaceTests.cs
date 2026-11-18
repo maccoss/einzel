@@ -2926,6 +2926,13 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal("9e-4", SurfaceCommand.Format(0.0009, small));
         Assert.Equal("8.5e-4", SurfaceCommand.Format(0.00085, small));
 
+        // A bar runs from earth, and its labels are read against the span it draws: a range of a
+        // few microvolts at 1234.5 V on a bar from 0 is written to the bar's three figures.
+        var bar = SurfaceCommand.LabelScale.OfBar(1234.5, 1234.50003);
+        Assert.Equal("1235", SurfaceCommand.Format(1234.50003, bar));
+        Assert.Equal("0", SurfaceCommand.Format(0.0, bar));
+        Assert.Equal("-1.5", SurfaceCommand.Format(-1.5, SurfaceCommand.LabelScale.OfBar(-2.0, -1.0)));
+
         // A small value on a small scale carries the figures the scale needs.
         Assert.Equal("1.0001e-4", SurfaceCommand.Format(1.0001e-4, 3e-8));
 
@@ -2944,6 +2951,28 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal("t=3e-8 µs", SurfaceCommand.Instant(3e-8));
         Assert.Equal("t=1e-4 µs", SurfaceCommand.Instant(1e-4, 1.0));
         Assert.Equal("t=0 µs", SurfaceCommand.Instant(0.0, 1.0));
+    }
+
+    /// <summary>
+    /// The scale's marks are labelled against the span the bar draws, from earth, and a repeated
+    /// label is merged while every requested mark keeps its tick.
+    /// </summary>
+    [Fact]
+    public void EveryRequestedMarkIsKeptAndLabelledOnTheBarsSpan()
+    {
+        // Earth, the top, and a plateau a rounding below it, on a bar from 0 to 1234.50003 V.
+        var marks = SurfaceCommand.ScaleMarks(1234.5, 1234.50003, [0.0, 1234.50003, 1234.50001], "V");
+
+        Assert.Equal([0.0, 1234.50003, 1234.50001], marks.Select(m => m.Value));
+        Assert.Equal("0 V", marks[0].Label);
+        Assert.Equal("1235 V", marks[1].Label);
+
+        // The plateau's text repeats the top's: merged into that one label, its mark kept.
+        Assert.Null(marks[2].Label);
+
+        // A flat scale near earth: the same, never a mark dropped.
+        var flat = SurfaceCommand.ScaleMarks(0.0, 1e-300, [0.0, 1e-300, 0.0], "V");
+        Assert.Equal(3, flat.Count);
     }
 
     /// <summary>The mesh-line counts reported are those of the mesh drawn.</summary>

@@ -42,11 +42,15 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The inner field's, unchanged. A declared half meets its image at the plane only where its
-    /// box ends there, and a solve is field-free outside its box, so gating its field adds no jump
-    /// the inner field does not already declare at its own edge.
+    /// Gated as the image's is, by the one rule (<see cref="Reflection.WhereAbsent"/>): on the
+    /// image's side, where this half contributes nothing, it declares none of its own surfaces -
+    /// only the plane, where it has a face there. It used to declare every surface of the inner
+    /// field there, phantoms where its field had been gated away.
     /// </remarks>
-    public double SignedDistanceToDiscontinuity(in Vec3 position) => inner.SignedDistanceToDiscontinuity(in position);
+    public double SignedDistanceToDiscontinuity(in Vec3 position) =>
+        reflection.DeclaredAnswersAt(position.X)
+            ? inner.SignedDistanceToDiscontinuity(in position)
+            : reflection.WhereAbsent(inner, in position);
 
     /// <inheritdoc/>
     public double ResolutionLength => inner.ResolutionLength;

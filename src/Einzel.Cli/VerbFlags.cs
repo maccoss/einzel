@@ -1,5 +1,21 @@
 namespace Einzel.Cli;
 
+/// <summary>A flag whose value is a path: the only flags <see cref="CommandLine.PathValue"/> reads.</summary>
+public enum PathOption
+{
+    /// <summary><c>--out</c>, a file to write.</summary>
+    Out,
+
+    /// <summary><c>--csv</c>, a table to write.</summary>
+    Csv,
+
+    /// <summary><c>--input</c>, a file to read.</summary>
+    Input,
+
+    /// <summary><c>--project</c>, the project folder.</summary>
+    Project,
+}
+
 /// <summary>The flags one verb reads, and how many positional arguments it takes.</summary>
 /// <param name="Switches">Flags that take no value.</param>
 /// <param name="Values">Flags that take a value.</param>
@@ -39,24 +55,34 @@ public sealed record VerbFlags(
     /// the order a suggestion names them.
     /// </summary>
     /// <remarks>
-    /// The one statement of which flags are paths. A value of spaces is refused for these and no
-    /// others, a stray argument's suggestion names the first file flag a verb has, and
-    /// <see cref="CommandLine.PathValue"/> refuses to read a flag as a path unless it is here - so
-    /// a path flag added without being marked fails the first time it is read, and
-    /// <c>VerbFlagsTests</c> fails at build time if one is read with <c>Value</c> instead.
+    /// The one statement of which flags are paths, keyed by <see cref="PathOption"/>, so a path is
+    /// read with <see cref="CommandLine.PathValue"/> and a flag that is not marked cannot be named
+    /// there at all - it does not compile. A value of spaces is refused for these and no others,
+    /// and a stray argument's suggestion names the first file flag a verb has.
     /// </remarks>
-    public static readonly IReadOnlyList<(string Flag, bool File)> Paths =
+    public static readonly IReadOnlyList<(PathOption Key, string Flag, bool File)> Paths =
     [
-        ("out", true),
-        ("csv", true),
-        ("input", true),
-        ("project", false),
+        (PathOption.Out, "out", true),
+        (PathOption.Csv, "csv", true),
+        (PathOption.Input, "input", true),
+        (PathOption.Project, "project", false),
     ];
+
+    /// <summary>The path flags' names, for a lookup made once.</summary>
+    public static readonly IReadOnlySet<string> PathNames = Paths.Select(p => p.Flag).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>The flags that name a file, in the order a suggestion names them.</summary>
+    public static readonly IReadOnlyList<string> FileNames = [.. Paths.Where(p => p.File).Select(p => p.Flag)];
+
+    /// <summary>A path flag's name on the command line.</summary>
+    /// <param name="key">The flag.</param>
+    /// <returns>Its name, without dashes.</returns>
+    public static string NameOf(PathOption key) => Paths.First(p => p.Key == key).Flag;
 
     /// <summary>Whether a flag's value is a path.</summary>
     /// <param name="flag">The flag, without its dashes.</param>
     /// <returns>True for a flag in <see cref="Paths"/>.</returns>
-    public static bool IsPath(string flag) => Paths.Any(p => p.Flag == flag);
+    public static bool IsPath(string flag) => PathNames.Contains(flag);
 
     /// <summary>
     /// Every verb's flags, keyed by the verb - or, where it has sub-verbs that read different

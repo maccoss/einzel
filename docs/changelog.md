@@ -3857,5 +3857,17 @@ Two findings from Stage 1 that bear on the spec:
   biased layer, overlap on screen: 611 to 12,960 of 312,260 bytes on four templates compared
   against the previous build, where the later line had won.
 
+  **A twenty-seventh review.** The biased-layer bookkeeping is gone: opaque layers are drawn first,
+  biased layers are resolved together against the opaque depth (the nearest passing fragment of a
+  sample composited) and translucent layers come last, so every order of a layer list gives one
+  picture - the four surface pictures are identical to the previous build's, and translucent layers
+  listed before opaque ones now blend over them. A rollback that cannot read a backup to compare it
+  keeps both files and says it could not tell, instead of restoring over a file that may be the
+  untouched original. Bar labels take their precision from the span the bar draws, from earth, and
+  a repeated label is merged with every requested tick kept. Only named file extensions make a
+  word a path for the note after `--progress`. The declared half declares no surface on the
+  image's side, through the same rule as the image (`Reflection.WhereAbsent`). Path flags are read
+  by a typed key (`PathOption`), so an unmarked one cannot be read as a path at all.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.
