@@ -72,7 +72,8 @@ public sealed record RasterLine(
 /// <param name="DepthBias">
 /// How much nearer than its geometry the layer is depth-tested, in clip-space depth units: a
 /// wire mesh drawn exactly on a surface has the surface's depth, and without a bias whether a
-/// line pixel survives the test is a coin toss on rounding.
+/// line pixel survives the test is a coin toss on rounding. Only the test is biased: a layer that
+/// writes depth stores its true depth, so it hides only what is behind its geometry.
 /// </param>
 /// <param name="Name">What the layer is, for a refusal to name; null where it has no name.</param>
 public sealed record RasterLayer(
@@ -463,10 +464,13 @@ public static class Rasterizer
                             continue;
                         }
 
-                        var depth = (w0 * p0.Z) + (w1 * p1.Z) + (w2 * p2.Z) - bias;
+                        // The bias moves the test, not the surface: what is stored is the true
+                        // depth, so a biased layer that writes depth hides what is behind its
+                        // geometry and not what lies between its geometry and the bias.
+                        var depth = (w0 * p0.Z) + (w1 * p1.Z) + (w2 * p2.Z);
                         var index = ((py - _top) * _width) + px;
 
-                        if (!(depth < _depth[index]))
+                        if (!(depth - bias < _depth[index]))
                         {
                             continue;
                         }
@@ -542,10 +546,11 @@ public static class Rasterizer
                             continue;
                         }
 
-                        var depth = a.Z + (t * (b.Z - a.Z)) - bias;
+                        // Tested biased, stored true, as a mesh is.
+                        var depth = a.Z + (t * (b.Z - a.Z));
                         var index = ((py - _top) * _width) + px;
 
-                        if (!(depth < _depth[index]))
+                        if (!(depth - bias < _depth[index]))
                         {
                             continue;
                         }

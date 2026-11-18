@@ -909,8 +909,12 @@ render spec's `atSeconds` - is located in the document.
 
 **Every verb refuses a malformed command line, before it does anything** (`Program.Malformed`),
 against its own flags (`VerbFlags.ByVerb`): a flag the verb does not read (`unknown flag --no-scales
-for render surface`), a flag it reads as a value given none, and more positional arguments than it
-takes. Under `--json` the refusal is also on stdout as JSON - `{"ran": false, "errors": [...]}`, each
+for render surface`), a flag it reads as a value given none - or given an empty one, `--out=`, which
+reached `Path.GetFullPath("")` and exited 6 - and more positional arguments than it takes. **An
+implicit section** (`render --dry-run m.json`, the model after the flags) is held to the section's
+flags and its one model: it had no registry entry, so `render --dry-run m.json --widht-mm 80` drew the
+default width with exit 0. **A sub-verb a verb does not have** (`ext bogus`, `agents bogus`, `render
+bogus` with the word first) is refused at `/args/0` naming the ones it has. Under `--json` the refusal is also on stdout as JSON - `{"ran": false, "errors": [...]}`, each
 error with its code, the flag or argument as its `path` (`/args/--out`), and a suggestion - so an
 agent never gets an empty stdout and a bare exit 1. `--json` and `--help` are accepted by every verb,
 and a command line asking for `--help`, or naming no verb this knows, is left to the verb exactly as
@@ -983,8 +987,9 @@ nothing read. **No destination may be a file the command reads, or another desti
 `--out model.json` used to replace the model with its own picture. **And a write that fails part
 way puts back what was there**, where it used to delete it.
 
-**Open: `run` has no `--dry-run`.** The CLI contract (CLI-4) asks for `--dry-run` on every
-mutating command, and `run` writes `results/` and a manifest. Before the flag registry `einzel run
+**Open: `run` has no `--dry-run` - a known, recorded gap against CLI-4.** CLI-4 ("every mutating
+command supports `--dry-run`") is the requirement; CLI-6 is startup and the network, and is not
+this. `run` writes `results/` and a manifest. Before the flag registry `einzel run
 m.json --dry-run` was accepted and ignored - the model ran and wrote its results - so the gap is
 older than the registry; the registry now refuses the flag, saying `run` has no dry run and naming
 `einzel preview` (evaluates without writing) and `einzel estimate` (states the cost). Building a

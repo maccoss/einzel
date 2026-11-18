@@ -434,4 +434,45 @@ public sealed class MirrorPlaneTests
         Assert.Equal(1.0, Math.Abs(below), 6);
         Assert.NotEqual(Math.Sign(below), Math.Sign(above));
     }
+
+    // A half that is not nothing outside its box, as a solve with a non-zero outside potential is:
+    // a ramp inside 0 <= x <= the plane, and a constant potential and a field of its own outside.
+    private sealed class OutsideValue : IElectrostaticField
+    {
+        private static bool Inside(in Vec3 p) => p.X >= 0.0 && p.X <= Plane;
+
+        public double PotentialAt(in Vec3 position) => Inside(in position) ? -1000.0 * position.X : 37.0;
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => Inside(in position) ? new Vec3(1000.0, 5.0, 0.0) : new Vec3(3.0, 11.0, 0.0);
+    }
+
+    /// <summary>
+    /// A declared half that is not nothing outside its box sums symmetrically about its mirror:
+    /// its potential and field are gated on the image's side as the image's are on its own.
+    /// </summary>
+    /// <remarks>
+    /// Only the image was gated, so on the image's side the declared half's outside value stood
+    /// as well: 37 V more there than at the mirror point, and a field that did not reflect.
+    /// </remarks>
+    [Theory]
+    [InlineData(0.001)]
+    [InlineData(0.02)]
+    [InlineData(0.039)]
+    [InlineData(0.05)]
+    [InlineData(0.2)]
+    public void ADeclaredHalfWithAnOutsideValueSumsSymmetrically(double distance)
+    {
+        var sum = new Reflection(Plane, ImageAbove: true).Sum(new OutsideValue());
+
+        var below = new Vec3(Plane - distance, 0.002, 0.0);
+        var above = new Vec3(Plane + distance, 0.002, 0.0);
+
+        Assert.Equal(sum.PotentialAt(in below), sum.PotentialAt(in above), 9);
+
+        var eBelow = sum.ElectricFieldAt(in below);
+        var eAbove = sum.ElectricFieldAt(in above);
+
+        Assert.Equal(eBelow.X, -eAbove.X, 9);
+        Assert.Equal(eBelow.Y, eAbove.Y, 9);
+    }
 }

@@ -3794,5 +3794,15 @@ Two findings from Stage 1 that bear on the spec:
   document is written by one helper that asks the call's tally, where the flag readers' copy did
   not. And `FieldInstants` tests the spacing its refusal quotes.
 
+  **A twenty-second review.** An empty value after `=` (`--out=`) passed the check for a value
+  and exited 6 from `Path.GetFullPath("")`; it is refused at the flag, and the matrix tries `--flag=`
+  for every flag that takes a value. An implicit `render` section read no flag table, so a typo or a
+  second model went unchecked; it reads the section's, and an unknown `ext`, `agents` or `render`
+  sub-verb is refused naming the known ones. The declared half of a reflected union is gated on the
+  image's side for its potential and field, as it already was for its metal, so a solve with a
+  non-zero outside potential sums symmetrically about its mirror. A biased raster layer that writes
+  depth stores its true depth and biases only the test. And `run`'s missing `--dry-run` is now
+  marked Partial against CLI-4 in `SPEC.md`, where the register still said Met.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

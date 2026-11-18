@@ -248,7 +248,7 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         output.WriteLine(string.Join(", ", ran.OrderBy(r => r.Key, StringComparer.Ordinal).Select(r => $"{r.Value} {r.Key}")));
 
         // The control: a matrix that ran nothing of one kind passes every assertion about it.
-        foreach (var kind in new[] { "help", "base", "valid", "bare", "bare-optional", "garbage", "unknown", "extra" })
+        foreach (var kind in new[] { "help", "base", "valid", "empty", "bare", "bare-optional", "garbage", "unknown", "extra" })
         {
             Assert.True(ran.GetValueOrDefault(kind) > 0, $"the matrix ran no '{kind}' case");
         }
@@ -283,6 +283,11 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
                 var optional = flags.Optional.Contains(flag);
 
                 yield return new Case(verb, "valid", [.. words, .. form, "--" + flag, good], null);
+
+                // An empty value after '=' is no value: `--out=` reached Path.GetFullPath("") and
+                // exited 6. Every flag that takes a value, the optional one included.
+                yield return new Case(verb, "empty", [.. words, .. form, $"--{flag}="], "/args/--" + flag);
+                yield return new Case(verb, "empty", [.. words, .. form, $"--{flag}= "], "/args/--" + flag);
 
                 // Bare, a flag that takes a value is refused by name; one whose value may be
                 // left off is taken as its default.

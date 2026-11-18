@@ -221,7 +221,29 @@ public static class Program
 
     private static EinzelError? CommandLineProblem(string[] args, CommandLine options)
     {
-        if (options.Has("help") || VerbFlags.For(args) is not var (key, flags))
+        if (options.Has("help"))
+        {
+            return null;
+        }
+
+        // A sub-verb its verb does not have, refused naming those it has: with no flag table to
+        // check against, the flags after it went unchecked.
+        if (VerbFlags.UnknownSubVerb(args) is { } unknown)
+        {
+            var (article, noun) = args[0] == "render" ? ("a", "kind") : ("an", "action");
+            var whose = args[0].EndsWith('s') ? args[0] + "'" : args[0] + "'s";
+
+            return new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/args/0",
+                Constraint = $"'{unknown}' is not {article} {noun} {args[0]} has",
+                Suggestion = $"{whose} {noun}s are {string.Join(", ", VerbFlags.SubVerbsOf(args[0]))}"
+                    + (args[0] == "render" ? "; a model given after the flags is drawn as a section, as in 'einzel render --dry-run <model.json>'" : string.Empty),
+            };
+        }
+
+        if (VerbFlags.For(args) is not var (key, flags))
         {
             return null;
         }
@@ -232,6 +254,8 @@ public static class Program
         {
             if (!flags.Knows(flag))
             {
+                var reads = $"the flags {key} reads are {Listed(flags.Switches.Concat(flags.Values).Concat(flags.Optional).Concat(VerbFlags.Global))}";
+
                 refusal = new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
@@ -240,23 +264,29 @@ public static class Program
                         ? $"unknown flag --dry-run for {key}: {key} has no --dry-run, and a dry run of it is not built"
                         : $"unknown flag --{flag} for {key}",
                     Suggestion = flag == "dry-run"
-                        ? $"to see what {key} would do without writing anything, 'einzel preview <model.json>' evaluates the model and 'einzel estimate <model.json>' states what it would cost; the flags {key} reads are "
-                            + string.Join(", ", flags.Switches.Concat(flags.Values).Concat(flags.Optional).Concat(VerbFlags.Global).Order(StringComparer.Ordinal).Select(f => "--" + f))
-                        : $"the flags {key} reads are "
-                            + string.Join(", ", flags.Switches.Concat(flags.Values).Concat(flags.Optional).Concat(VerbFlags.Global).Order(StringComparer.Ordinal).Select(f => "--" + f)),
+                        ? $"to see what {key} would do without writing anything, 'einzel preview <model.json>' evaluates the model and 'einzel estimate <model.json>' states what it would cost; {reads}"
+                        : reads,
                 };
                 break;
             }
 
             // Every occurrence, not the last: `--set --set r=7` gave the first --set no value and
-            // only the second was asked.
-            if (flags.Values.Contains(flag) && options.Values(flag).Any(v => v is null))
+            // only the second was asked. And an empty value is no value: `--out=` handed the empty
+            // string to a reader that made a path of it, and Path.GetFullPath("") came out as an
+            // internal error, exit 6. A flag whose value may be left off may be bare, but given
+            // an equals sign it is given a value, and an empty one is none.
+            var values = options.Values(flag);
+            var emptied = values.Any(v => v is not null && string.IsNullOrWhiteSpace(v));
+
+            if ((flags.Values.Contains(flag) && values.Any(v => v is null)) || ((flags.Values.Contains(flag) || flags.Optional.Contains(flag)) && emptied))
             {
                 refusal = new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
                     Path = FlagPath.Of(flag),
-                    Constraint = $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
+                    Constraint = emptied
+                        ? $"--{flag} takes a value, and the one given after '=' is empty"
+                        : $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
                     Suggestion = $"give --{flag} its value, as --{flag} <value>",
                 };
                 break;
@@ -289,10 +319,12 @@ public static class Program
     /// </remarks>
     private static readonly string[] FileFlags = ["out", "csv", "input"];
 
+    // Flag names as a refusal lists them: sorted, each with its dashes.
+    private static string Listed(IEnumerable<string> names) =>
+        string.Join(", ", names.Order(StringComparer.Ordinal).Select(n => "--" + n));
+
     internal static string PositionalSuggestion(string key, VerbFlags flags)
     {
-        static string Listed(IEnumerable<string> names) =>
-            string.Join(", ", names.Order(StringComparer.Ordinal).Select(n => "--" + n));
 
         var switches = flags.Switches.Concat(VerbFlags.Global).ToList();
         var valued = flags.Values.Concat(flags.Optional).ToList();

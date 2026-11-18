@@ -3,8 +3,8 @@ using Einzel.Core.Geometry;
 namespace Einzel.Fields;
 
 /// <summary>
-/// The declared half of a reflected solve as it stands in the sum: its field unchanged, its
-/// conductors only where the half answers.
+/// The declared half of a reflected solve as it stands in the sum: its field, its potential and
+/// its conductors only where the half answers.
 /// </summary>
 /// <remarks>
 /// The solve's own conductor queries ignore its box, so a declared electrode running past the
@@ -19,15 +19,33 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     private readonly IConductorBounded? _metal = inner as IConductorBounded;
 
     /// <inheritdoc/>
-    public Vec3 ElectricFieldAt(in Vec3 position) => inner.ElectricFieldAt(in position);
+    /// <remarks>
+    /// Gated as the image is, by the one side rule (<see cref="Reflection.DeclaredAnswersAt"/>):
+    /// only the image's half was gated, so an inner field that is not nothing outside its box -
+    /// a solve's constant outside potential, say - stood on the image's side as well, and the sum
+    /// there was the declared half's value plus the image's, where on the declared side it was the
+    /// declared half's alone: a sum asymmetric about its own mirror.
+    /// </remarks>
+    public Vec3 ElectricFieldAt(in Vec3 position) =>
+        reflection.DeclaredAnswersAt(position.X) ? inner.ElectricFieldAt(in position) : default;
 
     /// <inheritdoc/>
-    public double PotentialAt(in Vec3 position) => inner.PotentialAt(in position);
+    public double PotentialAt(in Vec3 position) =>
+        reflection.DeclaredAnswersAt(position.X) ? inner.PotentialAt(in position) : 0.0;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The inner field's run, unchanged: gating only takes field away, so wherever the inner field
+    /// is free the gated one is too, and the inner run is never longer than the true one.
+    /// </remarks>
     public double FieldFreeRunLength(in Vec3 position, in Vec3 direction) => inner.FieldFreeRunLength(in position, in direction);
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The inner field's, unchanged. A declared half meets its image at the plane only where its
+    /// box ends there, and a solve is field-free outside its box, so gating its field adds no jump
+    /// the inner field does not already declare at its own edge.
+    /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position) => inner.SignedDistanceToDiscontinuity(in position);
 
     /// <inheritdoc/>

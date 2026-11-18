@@ -24,15 +24,15 @@ that has drifted is worse than none, because it is trusted.
 
 | | Requirements |
 | --- | --- |
-| **Met**, with evidence | 83 |
-| **Partial**, with a stated gap | 13 |
+| **Met**, with evidence | 82 |
+| **Partial**, with a stated gap | 14 |
 | **Not built** | 20 |
 | **Unverified** — plausible but unmeasured | 2 |
 | Total tagged in r06 | 118 |
 
 A count is a weak summary and it flatters the project: **fourteen of the 20 not
 built are the update mechanism and distribution**, which is one assembly that does
-not exist, while the 83 met are spread across the parts that carry numbers. The
+not exist, while the 82 met are spread across the parts that carry numbers. The
 useful reading is the register, not the total.
 
 **This table had drifted badly, and a test now counts it.** It read 64 / 14 / 37 / 3
@@ -2444,7 +2444,7 @@ in a table.
 | `CLI-1` | Every command emits structured output. A --json flag on every verb produces machine-readable output including the full | **Met** | `--json` on every verb. |
 | `CLI-2` | Results on stdout, progress and diagnostics on stderr. | **Met** | Results on stdout, diagnostics on stderr, driven through `Program.Main` in the end-to-end tests. |
 | `CLI-3` | Exit codes are meaningful and documented. Distinct codes for validation failure, regime violation, cost-gate refusal, convergence failure, engine-pin ... | **Met** | Distinct exit codes per failure class, including a regime violation getting its own code rather than a convergence one. A volume mesh past the node limit exits 1 as the validation failure it is, where it exited 6 as an internal error. |
-| `CLI-4` | Every mutating command supports --dry-run . | **Met** | `--dry-run` on every mutating command, asserted to write nothing. |
+| `CLI-4` | Every mutating command supports --dry-run . | **Partial** | `--dry-run` on every mutating command but `run`, asserted to write nothing. `run` has none: it was accepted and ignored (the model ran and wrote its results) until the flag registry, which now refuses it naming `einzel preview` and `einzel estimate`. Recorded as an open item in `docs/cli.md`. |
 | `CLI-5` | Output ordering is deterministic. | **Met** | Deterministic output ordering. |
 | `CLI-6` | Startup is fast and offline. No command touches the network unless the user explicitly asks it to. Verb Purpose einzel init Create a project; --vcs git ... | **Met** | Cold start 73-147 ms against PERF-8 500 ms, with no network call in that path. |
 

@@ -113,10 +113,54 @@ public sealed record VerbFlags(
         // given a word that is none of its sub-verbs is left to its own usage, as it always was;
         // one given none at all is itself - `ext` alone lists, `agents` alone shows the tasks,
         // and `render` alone has no entry and prints what it takes.
-        var key = SubVerb(args) is { } sub ? args[0] + " " + sub : args[0];
+        var sub = SubVerb(args);
+
+        // An implicit section - `render --dry-run m.json`, a first word after the flags that is
+        // no kind - reads the section's flags, with one positional fewer since no kind word is
+        // there. It read none, so `render --dry-run m.json --widht-mm 80` drew the default width
+        // with exit 0, and a stray second model was accepted.
+        if (IsImplicitSection(args, sub))
+        {
+            var section = ByVerb["render section"];
+            return ("render section", section with { Positionals = section.Positionals - 1 });
+        }
+
+        var key = sub is not null ? args[0] + " " + sub : args[0];
 
         return ByVerb.TryGetValue(key, out var flags) ? (key, flags) : null;
     }
+
+    /// <summary>
+    /// The sub-verb a command line names where its verb has no such sub-verb, or null: what
+    /// <c>ext bogus</c> and <c>agents bogus</c> name, and <c>render bogus</c> where the word comes
+    /// first. A word after flags under <c>render</c> is the model of an implicit section, not this.
+    /// </summary>
+    /// <param name="args">The raw arguments, verb first.</param>
+    /// <returns>The word, or null.</returns>
+    public static string? UnknownSubVerb(IReadOnlyList<string> args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        var sub = SubVerb(args);
+
+        return sub is null || ByVerb.ContainsKey(args[0] + " " + sub) || IsImplicitSection(args, sub) ? null : sub;
+    }
+
+    /// <summary>The sub-verbs a verb has, in order; empty for a verb with none.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <returns>Each sub-verb's word.</returns>
+    public static IReadOnlyList<string> SubVerbsOf(string verb)
+    {
+        ArgumentNullException.ThrowIfNull(verb);
+
+        var prefix = verb + " ";
+        return [.. ByVerb.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).Select(k => k[prefix.Length..]).Order(StringComparer.Ordinal)];
+    }
+
+    // Render's own rule (Program.Render): a first word that is no kind, found after flags, is the
+    // model of an implicit section; the same word in first place is an unknown kind.
+    private static bool IsImplicitSection(IReadOnlyList<string> args, string? sub) =>
+        args[0] == "render" && sub is not null && !ByVerb.ContainsKey("render " + sub) && args[1].StartsWith('-');
 
     /// <summary>The sub-verb a command line names, for a verb that has them.</summary>
     /// <param name="args">The raw arguments, verb first.</param>

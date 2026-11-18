@@ -394,4 +394,42 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.NotNull(problem);
         Assert.Equal("/args/--set", problem!.Path);
     }
+
+    /// <summary>
+    /// An implicit section - a model after the flags under <c>render</c> - is held to the
+    /// section's flags and its one model: a typo and a stray second model are refused, and what
+    /// the section reads is accepted.
+    /// </summary>
+    /// <remarks>
+    /// The registry had no entry for it, so the checks were skipped: <c>render --dry-run
+    /// m.json --widht-mm 80</c> drew the default width with exit 0.
+    /// </remarks>
+    [Theory]
+    [InlineData("render --dry-run m.json --widht-mm 80", "/args/--widht-mm")]
+    [InlineData("render --dry-run m.json extra.json", "/args/1")]
+    [InlineData("render --progress m.json --no-scale", "/args/--no-scale")]
+    [InlineData("render --dry-run m.json --width-mm", "/args/--width-mm")]
+    [InlineData("render --dry-run m.json --width-mm 80", null)]
+    [InlineData("render --progress m.json --width-mm 80", null)]
+    [InlineData("render --out x.svg m.json", null)]
+    public void AnImplicitSectionIsHeldToTheSectionsFlags(string line, string? path)
+    {
+        Assert.Equal(path, Program.CommandLineProblem(line.Split(' '))?.Path);
+    }
+
+    /// <summary>A sub-verb its verb does not have is refused, naming those it has.</summary>
+    [Theory]
+    [InlineData("ext bogus --zzz", "an action ext has", "ext's actions are list, register, test")]
+    [InlineData("ext --json bogus", "an action ext has", "ext's actions are list, register, test")]
+    [InlineData("agents bogus", "an action agents has", "agents' actions are score, setup, tasks")]
+    [InlineData("render bogus --zzz", "a kind render has", "render's kinds are animation, section, still, surface")]
+    public void AnUnknownSubVerbIsRefusedNamingTheKnownOnes(string line, string constraint, string suggestion)
+    {
+        var problem = Program.CommandLineProblem(line.Split(' '));
+
+        Assert.NotNull(problem);
+        Assert.Equal("/args/0", problem!.Path);
+        Assert.Contains("'bogus' is not " + constraint, problem.Constraint, StringComparison.Ordinal);
+        Assert.Contains(suggestion, problem.Suggestion, StringComparison.Ordinal);
+    }
 }

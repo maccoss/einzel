@@ -241,6 +241,36 @@ public sealed class RasterTests(ITestOutputHelper output)
         Assert.True(allocated < bound, $"drawing allocated {allocated / 1e6:F1} MB against {bound / 1e6:F1} MB");
     }
 
+    /// <summary>
+    /// A biased layer that writes depth stores its true depth: a surface drawn after it that is
+    /// nearer than its geometry, though not by the bias, is drawn over it.
+    /// </summary>
+    /// <remarks>
+    /// The bias was subtracted before the depth was stored, so the layer hid everything within
+    /// the bias in front of it as well as behind it - the surface here, 1 mm in front of a mesh
+    /// biased by 2 mm, came out hidden. Checked for a mesh and for a line, which share the rule.
+    /// </remarks>
+    [Fact]
+    public void ABiasMovesTheDepthTestAndNotTheStoredDepth()
+    {
+        const double Bias = 0.2; // two millimetres, at a tenth of the clip box per millimetre
+
+        var mesh = new RasterLayer([Square(z: 0.0, 1.0, 0.0, 0.0)], [], 1.0, WritesDepth: true, DepthBias: Bias);
+        var line = new RasterLayer([], [new RasterLine([-10, 0, 0, 10, 0, 0], 1.0, 0.0, 0.0)], 1.0, WritesDepth: true, DepthBias: Bias);
+        var nearer = Layer(Square(z: 1.0, 0.0, 1.0, 0.0));
+        var behind = Layer(Square(z: -1.0, 0.0, 0.0, 1.0));
+
+        foreach (var first in new[] { mesh, line })
+        {
+            var drawn = Rasterizer.Draw([first, nearer], Scale(10.0), Flat, White, 21, 21);
+            Assert.Equal((0, 255, 0), At(drawn, 21, 10, 10));
+
+            // The control: a surface behind the layer's geometry is still hidden by it.
+            var hidden = Rasterizer.Draw([first, behind], Scale(10.0), Flat, White, 21, 21);
+            Assert.Equal((255, 0, 0), At(hidden, 21, 10, 10));
+        }
+    }
+
     private static RasterLayer Layer(RasterMesh mesh) => new([mesh], [], 1.0, WritesDepth: true);
 
     private static RasterMesh Square(double z, double r, double g, double b) =>

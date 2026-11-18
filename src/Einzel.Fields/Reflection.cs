@@ -70,15 +70,16 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
     /// <returns>True unless the point is strictly on the image's side of a union.</returns>
     public bool DeclaredAnswersAt(double x) => ImageAbove is null || !ImageAnswersAt(x);
 
-    /// <summary>The declared half, its conductors answering only where the half does.</summary>
+    /// <summary>The declared half, its field, potential and conductors answering only where the half does.</summary>
     /// <param name="declared">The declared half.</param>
     /// <returns>The half, as it stands in the sum.</returns>
     /// <remarks>
     /// The image's conductors were gated on the declared side, and the declared half's were not on
     /// the image side: a declared electrode running past the plane still stopped ions there, and
     /// was itemised as a loss, where the image's metal - its reflection of the near side - is what
-    /// stands. Its field is the solve's and unchanged; only where its metal counts follows the
-    /// plane.
+    /// stands. Its field and potential follow the plane too: gated on the image's side as the
+    /// image's are on the declared side, so a solve whose outside potential is not zero sums to
+    /// the same value on both sides of its own mirror.
     /// </remarks>
     public IElectrostaticField Declared(IElectrostaticField declared) =>
         Overlaps ? declared : new DeclaredHalf(declared, this);
