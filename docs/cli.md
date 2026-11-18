@@ -868,9 +868,14 @@ Under `--cycle-mean`, `--at-us` picks only the operating point (which phase of a
 along a ramp): no instant of the drive is drawn, so an instant too late to place in the cycle is not
 refused there, and the mean's window opens at zero where it cannot be opened at the instant itself.
 **A field with no drive has no cycle to average**, so `--cycle-mean` on a static model, or on a
-sequence whose states are all static, is refused at `/surface/cycle-mean` (exit 1) rather than
+sequence whose states are all static, is refused at `/args/--cycle-mean` (exit 1) rather than
 drawn as an instant under the mean's name; `--at-us` on a static model is drawn, with
-`render.instant-ignored` saying it changed nothing. With no `--offset-mm` the plane passes through
+`render.instant-ignored` saying it changed nothing. A *negative* `--at-us` is refused on a static
+model as on any other, before the model is opened, and so is a render spec's negative `atSeconds`:
+a run's clock starts at zero, so a negative instant names no state of any instrument, and whether
+it is refused does not depend on what the model holds - otherwise a spec written against a static
+model would start being refused the day a phase was added to it, for the instant it always gave.
+A non-finite instant is refused everywhere. With no `--offset-mm` the plane passes through
 the middle of the domain along its normal (z = 0 for a 2-D model's own `xy` plane). Two elements
 that each have a conductor of one name are two plateaus, labelled `name (element N)`.
 `scaleDrawn` is false, and the bar absent, in `--view top` (the height points at the viewer) and
@@ -893,7 +898,14 @@ the same way. `render surface` and `render still` also refuse a second argument,
 `N` or `NxM`, `stepsMm` reports the spacing on both axes, `--out` and `--csv` may not be one file,
 and `--at-us` is refused below zero and where the drive's phase cannot be placed. `render section
 --at-us`, `--width-mm` and `--equipotentials` are read without `Parse`, so a typo is exit 1 rather
-than exit 6, and a negative instant is refused at `/render/at-us`.
+than exit 6, and a negative instant is refused at `/args/--at-us`.
+
+**Every flag error is located at `/args/--flag`, by every verb** (`Einzel.Core.Errors.FlagPath`).
+The command layer had pointers of its own - `/surface/at-us`, `/probe/at-us`, `/render/at-us` -
+and the CLI translated only the surface's, so `--at-us -1` was located three ways by three verbs,
+and an export's `--at-us` at the probe's flag because it borrowed the probe's check. The command
+layer now raises flag errors at the flag, and nothing translates. A value read from a document - a
+render spec's `atSeconds` - is located in the document.
 
 **Every verb refuses a malformed command line, before it does anything** (`Program.Malformed`),
 against its own flags (`VerbFlags.ByVerb`): a flag the verb does not read (`unknown flag --no-scales
@@ -981,12 +993,15 @@ dry run of `run` is left for its own change.
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
 unless turned off, so the flag alone is the default interval, as it always was. **A bare
 `--progress` before a positional is still bare**: the next word is its value only if it begins as a
-number does (a digit, or a point before one: `./models/r.json` is a path), or if the verb has
-more positionals than it takes, in which case every word held
-that way is the flag's and is refused by its reader by name - so `einzel run --progress
-models/reflectron.json` runs at the default interval, while `einzel run --progress soon m.json`,
-`einzel run m.json --progress soon` and `einzel run --progress m.json extra.json` are all refused at
-`--progress`, whatever the order, and none runs a model it did not mean. A command line naming no
+number does (a digit, or a point before one: `./models/r.json` is a path). **Where that leaves more
+words than the verb takes, nothing is guessed**: `einzel run --progress m.json extra.json` may be an
+interval called m.json or a model and a stray, and nothing on the line says which, so it is refused
+at `--progress` naming every word that could be the one meant ("'m.json' and 'extra.json' are two
+words where run takes one") and suggesting `--progress=<seconds>` or `--progress` last. So
+`einzel run --progress models/reflectron.json` runs at the default interval, while `einzel run
+--progress soon m.json`, `einzel run m.json --progress soon` and `einzel run --progress m.json
+extra.json` are all refused the same way, whatever the order: none runs a model it did not mean, and
+none blames one word where another was as likely - which three earlier settlements each did. A command line naming no
 sub-verb (`einzel render --dry-run m.json`, an implicit section) is read with the switches of all
 its verb's sub-verbs, so a switch does not take the model as its value. A flag that takes a value
 is refused bare at any occurrence, not only its last. Every other flag that takes a value is

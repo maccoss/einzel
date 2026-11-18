@@ -29,13 +29,18 @@ public static class Program
     public static int Main(string[] args)
     {
         // Whether this call has written anything to stdout, so that a refusal raised after a verb
-        // wrote its own result does not add a second document to it. The call's own flag, not a
-        // swap of the global writer (StdoutTally).
+        // wrote its own result does not add a second document to it. The console's writer is
+        // swapped for a counting one - once, by the first call in the process to enter, shared by
+        // every call running, and put back by the last to leave - and each write through it marks
+        // the call running on the writing flow, so the flag is this call's own (StdoutTally).
         using var tally = StdoutTally.Enter();
 
         // Under --json every way a call can fail ends in one JSON document on stdout. Asked of
-        // the parsed command line, as every verb asks it, so --json=true is --json here too.
-        var json = args is { Length: > 0 } && CommandLine.Parse(args).Has("json");
+        // the parsed command line, as every verb asks it, so --json=true is --json here too - and
+        // parsed once, inside the try below, so a failure in the parse is caught like any other.
+        // Until it has parsed, the raw words are all there is to ask: a parse that throws still
+        // ends in one document for a caller who asked for one.
+        var json = args is not null && args.Any(a => a is "--json" || (a?.StartsWith("--json=", StringComparison.Ordinal) ?? false));
 
         void Refuse(string code, string constraint, string? suggestion = null)
         {
@@ -50,7 +55,10 @@ public static class Program
 
         try
         {
-            return Dispatch(args);
+            var options = args is { Length: > 0 } ? CommandLine.Parse(args) : null;
+            json = options?.Has("json") ?? json;
+
+            return Dispatch(args!, options);
         }
         catch (EinzelException failure)
         {
@@ -130,7 +138,7 @@ public static class Program
         }
     }
 
-    private static int Dispatch(string[] args)
+    private static int Dispatch(string[] args, CommandLine? parsed)
     {
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
         {
@@ -144,7 +152,9 @@ public static class Program
             return (int)ExitCode.Success;
         }
 
-        var options = CommandLine.Parse(args);
+        // Parsed once, by Main, inside its catch: parsed again here, a failure in the parse
+        // would have escaped the catch-all the first time and never reached here.
+        var options = parsed!;
 
         if (Malformed(args, options))
         {
@@ -236,7 +246,7 @@ public static class Program
                 refusal = new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
-                    Path = $"/args/--{flag}",
+                    Path = FlagPath.Of(flag),
                     Constraint = flag == "dry-run"
                         ? $"unknown flag --dry-run for {key}: {key} has no --dry-run, and a dry run of it is not built"
                         : $"unknown flag --{flag} for {key}",
@@ -256,12 +266,19 @@ public static class Program
                 refusal = new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
-                    Path = $"/args/--{flag}",
+                    Path = FlagPath.Of(flag),
                     Constraint = $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
                     Suggestion = $"give --{flag} its value, as --{flag} <value>",
                 };
                 break;
             }
+        }
+
+        // More words than the verb takes after a flag whose value may be left off: refused with
+        // every word that could be the one meant, not as a stray at whichever came last.
+        if (refusal is null && options.Ambiguity is { } ambiguous)
+        {
+            refusal = ambiguous;
         }
 
         if (refusal is null && options.Positional.Count > flags.Positionals)
@@ -333,7 +350,7 @@ public static class Program
             new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
-                Path = $"/args/--{flag}",
+                Path = FlagPath.Of(flag),
                 Constraint = constraint,
                 Suggestion = suggestion,
             });
@@ -2445,34 +2462,19 @@ public static class Program
         var modelPath = positional[0];
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
 
-        SurfaceOutcome outcome;
-
-        try
-        {
-            outcome = SurfaceCommand.Execute(
-                modelPath,
-                new ProjectLayout(root),
-                request,
-                view,
-                width,
-                height,
-                options.Value("out"),
-                options.Has("dry-run"),
-                scale: !options.Has("no-scale"),
-                csvPath: options.Value("csv"));
-        }
-        catch (EinzelException refused) when (refused.Errors.Any(e => e.Path.StartsWith("/surface/", StringComparison.Ordinal)))
-        {
-            // What a surface may be asked for is the surface's own rule, stated once, in
-            // SurfaceCommand; here it is located at the flag that asked: /surface/relief is
-            // --relief.
-            throw new EinzelException(
-            [
-                .. refused.Errors.Select(e => e.Path.StartsWith("/surface/", StringComparison.Ordinal)
-                    ? e with { Path = "/args/--" + e.Path["/surface/".Length..] }
-                    : e),
-            ]);
-        }
+        // Every flag error the command raises is located at its flag already (FlagPath), as every
+        // other verb's is: this verb alone used to translate pointers of its own.
+        var outcome = SurfaceCommand.Execute(
+            modelPath,
+            new ProjectLayout(root),
+            request,
+            view,
+            width,
+            height,
+            options.Value("out"),
+            options.Has("dry-run"),
+            scale: !options.Has("no-scale"),
+            csvPath: options.Value("csv"));
 
         if (options.Has("json"))
         {

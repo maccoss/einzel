@@ -267,25 +267,56 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Equal(key, VerbFlags.For(line.Split(' '))?.Key);
     }
     /// <summary>
-    /// Where the verb has more positionals than it takes, a word held after a bare
-    /// <c>--progress</c> is the flag's, in either order, and the flag's reader refuses it by name:
-    /// no reading of the line makes it the model while a later word could be.
+    /// Where a bare <c>--progress</c> is followed by more words than the verb takes, no word is
+    /// guessed to be the one meant: the line is refused at <c>--progress</c>, naming every word
+    /// that could be the model or the value, and saying how to write it so it cannot be misread.
     /// </summary>
     /// <remarks>
-    /// The last round kept a held word that sat inside the positional count, so <c>run
-    /// --progress soon m.json</c> made 'soon' the model and blamed m.json as a stray - an answer
-    /// that depended on the order of the words.
+    /// Three rounds of review each settled this a different way - a held word that fitted kept as
+    /// the model, then every held word given to the flag, then the flag's reader refusing the
+    /// first - and each answer blamed one word where another was as likely, or ran a model that
+    /// may not have been meant. Nothing on the line says which reading is right, so none is taken.
     /// </remarks>
     [Theory]
-    [InlineData("run --progress soon m.json", "soon")]
-    [InlineData("run m.json --progress soon", "soon")]
-    [InlineData("run --progress m.json extra.json", "m.json")]
-    public void AHeldWordIsTheFlagsWhereverItStands(string line, string word)
+    [InlineData("run --progress soon m.json", "'soon' and 'm.json'")]
+    [InlineData("run m.json --progress soon", "'m.json' and 'soon'")]
+    [InlineData("run --progress m.json extra.json", "'m.json' and 'extra.json'")]
+    [InlineData("run --progress ./m.json ./extra.json", "'./m.json' and './extra.json'")]
+    [InlineData("run --progress ../m.json extra.json", "'../m.json' and 'extra.json'")]
+    [InlineData("render section --progress m.json extra.json", "'m.json' and 'extra.json'")]
+    public void TooManyWordsAfterAnOptionalValueAreRefusedNamingEveryOne(string line, string words)
+    {
+        var parsed = CommandLine.Parse(line.Split(' '));
+        var problem = Program.CommandLineProblem(line.Split(' '));
+
+        Assert.NotNull(parsed.Ambiguity);
+        Assert.NotNull(problem);
+        Assert.Equal("/args/--progress", problem!.Path);
+        Assert.Contains(words + " are two words where", problem.Constraint, StringComparison.Ordinal);
+        Assert.Contains("takes one", problem.Constraint, StringComparison.Ordinal);
+        Assert.Contains("--progress=<value>", problem.Suggestion, StringComparison.Ordinal);
+        Assert.Contains("--progress last", problem.Suggestion, StringComparison.Ordinal);
+
+        // Nothing taken from the positionals and given to the flag: no word was chosen.
+        Assert.Null(parsed.Value("progress"));
+        Assert.Equal(2, parsed.Positional.Count - (line.StartsWith("render", StringComparison.Ordinal) ? 1 : 0));
+    }
+
+    /// <summary>
+    /// The two spellings the refusal suggests are read one way, and the run they name is the
+    /// model's: an equals sign, or the flag last.
+    /// </summary>
+    [Theory]
+    [InlineData("run --progress=5 m.json")]
+    [InlineData("run m.json --progress")]
+    [InlineData("run m.json --progress 5")]
+    public void TheSuggestedSpellingsAreNotAmbiguous(string line)
     {
         var parsed = CommandLine.Parse(line.Split(' '));
 
-        Assert.Equal(word, parsed.Value("progress"));
-        Assert.Single(parsed.Positional);
+        Assert.Null(parsed.Ambiguity);
+        Assert.Null(Program.CommandLineProblem(line.Split(' ')));
+        Assert.Equal(["m.json"], parsed.Positional);
     }
 
     /// <summary>
@@ -312,14 +343,20 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     /// A held word given to its flag after the line is read does not overwrite a later explicit
     /// value: the last occurrence on the line is the value, and the occurrences are in line order.
     /// </summary>
+    /// <remarks>
+    /// With a word held and two left over the line is still ambiguous - m.json may be an
+    /// interval or the model - and is refused naming both; what the flag holds meanwhile is its
+    /// last occurrence, as for any flag.
+    /// </remarks>
     [Fact]
     public void ALaterExplicitValueWinsOverAHeldWord()
     {
         var parsed = CommandLine.Parse(["run", "--progress", "m.json", "--progress", "10", "extra.json"]);
 
         Assert.Equal("10", parsed.Value("progress"));
-        Assert.Equal(["m.json", "10"], parsed.Values("progress"));
-        Assert.Equal(["extra.json"], parsed.Positional);
+        Assert.Equal([null, "10"], parsed.Values("progress"));
+        Assert.Equal(["m.json", "extra.json"], parsed.Positional);
+        Assert.Contains("'m.json' and 'extra.json'", parsed.Ambiguity!.Constraint, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -371,14 +408,13 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Equal("/args/--set", problem!.Path);
     }
 
-    /// <summary>Every held word is kept, not only the last: two bare optional flags each keep theirs.</summary>
+    /// <summary>Every held word is a candidate, not only the last: two bare optional flags name all three words.</summary>
     [Fact]
-    public void EveryHeldWordIsSettled()
+    public void EveryHeldWordIsACandidate()
     {
         var twice = CommandLine.Parse(["run", "m.json", "--progress", "soon", "--progress", "later"]);
 
-        Assert.Equal(["m.json"], twice.Positional);
-        Assert.Equal("later", twice.Value("progress"));
-        Assert.Equal(["soon", "later"], twice.Values("progress"));
+        Assert.Equal(["m.json", "soon", "later"], twice.Positional);
+        Assert.Contains("'m.json', 'soon' and 'later' are three words where run takes one", twice.Ambiguity!.Constraint, StringComparison.Ordinal);
     }
 }

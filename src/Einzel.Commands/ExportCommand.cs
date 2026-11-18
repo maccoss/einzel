@@ -530,10 +530,12 @@ public static class ExportCommand
         var warnings = new List<ValidityWarning>();
         var solved = 0;
 
-        // Every channel file of every element, written together at the end - all of them or none.
-        // Written one at a time, a failure part way left new channel files beside stale ones from
-        // an earlier export, which read as one consistent set.
-        var pending = new List<(string Path, Func<string> Content)>();
+        // Every channel file of every element, put in place together at the end - all of them or
+        // none. Written one at a time, a failure part way left new channel files beside stale ones
+        // from an earlier export, which read as one consistent set. Staged on disk as each element
+        // is solved, not held: queued until the last element was solved, every element's solves
+        // stayed alive together, and the peak was their sum where the estimate bills one.
+        using var staged = dryRun ? null : ArtifactFiles.Begin();
 
         var solvedElements = model.Fields.Count(f => f.Solve is not null || f.Solve3D is not null);
 
@@ -557,65 +559,10 @@ public static class ExportCommand
                 ? $"{stem}.field{index}"
                 : $"{stem}.field";
 
-            Element element;
-
-            if (solve3d is not null)
-            {
-                var geometry = new Geometry3D(
-                    solve3d.MinX, solve3d.MinY, solve3d.MinZ,
-                    solve3d.MaxX, solve3d.MaxY, solve3d.MaxZ,
-                    solve3d.CellSize,
-                    solve3d.Electrodes,
-                    solve3d.Tolerance)
-                {
-                    Drives = solve3d.Drives,
-                    Stages = solve3d.Stages,
-                    Faces = Geometry3D.FacesOf(solve3d.Faces),
-                    ReflectAboutX = solve3d.ReflectAboutX,
-                };
-
-                element = new Element(
-                    index,
-                    "solved3d",
-                    geometry.Drives.Count > 0 || geometry.Stages.Count > 0,
-                    Mirrored("a volume", solve3d.ReflectAboutX),
-                    [.. solve3d.Electrodes.Select(e => (e.Name, false))],
-                    [
-                        .. GeometryBuilder3D.SolveChannels(geometry).Select(c => new Channel(
-                            c.Index, c.Report, c.Holding,
-                            (array, provenance) => Io.VtuWriter.WriteScalarField(c.Potential, array, provenance))),
-                    ]);
-            }
-            else
-            {
-                // Through SolveChannels, as einzel solve does, so the two verbs cannot solve
-                // one geometry two ways again.
-                element = new Element(
-                    index,
-                    "solved2d",
-                    solve!.Drives.Count > 0 || solve.Stages.Count > 0,
-                    Mirrored(
-                        solve.Symmetry == SolveSymmetry.Cylindrical
-                            ? "axisymmetric: x is the axis of rotation and y the radius, and this is "
-                                + "the half-plane that was solved"
-                            : "a cross-section: the geometry is taken to repeat unchanged along z",
-                        solve.ReflectAboutX),
-                    [.. solve.Electrodes.Select(e => (e.Name, e.Shape == ElectrodeShape.EdgeProfile))],
-                    [
-                        .. GeometryBuilder.SolveChannels(solve).Select(c => new Channel(
-                            c.Index, c.Report, c.Holding,
-                            (array, provenance) => Io.VtuWriter.WriteScalarField(c.Potential, array, provenance))),
-                    ]);
-            }
-
-            artifacts.AddRange(Write(element, project.Scratch, name, hash, project, dryRun, warnings, pending));
-        }
-
-        if (!dryRun && pending.Count > 0)
-        {
-            ArtifactFiles.WriteAll(
-                [.. pending.Select(p => ((string?)null, p.Path))],
-                (index, stream) => stream.Write(ArtifactFiles.Utf8(pending[index].Content())));
+            // Solved and staged in a frame of its own, so nothing in this loop - not even a
+            // temporary that first-tier code keeps in a stack slot - holds this element's solves
+            // while the next element is solved.
+            artifacts.AddRange(SolveAndStage(index, solve, solve3d, project.Scratch, name, hash, project, warnings, staged));
         }
 
         if (solved == 0)
@@ -630,6 +577,8 @@ public static class ExportCommand
             });
         }
 
+        staged?.Commit();
+
         return new ExportOutcome
         {
             What = "field",
@@ -638,6 +587,77 @@ public static class ExportCommand
             Written = !dryRun,
             Warnings = warnings,
         };
+    }
+
+    /// <summary>Solves one field element and stages its files, its solves released on return.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static List<string> SolveAndStage(
+        int index,
+        CompiledSolvedField? solve,
+        CompiledSolvedField3D? solve3d,
+        string directory,
+        string name,
+        string hash,
+        ProjectLayout project,
+        List<ValidityWarning> warnings,
+        ArtifactFiles.Staged? staged) =>
+        Write(Solve(index, solve, solve3d), directory, name, hash, project, warnings, staged);
+
+    /// <summary>Solves one field element, whatever its dimension, into the channels Write writes.</summary>
+    private static Element Solve(int index, CompiledSolvedField? solve, CompiledSolvedField3D? solve3d)
+    {
+        Element element;
+
+        if (solve3d is not null)
+        {
+            var geometry = new Geometry3D(
+                solve3d.MinX, solve3d.MinY, solve3d.MinZ,
+                solve3d.MaxX, solve3d.MaxY, solve3d.MaxZ,
+                solve3d.CellSize,
+                solve3d.Electrodes,
+                solve3d.Tolerance)
+            {
+                Drives = solve3d.Drives,
+                Stages = solve3d.Stages,
+                Faces = Geometry3D.FacesOf(solve3d.Faces),
+                ReflectAboutX = solve3d.ReflectAboutX,
+            };
+
+            element = new Element(
+                index,
+                "solved3d",
+                geometry.Drives.Count > 0 || geometry.Stages.Count > 0,
+                Mirrored("a volume", solve3d.ReflectAboutX),
+                [.. solve3d.Electrodes.Select(e => (e.Name, false))],
+                [
+                    .. GeometryBuilder3D.SolveChannels(geometry).Select(c => new Channel(
+                        c.Index, c.Report, c.Holding,
+                        (array, provenance) => Io.VtuWriter.WriteScalarField(c.Potential, array, provenance))),
+                ]);
+        }
+        else
+        {
+            // Through SolveChannels, as einzel solve does, so the two verbs cannot solve
+            // one geometry two ways again.
+            element = new Element(
+                index,
+                "solved2d",
+                solve!.Drives.Count > 0 || solve.Stages.Count > 0,
+                Mirrored(
+                    solve.Symmetry == SolveSymmetry.Cylindrical
+                        ? "axisymmetric: x is the axis of rotation and y the radius, and this is "
+                            + "the half-plane that was solved"
+                        : "a cross-section: the geometry is taken to repeat unchanged along z",
+                    solve.ReflectAboutX),
+                [.. solve.Electrodes.Select(e => (e.Name, e.Shape == ElectrodeShape.EdgeProfile))],
+                [
+                    .. GeometryBuilder.SolveChannels(solve).Select(c => new Channel(
+                        c.Index, c.Report, c.Holding,
+                        (array, provenance) => Io.VtuWriter.WriteScalarField(c.Potential, array, provenance))),
+                ]);
+        }
+
+        return element;
     }
 
     /// <summary>One solved field element, whatever its dimension, ready to write.</summary>
@@ -675,8 +695,9 @@ public static class ExportCommand
         Func<string, IReadOnlyList<string>, string> Write);
 
     /// <summary>
-    /// Refuses an unconverged element, then adds one file per channel to the export's set, with
-    /// the element's provenance and warnings in its header; the caller writes the set.
+    /// Refuses an unconverged element, then stages one file per channel in the export's set, with
+    /// the element's provenance and warnings in its header; the caller commits the set. Under a
+    /// dry run there is no set, and only the paths are returned.
     /// </summary>
     /// <returns>The paths the set will hold, or would under a dry run.</returns>
     private static List<string> Write(
@@ -685,9 +706,8 @@ public static class ExportCommand
         string name,
         string hash,
         ProjectLayout project,
-        bool dryRun,
         List<ValidityWarning> warnings,
-        List<(string Path, Func<string> Content)> pending)
+        ArtifactFiles.Staged? staged)
     {
         var channels = element.Channels;
 
@@ -734,7 +754,7 @@ public static class ExportCommand
 
             written.Add(channelPath);
 
-            if (dryRun)
+            if (staged is null)
             {
                 continue;
             }
@@ -760,8 +780,8 @@ public static class ExportCommand
             // engine saying the numbers may not describe the document (GRD-3).
             provenance.AddRange(found.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
 
-            // Made when its staging file is written, one file's text at a time.
-            pending.Add((channelPath, () => channel.Write(array, provenance)));
+            // Staged now, one file's text at a time, and put in place with the rest at the end.
+            staged.Stage(null, channelPath, stream => stream.Write(ArtifactFiles.Utf8(channel.Write(array, provenance))));
         }
 
         return written;

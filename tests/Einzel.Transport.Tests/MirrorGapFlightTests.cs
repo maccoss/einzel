@@ -35,6 +35,60 @@ public sealed class MirrorGapFlightTests
             Inside(in position) ? Math.Min(position.X, Edge - position.X) : -Math.Max(-position.X, position.X - Edge);
     }
 
+    // The same box, saying where it is free: nothing inside, up to its edge from outside, without
+    // bound along a ray that never reaches it - as a solved field answers.
+    private sealed class FreeBox : IElectrostaticField
+    {
+        private readonly Box _box = new();
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => _box.ElectricFieldAt(in position);
+
+        public double PotentialAt(in Vec3 position) => _box.PotentialAt(in position);
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) => _box.SignedDistanceToDiscontinuity(in position);
+
+        public double FieldFreeRunLength(in Vec3 position, in Vec3 direction)
+        {
+            if (position.X >= 0.0 && position.X <= Edge)
+            {
+                return 0.0;
+            }
+
+            var target = position.X > Edge ? Edge : 0.0;
+            var along = (target - position.X) / direction.X;
+            return along > 0.0 ? along : double.PositiveInfinity;
+        }
+    }
+
+    [Theory]
+    [InlineData(0.0095)]
+    [InlineData(Plane)]
+    public void AFieldFreeDriftAcrossThePlaneIsOneAnalyticAdvance(double startX)
+    {
+        // From the gap, or standing on the plane itself, to a detector in the image's gap short of
+        // its box: field-free the whole way, so the flight is one analytic advance and no step.
+        // The image's run was the distance to the plane alone, zero on the plane, so the drift
+        // stopped there and an integrated step crossed the rest.
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var field = new Reflection(Plane, ImageAbove: true).Sum(new FreeBox());
+
+        var v0 = species.SpeedAfterAcceleration(Quantity.From(100.0, "V")).SiValue;
+        var launch = new PhaseState(new Vec3(startX, 0.0, 0.0), new Vec3(v0, 0.0, 0.0));
+        var settings = new IntegrationSettings { MaximumFlightTime = 1e-3 };
+        const double detectorX = 0.0109;
+        TrajectoryStopFunction detector = (in PhaseState s) => detectorX - s.Position.X;
+
+        Assert.Equal(0.0011, field.FieldFreeRunLength(new Vec3(0.0099, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0)), 15);
+        Assert.Equal(0.001, field.FieldFreeRunLength(new Vec3(Plane, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0)), 15);
+
+        var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
+        Assert.Equal(0, result.AcceptedSteps);
+        Assert.Equal(detectorX - startX, result.AnalyticDriftDistance, 15);
+        Assert.Equal((detectorX - startX) / v0, result.FlightTimeSeconds, 15);
+    }
+
     [Fact]
     public void AFlightThroughTheGapMatchesTheClosedForm()
     {

@@ -507,7 +507,15 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         Assert.Equal(1, code);
         Assert.Contains(" at /args/--progress:", stderr, StringComparison.Ordinal);
         Assert.Contains("'soon'", stderr, StringComparison.Ordinal);
-        Assert.Contains("Use 0 to turn it off", stderr, StringComparison.Ordinal);
+
+        // A word that is no interval after a bare --progress, with the model before it, is two
+        // words where run takes one: refused as the ambiguity it is, naming both.
+        Assert.Contains("--progress=<value>", stderr, StringComparison.Ordinal);
+
+        var (named, _, namedError) = Run(Words("run {model} --progress=soon"));
+
+        Assert.Equal(1, named);
+        Assert.Contains("Use 0 to turn it off", namedError, StringComparison.Ordinal);
 
         var (bare, _, bareError) = Run(Words("run {model} --project"));
 
@@ -760,8 +768,8 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
     [InlineData("render animation {film} --dry-run --out {film}", "/args/--out")]
     [InlineData("probe {model} --at-mm 0,0,0 --dry-run --csv {model}", "/args/--csv")]
     [InlineData("probe {model} --at-mm 0,0,0 --dry-run --csv {root}", "/args/--csv")]
-    [InlineData("render section {model} --at-us -1 --dry-run", "/render/at-us")]
-    [InlineData("probe {model} --at-mm 0,0,0 --at-us -1", "/probe/at-us")]
+    [InlineData("render section {model} --at-us -1 --dry-run", "/args/--at-us")]
+    [InlineData("probe {model} --at-mm 0,0,0 --at-us -1", "/args/--at-us")]
     [InlineData("new {root}/models/made.json --from-example no-such-example", null)]
     [InlineData("validate {root}/models/missing.json", "/")]
     [InlineData("validate {root}/nowhere/missing.json", "/")]
@@ -791,6 +799,38 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
         // And without --json, stdout is left alone, as it was.
         Assert.Equal(string.Empty, Run(Words(line)).Stdout);
+    }
+
+    /// <summary>
+    /// One mistake with one flag is located at that flag by every verb: <c>--at-us -1</c> is at
+    /// <c>/args/--at-us</c> whichever verb was handed it, including the two that take no instant.
+    /// </summary>
+    /// <remarks>
+    /// The command layer located flag errors at pointers of its own and the CLI translated only
+    /// the surface's, so the same mistake came back at <c>/args/--at-us</c>, <c>/probe/at-us</c>
+    /// and <c>/render/at-us</c> - and an export at the probe's, because it borrowed the probe's
+    /// check.
+    /// </remarks>
+    [Theory]
+    [InlineData("probe {model} --at-mm 0,0,0 --at-us -1")]
+    [InlineData("render section {model} --at-us -1 --dry-run")]
+    [InlineData("render surface {model} --box-mm 0,0,10,10 --at-us -1 --dry-run")]
+    [InlineData("render still {model} --at-us -1 --dry-run")]
+    [InlineData("render animation {film} --at-us -1 --dry-run")]
+    [InlineData("export {model} --composite --at-us -1 --dry-run")]
+    public void TheSameFlagMistakeIsLocatedTheSameWayByEveryVerb(string line)
+    {
+        Project();
+
+        var (code, stdout, stderr) = Run([.. Words(line), "--json"]);
+
+        output.WriteLine(stdout);
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+
+        using var document = JsonDocument.Parse(stdout);
+        Assert.Equal("/args/--at-us", document.RootElement.GetProperty("errors")[0].GetProperty("path").GetString());
     }
 
     /// <summary>

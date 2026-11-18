@@ -196,6 +196,12 @@ become a feature release without being renamed twice.
 - **`einzel run --progress ./models/r.json`** reads the path as the model, not the interval.
   `einzel run --dry-run` is refused (it was ignored, and the model ran), pointing at `einzel
   preview` and `einzel estimate`.
+- **`einzel run --progress m.json extra.json`** (or any order of a bare `--progress` and more words
+  than the verb takes) is refused naming every word that could be the one meant, and suggesting
+  `--progress=<seconds>` or `--progress` last. Every flag error is located at `/args/--flag`,
+  whichever verb raised it (`probe` and `render section` had their own pointers). The probe's
+  `--csv` quotes a conductor name holding a comma or a quote. `einzel export` of several solved
+  elements holds one element's solve at a time.
 - **A reflected solve's metal is where its field is, on both sides of the mirror**: an electrode
   declared past the plane no longer stops ions in the image's half. A surface's bound on what the
   field can be is taken at each node.

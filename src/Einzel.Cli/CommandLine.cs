@@ -1,3 +1,5 @@
+using Einzel.Core.Errors;
+
 namespace Einzel.Cli;
 
 /// <summary>
@@ -24,6 +26,12 @@ public sealed class CommandLine
 
     /// <summary>Every flag given, without its dashes, in the order first given.</summary>
     public IReadOnlyList<string> Flags => [.. _all.Select(o => o.Name).Distinct()];
+
+    /// <summary>
+    /// Where a flag whose value may be left off is followed by more words than the verb takes,
+    /// the refusal saying so; null where the line can be read one way.
+    /// </summary>
+    public EinzelError? Ambiguity { get; private set; }
 
     /// <summary>Whether a flag was supplied.</summary>
     /// <param name="name">The flag name, without dashes.</param>
@@ -65,7 +73,8 @@ public sealed class CommandLine
         // Asked of the verb named, so a name may be a switch for one verb and take a value for
         // another. A command line naming no verb this knows has only --json and --help, which
         // every verb takes; whatever it is, it is refused or answered with a usage.
-        var flags = VerbFlags.For(args)?.Flags;
+        var verb = VerbFlags.For(args);
+        var flags = verb?.Flags;
 
         // A command line naming no sub-verb this knows - `render --dry-run m.json`, an implicit
         // section - is read with the switches every sub-verb of its verb has, the set SubVerb
@@ -128,37 +137,58 @@ public sealed class CommandLine
             }
         }
 
-        // Settled: where the verb has more positionals than it takes, every held word is its flag's
-        // value after all, and the flag's reader refuses it by name - none of them is a number.
-        // Whichever order the words came in: `run --progress soon m.json` and `run m.json
-        // --progress soon` are both refused at --progress naming 'soon', and `run --progress
-        // m.json extra.json` is refused at --progress naming m.json, so no reading of the line
-        // runs a model it did not mean. Where the count fits, the words are positionals.
-        if (flags is not null && parsed._positional.Count > flags.Positionals)
+        // Settled without guessing. Where the count fits, the held words are positionals. Where
+        // the verb has more positionals than it takes, some held word was meant as a value or some
+        // positional is a stray, and nothing on the line says which: `run --progress m.json
+        // extra.json` may be an interval called m.json or a model and a stray. Every reading
+        // that picks one runs a model somebody may not have meant or blames a word somebody did
+        // mean - three rounds of review moved the blame from word to word - so the line is
+        // refused, naming the flag and every word that could be the one meant.
+        if (flags is not null && tentative.Count > 0 && parsed._positional.Count > flags.Positionals)
         {
-            var given = tentative;
-
-            // Values in the order given, so the last occurrence of a flag is its value as always;
-            // then the words out of the positionals from the back, so no index moves under another.
-            foreach (var held in given)
-            {
-                parsed._all[held.Option] = (held.Name, parsed._positional[held.Positional]);
-            }
-
-            // The value is the last occurrence on the line, as for any flag: a held word given to
-            // its flag after the line was read must not overwrite a later explicit value, as in
-            // `run --progress m.json --progress 10 extra.json`.
-            foreach (var name in given.Select(h => h.Name).Distinct(StringComparer.Ordinal))
-            {
-                parsed._options[name] = parsed._all.Last(o => string.Equals(o.Name, name, StringComparison.Ordinal)).Value;
-            }
-
-            for (var t = given.Count - 1; t >= 0; t--)
-            {
-                parsed._positional.RemoveAt(given[t].Positional);
-            }
+            parsed.Ambiguity = Ambiguous(verb!.Value.Key, flags, [.. tentative.Select(t => t.Name).Distinct(StringComparer.Ordinal)], parsed._positional);
         }
 
         return parsed;
+    }
+
+    // The refusal for a line whose words could be read more than one way: the flags, every
+    // candidate word - the positionals past the sub-verb, any of which may be the one meant - and
+    // the two spellings that cannot be misread.
+    private static EinzelError Ambiguous(string key, VerbFlags flags, IReadOnlyList<string> names, IReadOnlyList<string> positional)
+    {
+        static string Count(int n) => n switch
+        {
+            1 => "one",
+            2 => "two",
+            3 => "three",
+            4 => "four",
+            _ => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        };
+
+        static string Joined(IReadOnlyList<string> items) => items.Count switch
+        {
+            1 => items[0],
+            2 => $"{items[0]} and {items[1]}",
+            _ => string.Join(", ", items.Take(items.Count - 1)) + $" and {items[^1]}",
+        };
+
+        var sub = key.Count(c => c == ' ');
+        var candidates = positional.Skip(sub).Select(p => $"'{p}'").ToList();
+        var takes = flags.Positionals - sub;
+        var flagged = names.Select(n => "--" + n).ToList();
+        var first = flagged[0];
+
+        return new EinzelError
+        {
+            Code = ErrorCodes.SchemaInvalid,
+            Path = FlagPath.Of(names[0]),
+            Constraint = $"{Joined(flagged)} {(names.Count == 1 ? "takes an optional value" : "take optional values")}, and "
+                + $"{Joined(candidates)} are {Count(candidates.Count)} words where {key} takes {Count(takes)}: "
+                + $"which {(names.Count == 1 ? "word is " + first + "'s value" : "words are values")} and which "
+                + $"{(takes == 1 ? "is the argument" : "are the arguments")} cannot be told from the line",
+            Suggestion = $"give the value with an equals sign, as {first}=<value>, or put {first} last on the line; "
+                + $"then every word is an argument, and {key} takes {Count(takes)}",
+        };
     }
 }

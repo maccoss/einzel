@@ -102,9 +102,14 @@ public sealed class StdoutTally : IDisposable
     // Every call on the writing flow, the innermost and each it is nested in: a nested call's
     // output is the outer call's output too, and marking only the innermost let the outer write a
     // second JSON document after it.
+    //
+    // Stopping at the first call already marked, because marking is a whole chain at once: a
+    // marked call's outer calls were marked with it. So after a call's first write each further
+    // one - a character at a time, through some writers - costs one read of the flow's call and
+    // one read of its flag, where it walked the chain and wrote every flag in it again.
     private static void Mark()
     {
-        for (var tally = Current.Value; tally is not null; tally = tally._outer)
+        for (var tally = Current.Value; tally is not null && !tally.Written; tally = tally._outer)
         {
             tally.MarkWritten();
         }

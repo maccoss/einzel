@@ -304,129 +304,266 @@ public static class ArtifactFiles
         ArgumentNullException.ThrowIfNull(destinations);
         ArgumentNullException.ThrowIfNull(write);
 
+        // Every destination refused before any is written, where all of them are known up front.
         CheckAll(destinations, inputs);
 
-        var count = destinations.Count;
-        var targets = new string[count];
-        var temporary = new string?[count];
+        using var set = Begin(inputs);
 
-        // What this call has put in place, and for each the backup of the file it replaced, if any;
-        // and the folders it made, so a failure leaves none of them behind.
-        var placed = new List<(string Target, string? Backup)>(count);
-        var created = new List<string>();
-        var keepBackups = count > 1;
-        var at = 0;
-
-        try
+        for (var i = 0; i < destinations.Count; i++)
         {
-            for (at = 0; at < count; at++)
+            var index = i;
+            set.Stage(destinations[i].Flag, destinations[i].Path, stream => write(index, stream));
+        }
+
+        set.Commit();
+    }
+
+    /// <summary>
+    /// Starts a set of files to be written all or none, staged one at a time as the caller makes
+    /// them and put in place together by <see cref="Staged.Commit"/>.
+    /// </summary>
+    /// <param name="inputs">The files the command reads, none of which a destination may be.</param>
+    /// <returns>The set; disposing it uncommitted removes everything it staged.</returns>
+    /// <remarks>
+    /// For a caller that cannot know every destination, or cannot make every file, before the
+    /// first is written - an export solving one element at a time. Each file goes to disk as soon
+    /// as it is made, so what the caller holds in memory is one file's worth however many there
+    /// are, and what is on disk until the commit is staging files no reader looks at.
+    /// </remarks>
+    public static Staged Begin(params string?[] inputs) => new(inputs);
+
+    /// <summary>
+    /// Files staged beside their destinations, put in place together or not at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Each file is replaced in one step.</b> Its bytes are written whole to a temporary file
+    /// beside it, and the temporary is renamed over the destination. A process killed at any
+    /// instant leaves the old file or the new one at the destination, never neither.
+    /// </para>
+    /// <para>
+    /// <b>Across several files the guarantee is weaker, and this is what it is.</b> Every file is
+    /// first written whole beside its destination; at the commit they are put in place one after
+    /// another, each replaced file kept under a backup name until the last is in place. If one
+    /// fails, those already placed are put back from their backups (or removed, where there was
+    /// nothing before) and the commit refuses. What cannot be covered is the process dying
+    /// between the first rename and the last: then the earlier destinations hold the new files,
+    /// the later ones the old, and each replaced file is left beside its destination under a
+    /// <c>.bak</c> name rather than lost.
+    /// </para>
+    /// </remarks>
+    public sealed class Staged : IDisposable
+    {
+        private readonly string?[] _inputs;
+
+        // Each staged file: its flag, the path as given, where its bytes go, and its staging file.
+        private readonly List<(string? Flag, string Path, string Target, string Temporary)> _files = [];
+
+        // Each destination resolved once and looked up, not compared with every other: a film is
+        // hundreds of frames, and every comparison follows links on disk.
+        private readonly Dictionary<string, int> _seen = new(
+            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
+        // The folders this set made, so a failure leaves none of them behind.
+        private readonly List<string> _created = [];
+
+        private bool _finished;
+
+        internal Staged(string?[] inputs) => _inputs = inputs ?? [];
+
+        /// <summary>How many files are staged.</summary>
+        public int Count => _files.Count;
+
+        /// <summary>Checks a destination and writes its file whole to a staging file beside it.</summary>
+        /// <param name="flag">The flag that names it, without its dashes; null where the user named none.</param>
+        /// <param name="path">The destination.</param>
+        /// <param name="write">Writes the file to the stream it is handed.</param>
+        /// <exception cref="EinzelException">
+        /// The destination is refused, or its file could not be staged. Everything this set has
+        /// staged is removed first: a refused set is no set.
+        /// </exception>
+        public void Stage(string? flag, string path, Action<Stream> write)
+        {
+            ArgumentNullException.ThrowIfNull(path);
+            ArgumentNullException.ThrowIfNull(write);
+            ObjectDisposedException.ThrowIf(_finished, this);
+
+            string? temporary = null;
+
+            try
             {
-                targets[at] = Destination(destinations[at].Flag, destinations[at].Path);
+                Check(flag, path);
+                CheckNotAnInput(flag, path, _inputs);
+
+                var resolved = Path.TrimEndingDirectorySeparator(Resolved(path));
+
+                if (_seen.TryGetValue(resolved, out var j))
+                {
+                    throw Refusal(
+                        flag,
+                        Path.GetFullPath(path),
+                        (_files[j].Flag is { } other ? $"--{other}" : "another output") + " names the same file, and one would be written over the other",
+                        flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
+                }
+
+                var target = Destination(flag, path);
+                var folder = Path.GetDirectoryName(target)!;
+                Create(folder, _created);
+                temporary = ShortName(folder, ".tmp");
+
+                Failing.Value?.Invoke("write", _files.Count);
+
+                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    write(stream);
+                }
+
+                _seen[resolved] = _files.Count;
+                _files.Add((flag, path, target, temporary));
+                temporary = null;
             }
-
-            // Every file whole on disk first, beside where it is going...
-            for (at = 0; at < count; at++)
+            catch (Exception failure)
             {
-                var folder = Path.GetDirectoryName(targets[at])!;
-                Create(folder, created);
-                temporary[at] = ShortName(folder, ".tmp");
-
-                Failing.Value?.Invoke("write", at);
-
-                using (var stream = new FileStream(temporary[at]!, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                if (temporary is not null)
                 {
-                    write(at, stream);
-                }
-            }
-
-            // ...and only then into place, each in one rename.
-            for (at = 0; at < count; at++)
-            {
-                Failing.Value?.Invoke("place", at);
-
-                var target = targets[at];
-                string? backup = null;
-
-                if (keepBackups && File.Exists(target))
-                {
-                    // Replaced in one step, the old file kept under a backup name until every
-                    // other file is in place, so a later failure can put it back.
-                    backup = ShortName(Path.GetDirectoryName(target)!, ".bak");
-                    File.Replace(temporary[at]!, target, backup, ignoreMetadataErrors: true);
-                }
-                else
-                {
-                    // One rename over whatever is there, or into an empty place.
-                    File.Move(temporary[at]!, target, overwrite: true);
+                    TryDelete(temporary);
                 }
 
-                temporary[at] = null;
-                placed.Add((target, backup));
+                Abort();
+
+                if (failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
+                {
+                    // A refusal already, or not a destination that cannot be written: raised as itself.
+                    throw;
+                }
+
+                throw Refusal(flag, Path.GetFullPath(path), failure.Message, null);
             }
         }
-        catch (Exception failure)
+
+        /// <summary>Puts every staged file in place: all of them, or none.</summary>
+        /// <exception cref="EinzelException">
+        /// One could not be put in place. Those already placed are put back as they were, and
+        /// every staging file is removed.
+        /// </exception>
+        public void Commit()
         {
-            // None of them, then, whatever went wrong: newest first, each back as it was.
-            for (var i = placed.Count - 1; i >= 0; i--)
-            {
-                var (target, backup) = placed[i];
+            ObjectDisposedException.ThrowIf(_finished, this);
 
-                if (backup is not null)
+            var count = _files.Count;
+            var placed = new List<(string Target, string? Backup)>(count);
+            var keepBackups = count > 1;
+            var at = 0;
+
+            try
+            {
+                for (at = 0; at < count; at++)
                 {
-                    TryRestore(backup, target);
+                    Failing.Value?.Invoke("place", at);
+
+                    var (_, _, target, temporary) = _files[at];
+                    string? backup = null;
+
+                    if (keepBackups && File.Exists(target))
+                    {
+                        // Replaced in one step, the old file kept under a backup name until every
+                        // other file is in place, so a later failure can put it back.
+                        backup = ShortName(Path.GetDirectoryName(target)!, ".bak");
+                        File.Replace(temporary, target, backup, ignoreMetadataErrors: true);
+                    }
+                    else
+                    {
+                        // One rename over whatever is there, or into an empty place.
+                        File.Move(temporary, target, overwrite: true);
+                    }
+
+                    placed.Add((target, backup));
                 }
-                else
+            }
+            catch (Exception failure)
+            {
+                // None of them, then, whatever went wrong: newest first, each back as it was.
+                for (var i = placed.Count - 1; i >= 0; i--)
                 {
-                    TryDelete(target);
+                    var (target, backup) = placed[i];
+
+                    if (backup is not null)
+                    {
+                        TryRestore(backup, target);
+                    }
+                    else
+                    {
+                        TryDelete(target);
+                    }
                 }
-            }
 
-            placed.Clear();
+                placed.Clear();
 
-            foreach (var left in temporary)
-            {
-                if (left is not null)
+                var (flag, path, _, _) = _files[Math.Min(at, count - 1)];
+
+                // The staging files not yet renamed, and the folders this set made.
+                for (var i = at; i < count; i++)
                 {
-                    TryDelete(left);
+                    TryDelete(_files[i].Temporary);
+                }
+
+                _files.Clear();
+                RemoveCreatedFolders();
+                _finished = true;
+
+                if (failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
+                {
+                    // Not a destination that cannot be written: rolled back, and raised as itself.
+                    throw;
+                }
+
+                throw Refusal(flag, Path.GetFullPath(path), failure.Message, null);
+            }
+            finally
+            {
+                // All in place: what was replaced is no longer wanted.
+                foreach (var (_, backup) in placed)
+                {
+                    if (backup is not null)
+                    {
+                        TryDelete(backup);
+                    }
                 }
             }
 
-            Array.Clear(temporary);
-
-            // And the folders this call made, deepest first, where nothing else has been put in them.
-            for (var i = created.Count - 1; i >= 0; i--)
-            {
-                TryDeleteEmptyFolder(created[i]);
-            }
-
-            if (failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
-            {
-                // Not a destination that cannot be written: rolled back, and raised as itself.
-                throw;
-            }
-
-            var (flag, path) = destinations[Math.Min(at, count - 1)];
-
-            throw Refusal(flag, Path.GetFullPath(path), failure.Message, null);
+            _files.Clear();
+            _finished = true;
         }
-        finally
+
+        /// <summary>Removes everything staged and not committed.</summary>
+        public void Dispose() => Abort();
+
+        private void Abort()
         {
-            foreach (var left in temporary)
+            if (_finished)
             {
-                if (left is not null)
-                {
-                    TryDelete(left);
-                }
+                return;
             }
 
-            // All in place: what was replaced is no longer wanted.
-            foreach (var (_, backup) in placed)
+            foreach (var file in _files)
             {
-                if (backup is not null)
-                {
-                    TryDelete(backup);
-                }
+                TryDelete(file.Temporary);
             }
+
+            _files.Clear();
+            RemoveCreatedFolders();
+            _finished = true;
+        }
+
+        // Deepest first, where nothing else has been put in them.
+        private void RemoveCreatedFolders()
+        {
+            for (var i = _created.Count - 1; i >= 0; i--)
+            {
+                TryDeleteEmptyFolder(_created[i]);
+            }
+
+            _created.Clear();
         }
     }
 
@@ -534,7 +671,7 @@ public static class ArtifactFiles
         new(new EinzelError
         {
             Code = ErrorCodes.SchemaInvalid,
-            Path = flag is null ? "/" : $"/args/--{flag}",
+            Path = flag is null ? "/" : FlagPath.Of(flag),
             Constraint = $"cannot write {path}: {why}",
             Suggestion = suggestion ?? (flag is null
                 ? $"make {Path.GetDirectoryName(path)} a folder that can be written, or move what is in the way"

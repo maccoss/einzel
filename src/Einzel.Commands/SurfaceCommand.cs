@@ -629,7 +629,7 @@ public static class SurfaceCommand
         // in the cycle does not matter (the probe opens the window at zero where it cannot).
         if (!request.CycleMean)
         {
-            Einzel.Fields.FieldInstants.CheckResolution(request.AtUs * 1e-6, probe.Field, "/surface/at-us");
+            Einzel.Fields.FieldInstants.CheckResolution(request.AtUs * 1e-6, probe.Field, FlagPath.Of("at-us"));
         }
 
         // A mean over a cycle that does not exist is not a number this can draw, and drawing the
@@ -641,7 +641,7 @@ public static class SurfaceCommand
         if (request.CycleMean && probe.CycleMeanWindowSecondsAt(at) is null)
         {
             throw Refusal(
-                "/surface/cycle-mean",
+                FlagPath.Of("cycle-mean"),
                 probe.TimeVarying
                     ? string.Create(
                         CultureInfo.InvariantCulture,
@@ -679,14 +679,14 @@ public static class SurfaceCommand
         else
         {
             throw Refusal(
-                "/surface/box-mm",
+                FlagPath.Of("box-mm"),
                 "this model has no solved domain to take the sampled rectangle from (every element "
                 + "is analytic and fills all space); give --box-mm with the rectangle in the plane");
         }
 
         if (!(a1 > a0) || !(b1 > b0))
         {
-            throw Refusal("/surface/box-mm", "the rectangle must have a positive extent along both axes");
+            throw Refusal(FlagPath.Of("box-mm"), "the rectangle must have a positive extent along both axes");
         }
 
         // The longer side runs across the picture, which is how an instrument is drawn.
@@ -1449,7 +1449,7 @@ public static class SurfaceCommand
                 : surface.Height == SurfaceHeight.Energy ? "height-mm-per-ev" : "height-mm-per-v";
 
             throw Refusal(
-                "/surface/" + flag,
+                FlagPath.Of(flag),
                 string.Create(
                     CultureInfo.InvariantCulture,
                     $"at {mmPerUnit:G6} mm per {surface.Unit} the surface would stand {tallest:G6} mm tall over a plane {longest:G6} mm long, more than {MaximumDrawnHeight:G} times its length"),
@@ -1667,7 +1667,7 @@ public static class SurfaceCommand
             {
                 var value = surface.At(i, j);
                 var cell = double.IsFinite(value) ? value.ToString("G17", invariant) : string.Empty;
-                text.Append(invariant, $"{surface.Across[i]:G17},{surface.Deep[j]:G17},{cell},{CsvField(surface.Inside[(i * surface.Deep.Count) + j])}\n");
+                text.Append(invariant, $"{surface.Across[i]:G17},{surface.Deep[j]:G17},{cell},{Csv.Field(surface.Inside[(i * surface.Deep.Count) + j])}\n");
             }
         }
 
@@ -2338,14 +2338,6 @@ public static class SurfaceCommand
         _ => 0.0,
     };
 
-    /// <summary>A CSV field, quoted per RFC 4180 where it holds a comma, a quote or a line break.</summary>
-    private static string CsvField(string? field) =>
-        field is null
-            ? string.Empty
-            : field.AsSpan().IndexOfAny(",\"\r\n") < 0
-                ? field
-                : "\"" + field.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
-
     private static IEnumerable<(double X, double Y, double Z)> Points(PictureLayer layer)
     {
         foreach (var mesh in layer.Meshes)
@@ -2429,7 +2421,7 @@ public static class SurfaceCommand
         "xy" => (0, 1, 2),
         "xz" => (0, 2, 1),
         "yz" => (1, 2, 0),
-        _ => throw Refusal("/surface/plane", $"the plane is xy, xz or yz; got '{plane}'"),
+        _ => throw Refusal(FlagPath.Of("plane"), $"the plane is xy, xz or yz; got '{plane}'"),
     };
 
     private static string Name(int axis) => axis switch { 0 => "x", 1 => "y", _ => "z" };
@@ -2529,18 +2521,18 @@ public static class SurfaceCommand
     {
         if (request.Plane is { } plane && !Planes.Contains(plane, StringComparer.Ordinal))
         {
-            throw Refusal("/surface/plane", $"the plane is xy, xz or yz; got '{plane}'");
+            throw Refusal(FlagPath.Of("plane"), $"the plane is xy, xz or yz; got '{plane}'");
         }
 
         if (request.OffsetMm is { } offset && !double.IsFinite(offset))
         {
-            throw Refusal("/surface/offset-mm", "the offset must be a finite number of millimetres");
+            throw Refusal(FlagPath.Of("offset-mm"), "the offset must be a finite number of millimetres");
         }
 
         if (request.BoxMm is { } box && (box.Count != 4 || box.Any(v => !double.IsFinite(v))))
         {
             throw Refusal(
-                "/surface/box-mm",
+                FlagPath.Of("box-mm"),
                 "the rectangle is four finite numbers in millimetres, in the plane's own axis order (for xz: x0,z0,x1,z1)");
         }
 
@@ -2549,29 +2541,29 @@ public static class SurfaceCommand
         if (request.BoxMm is { Count: 4 } corners && (!double.IsFinite(corners[2] - corners[0]) || !double.IsFinite(corners[3] - corners[1])))
         {
             throw Refusal(
-                "/surface/box-mm",
+                FlagPath.Of("box-mm"),
                 "the rectangle's width and height must be finite numbers of millimetres; these corners are finite and the distance between them is not");
         }
 
         if (request.Samples < 3 || request.Samples > MaximumSamples)
         {
-            throw Refusal("/surface/samples", $"samples along the longer side are 3 to {MaximumSamples}; got {request.Samples}");
+            throw Refusal(FlagPath.Of("samples"), $"samples along the longer side are 3 to {MaximumSamples}; got {request.Samples}");
         }
 
         if (request.MeshLines < MinimumMeshLines)
         {
-            throw Refusal("/surface/mesh-lines", $"at least {MinimumMeshLines} mesh line; got {request.MeshLines}");
+            throw Refusal(FlagPath.Of("mesh-lines"), $"at least {MinimumMeshLines} mesh line; got {request.MeshLines}");
         }
 
         if (request.Height is not (SurfaceHeight.Potential or SurfaceHeight.Energy))
         {
-            throw Refusal("/surface/height", $"the height is potential or energy; got '{request.Height}'");
+            throw Refusal(FlagPath.Of("height"), $"the height is potential or energy; got '{request.Height}'");
         }
 
         if (!(request.Relief > 0.0) || !(request.Relief <= MaximumRelief))
         {
             throw Refusal(
-                "/surface/relief",
+                FlagPath.Of("relief"),
                 string.Create(
                     CultureInfo.InvariantCulture,
                     $"the relief is the drawn height of the whole range as a fraction of the longer side, more than 0 and at most {MaximumRelief:G}; got {request.Relief:G6}"));
@@ -2581,18 +2573,18 @@ public static class SurfaceCommand
         {
             // Located at the flag that was given: the energy's scale is per electronvolt.
             throw Refusal(
-                request.Height == SurfaceHeight.Energy ? "/surface/height-mm-per-ev" : "/surface/height-mm-per-v",
+                request.Height == SurfaceHeight.Energy ? FlagPath.Of("height-mm-per-ev") : FlagPath.Of("height-mm-per-v"),
                 "the height scale must be a positive, finite number of millimetres per unit");
         }
 
         // The rule probe and render section apply: a model's clock starts at zero, so a negative
         // instant has no state to draw - a sequence would answer with its first phase under a
         // time the instrument never reaches.
-        ProbeCommand.CheckInstant(request.AtUs, "/surface/at-us");
+        ProbeCommand.CheckInstant(request.AtUs);
 
         if (request.DeepSamples is { } deep && (deep < 2 || deep > MaximumSamples))
         {
-            throw Refusal("/surface/samples", $"samples along the shorter side are 2 to {MaximumSamples}; got {deep}");
+            throw Refusal(FlagPath.Of("samples"), $"samples along the shorter side are 2 to {MaximumSamples}; got {deep}");
         }
     }
 

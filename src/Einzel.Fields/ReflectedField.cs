@@ -137,23 +137,46 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
 
     /// <inheritdoc/>
     /// <remarks>
+    /// <para>
     /// Where the image answers nothing (<see cref="Contributes"/>) it is field-free until the ray
-    /// reaches the plane, where it may start to answer: the distance to the plane along a ray
-    /// heading for the image's side, unbounded along one that is not. The inner field's own
-    /// run, asked at the reflected point, says nothing there - a half that is free beyond its own
-    /// edge claimed the image free straight through the plane and into its field.
+    /// reaches the plane, and from there as far as its own field is free: the distance to the
+    /// plane plus the image's run from the point the ray crosses it, along a ray heading for the
+    /// image's side; unbounded along one that is not. The inner field's own run, asked at the
+    /// reflected point, says nothing on this side - a half that is free beyond its own edge
+    /// claimed the image free straight through the plane and into its field.
+    /// </para>
+    /// <para>
+    /// <b>The distance to the plane alone was zero on the plane.</b> The plane is the declared
+    /// half's, so a ray standing on it and heading across had a run of nothing, the sum's shortest
+    /// run was nothing, and the analytic drift stopped at every mid-plane crossing of a reflected
+    /// pair - one integrated step through a field-free gap for each pass. The image answers just
+    /// past the plane, so its run from the crossing is what follows.
+    /// </para>
     /// </remarks>
     public double FieldFreeRunLength(in Vec3 position, in Vec3 direction)
     {
+        var mirroredDirection = new Vec3(-direction.X, direction.Y, direction.Z);
+
         if (!Contributes(in position))
         {
             var towards = imageAbove == true ? direction.X : -direction.X;
 
-            return towards > 0.0 ? Math.Abs(planeX - position.X) / towards : double.PositiveInfinity;
+            if (towards <= 0.0)
+            {
+                return double.PositiveInfinity;
+            }
+
+            var toPlane = Math.Abs(planeX - position.X) / towards;
+
+            // Where the ray crosses the plane, x set to the plane exactly rather than to a
+            // rounded sum, seen through the mirror: the plane is its own image.
+            var crossing = new Vec3(planeX, position.Y + (toPlane * direction.Y), position.Z + (toPlane * direction.Z));
+            var beyond = _inner.FieldFreeRunLength(in crossing, in mirroredDirection);
+
+            return toPlane + beyond;
         }
 
         var mirrored = Reflect(in position);
-        var mirroredDirection = new Vec3(-direction.X, direction.Y, direction.Z);
         return _inner.FieldFreeRunLength(in mirrored, in mirroredDirection);
     }
 

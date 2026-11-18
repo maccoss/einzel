@@ -3768,5 +3768,21 @@ Two findings from Stage 1 that bear on the spec:
   with the inner field's resolution, as the shared-face check does. And a doubled `<inheritdoc/>`
   is now caught by `NoCommentHasTwoSummaries`.
 
+  **A twentieth review.** A reflected solve's image gave a run of zero to a ray standing on the
+  mirror plane and heading across, so the sum's run was zero and the analytic drift stopped at
+  every mid-plane crossing - one integrated step through a field-free gap per pass; the image now
+  answers with the distance to the plane plus its own run from the crossing. The export's
+  all-or-none set had been held as closures until the last element was solved, so every element's
+  solves stayed alive together; files are now staged on disk as each element is solved
+  (`ArtifactFiles.Begin`/`Staged`) and renamed into place at the end - measured on two
+  half-millimetre plate solves, 16.54 MiB held at the files before and 8.29 after, against 9.59 for
+  one element alone. Flag errors are located at `/args/--flag` by every verb (`FlagPath`), where the
+  command layer had `/probe/at-us` and `/render/at-us` and only the surface's was translated. The
+  probe's CSV quotes conductor names as the surface's does (`Csv.Field`). A negative instant stays
+  refused on a static model, by section, spec and surface alike - the reviewer's premise that the
+  surface made it advisory was not so. Main parses the command line once, inside its catch-all. And
+  a bare optional flag followed by more words than the verb takes is refused naming every candidate
+  word, instead of guessing which was meant.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

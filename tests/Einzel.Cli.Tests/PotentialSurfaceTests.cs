@@ -2607,9 +2607,9 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         {
             (["render", "section", Spec("before-zero", -1e-6), "--dry-run"], "/atSeconds", "atSeconds"),
             (["render", "section", Spec("too-late", 1e294), "--dry-run"], "/atSeconds", "too late"),
-            (["render", "section", model, "--at-us", "1e300", "--dry-run"], "/render/at-us", "too late"),
-            (["render", "section", model, "--at-us", "-1", "--dry-run"], "/render/at-us", "--at-us"),
-            (["render", "section", Spec("overridden", -1e-6), "--at-us", "-2", "--dry-run"], "/render/at-us", "--at-us"),
+            (["render", "section", model, "--at-us", "1e300", "--dry-run"], "/args/--at-us", "too late"),
+            (["render", "section", model, "--at-us", "-1", "--dry-run"], "/args/--at-us", "--at-us"),
+            (["render", "section", Spec("overridden", -1e-6), "--at-us", "-2", "--dry-run"], "/args/--at-us", "--at-us"),
         })
         {
             var (code, stdout, stderr) = Cli(args);
@@ -2621,6 +2621,52 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         }
 
         Assert.Equal(0, Cli("render", "section", Spec("placeable", 2.5e-6), "--dry-run").ExitCode);
+    }
+
+    /// <summary>
+    /// On a static model the instant is still checked, by section and surface alike: a negative
+    /// instant is refused whatever the model holds, and a placeable one is drawn.
+    /// </summary>
+    /// <remarks>
+    /// The rule is one rule for every verb and every source: a run's clock starts at zero, so a
+    /// negative instant names no state of any instrument, and whether it is refused cannot depend
+    /// on what the model holds - a spec written against a static model would otherwise start to be
+    /// refused the day a phase is added to it, for an instant it always gave. The surface's
+    /// <c>render.instant-ignored</c> is for a valid instant on a static field, not for a negative
+    /// one: the surface refuses <c>--at-us -1</c> on a static model before it opens it.
+    /// </remarks>
+    [Fact]
+    public void ANegativeInstantIsRefusedOnAStaticModelByEveryVerb()
+    {
+        var model = Model("template", "einzel-lens");
+        var spec = Path.Combine(_root, "static-before-zero.render.json");
+        File.WriteAllText(spec, $$"""
+            {
+              "renderSpecVersion": "0.1",
+              "model": {{System.Text.Json.JsonSerializer.Serialize(model)}},
+              "atSeconds": -1e-6
+            }
+            """);
+
+        foreach (var (args, path) in new (string[], string)[]
+        {
+            (["render", "section", spec, "--dry-run"], "/atSeconds"),
+            (["render", "section", model, "--at-us", "-1", "--dry-run"], "/args/--at-us"),
+            (["render", "surface", model, "--box-mm", "0,0,10,10", "--at-us", "-1", "--dry-run"], "/args/--at-us"),
+        })
+        {
+            var (code, stdout, stderr) = Cli(args);
+            output.WriteLine($"{string.Join(' ', args[..2])} {string.Join(' ', args[3..])}: exit {code}: {stderr.Trim()}");
+
+            Assert.Equal(1, code);
+            Assert.Contains("at " + path + ":", stdout + stderr, StringComparison.Ordinal);
+        }
+
+        // A placeable instant on the static model is drawn, with the surface saying it changed nothing.
+        Assert.Equal(0, Cli("render", "section", model, "--at-us", "1", "--dry-run").ExitCode);
+        var surface = Cli("render", "surface", model, "--box-mm", "0,0,10,10", "--at-us", "1", "--dry-run");
+        Assert.Equal(0, surface.ExitCode);
+        Assert.Contains("render.instant-ignored", surface.Stdout + surface.Stderr, StringComparison.Ordinal);
     }
 
     /// <summary>A bad explicit height scale is reported at the flag that was given.</summary>
@@ -2696,10 +2742,10 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         foreach (var (args, path) in new (string[] Args, string Path)[]
         {
             (["render", "surface", sequenced, "--at-us", "-1", "--samples", "21", "--dry-run"], "/args/--at-us"),
-            (["render", "section", sequenced, "--at-us", "-1", "--dry-run"], "/render/at-us"),
-            (["probe", sequenced, "--at-mm", "0,0,0", "--at-us", "-1"], "/probe/at-us"),
+            (["render", "section", sequenced, "--at-us", "-1", "--dry-run"], "/args/--at-us"),
+            (["probe", sequenced, "--at-mm", "0,0,0", "--at-us", "-1"], "/args/--at-us"),
             (["render", "surface", quadrupole, "--at-us", "1e300", "--samples", "21", "--dry-run"], "/args/--at-us"),
-            (["probe", quadrupole, "--at-mm", "0,0,0", "--at-us", "1e300"], "/probe/at-us"),
+            (["probe", quadrupole, "--at-mm", "0,0,0", "--at-us", "1e300"], "/args/--at-us"),
         })
         {
             var (code, stdout, stderr) = Cli(args);

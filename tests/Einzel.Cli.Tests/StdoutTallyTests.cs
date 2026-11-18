@@ -154,4 +154,44 @@ public sealed class StdoutTallyTests
             Console.SetOut(original);
         }
     }
+
+    /// <summary>
+    /// A failure while the command line itself is parsed reaches the catch-all: an internal
+    /// error, exit 6, and under <c>--json</c> one document on stdout.
+    /// </summary>
+    /// <remarks>
+    /// Main parsed the command line a second time, outside its try, to learn whether --json was
+    /// asked for, so an exception in the parse escaped Main altogether - no exit code, no
+    /// document, a crash.
+    /// </remarks>
+    [Fact]
+    public void AFailureInTheParseIsCaughtLikeAnyOther()
+    {
+        var original = Console.Out;
+        var originalError = Console.Error;
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        Console.SetOut(stdout);
+        Console.SetError(stderr);
+
+        int code;
+
+        try
+        {
+            // A null word: what no shell can pass and an in-process caller can, and the parse
+            // does not expect.
+            code = Program.Main(["validate", null!, "--json"]);
+        }
+        finally
+        {
+            Console.SetOut(original);
+            Console.SetError(originalError);
+        }
+
+        Assert.Equal(6, code);
+        Assert.Contains("INTERNAL_ERROR", stderr.ToString(), StringComparison.Ordinal);
+
+        using var document = System.Text.Json.JsonDocument.Parse(stdout.ToString());
+        Assert.Equal("INTERNAL_ERROR", document.RootElement.GetProperty("errors")[0].GetProperty("code").GetString());
+    }
 }

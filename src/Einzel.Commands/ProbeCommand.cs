@@ -1433,7 +1433,7 @@ public static class ProbeCommand
         Check(request);
 
         var probe = FieldProbe.Open(modelPath);
-        FieldInstants.CheckResolution(request.AtUs * 1e-6, probe.Field, "/probe/at-us");
+        FieldInstants.CheckResolution(request.AtUs * 1e-6, probe.Field, FlagPath.Of("at-us"));
         var at = (request.AtUs ?? 0.0) * 1e-6;
         var samples = new List<ProbeSample>();
 
@@ -1512,7 +1512,7 @@ public static class ProbeCommand
                 invariant,
                 $"{s.PositionMm[0]:G17},{s.PositionMm[1]:G17},{s.PositionMm[2]:G17},{Cell(s.PotentialV)},"
                 + $"{Cell(s.FieldVPerM?[0])},{Cell(s.FieldVPerM?[1])},{Cell(s.FieldVPerM?[2])},"
-                + $"{b}{s.Status},{s.Conductor}\n");
+                + $"{b}{s.Status},{Csv.Field(s.Conductor)}\n");
         }
 
         return text.ToString();
@@ -1566,7 +1566,9 @@ public static class ProbeCommand
 
         if (!Finite(request.FromMm) || (request.ToMm is { } t && !Finite(t)))
         {
-            throw Refusal("/probe", "coordinates must be finite numbers in millimetres");
+            // At the flag that carried the number that is not one.
+            var flag = request.ToMm is null ? "at-mm" : Finite(request.FromMm) ? "to-mm" : "line-mm";
+            throw Refusal(FlagPath.Of(flag), "coordinates must be finite numbers in millimetres");
         }
 
         CheckInstant(request.AtUs);
@@ -1575,7 +1577,7 @@ public static class ProbeCommand
             && (request.Samples < 2 || request.Samples > MaximumSamples))
         {
             throw Refusal(
-                "/probe/samples",
+                FlagPath.Of("samples"),
                 $"a line needs between 2 and {MaximumSamples} samples, both ends included; got {request.Samples}");
         }
     }
@@ -1589,15 +1591,18 @@ public static class ProbeCommand
     /// refused because a run's clock starts at zero: a sequenced field has no phase before it,
     /// and an answer there would be the first phase's under a time the instrument never reaches.
     /// </remarks>
-    /// <param name="path">Where the error is located: the verb's own flag, as a JSON Pointer.</param>
-    public static void CheckInstant(double? atUs, string path = "/probe/at-us")
+    /// <remarks>
+    /// Located at <c>--at-us</c> by <see cref="FlagPath"/>, whichever verb asks: the instant is
+    /// the same flag on every verb that takes it, so the same mistake is located the same way.
+    /// </remarks>
+    public static void CheckInstant(double? atUs)
     {
         if (atUs is { } instant && (!double.IsFinite(instant) || instant < 0.0))
         {
             throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
-                Path = path,
+                Path = FlagPath.Of("at-us"),
                 Constraint = "--at-us must be a finite, non-negative number of microseconds; a run's clock starts at 0",
                 Observed = new ObservedValue(instant, "us"),
                 Suggestion = "give --at-us 0 or a later instant, in microseconds",

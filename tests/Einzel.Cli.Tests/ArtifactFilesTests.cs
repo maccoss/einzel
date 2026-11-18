@@ -158,6 +158,50 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(files, Directory.GetFiles(Path.Combine(project, ".einzel"), "funnel*.vti").Order(StringComparer.Ordinal).ToArray());
     }
 
+    /// <summary>
+    /// A set staged one file at a time puts nothing in place until it is committed, and a set
+    /// abandoned part way leaves nothing behind: no file, no staging file, no folder it made.
+    /// </summary>
+    [Fact]
+    public void AStagedSetIsInPlaceOnlyWhenCommitted()
+    {
+        var folder = Path.Combine(_root, "made");
+        var first = Path.Combine(folder, "a.vti");
+        var second = Path.Combine(folder, "b.vti");
+
+        using (var set = ArtifactFiles.Begin())
+        {
+            set.Stage(null, first, s => s.Write([1]));
+            set.Stage(null, second, s => s.Write([2]));
+
+            Assert.False(File.Exists(first));
+            Assert.Equal(2, Directory.GetFiles(folder).Length);
+        }
+
+        // Abandoned: the staging files and the folder made for them are gone.
+        Assert.False(Directory.Exists(folder));
+
+        using (var set = ArtifactFiles.Begin())
+        {
+            set.Stage(null, first, s => s.Write([1]));
+            set.Stage(null, second, s => s.Write([2]));
+            set.Commit();
+        }
+
+        Assert.Equal([1], File.ReadAllBytes(first));
+        Assert.Equal([2], File.ReadAllBytes(second));
+        Assert.Equal(["a.vti", "b.vti"], Directory.GetFiles(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+
+        // A refusal part way abandons the set: the file staged before it is not left on disk.
+        using (var set = ArtifactFiles.Begin())
+        {
+            set.Stage(null, Path.Combine(folder, "c.vti"), s => s.Write([3]));
+            Assert.Throws<EinzelException>(() => set.Stage(null, Path.Combine(folder, "C.vti".ToLowerInvariant()), s => s.Write([4])));
+        }
+
+        Assert.Equal(["a.vti", "b.vti"], Directory.GetFiles(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
     /// <summary>A read-only destination is refused and left as it was.</summary>
     [Fact]
     public void AReadOnlyDestinationIsRefusedAndKept()

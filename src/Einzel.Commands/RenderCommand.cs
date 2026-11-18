@@ -119,7 +119,7 @@ public static class RenderCommand
         // is built (SectionRenderer).
         if (spec.InstantFromFlag)
         {
-            ProbeCommand.CheckInstant(spec.AtSeconds * 1e6, "/render/at-us");
+            ProbeCommand.CheckInstant(spec.AtSeconds * 1e6);
         }
         else if (!double.IsFinite(spec.AtSeconds) || spec.AtSeconds < 0.0)
         {

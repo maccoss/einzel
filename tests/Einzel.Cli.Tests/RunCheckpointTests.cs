@@ -535,9 +535,15 @@ public sealed class RunCheckpointTests(ITestOutputHelper output) : IDisposable
     [Fact]
     public void AnIntervalThatIsNotOneIsRefused()
     {
-        var (exit, _, stderr) = Run("run", Project(), "--progress", "often");
+        var (exit, _, stderr) = Run("run", Project(), "--progress=often");
 
         Assert.Equal(1, exit);
         Assert.Contains("--progress takes an interval in seconds", stderr, StringComparison.Ordinal);
+
+        // Bare after the model, 'often' could be the interval or a second model: refused naming both.
+        var (bare, _, bareError) = Run("run", Project(), "--progress", "often");
+
+        Assert.Equal(1, bare);
+        Assert.Contains("'often' are two words where run takes one", bareError, StringComparison.Ordinal);
     }
 }
