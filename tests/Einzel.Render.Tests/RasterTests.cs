@@ -268,6 +268,14 @@ public sealed class RasterTests(ITestOutputHelper output)
             // The control: a surface behind the layer's geometry is still hidden by it.
             var hidden = Rasterizer.Draw([first, behind], Scale(10.0), Flat, White, 21, 21);
             Assert.Equal((255, 0, 0), At(hidden, 21, 10, 10));
+
+            // Drawn after a nearer surface, the biased layer passes its test and is drawn - and
+            // must not push the stored depth back to its own: a surface between the two, drawn
+            // last, is behind the nearer one and stays hidden. Writing the biased layer's depth
+            // unconditionally let it through.
+            var between = Layer(Square(z: 0.5, 0.0, 0.0, 1.0));
+            var layered = Rasterizer.Draw([nearer, first, between], Scale(10.0), Flat, White, 21, 21);
+            Assert.Equal((255, 0, 0), At(layered, 21, 10, 10));
         }
     }
 

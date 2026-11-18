@@ -343,20 +343,26 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// A word that did not parse as a number after a bare <c>--progress</c> is named when the line
-    /// then fails: as a stray-argument refusal, or as a model that is not there. Nothing is
-    /// reassigned - the note says where the word stood and how to write the value.
+    /// A word that did not parse as a number after a bare <c>--progress</c> is mentioned when the
+    /// line then fails, and only where the mention can be right: the word is one of the surplus
+    /// arguments, or could be a mistyped number. Nothing is reassigned, and the note is
+    /// conditional - the word may have been meant either way.
     /// </summary>
     /// <remarks>
     /// <c>run --progress 5s m.json</c> blamed m.json alone, and <c>run --progress 5s</c> said only
-    /// that there was no model called 5s.
+    /// that there was no model called 5s. The first note fired for every such word: for a model
+    /// path with a typo in it, and for the word that correctly was the model when a later one was
+    /// the stray.
     /// </remarks>
     [Theory]
-    [InlineData("--progress 5s m.json", "'5s' followed a bare --progress")]
-    [InlineData("--progress 5s", "'5s' followed a bare --progress")]
-    [InlineData("--progress 0,5 m.json", "'0,5' followed a bare --progress")]
-    [InlineData("--progress 1e400 m.json", "--progress takes an interval in seconds, and '1e400' is not one")]
-    public void AWordThatFollowedABareProgressIsNamedWhenTheLineFails(string flags, string expected)
+    [InlineData("--progress 5s m.json", "'5s'")]
+    [InlineData("--progress 5s", "'5s'")]
+    [InlineData("--progress 0,5 m.json", "'0,5'")]
+    [InlineData("m.json --progress often", "'often'")]
+    [InlineData("--progress modls/r.json", null)]
+    [InlineData("--progress m.json extra", null)]
+    [InlineData("--progress 1e400 m.json", null)]
+    public void AWordThatFollowedABareProgressIsMentionedOnlyWhereItCanBeRight(string flags, string? word)
     {
         var model = Path.Combine(Path.GetTempPath(), "einzel-bare-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(model, "{}");
@@ -367,10 +373,14 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
             var (code, _, stderr) = Cli(["run", .. line]);
 
             Assert.Equal(1, code);
-            Assert.Contains(expected, stderr, StringComparison.Ordinal);
 
-            if (expected.Contains("followed", StringComparison.Ordinal))
+            if (word is null)
             {
+                Assert.DoesNotContain("was meant as --progress's value", stderr, StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.Contains($"if {word} was meant as --progress's value, it is not a number", stderr, StringComparison.Ordinal);
                 Assert.Contains("--progress=<seconds> or --progress <number>", stderr, StringComparison.Ordinal);
             }
         }
@@ -378,6 +388,16 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         {
             File.Delete(model);
         }
+    }
+
+    /// <summary>An overflow is the value, refused by the reader as no interval rather than opened as a model.</summary>
+    [Fact]
+    public void AnOverflowIsRefusedAsAnInterval()
+    {
+        var (code, _, stderr) = Cli("run", "--progress", "1e400", "m.json");
+
+        Assert.Equal(1, code);
+        Assert.Contains("--progress takes an interval in seconds, and '1e400' is not one", stderr, StringComparison.Ordinal);
     }
 
     /// <summary>A later explicit value is the value: the last occurrence on the line, as for any flag.</summary>
@@ -515,6 +535,30 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
                 .SelectMany(e => e.Value.Values.Concat(e.Value.Optional));
 
             Assert.Empty(switches.Intersect(taking));
+        }
+    }
+
+    /// <summary>
+    /// An empty value is refused for both spellings, worded for both; a value of spaces is a value
+    /// unless it names a file, which spaces cannot.
+    /// </summary>
+    [Theory]
+    [InlineData(new[] { "run", "m.json", "--project=" }, "/args/--project", "--project takes a value, and the one given is empty")]
+    [InlineData(new[] { "run", "m.json", "--project", "" }, "/args/--project", "--project takes a value, and the one given is empty")]
+    [InlineData(new[] { "run", "m.json", "--progress", "" }, "/args/--progress", "--progress takes a value, and the one given is empty")]
+    [InlineData(new[] { "render", "section", "m.json", "--out", "  " }, "/args/--out", "--out takes a path, and '  ' is only spaces")]
+    [InlineData(new[] { "render", "section", "m.json", "--caption", " " }, null, null)]
+    [InlineData(new[] { "render", "section", "m.json", "--caption= " }, null, null)]
+    public void AnEmptyValueIsRefusedAndASpaceIsAValue(string[] line, string? path, string? constraint)
+    {
+        var problem = Program.CommandLineProblem(line);
+
+        Assert.Equal(path, problem?.Path);
+
+        if (constraint is not null)
+        {
+            Assert.Equal(constraint, problem!.Constraint);
+            Assert.DoesNotContain("'='", problem.Constraint, StringComparison.Ordinal);
         }
     }
 }

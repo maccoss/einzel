@@ -3834,5 +3834,15 @@ Two findings from Stage 1 that bear on the spec:
   second file holds a fraction of what the first did (9.59 and 1.48 MiB) where a queued export held
   both at both (9.73 and 9.73). Two readings of one run share a baseline, so it cancels.
 
+  **A twenty-fifth review.** A biased layer that writes depth stored its depth even where it was
+  behind what was there, so a later hidden surface drew over a nearer one; it stores the nearer of
+  the two. A narrow shared scale offset from zero sent every label to exponent form ("1.23e+3"); only
+  a small value is written that way now. The note about a word after a bare `--progress` fired for a
+  mistyped model path and for the word that was the model; it is conditional, and only where it can
+  be right. An empty value is refused for both spellings, a value of spaces is a value except as a
+  path, and an unknown template or example is located at its flag. A failed replace that leaves the
+  target and a backup both deletes a backup that copies the intact target and names one that does
+  not. The conductor gate is `DeclaredMetal`, so a solved field is not an ambiguous argument.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

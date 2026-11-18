@@ -909,8 +909,10 @@ render spec's `atSeconds` - is located in the document.
 
 **Every verb refuses a malformed command line, before it does anything** (`Program.Malformed`),
 against its own flags (`VerbFlags.ByVerb`): a flag the verb does not read (`unknown flag --no-scales
-for render surface`), a flag it reads as a value given none - or given an empty one, `--out=`, which
-reached `Path.GetFullPath("")` and exited 6 - and more positional arguments than it takes. **An
+for render surface`), a flag it reads as a value given none - or given an empty one, `--out=` or
+`--out ""`, which reached `Path.GetFullPath("")` and exited 6 - and more positional arguments than it
+takes. A value of spaces is a value (a caption may be one); a path given as spaces is refused at its
+flag, and a reader that cannot take spaces - a number, a choice - refuses them by name. **An
 implicit section** (`render --dry-run m.json`, the model after the flags) is held to the section's
 flags and its one model: it had no registry entry, so `render --dry-run m.json --widht-mm 80` drew the
 default width with exit 0. **A sub-verb a verb does not have** (`ext bogus`, `agents bogus`, `render
@@ -1002,10 +1004,12 @@ off too, silently, so `--progress -5` ran a long job with no checkpoint). **A ba
 `--progress` before a positional is still bare**: the next word is its value only if **the whole
 word parses as a number** (`CommandNumber.Parses`, invariant culture - an overflow such as `1e400`,
 and `NaN`, included, so the reader refuses them as intervals rather than a model called 1e400 being
-opened), and otherwise it is an ordinary positional. Where such a word then makes the line fail -
-too many arguments, or a model that is not there (`run --progress 5s`) - the refusal names it: it
-followed a bare `--progress`, and the value must be written `--progress=<seconds>` or `--progress
-<number>`. That is a message, not a reassignment. So
+opened), and otherwise it is an ordinary positional. Where such a word then makes the line fail,
+the refusal mentions it - conditionally, "if '5s' was meant as --progress's value", with how to
+write one - but only where that can be right: on too many arguments, when the word is itself one of
+the surplus or could be a mistyped number (a digit first, or a sign or point and then one); on a
+model that is not there (`run --progress 5s`), only for such a word. `run --progress modls/r.json`
+is a missing model and nothing more. That is a message, not a reassignment. So
 `--progress 5` is a five-second interval, as the shell's journal spells it, while `einzel run
 --progress models/reflectron.json`, `--progress 2026-lens.json`, `--progress 3d-trap.json` and
 `--progress ./models/r.json` are the default interval and a model, and `einzel run m.json --progress

@@ -496,7 +496,10 @@ public static class Rasterizer
                             Put(index, cr * shade, cg * shade, cb * shade, alpha);
                         }
 
-                        if (writesDepth)
+                        // The nearer of the two: a biased layer passes the test up to the bias
+                        // behind what is stored, and writing its own depth there would push the
+                        // stored surface back and let a later, hidden one draw over it.
+                        if (writesDepth && depth < _depth[index])
                         {
                             _depth[index] = depth;
                         }
@@ -561,7 +564,10 @@ public static class Rasterizer
 
                         Put(index, lr * shade, lg * shade, lb * shade, alpha);
 
-                        if (writesDepth)
+                        // The nearer of the two: a biased layer passes the test up to the bias
+                        // behind what is stored, and writing its own depth there would push the
+                        // stored surface back and let a later, hidden one draw over it.
+                        if (writesDepth && depth < _depth[index])
                         {
                             _depth[index] = depth;
                         }

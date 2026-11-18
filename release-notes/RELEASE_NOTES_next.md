@@ -203,7 +203,7 @@ become a feature release without being renamed twice.
   refused as an interval rather than opened as a model, and a word read as a model after a bare
   `--progress` (`einzel run --progress 5s`) is named in the refusal. A negative `--progress` is
   refused (only `--progress 0` turns reporting off), and a surface label or caption never writes a
-  nonzero value as 0. An empty value after `=`
+  nonzero value as 0, nor a narrow scale near a large value as "1.23e+3". An empty value after `=`
   (`--out=`) is refused at the flag rather than exiting 6; `einzel render --dry-run m.json` is held
   to the section's flags, so a typo there is refused rather than ignored; and an unknown `ext`,
   `agents` or `render` sub-verb is refused naming the known ones. Every flag error is located at `/args/--flag`,

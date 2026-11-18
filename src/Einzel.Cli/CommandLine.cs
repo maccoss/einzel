@@ -14,7 +14,7 @@ public sealed class CommandLine
     private readonly Dictionary<string, string?> _options = new(StringComparer.Ordinal);
     private readonly List<(string Name, string? Value)> _all = [];
     private readonly List<string> _positional = [];
-    private readonly List<(string Flag, string Word)> _bareFollowers = [];
+    private readonly List<(string Flag, string Word, int Positional)> _bareFollowers = [];
 
     private CommandLine()
     {
@@ -28,9 +28,10 @@ public sealed class CommandLine
 
     /// <summary>
     /// Each word that directly followed a bare flag whose value may be left off, and did not parse
-    /// as a number, so was read as a positional: for a refusal to name, never to reassign.
+    /// as a number, so was read as a positional, with the index it took among the positionals:
+    /// for a refusal to name, never to reassign.
     /// </summary>
-    public IReadOnlyList<(string Flag, string Word)> BareFollowers => _bareFollowers;
+    public IReadOnlyList<(string Flag, string Word, int Positional)> BareFollowers => _bareFollowers;
 
     /// <summary>Whether a flag was supplied.</summary>
     /// <param name="name">The flag name, without dashes.</param>
@@ -107,7 +108,9 @@ public sealed class CommandLine
             // value - unless this is a switch, which never has one.
             var next = !IsSwitch(name) && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal);
 
-            if (next && IsOptional(name) && !CommandNumber.Parses(args[i + 1]))
+            // An empty word is never a positional - no model is called nothing - so after such a
+            // flag it is the flag's value, and refused as an empty one.
+            if (next && IsOptional(name) && args[i + 1].Length > 0 && !CommandNumber.Parses(args[i + 1]))
             {
                 // A flag whose value may be left off, followed by a word that does not parse as a
                 // number: the flag is bare and the word is an ordinary positional, read on the
@@ -117,7 +120,7 @@ public sealed class CommandLine
                 // stood (`run --progress 5s` cannot find a model called 5s).
                 parsed._options[name] = null;
                 parsed._all.Add((name, null));
-                parsed._bareFollowers.Add((name, args[i + 1]));
+                parsed._bareFollowers.Add((name, args[i + 1], parsed._positional.Count));
             }
             else if (next)
             {

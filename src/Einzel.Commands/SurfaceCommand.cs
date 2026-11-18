@@ -1692,8 +1692,9 @@ public static class SurfaceCommand
     /// On a shared scale (<paramref name="span"/> given) a value under half the scale's last digit
     /// still reads 0, deliberately: it is zero to the resolution every label on that scale is read
     /// at, and a residue printed as -2e-4 beside a 20 V range would state a precision the scale
-    /// does not have. That holds whatever the scale's size - a span of 3e-8 V is written in
-    /// exponent form, and only what is under its own resolution reads 0.
+    /// does not have. That holds whatever the scale's size: labels on a span of 3e-8 V are written
+    /// in exponent form, labels on a span of 3e-5 V around 1234.5 V in fixed notation with the seven
+    /// decimals that tell them apart, and only what is under the scale's resolution reads 0.
     /// </para>
     /// </remarks>
     public static string Format(double value, double span = 0.0)
@@ -1723,12 +1724,17 @@ public static class SurfaceCommand
             return "0";
         }
 
-        if (decimals > 6)
+        // Exponent form only for a value that is itself small. A narrow span offset from zero -
+        // 1234.50000 to 1234.50003 V - needs seven decimals to tell its labels apart and is
+        // written with them; sent to exponent form for the span's size alone, every label read
+        // "1.23e+3". A small value is written with the figures the span needs, at least three.
+        if (decimals > 6 && Math.Abs(value) < 1e-3)
         {
-            return Exponent(value);
+            var figures = Math.Max(3, (int)Math.Floor(Math.Log10(Math.Abs(value))) - exponent + 3);
+            return Exponent(value, figures);
         }
 
-        decimals = Math.Max(decimals, 0);
+        decimals = Math.Clamp(decimals, 0, 15);
         var text = Math.Round(value, decimals).ToString("F" + decimals.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 
         if (text.Contains('.', StringComparison.Ordinal))
@@ -1741,8 +1747,10 @@ public static class SurfaceCommand
         return text is "0" or "-0" ? (shared ? "0" : Exponent(value)) : text;
     }
 
-    // Three significant figures in exponent form, in characters the stroke font draws: 3e-8, -1.25e-12.
-    private static string Exponent(double value) => value.ToString("0.##e+0", CultureInfo.InvariantCulture);
+    // Significant figures in exponent form, three unless more are asked for, in characters the
+    // stroke font draws: 3e-8, -1.25e-12.
+    private static string Exponent(double value, int figures = 3) =>
+        value.ToString("0." + new string('#', Math.Max(figures - 1, 0)) + "e+0", CultureInfo.InvariantCulture);
 
     /// <summary>An instant as the picture states it: compact at any size, in characters the stroke font draws.</summary>
     /// <param name="microseconds">The instant.</param>
@@ -1791,7 +1799,7 @@ public static class SurfaceCommand
 
         return a < 1e9
             ? $"t={Format(microseconds * scale)} {unit}"
-            : $"t={(microseconds / 1e6).ToString("0.##e+0", invariant)} s";
+            : $"t={Exponent(microseconds / 1e6)} s";
     }
 
     /// <summary>

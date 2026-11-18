@@ -86,8 +86,10 @@ public static class Program
         catch (FileNotFoundException failure)
         {
             // A file that is not there because a word meant as --progress's value was read as the
-            // model - `run --progress 5s` - says so, rather than only that 5s does not exist.
-            var note = options is null ? null : BareFollowerNote(options, failure.FileName);
+            // model - `run --progress 5s` - says it may have been, rather than only that 5s does
+            // not exist. Only for a word that could be a mistyped number: a model path with a
+            // typo in it after a bare --progress is just a model path with a typo.
+            var note = options is null ? null : BareFollowerNote(options, f => SamePath(f.Word, failure.FileName) && LooksNumeric(f.Word));
             var message = note is null ? failure.Message : $"{failure.Message.TrimEnd('.')}; {note}";
 
             Console.Error.WriteLine(message);
@@ -279,12 +281,31 @@ public static class Program
             }
 
             // Every occurrence, not the last: `--set --set r=7` gave the first --set no value and
-            // only the second was asked. And an empty value is no value: `--out=` handed the empty
-            // string to a reader that made a path of it, and Path.GetFullPath("") came out as an
-            // internal error, exit 6. A flag whose value may be left off may be bare, but given
-            // an equals sign it is given a value, and an empty one is none.
+            // only the second was asked. And an empty value is no value: `--out=` (or `--out ""`)
+            // handed the empty string to a reader that made a path of it, and Path.GetFullPath("")
+            // came out as an internal error, exit 6. A flag whose value may be left off may be
+            // bare, but given a value, an empty one is none. Empty only: a single space is a value
+            // somebody may mean - a caption, a label - and a reader that cannot take one refuses
+            // it itself.
             var values = options.Values(flag);
-            var emptied = values.Any(v => v is not null && string.IsNullOrWhiteSpace(v));
+
+            // A file named by nothing but spaces names no file: refused at its flag, where the
+            // path reader would have made one of it and failed inside the engine.
+            var path = PathFlags.Contains(flag) ? values.FirstOrDefault(v => v is { Length: > 0 } && string.IsNullOrWhiteSpace(v)) : null;
+
+            if (path is not null)
+            {
+                refusal = new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = FlagPath.Of(flag),
+                    Constraint = $"--{flag} takes a path, and '{path}' is only spaces",
+                    Suggestion = $"give --{flag} a file or folder by name",
+                };
+                break;
+            }
+
+            var emptied = values.Any(v => v is { Length: 0 });
 
             if ((flags.Values.Contains(flag) && values.Any(v => v is null)) || ((flags.Values.Contains(flag) || flags.Optional.Contains(flag)) && emptied))
             {
@@ -293,7 +314,7 @@ public static class Program
                     Code = ErrorCodes.SchemaInvalid,
                     Path = FlagPath.Of(flag),
                     Constraint = emptied
-                        ? $"--{flag} takes a value, and the one given after '=' is empty"
+                        ? $"--{flag} takes a value, and the one given is empty"
                         : $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
                     Suggestion = $"give --{flag} its value, as --{flag} <value>",
                 };
@@ -304,9 +325,13 @@ public static class Program
         if (refusal is null && options.Positional.Count > flags.Positionals)
         {
             // Where a word read as an argument followed a bare flag whose value may be left off,
-            // the refusal says so: `run --progress 5s m.json` blamed m.json alone, where the word
-            // to fix is 5s. Nothing is reassigned - the line is refused either way.
-            var note = BareFollowerNote(options);
+            // the refusal says it may have been meant as the value: `run --progress 5s m.json`
+            // blamed m.json alone, where the word to fix is 5s. Only where that can be right - the
+            // word is itself one of the surplus, or could be a mistyped number - so `run
+            // --progress m.json extra` says nothing about m.json, which was the model. Nothing is
+            // reassigned; the line is refused either way.
+            var surplus = flags.Positionals;
+            var note = BareFollowerNote(options, f => f.Positional >= surplus || LooksNumeric(f.Word));
 
             refusal = new EinzelError
             {
@@ -333,39 +358,55 @@ public static class Program
     /// </remarks>
     private static readonly string[] FileFlags = ["out", "csv", "input"];
 
+    // The flags whose value is a path: a file to write or read, or the project folder.
+    private static readonly string[] PathFlags = ["out", "csv", "input", "project"];
+
     /// <summary>
     /// What a refusal says about words read as arguments because they followed a bare flag whose
     /// value may be left off and did not parse as a number; null where there were none.
     /// </summary>
     /// <param name="options">The parsed command line.</param>
-    /// <param name="missing">
-    /// A file that was not found: only a word naming it is mentioned. Null mentions every such word.
-    /// </param>
-    /// <returns>The sentence, or null.</returns>
-    internal static string? BareFollowerNote(CommandLine options, string? missing = null)
+    /// <param name="mentioned">Which such words the refusal could be right about.</param>
+    /// <returns>The sentence, conditional - the word may have been meant as either - or null.</returns>
+    internal static string? BareFollowerNote(CommandLine options, Func<(string Flag, string Word, int Positional), bool> mentioned)
     {
         var words = options.BareFollowers
-            .Where(f => missing is null || SamePath(f.Word, missing))
+            .Where(mentioned)
             .Select(f =>
-                $"'{f.Word}' followed a bare --{f.Flag} and is not a number, so it was read as an argument; "
-                + $"--{f.Flag}'s value must be a number, written --{f.Flag}=<{(f.Flag == "progress" ? "seconds" : "value")}> or --{f.Flag} <number>")
+                $"if '{f.Word}' was meant as --{f.Flag}'s value, it is not a number and was read as an argument instead: "
+                + $"write --{f.Flag}=<{(f.Flag == "progress" ? "seconds" : "value")}> or --{f.Flag} <number>")
             .ToList();
 
         return words.Count == 0 ? null : string.Join("; ", words);
+    }
 
-        static bool SamePath(string word, string missing)
+    // Whether a word could be a mistyped number - a digit first, or a sign or a point and then a
+    // digit: '5s', '0,5', '-2x'. A model path rarely is, and a note about one that is not would
+    // send somebody to fix a word that was right.
+    internal static bool LooksNumeric(string word)
+    {
+        var body = word.Length > 0 && word[0] is '+' or '-' ? word[1..] : word;
+        body = body.Length > 0 && body[0] == '.' ? body[1..] : body;
+        return body.Length > 0 && char.IsAsciiDigit(body[0]);
+    }
+
+    private static bool SamePath(string word, string? missing)
+    {
+        if (missing is null)
         {
-            try
-            {
-                return string.Equals(
-                    Path.GetFullPath(word),
-                    Path.GetFullPath(missing),
-                    OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
-            }
-            catch (Exception failure) when (failure is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                return false;
-            }
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(word),
+                Path.GetFullPath(missing),
+                OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch (Exception failure) when (failure is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
         }
     }
 
@@ -884,7 +925,7 @@ public static class Program
         // With a name, emit that artifact; without, list what there is.
         if (options.Positional.Count > 0)
         {
-            Console.Out.Write(CatalogCommand.Read(kind, options.Positional[0]));
+            Console.Out.Write(CatalogCommand.Read(kind, options.Positional[0], "/args/0"));
             return (int)ExitCode.Success;
         }
 

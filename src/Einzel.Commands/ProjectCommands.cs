@@ -62,7 +62,9 @@ public static class ProjectCommands
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
 
-        var text = CatalogCommand.Read(kind, name);
+        // Located at the flag that named it, as every other flag error is (FlagPath): `new` has
+        // no other way to be asked for a template or an example.
+        var text = CatalogCommand.Read(kind, name, FlagPath.Of("from-" + kind));
         var absolute = Path.GetFullPath(destination);
 
         // Refusing rather than overwriting. A model is the input a whole study

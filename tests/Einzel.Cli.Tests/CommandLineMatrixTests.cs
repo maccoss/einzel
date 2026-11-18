@@ -201,6 +201,19 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
                     continue;
                 }
 
+                // A value of a single space is a value: a caption may be one, a number or a path
+                // cannot. Either the verb takes it or that flag's reader refuses it, located at
+                // the flag - never an internal error, and never refused somewhere else.
+                if (given.Kind == "spaced")
+                {
+                    if (code != 0 && !stderr.Contains($" at {given.RefusedAt}:", StringComparison.Ordinal))
+                    {
+                        violations.Add($"A SPACED VALUE WAS NEITHER TAKEN NOR REFUSED AT {given.RefusedAt}: {line}" + Environment.NewLine + "    " + FirstLine(stderr));
+                    }
+
+                    continue;
+                }
+
                 if (given.RefusedAt is not { } path)
                 {
                     if (stderr.Contains(" at /args/", StringComparison.Ordinal))
@@ -248,7 +261,7 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         output.WriteLine(string.Join(", ", ran.OrderBy(r => r.Key, StringComparer.Ordinal).Select(r => $"{r.Value} {r.Key}")));
 
         // The control: a matrix that ran nothing of one kind passes every assertion about it.
-        foreach (var kind in new[] { "help", "base", "valid", "empty", "bare", "bare-optional", "garbage", "unknown", "extra" })
+        foreach (var kind in new[] { "help", "base", "valid", "empty", "spaced", "bare", "bare-optional", "garbage", "unknown", "extra" })
         {
             Assert.True(ran.GetValueOrDefault(kind) > 0, $"the matrix ran no '{kind}' case");
         }
@@ -287,7 +300,8 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
                 // An empty value after '=' is no value: `--out=` reached Path.GetFullPath("") and
                 // exited 6. Every flag that takes a value, the optional one included.
                 yield return new Case(verb, "empty", [.. words, .. form, $"--{flag}="], "/args/--" + flag);
-                yield return new Case(verb, "empty", [.. words, .. form, $"--{flag}= "], "/args/--" + flag);
+                yield return new Case(verb, "empty", [.. words, .. form, "--" + flag, ""], "/args/--" + flag);
+                yield return new Case(verb, "spaced", [.. words, .. form, $"--{flag}= "], "/args/--" + flag);
 
                 // Bare, a flag that takes a value is refused by name; one whose value may be
                 // left off is taken as its default.

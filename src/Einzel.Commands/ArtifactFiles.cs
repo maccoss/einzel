@@ -518,6 +518,7 @@ public static class ArtifactFiles
                         // other file is in place, so a later failure can put it back.
                         backup = ShortName(Path.GetDirectoryName(target)!, ".bak");
                         replacing = (target, backup);
+                        Replacing.Value?.Invoke(target, backup);
                         File.Replace(temporary, target, backup, ignoreMetadataErrors: true);
 
                         // Placed the moment the replace returns, with its backup, before anything
@@ -544,10 +545,29 @@ public static class ArtifactFiles
                 // refusal, not swallowed, since the one copy of the user's file is there.
                 var stranded = new List<(string Target, string Backup)>();
 
-                if (replacing is { } risk && File.Exists(risk.Backup) && !File.Exists(risk.Target)
-                    && !TryRestore(risk.Backup, risk.Target))
+                // Files a failed replace left that are not stranded originals but may be the only
+                // other copy of one: named in the refusal rather than deleted unseen.
+                var leftover = new List<string>();
+
+                if (replacing is { } risk && File.Exists(risk.Backup))
                 {
-                    stranded.Add(risk);
+                    if (!File.Exists(risk.Target))
+                    {
+                        if (!TryRestore(risk.Backup, risk.Target))
+                        {
+                            stranded.Add(risk);
+                        }
+                    }
+                    else if (SameBytes(risk.Backup, risk.Target))
+                    {
+                        // The replace failed with both still there and the target as it was: the
+                        // backup is a copy of it, and nothing needs it.
+                        TryDelete(risk.Backup);
+                    }
+                    else
+                    {
+                        leftover.Add(risk.Backup);
+                    }
                 }
 
                 // None of them, then, whatever went wrong: newest first, each back as it was.
@@ -587,7 +607,13 @@ public static class ArtifactFiles
                     : "; and it could not be put back as it was: "
                         + string.Join("; ", stranded.Select(s => $"the original of {s.Target} is now at {s.Backup}"));
 
-                if (stranded.Count == 0
+                if (leftover.Count > 0)
+                {
+                    left += "; and the failed replace left " + string.Join(", ", leftover)
+                        + ", which differs from the file it was a backup of - check it before removing it";
+                }
+
+                if (stranded.Count == 0 && leftover.Count == 0
                     && failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
                 {
                     // Not a destination that cannot be written: rolled back, and raised as itself.
@@ -598,7 +624,7 @@ public static class ArtifactFiles
                     flag,
                     Path.GetFullPath(path),
                     failure.Message + left,
-                    stranded.Count == 0 ? null : "move each original back over the file named beside it; nothing of it was deleted");
+                    stranded.Count == 0 && leftover.Count == 0 ? null : "move each original back over the file named beside it; nothing of it was deleted");
             }
             finally
             {
@@ -703,6 +729,12 @@ public static class ArtifactFiles
     /// </summary>
     internal static readonly AsyncLocal<Action<string, int>?> Failing = new();
 
+    /// <summary>
+    /// Called with a file's destination and its backup name just before File.Replace: a test's way
+    /// to leave what a failed replace can leave - the target and a backup both - and fail there.
+    /// </summary>
+    internal static readonly AsyncLocal<Action<string, string>?> Replacing = new();
+
     // A destination already resolved to where its bytes go - the file a symbolic link names,
     // followed to the end, or the path itself - refused if it is an existing read-only file,
     // before anything is written.
@@ -718,6 +750,22 @@ public static class ArtifactFiles
         }
 
         return full;
+    }
+
+    // Whether two files hold the same bytes; false where either cannot be read.
+    private static bool SameBytes(string first, string second)
+    {
+        try
+        {
+            var a = new FileInfo(first);
+            var b = new FileInfo(second);
+
+            return a.Length == b.Length && File.ReadAllBytes(first).AsSpan().SequenceEqual(File.ReadAllBytes(second));
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     // Whether the backup went back; false where it did not, and the caller says where it is.

@@ -2903,6 +2903,19 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal("-1.25e-12", SurfaceCommand.Format(-1.25e-12));
         Assert.Equal("0.000123", SurfaceCommand.Format(1.23e-4));
 
+        // A narrow scale offset from zero is written in fixed notation, with the decimals that
+        // tell its labels apart - not "1.23e+3" for every one of them.
+        Assert.Equal("1234.5", SurfaceCommand.Format(1234.5, 3e-5));
+        Assert.Equal("1234.50001", SurfaceCommand.Format(1234.50001, 3e-5));
+        Assert.Equal("1234.50003", SurfaceCommand.Format(1234.50003, 3e-5));
+        Assert.Equal("-1234.50002", SurfaceCommand.Format(-1234.50002, 3e-5));
+
+        // A small value on a small scale carries the figures the scale needs.
+        Assert.Equal("1.0001e-4", SurfaceCommand.Format(1.0001e-4, 3e-8));
+
+        // An instant past a thousand seconds keeps its exponent form.
+        Assert.Equal("t=2.5e+3 s", SurfaceCommand.Instant(2.5e9));
+
         // A scale of 3e-8 V writes its labels, not a column of zeros.
         Assert.Equal("1.5e-8", SurfaceCommand.Format(1.5e-8, 3e-8));
         Assert.Equal("0", SurfaceCommand.Format(1e-15, 3e-8));

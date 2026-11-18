@@ -11,12 +11,12 @@ namespace Einzel.Fields;
 /// mirror plane stopped ions on the image's side, where the image's metal - the reflection of the
 /// near side - is what stands. The image's conductors were already gated on the declared side;
 /// this is the other half of the same rule (<see cref="Reflection.DeclaredAnswersAt"/>), so the
-/// absorber is symmetric about the plane. Made only by <see cref="Reflection.Declared(IElectrostaticField)"/>, for a
+/// absorber is symmetric about the plane. Made only by <see cref="Reflection.Declared"/>, for a
 /// union: where the halves overlap there is nothing to gate.
 /// </remarks>
 internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflection) : IElectrostaticField, IConductorBounded
 {
-    private readonly DeclaredMetal? _metal = inner is IConductorBounded metal ? new DeclaredMetal(metal, reflection) : null;
+    private readonly GatedMetal? _metal = inner is IConductorBounded metal ? new GatedMetal(metal, reflection) : null;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -73,7 +73,7 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
 /// metal (<see cref="ConductorLeaf.Of"/>) gates it by the same rule without asking the field to
 /// be something it was not typed as.
 /// </remarks>
-internal sealed class DeclaredMetal(IConductorBounded inner, Reflection reflection) : IConductorBounded
+internal sealed class GatedMetal(IConductorBounded inner, Reflection reflection) : IConductorBounded
 {
     /// <inheritdoc/>
     public double SignedDistanceToConductor(in Vec3 position) =>

@@ -284,6 +284,59 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A replace that fails leaving the target and a backup both is cleaned up where the backup is
+    /// a copy of the intact target, and named in the refusal where it is not.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AFailedReplaceLeavingABackupIsCleanedOrNamed(bool copy)
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first.vti");
+        var second = Path.Combine(_root, "second.vti");
+        File.WriteAllBytes(first, [1]);
+        File.WriteAllBytes(second, [2]);
+        string? left = null;
+
+        ArtifactFiles.Replacing.Value = (target, backup) =>
+        {
+            if (target == second)
+            {
+                File.WriteAllBytes(backup, copy ? [2] : [7]);
+                left = backup;
+                throw new IOException("unable to remove the replaced file");
+            }
+        };
+
+        EinzelException refusal;
+
+        try
+        {
+            refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.WriteAll([(null, first, [8]), (null, second, [9])]));
+        }
+        finally
+        {
+            ArtifactFiles.Replacing.Value = null;
+        }
+
+        output.WriteLine(refusal.Error.Constraint);
+
+        Assert.Equal([1], File.ReadAllBytes(first));
+        Assert.Equal([2], File.ReadAllBytes(second));
+
+        if (copy)
+        {
+            Assert.Equal(["first.vti", "second.vti"], Directory.GetFiles(_root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        }
+        else
+        {
+            Assert.True(File.Exists(left));
+            Assert.Contains(left!, refusal.Error.Constraint, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// A set staged one file at a time puts nothing in place until it is committed, and a set
     /// abandoned part way leaves nothing behind: no file, no staging file, no folder it made.
     /// </summary>

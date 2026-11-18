@@ -490,4 +490,28 @@ public sealed class MirrorPlaneTests
         Assert.Empty(sides);
         Assert.Contains(typeof(ReflectedField).GetConstructors(), c => c.GetParameters().Any(p => p.ParameterType == typeof(Reflection)));
     }
+
+    /// <summary>
+    /// A type that is both a field and bounded by conductors - every solved field is - can be
+    /// handed to either gate without a cast or an ambiguous call, and both gate its metal alike.
+    /// </summary>
+    /// <remarks>
+    /// The conductor gate was a second overload of <c>Declared</c>, so this call did not compile
+    /// (CS0121); it is <c>DeclaredMetal</c> now.
+    /// </remarks>
+    [Fact]
+    public void BothGatesTakeASolvedLikeTypeAndAgree()
+    {
+        var reflection = new Reflection(Plane, ImageAbove: true);
+        var half = new MetalPastThePlane();
+
+        var field = reflection.Declared(half);
+        var metal = reflection.DeclaredMetal(half);
+        var inside = new Vec3(Plane + 0.002, 0.0, 0.0);
+
+        // Past the plane, on the image's side: neither answers for the declared half's metal.
+        Assert.Equal(double.PositiveInfinity, ((IConductorBounded)field).SignedDistanceToConductor(in inside));
+        Assert.Equal(double.PositiveInfinity, metal.SignedDistanceToConductor(in inside));
+        Assert.Null(metal.ConductorAt(in inside));
+    }
 }
