@@ -2488,6 +2488,15 @@ public static class SurfaceCommand
                 "the rectangle is four finite numbers in millimetres, in the plane's own axis order (for xz: x0,z0,x1,z1)");
         }
 
+        // Each corner finite and the extent not: -1e308 to 1e308 is an infinite width, an
+        // infinite step between samples, and no surface.
+        if (request.BoxMm is { Count: 4 } corners && (!double.IsFinite(corners[2] - corners[0]) || !double.IsFinite(corners[3] - corners[1])))
+        {
+            throw Refusal(
+                "/surface/box-mm",
+                "the rectangle's width and height must be finite numbers of millimetres; these corners are finite and the distance between them is not");
+        }
+
         if (request.Samples < 3 || request.Samples > MaximumSamples)
         {
             throw Refusal("/surface/samples", $"samples along the longer side are 3 to {MaximumSamples}; got {request.Samples}");

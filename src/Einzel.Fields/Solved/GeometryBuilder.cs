@@ -1074,14 +1074,15 @@ public static class GeometryBuilder
             field = new AxisymmetricField(field);
         }
 
-        var leaves = ConductorLeaf.Of(field, solve.ReflectAboutX, StaticHeldConductors.Of(solve.Electrodes));
+        var reflection = Reflection.Of(solve.ReflectAboutX, solve.MinX, solve.MaxX);
+        var leaves = ConductorLeaf.Of(field, reflection, StaticHeldConductors.Of(solve.Electrodes));
 
-        if (solve.ReflectAboutX is { } plane)
+        if (reflection is { } mirror)
         {
             // The reflected half is the same solve seen backwards, so the two are
             // identical by construction and no difference between them can come
             // from their having been meshed differently.
-            field = new SuperposedField([field, new ReflectedField(field, plane, ReflectedField.ImageSide(solve.MinX, solve.MaxX, plane))]);
+            field = mirror.Sum(field);
         }
 
         return (field, report, leaves);
@@ -1110,6 +1111,7 @@ public static class GeometryBuilder
     {
         var grid = BuildGrid(solve);
         var (frequencies, waveforms, quadrature) = Clocks(solve.Drives);
+        var reflection = Reflection.Of(solve.ReflectAboutX, solve.MinX, solve.MaxX);
 
         // Every stage is decomposed on its own and the patterns are then shared, so a
         // pattern appearing in two stages is solved once and simply weighted differently
@@ -1162,9 +1164,9 @@ public static class GeometryBuilder
             // Every channel is the same metal, so the first one's declared half says where it is.
             metal ??= basis;
 
-            if (solve.ReflectAboutX is { } plane)
+            if (reflection is { } mirror)
             {
-                basis = new SuperposedField([basis, new ReflectedField(basis, plane, ReflectedField.ImageSide(solve.MinX, solve.MaxX, plane))]);
+                basis = mirror.Sum(basis);
             }
 
             channels.Add(basis);
@@ -1205,7 +1207,7 @@ public static class GeometryBuilder
                 ConductorCoefficients = coefficients,
             };
 
-            return (driven, worst, ConductorLeaf.Of(metal, solve.ReflectAboutX, driven));
+            return (driven, worst, ConductorLeaf.Of(metal, reflection, driven));
         }
 
         var boundaries = new List<double>(solve.Stages.Count);
@@ -1267,7 +1269,7 @@ public static class GeometryBuilder
             ConductorCoefficients = coefficients,
         };
 
-        return (sequenced, worst, ConductorLeaf.Of(metal, solve.ReflectAboutX, sequenced));
+        return (sequenced, worst, ConductorLeaf.Of(metal, reflection, sequenced));
     }
 
     /// <summary>

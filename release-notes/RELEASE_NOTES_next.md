@@ -193,6 +193,9 @@ become a feature release without being renamed twice.
   `agents` flags are checked per sub-verb (`ext list --kind y` is refused). A destination that is
   the model itself, or another destination, is refused; a failed write restores the file that
   was there.
+- **`--box-mm` whose corners are finite but whose width is not** (`-1e308,0,1e308,1`) is
+  refused at the flag. Two CLI calls running in one process no longer share the "has written"
+  flag that decides whether a refusal is written as JSON.
 - **A reflected solve whose mirror plane lies inside its own box is symmetric about it**: the
   half and its image overlap there and are summed on both sides, where only the half answered
   below the plane. The image's conductors stop ions only where its field answers. An animation

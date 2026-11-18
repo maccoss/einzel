@@ -1594,10 +1594,21 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
 
         var (_, _, halves) = Einzel.Fields.FieldAssembly.BuildMapped(FieldProbe.Open(mirrored).Model);
 
-        Assert.Equal([false, true], halves.Select(l => l.Mirrored));
+        Assert.Equal([false, true], halves.Select(l => l.Image is not null));
         Assert.Equal([0, 0], halves.Select(l => l.Element));
         Assert.Same(halves[0].Held, halves[1].Held);
         Assert.Equal(40.0, halves[1].Held.HeldPotentialOf("slitUpper", 0.0));
+
+        // The image leaf is the field's own image, gated the same way: on the declared side of the
+        // plane it has no metal. It was built with no side and named the reflected jaw, 20 mm
+        // away beyond the plane, from a point the field's image does not answer at all.
+        Assert.True(halves[1].Image!.ImageAbove);
+        var declaredSide = FieldProbe.MillimetresToMetres(new Einzel.Core.Geometry.Vec3(10.0, 5.0, 0.0));
+        Assert.Equal(double.PositiveInfinity, halves[1].Shape.NearestConductor(in declaredSide, out var phantom));
+        Assert.Null(phantom);
+        var imageSide = FieldProbe.MillimetresToMetres(new Einzel.Core.Geometry.Vec3(30.0, 5.0, 0.0));
+        Assert.True(double.IsFinite(halves[1].Shape.NearestConductor(in imageSide, out var real)));
+        Assert.Equal("slitUpper", real);
     }
 
     /// <summary>

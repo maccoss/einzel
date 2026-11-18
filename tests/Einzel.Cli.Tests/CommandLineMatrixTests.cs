@@ -745,6 +745,8 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
     [Theory]
     [InlineData("render surface {model} --dry-run --box-mm 0,0,10,10 --relief 0", "/args/--relief")]
     [InlineData("render surface {model} --dry-run --box-mm 10,10,0,0", "/args/--box-mm")]
+    [InlineData("render surface {model} --dry-run --box-mm -1e308,0,1e308,1", "/args/--box-mm")]
+    [InlineData("render surface {model} --dry-run --box-mm 0,-1e308,1,1e308", "/args/--box-mm")]
     [InlineData("render surface {model} --dry-run --box-mm 0,0,10,10 --cycle-mean", "/args/--cycle-mean")]
     [InlineData("render surface {model} --dry-run --box-mm 0,0,10,10 --plane zz", "/args/--plane")]
     [InlineData("render surface {model} --dry-run", "/args/--box-mm")]

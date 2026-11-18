@@ -28,11 +28,10 @@ public static class Program
     /// <returns>A process exit code (CLI-3).</returns>
     public static int Main(string[] args)
     {
-        // Whether anything has been written to stdout, so that a refusal raised after a verb wrote
-        // its own result does not add a second document to it.
-        var stdout = Console.Out;
-        var tally = new StdoutTally(stdout);
-        Console.SetOut(tally);
+        // Whether this call has written anything to stdout, so that a refusal raised after a verb
+        // wrote its own result does not add a second document to it. The call's own flag, not a
+        // swap of the global writer (StdoutTally).
+        using var tally = StdoutTally.Enter();
 
         try
         {
@@ -54,7 +53,7 @@ public static class Program
             // left an agent an empty stream and an exit code.
             if (args.Contains("--json") && !tally.Written)
             {
-                tally.Write(CommandJson.Write(new CommandLineRefusal { Errors = [.. failure.Errors] }));
+                Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [.. failure.Errors] }));
             }
 
             // CLI-3 wants a distinct exit code per failure class, and the class is
@@ -106,38 +105,6 @@ public static class Program
             Console.Error.WriteLine(failure.StackTrace);
             return (int)ExitCode.InternalError;
         }
-        finally
-        {
-            Console.SetOut(stdout);
-        }
-    }
-
-    /// <summary>Standard output, with a note of whether anything has been written to it.</summary>
-    private sealed class StdoutTally(TextWriter inner) : TextWriter
-    {
-        public bool Written { get; private set; }
-
-        public override System.Text.Encoding Encoding => inner.Encoding;
-
-        public override void Write(char value)
-        {
-            Written = true;
-            inner.Write(value);
-        }
-
-        public override void Write(string? value)
-        {
-            Written |= !string.IsNullOrEmpty(value);
-            inner.Write(value);
-        }
-
-        public override void Write(char[] buffer, int index, int count)
-        {
-            Written |= count > 0;
-            inner.Write(buffer, index, count);
-        }
-
-        public override void Flush() => inner.Flush();
     }
 
     private static int Dispatch(string[] args)

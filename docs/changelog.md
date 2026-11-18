@@ -3713,5 +3713,19 @@ Two findings from Stage 1 that bear on the spec:
   `NoCommentHasTwoSummaries` reads every source file for a doubled `<summary>`, which found 21
   older ones, listed in the test and left for their own change.
 
+  **A sixteenth review.** `Main` swapped the console's writer for a counting one and put the
+  captured writer back on the way out, so two in-process calls overlapping (parallel tests, the
+  corpus gate) restored out of order and one call's output could suppress another's JSON
+  refusal; `StdoutTally` now keeps the flag per call (`AsyncLocal`) and shares one installed
+  counter, taken down by the last call to leave. A reflection is now one value, `Reflection`
+  (plane and side, decided once by `ReflectedField.ImageSide`), made by the builder and carried
+  to the field's sum, the image's conductor leaf - which had been built with no side and named
+  image metal where the field's image answered nothing - and through `FieldLeaf` to the probe,
+  which reads the plane and the overlap off its leaves instead of out of the model per sample.
+  A driven conductor's held cycle mean takes the closed form or samples by the same test over
+  every channel as the potential's mean, so the plateau and the field beside it are averaged
+  alike. `--box-mm` with finite corners and an infinite extent is refused. A reflected solve's
+  two leaves share one held source, now held once per instant.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

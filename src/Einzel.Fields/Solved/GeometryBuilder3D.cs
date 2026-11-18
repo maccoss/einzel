@@ -291,9 +291,11 @@ public static class GeometryBuilder3D
 
     /// <summary>Mirrors a solved half about the declared plane, or returns it unchanged.</summary>
     private static IElectrostaticField Reflected(IElectrostaticField field, Geometry3D geometry) =>
-        geometry.ReflectAboutX is { } plane
-            ? new SuperposedField([field, new ReflectedField(field, plane, ReflectedField.ImageSide(geometry.MinX, geometry.MaxX, plane))])
-            : field;
+        ReflectionOf(geometry) is { } mirror ? mirror.Sum(field) : field;
+
+    /// <summary>The geometry's reflection: its plane and how the halves meet, decided once.</summary>
+    private static Reflection? ReflectionOf(Geometry3D geometry) =>
+        Reflection.Of(geometry.ReflectAboutX, geometry.MinX, geometry.MaxX);
 
     private static DirichletMask3D Assemble(
         Geometry3D geometry,
@@ -873,7 +875,7 @@ public static class GeometryBuilder3D
         if (geometry.Drives.Count == 0 && geometry.Stages.Count == 0)
         {
             var (statik, staticReport) = Build(geometry);
-            return (Reflected(statik, geometry), staticReport, ConductorLeaf.Of(statik, geometry.ReflectAboutX, StaticHeldConductors.Of(geometry.Electrodes)));
+            return (Reflected(statik, geometry), staticReport, ConductorLeaf.Of(statik, ReflectionOf(geometry), StaticHeldConductors.Of(geometry.Electrodes)));
         }
 
         var groups = Groups(geometry);
@@ -931,7 +933,7 @@ public static class GeometryBuilder3D
                 ConductorCoefficients = coefficients,
             };
 
-            return (driven, worst, ConductorLeaf.Of(metal, geometry.ReflectAboutX, driven));
+            return (driven, worst, ConductorLeaf.Of(metal, ReflectionOf(geometry), driven));
         }
 
         var boundaries = new List<double>(geometry.Stages.Count);
@@ -989,7 +991,7 @@ public static class GeometryBuilder3D
             ConductorCoefficients = coefficients,
         };
 
-        return (sequenced, worst, ConductorLeaf.Of(metal, geometry.ReflectAboutX, sequenced));
+        return (sequenced, worst, ConductorLeaf.Of(metal, ReflectionOf(geometry), sequenced));
     }
 
     /// <summary>One basis channel of a solve, with the evidence that solve produced.</summary>

@@ -179,6 +179,12 @@ public sealed class FieldProbe
     private readonly RotatedField?[] _tilts;
     private readonly bool _allBounded;
 
+    // Each element's reflection, read once off its image leaf - the reflection the builder made
+    // the field's sum with - and null for an element that is not reflected. Every question this
+    // probe asks about a mirror (which half, whose box, whether the halves overlap) reads it here
+    // rather than re-deriving it from the model per sample.
+    private readonly Reflection?[] _reflections;
+
     private FieldProbe(
         CompiledModel model,
         IElectrostaticField field,
@@ -201,6 +207,15 @@ public sealed class FieldProbe
         }
 
         _leaves = leaves;
+        _reflections = new Reflection?[model.Fields.Count];
+
+        foreach (var leaf in leaves)
+        {
+            if (leaf.Image is { } image)
+            {
+                _reflections[leaf.Element] = image;
+            }
+        }
 
         // Once: asking a sequenced field for its operating point allocates a held copy of it.
         _hasOperatingPoints = field is ITimeVaryingField timed
@@ -295,7 +310,7 @@ public sealed class FieldProbe
             // twice per point. A reflected element's answer covers both halves, and only then is
             // the leaf's own half asked.
             if (d < heldDistance && inside[_leaves[i].Element]
-                && (!Reflected(_leaves[i].Element) || InsideLeaf(_leaves[i], in point)))
+                && (_reflections[_leaves[i].Element] is null || InsideLeaf(_leaves[i], in point)))
             {
                 heldDistance = d;
                 held = i;
@@ -303,9 +318,6 @@ public sealed class FieldProbe
             }
         }
     }
-
-    private bool Reflected(int element) =>
-        _model.Fields[element] is var e && ((e.Solve?.ReflectAboutX ?? e.Solve3D?.ReflectAboutX) is not null);
 
     // How near zero a signed distance is "on the surface", in metres: far below any cell and far
     // above the rounding of a coordinate.
@@ -321,7 +333,7 @@ public sealed class FieldProbe
         if (element.Solve is { } plane)
         {
             var q = _tilts[leaf.Element] is { } tilt ? tilt.ToLocal(in p) : p;
-            var x = leaf.Mirrored && plane.ReflectAboutX is { } mirror ? (2.0 * mirror) - q.X : q.X;
+            var x = leaf.Image is { } mirror ? mirror.ReflectX(q.X) : q.X;
             var second = plane.Symmetry == SolveSymmetry.Cylindrical ? Math.Sqrt((q.Y * q.Y) + (q.Z * q.Z)) : q.Y;
 
             return At(x, plane.MinX) || At(x, plane.MaxX) || At(second, plane.MinY) || At(second, plane.MaxY);
@@ -329,7 +341,7 @@ public sealed class FieldProbe
 
         if (element.Solve3D is { } volume)
         {
-            var x = leaf.Mirrored && volume.ReflectAboutX is { } mirror ? (2.0 * mirror) - p.X : p.X;
+            var x = leaf.Image is { } mirror ? mirror.ReflectX(p.X) : p.X;
 
             return At(x, volume.MinX) || At(x, volume.MaxX) || At(p.Y, volume.MinY) || At(p.Y, volume.MaxY)
                 || At(p.Z, volume.MinZ) || At(p.Z, volume.MaxZ);
@@ -432,11 +444,7 @@ public sealed class FieldProbe
             // its image, and there the field is the two summed (ReflectedField.ImageSide): each
             // within the element's range, so the sum within twice it. Where the halves meet at the
             // plane they are a union and the range is the element's own.
-            var reflect = element.Solve is { } p ? (p.ReflectAboutX, p.MinX, p.MaxX)
-                : element.Solve3D is { } v ? (v.ReflectAboutX, v.MinX, v.MaxX)
-                : (null, 0.0, 0.0);
-
-            if (reflect.ReflectAboutX is { } mirror && ReflectedField.ImageSide(reflect.MinX, reflect.MaxX, mirror) is null)
+            if (_reflections[index] is { Overlaps: true })
             {
                 elementLow *= 2.0;
                 elementHigh *= 2.0;
@@ -461,14 +469,14 @@ public sealed class FieldProbe
         if (element.Solve is { } plane)
         {
             var q = _tilts[leaf.Element] is { } tilt ? tilt.ToLocal(in p) : p;
-            var x = leaf.Mirrored && plane.ReflectAboutX is { } mirror ? (2.0 * mirror) - q.X : q.X;
+            var x = leaf.Image is { } mirror ? mirror.ReflectX(q.X) : q.X;
 
             return InPlane(plane, x, q.Y, q.Z);
         }
 
         if (element.Solve3D is { } volume)
         {
-            var x = leaf.Mirrored && volume.ReflectAboutX is { } mirror ? (2.0 * mirror) - p.X : p.X;
+            var x = leaf.Image is { } mirror ? mirror.ReflectX(p.X) : p.X;
 
             return InVolume(volume, x, p.Y, p.Z);
         }
@@ -982,13 +990,22 @@ public sealed class FieldProbe
 
         // Each leaf's solve held on its own, so leaf k of the held field is leaf k held - by
         // construction, not by taking the held composite apart.
+        // Held once per solve, not once per leaf: a reflected solve's two leaves share one held
+        // source, and holding it twice copied a sequenced solve twice per instant.
         var pieces = new IHeldConductors[_leaves.Count];
+        var heldOnce = new Dictionary<IHeldConductors, IHeldConductors>(ReferenceEqualityComparer.Instance);
 
         for (var k = 0; k < pieces.Length; k++)
         {
-            pieces[k] = _leaves[k].Held is ITimeVaryingField timed && timed.AtOperatingPoint(atSeconds) is IHeldConductors at
-                ? at
-                : _leaves[k].Held;
+            var source = _leaves[k].Held;
+
+            if (!heldOnce.TryGetValue(source, out var at))
+            {
+                at = source is ITimeVaryingField timed && timed.AtOperatingPoint(atSeconds) is IHeldConductors piece ? piece : source;
+                heldOnce[source] = at;
+            }
+
+            pieces[k] = at;
         }
 
         var from = window is { } w && FieldInstants.Resolvable(atSeconds, w) ? atSeconds : 0.0;
@@ -1156,9 +1173,9 @@ public sealed class FieldProbe
         {
             yield return (new Vec3(v.MinX, v.MinY, v.MinZ), new Vec3(v.MaxX, v.MaxY, v.MaxZ));
 
-            if (v.ReflectAboutX is { } p)
+            if (_reflections[index] is { } mirror)
             {
-                yield return (new Vec3((2.0 * p) - v.MaxX, v.MinY, v.MinZ), new Vec3((2.0 * p) - v.MinX, v.MaxY, v.MaxZ));
+                yield return (new Vec3(mirror.ReflectX(v.MaxX), v.MinY, v.MinZ), new Vec3(mirror.ReflectX(v.MinX), v.MaxY, v.MaxZ));
             }
         }
         else if (element.Solve is { } plane)
@@ -1170,9 +1187,9 @@ public sealed class FieldProbe
 
             var boxes = new List<(double X0, double X1)> { (plane.MinX, plane.MaxX) };
 
-            if (plane.ReflectAboutX is { } p)
+            if (_reflections[index] is { } mirror)
             {
-                boxes.Add(((2.0 * p) - plane.MaxX, (2.0 * p) - plane.MinX));
+                boxes.Add((mirror.ReflectX(plane.MaxX), mirror.ReflectX(plane.MinX)));
             }
 
             foreach (var (x0, x1) in boxes)
@@ -1220,13 +1237,13 @@ public sealed class FieldProbe
             var q = _tilts[index] is { } tilt ? tilt.ToLocal(in p) : p;
 
             return InPlane(plane, q.X, q.Y, q.Z)
-                || (plane.ReflectAboutX is { } mirror && InPlane(plane, (2.0 * mirror) - q.X, q.Y, q.Z));
+                || (_reflections[index] is { } mirror && InPlane(plane, mirror.ReflectX(q.X), q.Y, q.Z));
         }
 
         if (element.Solve3D is { } v)
         {
             return InVolume(v, p.X, p.Y, p.Z)
-                || (v.ReflectAboutX is { } mirror && InVolume(v, (2.0 * mirror) - p.X, p.Y, p.Z));
+                || (_reflections[index] is { } mirror && InVolume(v, mirror.ReflectX(p.X), p.Y, p.Z));
         }
 
         return true;

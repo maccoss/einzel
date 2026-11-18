@@ -101,10 +101,12 @@ public static class HeldConductors
 /// </summary>
 /// <param name="Shape">Where the conductors are, in space as the element stands in the model.</param>
 /// <param name="Held">The solve that pinned them, asked by conductor name.</param>
-/// <param name="Mirrored">
-/// False for the half the solve was declared in; true for its image in the mirror plane of a
-/// reflected solve. Each is real metal only on its own side: the declared half inside the
-/// declared solve box, the image inside that box's reflection.
+/// <param name="Image">
+/// Null for the half the solve was declared in; for its image in the mirror plane of a reflected
+/// solve, the reflection it is the image through - the same one the field's sum was built with,
+/// so the leaf's metal answers exactly where the field's image does. Each is real metal only in
+/// its own half: the declared half inside the declared solve box, the image inside that box's
+/// reflection.
 /// </param>
 /// <remarks>
 /// Handed out by the builder that made the field, which is the only place that knows a
@@ -113,14 +115,19 @@ public static class HeldConductors
 /// as metal in the image's half - an electrode declared running past the mirror plane drew a
 /// plateau over the part of it that the mirror replaces.
 /// </remarks>
-public sealed record ConductorLeaf(IConductorBounded Shape, IHeldConductors Held, bool Mirrored)
+public sealed record ConductorLeaf(IConductorBounded Shape, IHeldConductors Held, Reflection? Image)
 {
     /// <summary>The leaves of one solve: its declared half, and its image where it is reflected.</summary>
     /// <param name="direct">The field over the declared half, before any reflection.</param>
-    /// <param name="mirrorX">The mirror plane, or null where the solve is not reflected.</param>
+    /// <param name="reflection">The solve's reflection, or null where it is not reflected.</param>
     /// <param name="held">The solve that says what the conductors hold.</param>
     /// <returns>One leaf, or two; none where the field has no conductors.</returns>
-    public static IReadOnlyList<ConductorLeaf> Of(IElectrostaticField direct, double? mirrorX, IHeldConductors held)
+    /// <remarks>
+    /// The image leaf is <see cref="Reflection.Image"/> of the declared half - the very field the
+    /// sum adds - so its conductors are gated as the image's field is. It used to be built with no
+    /// side, and named image metal on the declared side where the field's image answered nothing.
+    /// </remarks>
+    public static IReadOnlyList<ConductorLeaf> Of(IElectrostaticField direct, Reflection? reflection, IHeldConductors held)
     {
         ArgumentNullException.ThrowIfNull(direct);
         ArgumentNullException.ThrowIfNull(held);
@@ -130,9 +137,9 @@ public sealed record ConductorLeaf(IConductorBounded Shape, IHeldConductors Held
             return [];
         }
 
-        return mirrorX is { } plane
-            ? [new ConductorLeaf(shape, held, false), new ConductorLeaf(new ReflectedField(direct, plane), held, true)]
-            : [new ConductorLeaf(shape, held, false)];
+        return reflection is { } mirror
+            ? [new ConductorLeaf(shape, held, null), new ConductorLeaf(mirror.Image(direct), held, mirror)]
+            : [new ConductorLeaf(shape, held, null)];
     }
 }
 
@@ -140,5 +147,5 @@ public sealed record ConductorLeaf(IConductorBounded Shape, IHeldConductors Held
 /// <param name="Shape">Where the conductors are, in the model's frame - a tilted cross-section's tilt applied.</param>
 /// <param name="Held">The solve that pinned them.</param>
 /// <param name="Element">The index of the element in <see cref="Core.Model.CompiledModel.Fields"/>.</param>
-/// <param name="Mirrored">Whether this is the image half of a reflected solve.</param>
-public sealed record FieldLeaf(IConductorBounded Shape, IHeldConductors Held, int Element, bool Mirrored);
+/// <param name="Image">The reflection this leaf is the image half through; null for a declared half.</param>
+public sealed record FieldLeaf(IConductorBounded Shape, IHeldConductors Held, int Element, Reflection? Image);

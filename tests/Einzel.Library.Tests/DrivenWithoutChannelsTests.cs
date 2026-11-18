@@ -78,7 +78,7 @@ public sealed class DrivenWithoutChannelsTests
         Assert.True(double.IsFinite(driven.ResolutionLength));
 
         // Its leaves are the two halves of the box, held by the solve.
-        Assert.Equal([false, true], leaves.Select(l => l.Mirrored));
+        Assert.Equal([false, true], leaves.Select(l => l.Image is not null));
         Assert.All(leaves, l => Assert.Same(driven, l.Held));
 
         var inPost = new Vec3(0.0, -4.0e-3, 0.0);
@@ -87,5 +87,34 @@ public sealed class DrivenWithoutChannelsTests
         Assert.Equal(withPost ? "post" : null, leaves[0].Shape.ConductorAt(inPost));
         Assert.Equal(withPost ? "post" : null, leaves[1].Shape.ConductorAt(inImage));
         Assert.Equal(withPost ? 0.0 : null, driven.HeldPotentialOf("post", 0.0));
+    }
+    /// <summary>
+    /// A conductor's held cycle mean is taken the way the potential's is: sampled wherever any
+    /// channel has no closed form for the window, not only a channel the conductor taps.
+    /// </summary>
+    /// <remarks>
+    /// The held mean asked only the conductor's own channels, so here - a rectangular drive the
+    /// window fits on the conductor's channel, a 0.7 MHz drive it does not on another - the
+    /// plateau took the closed form, -4 V, while the field around it was sampled, 0 V at four
+    /// samples: a step at the conductor's edge that was the averaging, not the physics.
+    /// </remarks>
+    [Fact]
+    public void AHeldMeanIsTakenAsThePotentialsIs()
+    {
+        var field = new DrivenSolvedField(
+            [FieldFreeSpace.Instance, FieldFreeSpace.Instance],
+            [0.0, 0.0],
+            [[new WeightTerm(0, 10.0, 0.0)], [new WeightTerm(1, 10.0, 0.0)]],
+            [1.0e6, 0.7e6],
+            [new RfWaveform.Rectangular(0.3), new RfWaveform.Sinusoid()])
+        {
+            ConductorCoefficients = new Dictionary<string, double[]> { ["a"] = [1.0, 0.0] },
+        };
+
+        var held = field.HeldCycleMeanOf("a", 0.0, 1.0e-6, 4);
+        var sampled = HeldConductors.SampledMean(field, "a", 0.0, 1.0e-6, 4);
+
+        Assert.Equal(sampled, held);
+        Assert.NotEqual(-4.0, held!.Value, 9);
     }
 }

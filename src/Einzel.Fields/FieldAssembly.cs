@@ -398,7 +398,7 @@ public static class FieldAssembly
 
                     var (built, report3d, volumeLeaves) = Solved.GeometryBuilder3D.BuildLeaved(geometry);
                     elements.Add(built);
-                    leaves.AddRange(volumeLeaves.Select(l => new FieldLeaf(l.Shape, l.Held, index, l.Mirrored)));
+                    leaves.AddRange(volumeLeaves.Select(l => new FieldLeaf(l.Shape, l.Held, index, l.Image)));
                     Note(warnings, report3d, index, "solved3d");
                     break;
                 }
@@ -431,7 +431,7 @@ public static class FieldAssembly
                                 element.Solve!.TiltCentreZ),
                         l.Held,
                         index,
-                        l.Mirrored)));
+                        l.Image)));
                     Note(warnings, report2d, index, "solved2d");
                     break;
                 }

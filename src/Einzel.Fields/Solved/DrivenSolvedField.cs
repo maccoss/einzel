@@ -138,23 +138,26 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
             return null;
         }
 
+        // THE SAME DECISION AS THE POTENTIAL'S CYCLE MEAN, over every channel. This asked only the
+        // channels the conductor taps, so where one it does not tap had no closed form the plateau
+        // was averaged in closed form and the field around it by sampling - two different means
+        // on either side of the conductor's face.
+        for (var k = 0; k < _channels.Length; k++)
+        {
+            if (CycleMeanWeight(k, fromSeconds, periodSeconds) is null)
+            {
+                return HeldConductors.SampledMean(this, conductor, fromSeconds, periodSeconds, samples);
+            }
+        }
+
         var total = 0.0;
 
         for (var k = 0; k < coefficients.Length && k < _channels.Length; k++)
         {
-            if (coefficients[k] == 0.0)
+            if (coefficients[k] != 0.0)
             {
-                continue;
+                total += coefficients[k] * CycleMeanWeight(k, fromSeconds, periodSeconds)!.Value;
             }
-
-            // The same per-channel mean weight the potential's cycle mean is taken with, and
-            // the same decision about when it has no closed form.
-            if (CycleMeanWeight(k, fromSeconds, periodSeconds) is not { } mean)
-            {
-                return HeldConductors.SampledMean(this, conductor, fromSeconds, periodSeconds, samples);
-            }
-
-            total += coefficients[k] * mean;
         }
 
         return total;
