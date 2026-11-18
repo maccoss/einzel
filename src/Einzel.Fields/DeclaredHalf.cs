@@ -45,10 +45,9 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     /// <remarks>
     /// The inner field's run - gating only takes field away, so wherever the inner field is free
     /// the gated one is too - cut at the plane where the ray crosses it and this half declares a
-    /// surface there, or the union's measure otherwise changes sign there
-    /// (<see cref="PlaneFace.ChangesSignAt"/>): a drift jumping a change of sign skips a landing. Over
-    /// the part of the plane the solve's box covers, and beyond it only where a cross-section's own
-    /// edge on the plane leaves the one unavoidable change there. An analytic drift ends where a surface is,
+    /// surface there (<see cref="PlaneFace.ChangesSignAt"/>): a drift jumping a change of sign skips a
+    /// landing. The plane is the only place this half's measure changes sign on the side it answers
+    /// nothing, so it is the only place a run of the inner field is cut. An analytic drift ends where a surface is,
     /// and a run that reached past the plane on the strength of an inner field free on both sides
     /// of it would jump the one surface the sum declares there.
     /// </remarks>

@@ -296,7 +296,7 @@ public static class GeometryBuilder3D
     /// <summary>The geometry's reflection: its plane and how the halves meet, decided once.</summary>
     /// <remarks>
     /// Continuous where the face on the plane is Neumann or the box stops short of it, and a surface
-    /// otherwise, over the part of the plane the box covers. A volume solve has no
+    /// otherwise. A volume solve has no
     /// <c>boundaryIsDiscontinuous</c> to say otherwise. A volume solve
     /// declares no discontinuity surfaces of its own (<see cref="SolvedField3D"/>), so the plane is
     /// declared by the reflection itself (<see cref="PlaneFace"/>): with a grounded face on the plane
@@ -317,10 +317,8 @@ public static class GeometryBuilder3D
         var tolerance = 1e-9 * geometry.CellSize;
         var gap = side == true ? plane - geometry.MaxX > tolerance : side == false && geometry.MinX - plane > tolerance;
 
-        // A surface only over the part of the plane the box covers.
-        var region = new PlaneRegion(
-            geometry.MinY - tolerance, geometry.MaxY + tolerance, geometry.MinZ - tolerance, geometry.MaxZ + tolerance,
-            FarX: side == true ? geometry.MinX : geometry.MaxX);
+        // The box's part of the plane, where each half's sign on its other side is read.
+        var region = new PlaneRegion(geometry.MinY, geometry.MaxY, geometry.MinZ, geometry.MaxZ);
 
         return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann || gap, region);
     }

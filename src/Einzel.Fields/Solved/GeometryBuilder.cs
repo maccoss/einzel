@@ -974,8 +974,8 @@ public static class GeometryBuilder
     /// <remarks>
     /// The edge on the plane is continuous by construction where it is Neumann - a mirror holds the
     /// normal field at zero - and where the box stops short of the plane, leaving a gap with no
-    /// field on either side. Otherwise the plane is a surface over the part of it the box covers,
-    /// whatever <c>boundaryIsDiscontinuous</c> says: that speaks for the box's far edges, not for
+    /// field on either side. Otherwise the plane is a surface, whatever
+    /// <c>boundaryIsDiscontinuous</c> says: that speaks for the box's far edges, not for
     /// the edge on the mirror, which is interior to the union. Every channel of a driven or staged solve shares
     /// this one answer, since it is the geometry's, not a field's.
     /// </remarks>
@@ -1003,10 +1003,8 @@ public static class GeometryBuilder
         // so a compiled solve built without it - false by default - cannot lose the plane.
         var continuous = edge == BoundaryKind.Neumann || stopsShort;
 
-        // The plane is a surface only over the part the box covers: across y (a radius, for an
-        // axisymmetric solve), and every z, since a cross-section repeats along it. The far x edge
-        // bounds the image's box.
-        var far = side == true ? solve.MinX : solve.MaxX;
+        // The box's part of the plane: across y (a radius, for an axisymmetric solve), and every z,
+        // since a cross-section repeats along it - where each half's sign on its other side is read.
         PlaneRegion face;
 
         if (solve.Symmetry == SolveSymmetry.Cylindrical)
@@ -1018,11 +1016,11 @@ public static class GeometryBuilder
                 throw new InvalidOperationException($"a cylindrical solve's radial extent starts at {solve.MinY} m, below the axis");
             }
 
-            face = new PlaneRegion(Math.Max(0.0, solve.MinY - tolerance), solve.MaxY + tolerance, double.NegativeInfinity, double.PositiveInfinity, Radial: true, FarX: far);
+            face = new PlaneRegion(solve.MinY, solve.MaxY, double.NegativeInfinity, double.PositiveInfinity, radial: true);
         }
         else
         {
-            face = new PlaneRegion(solve.MinY - tolerance, solve.MaxY + tolerance, double.NegativeInfinity, double.PositiveInfinity, FarX: far);
+            face = new PlaneRegion(solve.MinY, solve.MaxY, double.NegativeInfinity, double.PositiveInfinity);
         }
 
         return Reflection.Of(plane, solve.MinX, solve.MaxX, continuous, face);

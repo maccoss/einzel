@@ -653,12 +653,11 @@ public sealed class MirrorPlaneTests
         Assert.Equal(surface, before != after);
         Assert.Equal(!surface, GeometryBuilder.ReflectionOf(solve)!.EdgeIsContinuous);
 
-        // Above the box, where neither half has field, the plane is no surface - except for the one
-        // change of sign a cross-section declaring its own edges cannot avoid, with a grounded edge
-        // on the plane (see AReflectedCrossSectionsRimIsOneSurfaceEach).
-        var phantom = surface && discontinuous;
+        // Above the box, where neither half has field: on a grounded edge the one change of sign
+        // no surface stands behind is the plane there (see AReflectedCrossSectionsRimIsOneSurfaceEach);
+        // on a mirror, nothing.
         Assert.Equal(
-            phantom,
+            surface,
             Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, 0.02, 0.0)))
                 != Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.02, 0.0))));
     }
@@ -741,6 +740,143 @@ public sealed class MirrorPlaneTests
 
         Assert.Equal(edge == BoundaryKind.Dirichlet ? 1 : 0, above);
         Assert.Equal(edge == BoundaryKind.Dirichlet, run <= 0.002 + 1e-12);
+    }
+
+    /// <summary>
+    /// Apart from the plane, a union declares the mirror image of what its declared side declares:
+    /// along any segment not crossing the plane, the union changes sign as often as along the
+    /// segment's mirror image - for cross-sections declaring their edges or not, on mirror and
+    /// grounded plane edges, and for a volume.
+    /// </summary>
+    /// <remarks>
+    /// The image side had declared surfaces the declared side did not: the image box's faces, for
+    /// a half that declares none of its own, and the rim where the box's part of the plane ends.
+    /// </remarks>
+    [Theory]
+    [InlineData(BoundaryKind.Dirichlet, true)]
+    [InlineData(BoundaryKind.Neumann, true)]
+    [InlineData(BoundaryKind.Dirichlet, false)]
+    [InlineData(BoundaryKind.Neumann, false)]
+    public void AUnionDeclaresTheMirrorImageOfItsDeclaredSide(BoundaryKind edge, bool discontinuous)
+    {
+        var solve = new CompiledSolvedField
+        {
+            MinX = 0.0, MaxX = Plane, MinY = 0.0, MaxY = 0.012,
+            CellSize = 0.5e-3, Tolerance = 1e-10,
+            RightEdge = edge,
+            BoundaryIsDiscontinuous = discontinuous,
+            ReflectAboutX = Plane,
+            Electrodes =
+            [
+                new CompiledElectrode
+                {
+                    Name = "plate", Shape = ElectrodeShape.Rectangle,
+                    MinX = 0.01, MaxX = 0.015, MinY = 0.0, MaxY = 0.004, Potential = 500.0,
+                },
+            ],
+        };
+
+        var faces = new List<BoundaryKind> { BoundaryKind.Dirichlet, edge, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet, BoundaryKind.Dirichlet };
+        var volume = new Einzel.Fields.Solved.Geometry3D(
+            0.0, -0.006, -0.006, Plane, 0.006, 0.006, 1e-3,
+            [
+                new CompiledElectrode3D
+                {
+                    Name = "plate", Shape = Electrode3DShape.Box,
+                    MinX = 0.004, MaxX = 0.006, MinY = -0.003, MaxY = 0.003, MinZ = -0.003, MaxZ = 0.003, Potential = 500.0,
+                },
+            ],
+            Tolerance: 1e-8)
+        {
+            Faces = Einzel.Fields.Solved.Geometry3D.FacesOf(faces),
+            ReflectAboutX = Plane,
+        };
+
+        var fields = new List<IElectrostaticField> { GeometryBuilder.Build(solve).Field };
+
+        if (discontinuous)
+        {
+            fields.Add(Einzel.Fields.Solved.GeometryBuilder3D.BuildField(volume).Field);
+        }
+
+        Vec3 Mirror(Vec3 p) => new((2.0 * Plane) - p.X, p.Y, p.Z);
+        var random = new Random(7);
+        var checkedSegments = 0;
+
+        foreach (var field in fields)
+        {
+            for (var k = 0; k < 60; k++)
+            {
+                // A segment on the image side, kept off the plane, through the box, its rim and
+                // beyond: anywhere a surface could be.
+                double X() => Plane + 0.0005 + (random.NextDouble() * (Plane + 0.01));
+                double Y() => -0.02 + (random.NextDouble() * 0.04);
+                double Z() => -0.01 + (random.NextDouble() * 0.02);
+                var a = new Vec3(X(), Y(), Z());
+                var b = new Vec3(X(), Y(), Z());
+
+                Assert.Equal(SignChanges(field, Mirror(a), Mirror(b), 800), SignChanges(field, a, b, 800));
+                checkedSegments++;
+            }
+        }
+
+        Assert.True(checkedSegments >= 60);
+    }
+
+    /// <summary>
+    /// On an axisymmetric solve starting at the axis, the axis is no edge: an ion along it crossing
+    /// a grounded plane finds one surface, the plane, and a measure that is zero nowhere else.
+    /// </summary>
+    /// <remarks>
+    /// The image box's measure took the axis for an inner radial edge, distance zero along its whole
+    /// length on the image side: a phantom surface under every on-axis beam.
+    /// </remarks>
+    [Fact]
+    public void AnOnAxisIonCrossesACylindricalPlaneOnce()
+    {
+        var solve = new CompiledSolvedField
+        {
+            MinX = 0.0, MaxX = Plane, MinY = 0.0, MaxY = 0.012,
+            CellSize = 0.5e-3, Tolerance = 1e-10,
+            Symmetry = SolveSymmetry.Cylindrical,
+            RightEdge = BoundaryKind.Dirichlet,
+            ReflectAboutX = Plane,
+            Electrodes =
+            [
+                new CompiledElectrode
+                {
+                    Name = "ring", Shape = ElectrodeShape.Rectangle,
+                    MinX = 0.01, MaxX = 0.015, MinY = 0.006, MaxY = 0.008, Potential = 500.0,
+                },
+            ],
+        };
+
+        var (field, _) = GeometryBuilder.Build(solve);
+
+        Assert.Equal(1, SignChanges(field, new Vec3(0.002, 0.0, 0.0), new Vec3((2.0 * Plane) - 0.002, 0.0, 0.0)));
+
+        foreach (var x in new[] { 0.005, Plane - 0.003, Plane + 0.003, (2.0 * Plane) - 0.005 })
+        {
+            var measure = field.SignedDistanceToDiscontinuity(new Vec3(x, 0.0, 0.0));
+            Assert.Equal(Math.Abs(x - Plane), Math.Abs(measure), 12);
+        }
+
+        var run = field.FieldFreeRunLength(new Vec3(Plane - 0.003, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
+        Assert.True(run <= 0.003 + 1e-12, $"run {run}");
+    }
+
+    /// <summary>A radial region of negative radius cannot be made, by its constructor or by a <c>with</c>.</summary>
+    [Fact]
+    public void ARadialRegionHasNoNegativeRadius()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PlaneRegion(-1.0, 1.0, 0.0, 0.0, radial: true));
+
+        var radial = new PlaneRegion(0.0, 1.0, 0.0, 0.0, radial: true);
+        var planar = new PlaneRegion(-1.0, 1.0, 0.0, 0.0);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => radial with { MinY = -0.5 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => planar with { Radial = true });
+        Assert.Equal(-0.5, (planar with { MinY = -0.5 }).MinY);
     }
 
     /// <summary>
@@ -842,28 +978,29 @@ public sealed class MirrorPlaneTests
 
         Assert.Equal(surface, before != after);
 
-        // Beyond the box in y or z, where neither half has field: no surface.
+        // Beyond the box in y or z, where neither half has field: on a grounded face the plane is the
+        // one change of sign no surface stands behind, on a mirror nothing.
         foreach (var (y, z) in new[] { (0.01, 0.0), (0.0, 0.01) })
         {
             Assert.Equal(
-                Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, y, z))),
-                Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, y, z))));
+                surface,
+                Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, y, z)))
+                    != Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, y, z))));
         }
 
-        // Across the rim. A volume declares no surfaces of its own, so on the declared side crossing
-        // the box's edge changes nothing; on the image's side the plane's part is closed by the
-        // image box's faces - where the field does drop to nothing - so crossing the edge there is
-        // one surface, and beyond the image box's far face it is none.
-        var declared = SignChanges(field, new Vec3(Plane - 0.002, 0.0, 0.0), new Vec3(Plane - 0.002, 0.012, 0.0));
-        var image = SignChanges(field, new Vec3(Plane + 0.002, 0.0, 0.0), new Vec3(Plane + 0.002, 0.012, 0.0));
-        var beyond = SignChanges(field, new Vec3((2.0 * Plane) + 0.002, 0.0, 0.0), new Vec3((2.0 * Plane) + 0.002, 0.012, 0.0));
+        // Across the rim, on either side: nothing. A volume declares no surfaces of its own, so its
+        // image declares none either - not the image box's faces, which the declared side does not
+        // have - and along x the plane is the only change, its drift cut there and nowhere else.
+        Assert.Equal(0, SignChanges(field, new Vec3(Plane - 0.002, 0.0, 0.0), new Vec3(Plane - 0.002, 0.012, 0.0)));
+        Assert.Equal(0, SignChanges(field, new Vec3(Plane + 0.002, 0.0, 0.0), new Vec3(Plane + 0.002, 0.012, 0.0)));
+        Assert.Equal(0, SignChanges(field, new Vec3((2.0 * Plane) + 0.002, 0.0, 0.0), new Vec3((2.0 * Plane) + 0.002, 0.012, 0.0)));
+        Assert.Equal(surface ? 1 : 0, SignChanges(field, new Vec3(Plane - 0.002, 0.0, 0.0), new Vec3((2.0 * Plane) + 0.002, 0.0, 0.0)));
 
-        Assert.Equal(0, declared);
-        Assert.Equal(surface ? 1 : 0, image);
-        Assert.Equal(0, beyond);
-
-        // And along x through the image box: the plane, then its far face.
-        Assert.Equal(surface ? 2 : 0, SignChanges(field, new Vec3(Plane - 0.002, 0.0, 0.0), new Vec3((2.0 * Plane) + 0.002, 0.0, 0.0)));
+        if (surface)
+        {
+            var run = field.FieldFreeRunLength(new Vec3(Plane - 0.002, 0.01, 0.0), new Vec3(1.0, 0.0, 0.0));
+            Assert.True(run <= 0.002 + 1e-12, $"run {run}");
+        }
     }
 
     /// <summary>

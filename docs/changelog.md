@@ -3961,5 +3961,21 @@ Two findings from Stage 1 that bear on the spec:
   real radial extent; and the window's composition is pinned to carry no depth bias, which it does
   not read.
 
+  **A thirty-fourth review, and the rule the plane was missing.** Apart from the plane, a union now
+  declares exactly the mirror image of what its declared side declares - stated in `Reflection`'s
+  remarks and tested along random segments for cross-sections declaring their edges or not, on
+  mirror and grounded edges, and for a volume. The image box's faces, which had closed the plane
+  for a half declaring no surfaces of its own, are gone: they made a union declare what its mirror
+  did not, and on an axisymmetric solve the axis read as an inner edge, a zero distance under every
+  on-axis beam. Each half now carries one sign over the whole side it answers nothing on, read once
+  at the middle of the box's face on the plane, so it changes nowhere there: a grounded plane is
+  then a change of sign at every point of it, real over the box and the one a sign function cannot
+  avoid beyond it, with the drift cut there and nowhere else; a mirror is none. Also: a destination
+  reached through a loop of links, or below a folder that cannot be read, is refused at its flag; one
+  call's destinations and inputs share their resolved folders, so a film of 300 frames six folders
+  deep asks 315 link questions rather than one walk per frame; a plane region of negative radius
+  cannot be made by a `with` either; and a surface's mesh stride is a whole number of samples from one
+  to as many as there are, where an axis with one sample or no extent gave the largest int there is.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

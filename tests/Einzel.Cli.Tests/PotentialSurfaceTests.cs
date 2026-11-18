@@ -3030,6 +3030,45 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>
+    /// A surface with a single sample along its deep axis, or with no extent along it, is drawn: a
+    /// mesh stride is a whole number of samples, at least one and at most the samples there are,
+    /// with no infinite ratio between a spacing and an extent of zero.
+    /// </summary>
+    [Theory]
+    [InlineData(1, 0.0)]
+    [InlineData(3, 0.0)]
+    [InlineData(3, 2.0)]
+    public void ADegenerateDeepAxisIsDrawn(int deepCount, double deepExtent)
+    {
+        var deep = Enumerable.Range(0, deepCount).Select(j => deepCount == 1 ? 0.0 : deepExtent * j / (deepCount - 1)).ToArray();
+        var surface = new PotentialSurface
+        {
+            Plane = "xy",
+            OffsetMm = 0.0,
+            AcrossAxis = "x",
+            DeepAxis = "y",
+            Across = [0.0, 1.0, 2.0, 3.0],
+            Deep = deep,
+            Values = [.. Enumerable.Range(0, 4 * deepCount).Select(i => (double)i)],
+            Inside = new string?[4 * deepCount],
+            Plateaus = [],
+            Height = SurfaceHeight.Potential,
+            Unit = "V",
+            OutsideDomain = 0,
+            Refused = 0,
+        };
+
+        var (across, deepStride) = SurfaceCommand.MeshStrides(surface, 2);
+        output.WriteLine($"strides {across} across, {deepStride} deep");
+
+        Assert.InRange(across, 1, surface.Across.Count);
+        Assert.InRange(deepStride, 1, Math.Max(1, surface.Deep.Count));
+
+        var layers = SurfaceCommand.Compose(surface, 1.0, 2);
+        Assert.NotEmpty(layers);
+    }
+
+    /// <summary>
     /// A node beside a hole in the surface is lit by the slope on its finite side, not as flat.
     /// </summary>
     [Fact]

@@ -203,44 +203,44 @@ public sealed class MirrorGapFlightTests
     }
 
     /// <summary>
-    /// The plane is a surface only over the part of it the solve's box covers. A crossing inside
-    /// lands on it; a crossing beyond, where neither half has field, is one analytic advance, as
-    /// through the same union with no plane surface at all.
+    /// On a grounded plane the plane is one surface wherever an ion crosses it: over the box's part,
+    /// where the field jumps and the flight is that through the same field written whole, and
+    /// beyond it, where nothing jumps and the one unavoidable change of sign is put - the drift cut
+    /// there and the flight two analytic advances with no step between them.
     /// </summary>
     /// <remarks>
-    /// The plane was declared at every y and z, so an ion crossing it far outside the box landed on
-    /// it and had its drift cut there, on every crossing.
+    /// The change beyond the box had been put on the image box's faces instead, which the declared
+    /// side does not have; the union declared what its mirror did not.
     /// </remarks>
     [Fact]
-    public void ThePlaneIsASurfaceOnlyWhereTheBoxCoversIt()
+    public void ThePlaneIsOneSurfaceInsideAndBeyondTheBox()
     {
         var species = IonSpecies.FromMassToCharge(500.0, 1);
         var face = new PlaneRegion(-0.001, 0.001, double.NegativeInfinity, double.PositiveInfinity);
         var union = new Reflection(Plane, ImageAbove: true, Face: face).Sum(new Patch());
-        var none = new Reflection(Plane, ImageAbove: true, EdgeIsContinuous: true).Sum(new Patch());
 
         double Sign(double x, double y) => Math.Sign(union.SignedDistanceToDiscontinuity(new Vec3(x, y, 0.0)));
 
         Assert.NotEqual(Sign(Plane - 0.0005, 0.0), Sign(Plane + 0.0005, 0.0));
-        Assert.Equal(Sign(Plane - 0.0005, 0.005), Sign(Plane + 0.0005, 0.005));
+        Assert.NotEqual(Sign(Plane - 0.0005, 0.005), Sign(Plane + 0.0005, 0.005));
+
+        // Across the rim, on either side, nothing: no face of the image box.
+        Assert.Equal(Sign(Plane + 0.002, 0.0), Sign(Plane + 0.002, 0.005));
+        Assert.Equal(Sign(Plane - 0.002, 0.0), Sign(Plane - 0.002, 0.005));
 
         var v0 = species.SpeedAfterAcceleration(Quantity.From(100.0, "V")).SiValue;
         var settings = new IntegrationSettings { MaximumFlightTime = 1e-3, RelativeTolerance = 1e-13 };
         TrajectoryStopFunction detector = (in PhaseState s) => (2.0 * Plane) + 0.001 - s.Position.X;
 
-        // Beyond the box: the drift is not cut at the plane, so the flight is one advance - the same,
-        // to the bit, as through the union with no plane surface.
+        // Beyond the box: the drift is cut at the plane, lands there in one step, and resumes.
         var outside = new PhaseState(new Vec3(-0.001, 0.005, 0.0), new Vec3(v0, 0.0, 0.0));
-        Assert.True(double.IsPositiveInfinity(union.FieldFreeRunLength(outside.Position, new Vec3(1.0, 0.0, 0.0))));
+        Assert.Equal(Plane + 0.001, union.FieldFreeRunLength(outside.Position, new Vec3(1.0, 0.0, 0.0)), 15);
 
         var flown = TrajectoryIntegrator.Integrate(outside, species, union, settings, detector);
-        var plain = TrajectoryIntegrator.Integrate(outside, species, none, settings, detector);
 
         Assert.Equal(TrajectoryOutcome.StopConditionMet, flown.Outcome);
-        Assert.Equal(0, flown.AcceptedSteps);
-        Assert.Equal(plain.FieldEvaluations, flown.FieldEvaluations);
-        Assert.Equal(plain.FlightTimeSeconds, flown.FlightTimeSeconds);
-        Assert.Equal((2.0 * Plane) + 0.002, flown.AnalyticDriftDistance, 15);
+        Assert.Equal(1, flown.AcceptedSteps);
+        Assert.Equal(((2.0 * Plane) + 0.002) / v0, flown.FlightTimeSeconds, 15);
 
         // Inside it: the drift through the patch is cut at the plane, the plane is landed on, and
         // the flight is that through the same field written whole with the plane its one surface.

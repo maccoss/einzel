@@ -706,8 +706,13 @@ public static class SurfaceCommand
         // is drawn at the true positions either way.
         var nu = request.Samples;
         var step = (u1 - u0) / (nu - 1);
+        // The same spacing as across, where there is one: a box with no extent has no ratio to take,
+        // and the fewest samples the shorter side may have.
+        var ratio = (v1 - v0) / step;
         var nv = request.DeepSamples
-            ?? Math.Clamp((int)Math.Round((v1 - v0) / step) + 1, Math.Min(MinimumDeepSamples, nu), MaximumSamples);
+            ?? (double.IsFinite(ratio)
+                ? (int)Math.Clamp(Math.Round(ratio) + 1.0, Math.Min(MinimumDeepSamples, nu), MaximumSamples)
+                : Math.Min(MinimumDeepSamples, nu));
 
         var us = Grid(u0, u1, nu);
         var vs = Grid(v0, v1, nv);
@@ -1946,14 +1951,27 @@ public static class SurfaceCommand
     // Every how many samples a mesh line is drawn along each axis: the lines are a fixed
     // distance apart on both, the longer side over the number asked for, so a box sampled with
     // cells longer than they are wide still has a square mesh.
+    internal static (int Across, int Deep) MeshStrides(PotentialSurface surface, int meshLines) => Strides(surface, meshLines);
+
     private static (int Across, int Deep) Strides(PotentialSurface surface, int meshLines)
     {
         var across = surface.Across[^1] - surface.Across[0];
         var deep = surface.Deep[^1] - surface.Deep[0];
         var spacing = Math.Max(across, deep) / Math.Max(1, meshLines);
 
-        static int Of(double extent, int count, double spacing) =>
-            Math.Max(1, (int)Math.Round(spacing / (extent / Math.Max(1, count - 1))));
+        // A whole number of samples, from one to as many as there are. An axis with one sample, or
+        // with no extent, has no spacing to divide by: the ratio was infinite and the stride the
+        // largest int there is, a stride no axis has.
+        static int Of(double extent, int count, double spacing)
+        {
+            if (count < 2 || !(extent > 0.0) || !(spacing > 0.0) || !double.IsFinite(extent) || !double.IsFinite(spacing))
+            {
+                return 1;
+            }
+
+            var ratio = spacing / (extent / (count - 1));
+            return double.IsFinite(ratio) ? (int)Math.Clamp(Math.Round(ratio), 1.0, count) : 1;
+        }
 
         return (Of(across, surface.Across.Count, spacing), Of(deep, surface.Deep.Count, spacing));
     }

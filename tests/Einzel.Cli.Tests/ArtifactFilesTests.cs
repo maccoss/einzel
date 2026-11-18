@@ -811,6 +811,118 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A destination reached through a loop of links is refused at its flag - a path this command
+    /// cannot write to - not raised as an internal error.
+    /// </summary>
+    /// <remarks>
+    /// Following the loop threw from inside the link query, before any guard on its length, and
+    /// the command exited 6.
+    /// </remarks>
+    [Fact]
+    public void ALoopOfLinksIsRefusedAtTheFlag()
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first");
+        var second = Path.Combine(_root, "second");
+
+        var made = Linked(() =>
+        {
+            Directory.CreateSymbolicLink(first, second);
+            Directory.CreateSymbolicLink(second, first);
+        });
+
+        if (!made && !(OperatingSystem.IsWindows() && Junction(first, second) && Junction(second, first)))
+        {
+            return;
+        }
+
+        try
+        {
+            var refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.Write("out", Path.Combine(first, "x.png"), [1]));
+            output.WriteLine(refusal.Error.Constraint);
+            Assert.Equal("/args/--out", refusal.Error.Path);
+            Assert.NotEqual(ErrorCodes.InternalError, refusal.Error.Code);
+
+            var checkedToo = Assert.Throws<EinzelException>(() => ArtifactFiles.CheckAll([("csv", Path.Combine(second, "x.csv"))]));
+            Assert.Equal("/args/--csv", checkedToo.Error.Path);
+        }
+        finally
+        {
+            foreach (var link in new[] { first, second })
+            {
+                if (new DirectoryInfo(link).LinkTarget is not null)
+                {
+                    Directory.Delete(link);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// A destination below a folder that cannot be read is refused at its flag, not raised as an
+    /// internal error. Needs a folder whose permissions bind, so Linux as anyone but root.
+    /// </summary>
+    [Fact]
+    public void AnUnreadableFolderOnTheWayIsRefusedAtTheFlag()
+    {
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root")
+        {
+            output.WriteLine("no permissions that bind here; nothing to check");
+            return;
+        }
+
+        var locked = Path.Combine(_root, "locked");
+        Directory.CreateDirectory(Path.Combine(locked, "inner"));
+#pragma warning disable CA1416 // Guarded above: not Windows.
+        var mode = File.GetUnixFileMode(locked);
+        File.SetUnixFileMode(locked, UnixFileMode.None);
+
+        try
+        {
+            var refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.Write("out", Path.Combine(locked, "inner", "x.png"), [1]));
+            output.WriteLine(refusal.Error.Constraint);
+            Assert.Equal("/args/--out", refusal.Error.Path);
+        }
+        finally
+        {
+            File.SetUnixFileMode(locked, mode);
+        }
+#pragma warning restore CA1416
+    }
+
+    /// <summary>
+    /// A film's frames in one folder ask about that folder's links once, not once a frame: the
+    /// folders a call resolves are remembered for the rest of it, and its inputs resolved once.
+    /// </summary>
+    [Fact]
+    public void AFilmsFramesResolveTheirFolderOnce()
+    {
+        var folder = Path.Combine(_root, "a", "b", "c", "d", "e", "f");
+        Directory.CreateDirectory(folder);
+        var model = Path.Combine(_root, "model.json");
+        File.WriteAllText(model, "{}");
+
+        var frames = Enumerable.Range(0, 300).Select(i => ((string?)"out", Path.Combine(folder, $"frame-{i:D5}.svg"))).ToList();
+        var queries = 0;
+        ArtifactFiles.LinkQuery.Value = () => queries++;
+
+        try
+        {
+            ArtifactFiles.CheckAll(frames, model);
+        }
+        finally
+        {
+            ArtifactFiles.LinkQuery.Value = null;
+        }
+
+        var depth = folder.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Length;
+        output.WriteLine($"{queries} link queries for {frames.Count} frames {depth} folders deep");
+
+        // A file query each, the folder chain once, and the model once.
+        Assert.True(queries <= frames.Count + (2 * depth) + 4, $"{queries} link queries");
+    }
+
+    /// <summary>
     /// A replaced file is never absent: a reader watching the destination through the whole write
     /// always finds a file there, old or new.
     /// </summary>

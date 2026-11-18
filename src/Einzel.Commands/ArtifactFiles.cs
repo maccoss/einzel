@@ -79,16 +79,20 @@ public static class ArtifactFiles
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(inputs);
 
-        foreach (var input in inputs)
+        var resolver = new Resolver();
+        NotAnInput(flag, path, ResolvedAt(flag, path, resolver), InputsAt(inputs, resolver));
+    }
+
+    // Refuses a resolved destination that is one of the resolved inputs.
+    private static void NotAnInput(string? flag, string path, string resolved, HashSet<string> inputs)
+    {
+        if (inputs.Contains(Path.TrimEndingDirectorySeparator(resolved)))
         {
-            if (input is not null && Same(path, input))
-            {
-                throw Refusal(
-                    flag,
-                    Path.GetFullPath(path),
-                    "it is the file this command reads, and writing there would replace it",
-                    flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
-            }
+            throw Refusal(
+                flag,
+                Path.GetFullPath(path),
+                "it is the file this command reads, and writing there would replace it",
+                flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
         }
     }
 
@@ -122,9 +126,14 @@ public static class ArtifactFiles
         // The manifest's own path settles a folder on the way that is a file.
         Check(flag, Path.Combine(full, "frames.json"));
 
+        var resolver = new Resolver();
+        var resolvedFolder = Path.TrimEndingDirectorySeparator(ResolvedAt(flag, full, resolver));
+
         foreach (var input in inputs)
         {
-            if (input is null || Path.GetDirectoryName(Path.GetFullPath(input)) is not { } folder || !Same(folder, full))
+            if (input is null
+                || Path.GetDirectoryName(Path.GetFullPath(input)) is not { } folder
+                || !PathComparer.Equals(Path.TrimEndingDirectorySeparator(InputAt(folder, resolver)), resolvedFolder))
             {
                 continue;
             }
@@ -159,10 +168,13 @@ public static class ArtifactFiles
     /// through a link to its target, so <c>--out link.png</c> with <c>link.png</c> naming the
     /// model replaced the model while a comparison of the names said they differed.
     /// </remarks>
-    public static bool Same(string first, string second) => string.Equals(
-        Path.TrimEndingDirectorySeparator(Resolved(first)),
-        Path.TrimEndingDirectorySeparator(Resolved(second)),
-        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    public static bool Same(string first, string second)
+    {
+        var resolver = new Resolver();
+        return PathComparer.Equals(
+            Path.TrimEndingDirectorySeparator(InputAt(first, resolver)),
+            Path.TrimEndingDirectorySeparator(InputAt(second, resolver)));
+    }
 
     // A path as a full path, followed through every symbolic link on it to the end: the file's own,
     // and every folder's it is reached through. The one place a destination is resolved, so what a
@@ -170,49 +182,134 @@ public static class ArtifactFiles
     // target and renamed onto it, so a link is written through and stays a link, and a destination
     // reached through a linked folder is known for the input it is. Following only the file's own
     // link let `--out linked/model.json` through as a different file from `real/model.json`, and the
-    // write replaced the model.
-    private static string Resolved(string path)
+    // write replaced the model. May throw: a loop of links, or a folder on the way whose link cannot
+    // be asked about - callers with a flag go through ResolvedAt, which refuses at it. (Resolver.)
+
+    // A destination resolved, or refused at its flag where it cannot be: a loop of links, or a folder
+    // on the way that cannot be read, is a path this command cannot write to - a refusal about the
+    // user's path (AGT-3), not an error in einzel.
+    private static string ResolvedAt(string? flag, string path, Resolver resolver)
     {
-        var full = Path.GetFullPath(path);
-
-        for (var hops = 0; hops < MaximumLinkHops; hops++)
+        try
         {
-            var folder = Path.GetDirectoryName(full);
-            var inFolder = folder is null ? full : Path.Combine(ResolvedFolder(folder, 0), Path.GetFileName(full));
-            var info = new FileInfo(inFolder);
-
-            if (info.LinkTarget is null || info.ResolveLinkTarget(returnFinalTarget: true) is not { } final)
-            {
-                return inFolder;
-            }
-
-            // The final target may itself be reached through linked folders: resolved again.
-            full = Path.GetFullPath(final.FullName);
+            return resolver.Path(path);
         }
-
-        return full;
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException)
+        {
+            throw Refusal(
+                flag,
+                FullOrAsGiven(path),
+                $"it could not be followed to the file it names: {failure.Message}",
+                flag is null ? "check the links on its way, or name another file" : $"check the links on its way, or give --{flag} another path");
+        }
     }
 
+    // A file the command reads, resolved where it can be and taken as it stands where not: an
+    // input that cannot be followed is not one any destination could be found to be.
+    private static string InputAt(string input, Resolver resolver)
+    {
+        try
+        {
+            return resolver.Path(input);
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException)
+        {
+            return FullOrAsGiven(input);
+        }
+    }
+
+    private static string FullOrAsGiven(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception failure) when (failure is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return path;
+        }
+    }
+
+    // The resolved files the command reads, each resolved once, looked up by the file system's rule.
+    private static HashSet<string> InputsAt(string?[] inputs, Resolver resolver) =>
+        new(
+            inputs.Where(i => i is not null).Select(i => Path.TrimEndingDirectorySeparator(InputAt(i!, resolver))),
+            PathComparer);
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
     // How many links a path is followed through before it is taken as it stands: a loop of links
-    // is not a path anything can be written to, and the write will say so.
+    // the file system does not report itself is not a path anything can be written to, and the
+    // write will say so.
     private const int MaximumLinkHops = 40;
 
-    // A folder with every link on its way resolved, from the root down.
-    private static string ResolvedFolder(string folder, int hops)
-    {
-        var parent = Path.GetDirectoryName(folder);
-        var here = parent is null ? folder : Path.Combine(ResolvedFolder(parent, hops), Path.GetFileName(folder));
+    /// <summary>
+    /// Called once for every link query a resolution makes: a test's way to count them, so a film of
+    /// hundreds of frames in one folder is seen to ask about that folder once.
+    /// </summary>
+    internal static readonly AsyncLocal<Action?> LinkQuery = new();
 
-        if (hops >= MaximumLinkHops)
+    // Resolves paths, remembering every folder it has resolved: one call's destinations and inputs
+    // share their folders, and a film's hundreds of frames would otherwise walk the same ancestors
+    // once each.
+    private sealed class Resolver
+    {
+        private readonly Dictionary<string, string> _folders = new(PathComparer);
+
+        public string Path(string path)
         {
-            return here;
+            var full = System.IO.Path.GetFullPath(path);
+
+            for (var hops = 0; hops < MaximumLinkHops; hops++)
+            {
+                var folder = System.IO.Path.GetDirectoryName(full);
+                var inFolder = folder is null ? full : System.IO.Path.Combine(Folder(folder), System.IO.Path.GetFileName(full));
+                LinkQuery.Value?.Invoke();
+                var info = new FileInfo(inFolder);
+
+                if (info.LinkTarget is null || info.ResolveLinkTarget(returnFinalTarget: true) is not { } final)
+                {
+                    return inFolder;
+                }
+
+                // The final target may itself be reached through linked folders: resolved again.
+                full = System.IO.Path.GetFullPath(final.FullName);
+            }
+
+            return full;
         }
 
-        var info = new DirectoryInfo(here);
+        // A folder with every link on its way resolved, from the root down; remembered.
+        private string Folder(string folder)
+        {
+            if (_folders.TryGetValue(folder, out var known))
+            {
+                return known;
+            }
 
-        return info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } final
-            ? ResolvedFolder(Path.GetFullPath(final.FullName), hops + 1)
-            : here;
+            var resolved = Walk(folder, 0);
+            _folders[folder] = resolved;
+            return resolved;
+        }
+
+        private string Walk(string folder, int hops)
+        {
+            var parent = System.IO.Path.GetDirectoryName(folder);
+            var here = parent is null ? folder : System.IO.Path.Combine(hops == 0 ? Folder(parent) : Walk(parent, hops), System.IO.Path.GetFileName(folder));
+
+            if (hops >= MaximumLinkHops)
+            {
+                return here;
+            }
+
+            LinkQuery.Value?.Invoke();
+            var info = new DirectoryInfo(here);
+
+            return info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } final
+                ? Walk(System.IO.Path.GetFullPath(final.FullName), hops + 1)
+                : here;
+        }
     }
 
     /// <summary>Writes one file, whole or not at all.</summary>
@@ -257,18 +354,19 @@ public static class ArtifactFiles
         var resolved = new string[destinations.Count];
 
         // Each destination resolved once and looked up, not compared with every other: a film is
-        // hundreds of frames, and every comparison follows links on disk.
-        var seen = new Dictionary<string, int>(
-            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        // hundreds of frames, and every comparison follows links on disk. One resolver for the call,
+        // so the frames' shared folders are walked once, and the inputs resolved once for all of them.
+        var resolver = new Resolver();
+        var resolvedInputs = InputsAt(inputs, resolver);
+        var seen = new Dictionary<string, int>(PathComparer);
 
         for (var i = 0; i < destinations.Count; i++)
         {
             var (flag, path) = destinations[i];
 
             Check(flag, path);
-            CheckNotAnInput(flag, path, inputs);
-
-            resolved[i] = Resolved(path);
+            resolved[i] = ResolvedAt(flag, path, resolver);
+            NotAnInput(flag, path, resolved[i], resolvedInputs);
             var target = Path.TrimEndingDirectorySeparator(resolved[i]);
 
             if (seen.TryGetValue(target, out var j))
@@ -428,6 +526,11 @@ public static class ArtifactFiles
 
         private bool _finished;
 
+        // One resolver for the set's life, so files staged one at a time share their folders, and
+        // the inputs resolved once, when the first file is staged.
+        private readonly Resolver _resolver = new();
+        private HashSet<string>? _resolvedInputs;
+
         internal Staged(string?[] inputs) => _inputs = inputs ?? [];
 
         /// <summary>How many files are staged.</summary>
@@ -453,8 +556,8 @@ public static class ArtifactFiles
             try
             {
                 Check(flag, path);
-                CheckNotAnInput(flag, path, _inputs);
-                resolved = Resolved(path);
+                resolved = ResolvedAt(flag, path, _resolver);
+                NotAnInput(flag, path, resolved, _resolvedInputs ??= InputsAt(_inputs, _resolver));
                 key = Path.TrimEndingDirectorySeparator(resolved);
 
                 // A second file at one place: asked here, of a set built a file at a time.

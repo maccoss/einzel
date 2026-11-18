@@ -234,16 +234,18 @@ become a feature release without being renamed twice.
   doubled there. The plane and the declared side are the declared half's, the other side the
   image's, judged on the point itself.
 - **A reflected solve's mirror plane is a surface the integrator lands on unless its edge is a
-  mirror**: a grounded (Dirichlet) edge or face on the plane gets one surface there, owned by the
-  declared half, over the part of the plane the solve's box covers and nowhere beyond it - a
-  crossing outside the box is one field-free drift, except on the plane beyond a cross-section
-  that declares its own edges, where one change of sign cannot be avoided. Decided by the plane
-  edge's own condition alone, from the boundary condition when the solve is built: a volume solve
-  gets it on a grounded face, and so does a cross-section whatever its `boundaryIsDiscontinuous`,
-  which speaks for its far edges. A Neumann edge, or a box stopping short of the plane by more
-  than a rounding, gets none; both shipped reflected templates have a Neumann edge, and their
-  flights are unchanged. A reflected cross-section declaring its edges keeps both top edges as
-  surfaces, which it lost at the rim before.
+  mirror**: a grounded (Dirichlet) edge or face on the plane makes the plane one surface, owned by
+  the declared half, wherever an ion crosses it - over the box, where the field jumps, and beyond
+  it, where the one change of sign a mirror cannot avoid is put and the drift is cut. Apart from
+  the plane, a reflected solve declares exactly the mirror image of what its declared side
+  declares, and nothing on the faces of the image's box. Decided by the plane edge's own condition
+  alone, when the solve is built: a volume solve gets it on a grounded face, and so does a
+  cross-section whatever its `boundaryIsDiscontinuous`, which speaks for its far edges. **A
+  reflected cross-section with a grounded plane edge now lands on the plane, and its flights may
+  move in their last digits.** A Neumann edge, or a box stopping short of the plane by more than a
+  rounding, gets none; both shipped reflected templates have a Neumann edge, and their flights are
+  unchanged. A reflected cross-section declaring its edges keeps both top edges as surfaces, which
+  it lost at the rim before.
 - **A cross-section both tilted and reflected runs** again: every command reading one exited 6 with
   an invalid cast while turning its conductors.
 - **A CSV text cell beginning with `=`, `+`, `-`, `@`, a tab or a carriage return** - a conductor's
@@ -257,7 +259,9 @@ become a feature release without being renamed twice.
   after a number in any case (`2.MS`, `5.MM`), and not for a word naming something on disk or a
   name with a unit-like extension (`trap.ps`, `fit.m`).
 - **A destination reached through a linked folder is the file it is**: an input there is refused
-  as that input, where only a link that was the file itself was followed before.
+  as that input, where only a link that was the file itself was followed before. A destination
+  reached through a loop of links, or below a folder that cannot be read, is refused at its flag
+  rather than ending the command as an internal error.
 - **Files are replaced in one rename**, written through a symbolic link, and a read-only
   destination is refused; every destination - including the render spec a figure was drawn from -
   is checked before the work, `--dry-run` included. A file no flag named is refused with its own
