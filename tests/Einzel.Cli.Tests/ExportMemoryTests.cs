@@ -30,37 +30,52 @@ public sealed class ExportMemoryTests(ITestOutputHelper output) : IDisposable
         }
     }
 
+    /// <remarks>
+    /// <para>
+    /// <b>Measured within one export, against itself.</b> A large element and then a small one: at
+    /// the small one's file only the small solve is alive, a fraction of what the large one's file
+    /// held - and queued, both were alive at both files, so the two readings were equal.
+    /// </para>
+    /// <para>
+    /// The first version compared the pair with a separate export of one element, each above a
+    /// baseline taken before its own run, and on Windows CI (run 44244801141) the one-element
+    /// reading came out at 4.2 MiB against 8.2 MiB for the pair's first element - at a file where
+    /// no second element had been solved yet, so nothing could be held twice. The reference was
+    /// what read low: a baseline taken before a run includes whatever an earlier test in the same
+    /// process left that the run then releases, and that came off the reference alone. Two
+    /// readings of one run share one baseline, so whatever it contains cancels in their ratio. Not
+    /// reproduced locally: run after the whole assembly, the old form read 8.24 against 7.19 and
+    /// 7.18 MiB.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void ASecondElementIsSolvedWithoutTheFirstStillHeld()
     {
         Directory.CreateDirectory(_root);
-        var single = Path.Combine(_root, "single.json");
-        Assert.Equal(0, Program.Main(["new", single, "--from-example", "parallel-plate-gap-3d"]));
+        var model = Path.Combine(_root, "pair.json");
+        Assert.Equal(0, Program.Main(["new", model, "--from-example", "parallel-plate-gap-3d"]));
 
-        // Half-millimetre cells: about a million nodes an element, so a solve held is megabytes
-        // against a baseline that moves by far less.
-        var document = JsonNode.Parse(File.ReadAllText(single))!;
-        document["fields"]![0]!["solve3d"]!["cellSize"]!["value"] = 0.5;
-        File.WriteAllText(single, document.ToJsonString());
-
-        // The same element twice, so each solve weighs the same.
-        var pair = Path.Combine(_root, "pair.json");
+        // The same element twice, at two cell sizes: half a millimetre, about a million nodes and
+        // megabytes of solve, then two millimetres, a sixty-fourth of that.
+        var document = JsonNode.Parse(File.ReadAllText(model))!;
         var fields = document["fields"]!.AsArray();
         fields.Add(fields[0]!.DeepClone());
-        File.WriteAllText(pair, document.ToJsonString());
+        fields[0]!["solve3d"]!["cellSize"]!["value"] = 0.5;
+        fields[1]!["solve3d"]!["cellSize"]!["value"] = 2.0;
+        File.WriteAllText(model, document.ToJsonString());
 
-        var one = Held(single, 1);
-        var two = Held(pair, 2);
+        var held = Held(model, 2);
+        var (large, small) = (held[0], held[1]);
 
         output.WriteLine(FormattableString.Invariant(
-            $"one element held {one[0] / 1048576.0:F2} MiB at its file; two elements held {two[0] / 1048576.0:F2} and {two[1] / 1048576.0:F2} MiB at theirs"));
+            $"held {large / 1048576.0:F2} MiB at the large element's file and {small / 1048576.0:F2} MiB at the small one's"));
 
-        // Each element's own solve, never both: queued until the last, the first file was written
-        // with both elements alive, twice what one element holds.
-        Assert.True(one[0] > 4 * 1048576, $"one element held {one[0]} bytes - too little to tell one from two");
-        Assert.All(two, held => Assert.True(
-            held < 1.5 * one[0],
-            FormattableString.Invariant($"{held} bytes held at an element's file, against {one[0]} for one element alone")));
+        // Enough at the first file to tell one solve from two, and at the second a fraction of it:
+        // queued, the large solve was alive at both files and the two readings were the same.
+        Assert.True(large > 4 * 1048576, $"{large} bytes held at the large element's file - too little to tell one solve from two");
+        Assert.True(
+            small < 0.25 * large,
+            FormattableString.Invariant($"{small} bytes held at the small element's file against {large} at the large one's: the large solve is still held"));
     }
 
     // What the export holds above its own start, at the moment each element's file is staged.

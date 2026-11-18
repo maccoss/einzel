@@ -3825,5 +3825,14 @@ Two findings from Stage 1 that bear on the spec:
   with a registry test that fails if a flag is ever a switch in one sub-verb and takes a value in
   another - no such flag exists today.
 
+  **And a test that failed on Windows CI for the wrong reason.** `ExportMemoryTests` compared an
+  export of two elements with a separate export of one, each above a baseline taken before its own
+  run; on CI the one-element reference read 4.2 MiB against 8.2 MiB at the pair's *first* file,
+  where no second element had been solved and nothing could be held twice. The reference read low:
+  a baseline taken before a run includes what an earlier test in the process left and the run then
+  releases. It now measures one export against itself - a large element then a small one, so the
+  second file holds a fraction of what the first did (9.59 and 1.48 MiB) where a queued export held
+  both at both (9.73 and 9.73). Two readings of one run share a baseline, so it cancels.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.
