@@ -882,6 +882,18 @@ public static class Program
         // a render at an instant, one a frame for an animation. Each is a copy held to the end.
         var snapshots = 0;
 
+        // Named but given no number - `--snapshots` alone, or followed by another flag - is
+        // refused rather than read as none: an estimate that silently billed zero instants for a
+        // flag somebody typed would be the under-bill the gate exists to prevent.
+        if (options.Has("snapshots") && options.Value("snapshots") is null)
+        {
+            Console.Error.WriteLine(isStudy
+                ? "--snapshots is about one diffusive run's recorded instants, and a study records none"
+                : "--snapshots needs a whole number of instants after it, as in --snapshots 60");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
         if (options.Value("snapshots") is { } instants)
         {
             // What the option is about first, then whether it is well formed: a study records

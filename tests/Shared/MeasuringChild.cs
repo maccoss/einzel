@@ -179,6 +179,10 @@ internal static class MeasuringChild
     /// <returns>What was reported; this does not throw, so that a failure is reported where it belongs.</returns>
     internal static ChildRun Measure(ChildHost host, JitTier tier, IReadOnlyList<string> cases, ChildBudget? budget = null)
     {
+        // A turn on the machine: one measuring child at a time across every test process, and
+        // none while a test that times itself is timing (QuietMachine).
+        using var turn = QuietMachine.Hold();
+
         var results = new Dictionary<string, CaseResult>();
         var text = new List<string>();
         IReadOnlyList<string> remaining = cases;
@@ -612,6 +616,20 @@ internal static class MeasuringChild
             return new ChildExit(-1, [], [], $"the measuring child did not start: {host}: {failed.Message}");
         }
 
+        // And on one core in fact, where the platform allows it: a processor count of one sizes
+        // the child's thread pool but does not stop a parallel loop from taking a thread a core.
+        try
+        {
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+            {
+                child.ProcessorAffinity = 1;
+            }
+        }
+        catch (Exception refused) when (refused is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // Exited already, or not ours to pin: it runs as it would have.
+        }
+
         child.BeginOutputReadLine();
         child.BeginErrorReadLine();
 
@@ -679,6 +697,13 @@ internal static class MeasuringChild
         // and is refused if that is anything else.
         environment["DOTNET_gcServer"] = "0";
         environment["DOTNET_gcConcurrent"] = "0";
+
+        // One processor, as far as the child can tell, and pinned to one when it starts (Run): a
+        // measurement reads one thread, and a ramped run's coefficient sweep spread across every
+        // core took 114 s of processor time in 27 s of a twenty-four-core workstation - on a
+        // four-core runner, every core, for longer, under the other test assemblies and the
+        // tests in them that time themselves.
+        environment["DOTNET_PROCESSOR_COUNT"] = "1";
     }
 
     /// <summary>

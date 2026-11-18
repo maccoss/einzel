@@ -211,11 +211,38 @@ public sealed class PacketConversionTests(ITestOutputHelper output)
         Assert.Equal(Einzel.Core.Errors.ErrorCodes.ConvergenceFailed, refused.Error.Code);
         Assert.Contains("cell (5, 3)", refused.Error.Constraint, StringComparison.Ordinal);
         Assert.Equal((5, 3), (refused.I, refused.J));
+        Assert.Equal(NonFiniteDensityException.Overflow.None, refused.What);
 
         // A general conversion does not know where the density came from: unlocated, for the
         // caller that does to locate.
         Assert.Equal("/", refused.Error.Path);
         Assert.DoesNotContain("densityStep", refused.Error.Suggestion, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A finite density too large for its population to fit in a double is refused as an
+    /// overflow, with the density it held, not as a density that is not a number.
+    /// </summary>
+    [Fact]
+    public void ADensityWhosePopulationOverflowsIsRefusedAsAnOverflow()
+    {
+        // Cells of four square metres, so a density of the largest double holds more ions than
+        // a double can.
+        var grid = new Grid2D(0.0, 0.0, 2.0, 2.0, 9, 9);
+        var density = new DensityField(grid);
+
+        density[2, 2] = 1.0e12;
+        density[5, 3] = double.MaxValue;
+
+        var refused = Assert.Throws<NonFiniteDensityException>(() => PacketConversion.ToTrajectories(
+            density, 100, Ion, Gas(), FieldFreeSpace.Instance, Mu(Gas()), seed: 3));
+
+        output.WriteLine(refused.Error.ToString());
+
+        Assert.Equal(NonFiniteDensityException.Overflow.CellPopulation, refused.What);
+        Assert.Equal((5, 3), (refused.I, refused.J));
+        Assert.Contains("overflow though the density is finite", refused.Error.Constraint, StringComparison.Ordinal);
+        Assert.Equal(double.MaxValue, refused.Error.Observed!.Value);
     }
 
     /// <summary>

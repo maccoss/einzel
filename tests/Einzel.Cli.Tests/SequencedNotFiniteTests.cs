@@ -43,7 +43,8 @@ public sealed class SequencedNotFiniteTests(ITestOutputHelper output)
 
         Assert.Equal("/", refused.Error.Path);
 
-        var located = SequencedRun.NotFiniteAtBoundary(refused.Error, "/sequence", 2, "trap");
+        var located = SequencedRun.NotFiniteAtBoundary(refused.Error, "/sequence", 2, "trap", implicitGain: null);
+        var implicitly = SequencedRun.NotFiniteAtBoundary(refused.Error, "/sequence", 2, "trap", implicitGain: 64.0);
 
         output.WriteLine(located.ToString());
 
@@ -51,7 +52,14 @@ public sealed class SequencedNotFiniteTests(ITestOutputHelper output)
         Assert.Equal("/sequence/2", located.Path);
         Assert.Equal(refused.Error.Constraint, located.Constraint);
         Assert.Contains("'trap'", located.Suggestion, StringComparison.Ordinal);
-        Assert.Contains("densityStep", located.Suggestion, StringComparison.Ordinal);
+
+        // Something the document can change: the gain, or the scheme, where it steps implicitly;
+        // the inputs that set the limit where it steps at the limit already. densityStep has no
+        // step of its own to shorten.
+        Assert.Contains("transport.densityGrid", located.Suggestion, StringComparison.Ordinal);
+        Assert.DoesNotContain("densityStep", located.Suggestion, StringComparison.Ordinal);
+        Assert.Contains("transport.densityStep.gain", implicitly.Suggestion, StringComparison.Ordinal);
+        Assert.Contains("64x", implicitly.Suggestion, StringComparison.Ordinal);
     }
 }
 

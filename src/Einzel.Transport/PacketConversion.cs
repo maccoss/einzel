@@ -2,8 +2,8 @@ using Einzel.Core.Geometry;
 using Einzel.Core.Model;
 using Einzel.Core.Numerics;
 using Einzel.Core.Results;
-using Einzel.Fields.Solved;
 using Einzel.Fields;
+using Einzel.Fields.Solved;
 using Einzel.Transport.Collisions;
 using Einzel.Transport.Diffusion;
 
@@ -352,7 +352,8 @@ public static class PacketConversion
     /// </para>
     /// </remarks>
     /// <exception cref="NonFiniteDensityException">
-    /// The density is not finite somewhere: unlocated, naming the cell, for the caller to locate.
+    /// The density is not finite somewhere, or the ions a cell holds or all the cells hold
+    /// overflow a double: unlocated, naming the cell, for the caller to locate.
     /// </exception>
     private static double[] Cumulative(DensityField density, out (int I, int J)[] cells)
     {
@@ -365,13 +366,22 @@ public static class PacketConversion
 
             for (var i = 0; i < grid.CountX; i++)
             {
-                var ions = density[i, j] * volume;
-
-                if (!double.IsFinite(ions))
+                // The density itself, before anything is made of it: a finite density whose
+                // population overflows is a different mistake from one that is not a number,
+                // and is said differently below.
+                if (!double.IsFinite(density[i, j]))
                 {
                     // Unlocated, and of its own type: a caller that knows where the density came
                     // from recognises it by the type and locates it.
                     throw new NonFiniteDensityException(i, j, grid.X(i), grid.Y(j), density[i, j]);
+                }
+
+                var ions = density[i, j] * volume;
+
+                if (!double.IsFinite(ions))
+                {
+                    throw new NonFiniteDensityException(
+                        i, j, grid.X(i), grid.Y(j), density[i, j], NonFiniteDensityException.Overflow.CellPopulation);
                 }
 
                 if (Occupied(ions))
@@ -401,6 +411,13 @@ public static class PacketConversion
                 }
 
                 total += ions;
+
+                if (!double.IsFinite(total))
+                {
+                    throw new NonFiniteDensityException(
+                        i, j, grid.X(i), grid.Y(j), density[i, j], NonFiniteDensityException.Overflow.TotalPopulation);
+                }
+
                 cells[at] = (i, j);
                 running[at] = total;
                 at++;

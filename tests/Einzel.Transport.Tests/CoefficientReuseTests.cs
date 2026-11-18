@@ -48,5 +48,9 @@ public sealed class CoefficientReuseTests
         var freshBytes = Allocated(false);
         var reusedBytes = Allocated(true);
         Assert.True(reusedBytes < freshBytes / 100, $"fresh: {freshBytes}; reused: {reusedBytes}");
+
+        // Nothing at all, re-assembled into what it has: a ramped phase assembles at every step,
+        // and the edge and name of each face made into two new arrays per call were garbage there.
+        Assert.Equal(0, reusedBytes);
     }
 }

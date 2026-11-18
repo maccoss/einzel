@@ -20,4 +20,10 @@
     <ProjectReference Include="..\..\src\Einzel.Extensions\Einzel.Extensions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- A machine-wide turn shared with the memory tests' measuring children, taken by the tests
+         here whose assertion is a time; see the file. -->
+    <Compile Include="..\Shared\QuietMachine.cs" Link="Shared\QuietMachine.cs" />
+  </ItemGroup>
+
 </Project>

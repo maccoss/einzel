@@ -359,7 +359,12 @@ public static class SequencedRun
                     catch (NonFiniteDensityException refused)
                     {
                         throw new EinzelException(
-                            NotFiniteAtBoundary(refused.Error, model.TimelinePath, producedBy, model.Phases[producedBy].Name),
+                            NotFiniteAtBoundary(
+                                refused.Error,
+                                model.TimelinePath,
+                                producedBy,
+                                model.Phases[producedBy].Name,
+                                model.DensityStep.IsImplicit ? model.DensityStep.Gain : null),
                             refused);
                     }
 
@@ -571,13 +576,6 @@ public static class SequencedRun
         };
     }
 
-    /// <summary>The field as a leg starting part-way along the timeline sees it.</summary>
-    /// <remarks>
-    /// The integrator starts at t = 0, so a leg beginning at 100 us has to be handed an
-    /// instrument shifted by 100 us rather than a start time it has nowhere to put. A
-    /// static field needs no shift and is passed through, which keeps an unsequenced
-    /// element bit-identical.
-    /// </remarks>
     /// <summary>
     /// Where a phase is asked whether it changes the field: the packet's own centre, and
     /// the four corners of the tracked region half a cell in, so a change anywhere the
@@ -617,7 +615,15 @@ public static class SequencedRun
         return at.PotentialAt(in probe);
     }
 
-    private static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
+    /// <summary>The field as a leg starting part-way along the timeline sees it.</summary>
+    /// <remarks>
+    /// The integrator starts at t = 0, so a leg beginning at 100 us has to be handed an
+    /// instrument shifted by 100 us rather than a start time it has nowhere to put. A
+    /// static field needs no shift and is passed through, which keeps an unsequenced
+    /// element bit-identical. Shared with the estimate's pilot, so that the two cannot
+    /// disagree about which instrument a trajectory phase flies through.
+    /// </remarks>
+    internal static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
         field is ITimeVaryingField driven && atSeconds > 0.0
             ? new TimeShiftedField(driven, atSeconds)
             : field;
@@ -844,11 +850,30 @@ public static class SequencedRun
     /// <param name="timeline">Where the document declares the timeline (<see cref="CompiledModel.TimelinePath"/>).</param>
     /// <param name="index">The index there of the phase that produced the density.</param>
     /// <param name="phase">That phase's name, for the sentence.</param>
-    internal static EinzelError NotFiniteAtBoundary(EinzelError refused, string timeline, int index, string phase) =>
+    /// <param name="implicitGain">
+    /// The gain the density is stepped at past its stability limit, where it steps implicitly,
+    /// or null where it steps explicitly - at the limit itself.
+    /// </param>
+    /// <remarks>
+    /// What to change depends on what set the step. `densityStep` has a scheme and a gain and no
+    /// step: an explicit step is the stability limit, taken from the mesh, the mobility and the
+    /// field, so nothing in the document lengthens or shortens it directly; an implicit one is
+    /// that limit times the gain.
+    /// </remarks>
+    internal static EinzelError NotFiniteAtBoundary(
+        EinzelError refused, string timeline, int index, string phase, double? implicitGain) =>
         refused.At(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{timeline}/{index}")) with
         {
-            Suggestion = $"the diffusive phase '{phase}' did not stay finite: shorten its step "
-                + "(transport.densityStep), or look at the field and the mobility near that cell",
+            Suggestion = implicitGain is { } gain
+                ? string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"the diffusive phase '{phase}' did not stay finite. It steps implicitly at {gain:G4}x its "
+                    + $"stability limit: lower transport.densityStep.gain, or set its scheme to \"explicit\", "
+                    + $"which steps at the limit itself; then check the field and the mobility near that cell")
+                : $"the diffusive phase '{phase}' did not stay finite although it steps explicitly, at its "
+                    + "stability limit, which nothing in the document lengthens: check the field, the mobility "
+                    + "and the gas near that cell, which set that limit and the drift, and transport.densityGrid, "
+                    + "whose spacing the limit is taken over",
         };
 
     /// <summary>The density a diffusive leg starts from, where the packet is not one yet.</summary>

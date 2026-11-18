@@ -108,6 +108,27 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
         Assert.Contains("no diffusive mode", stderr, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// <c>--snapshots</c> named without a number is refused by name, not read as none and billed
+    /// as nothing.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SnapshotsWithoutANumberAreRefused(bool followedByAnotherFlag)
+    {
+        var model = Model("tube-plain");
+
+        var (exit, _, stderr) = followedByAnotherFlag
+            ? Run("estimate", model, "--no-calibrate", "--snapshots", "--json")
+            : Run("estimate", model, "--no-calibrate", "--snapshots");
+
+        output.WriteLine($"exit {exit}: {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+        Assert.Contains("--snapshots needs a whole number", stderr, StringComparison.Ordinal);
+    }
+
     /// <summary>A mixture's run records no instants, so recorded instants are refused for it.</summary>
     [Fact]
     public void RecordedInstantsAreRefusedForAMixture()

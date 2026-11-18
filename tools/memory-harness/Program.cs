@@ -136,11 +136,17 @@ var allocatedBefore = GC.GetTotalAllocatedBytes(precise: false);
 long heapPeak = 0;
 var stop = 0;
 
-Func<object> work = mode == "fields"
-    ? () => FieldAssembly.BuildReported(model)
+// Each run is handed a list of the field's warnings of its own, made before it starts: the runs
+// copy what they are given rather than add to it, but a warm-up and a measurement sharing one
+// list would rest the measurement on that, and a list grown by the warm-up would be in the
+// measured run's reach.
+Func<IReadOnlyList<Einzel.Core.Results.ValidityWarning>, object> run = mode == "fields"
+    ? _ => FieldAssembly.BuildReported(model)
     : model.IsMixture
-        ? () => DiffusionRun.ExecuteMixture(model, field!, warnings!)
-        : () => DiffusionRun.Execute(model, field!, warnings!);
+        ? given => DiffusionRun.ExecuteMixture(model, field!, given)
+        : given => DiffusionRun.Execute(model, field!, given);
+
+Einzel.Core.Results.ValidityWarning[] Own() => [.. warnings ?? []];
 
 var watch = Stopwatch.StartNew();
 object? kept = null;
@@ -150,13 +156,15 @@ if (live)
 {
     // Once unmeasured, as the memory tests do, so that what a first call allocates for itself
     // and keeps - statics, tables - is in the baseline and not in the reading.
-    work();
+    run(Own());
 
     // Read from inside the work, at each array it allocates: nothing samples, so there is no
     // peak to miss however short it is. What the work returns is let go, so that what is left
     // of its arrays afterwards is what something outliving it kept.
     watch.Restart();
-    livePeak = LiveSet.Peak(work);
+    var measured = Own();
+
+    livePeak = LiveSet.Peak(() => run(measured));
     watch.Stop();
 }
 else
@@ -174,7 +182,7 @@ else
 
     try
     {
-        kept = work();
+        kept = run(Own());
     }
     finally
     {

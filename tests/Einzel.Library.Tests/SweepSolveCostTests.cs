@@ -79,6 +79,11 @@ public sealed class SweepSolveCostTests(ITestOutputHelper output)
     {
         var model = Model("planar-mirror-pair");
 
+        // A ratio of two timings, so taken while no memory test's measuring child is running:
+        // one loads the machine for seconds to minutes, and a ratio whose two halves were timed
+        // under different loads measures the load (Einzel.Testing.QuietMachine).
+        using var turn = Einzel.Testing.QuietMachine.Hold();
+
         // Warm the path so the first timed window is not paying for jitting it.
         FiguresOfMerit.Evaluator("resolvingPower", energySpread: 0.03, ions: 3)(model);
 

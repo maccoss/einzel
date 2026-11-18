@@ -121,7 +121,7 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         Assert.Contains("Trajectory: ", entered.Basis, StringComparison.Ordinal);
         Assert.Contains("diffusive run: ", entered.Basis, StringComparison.Ordinal);
         Assert.DoesNotContain("scaled to the declared", entered.Basis, StringComparison.Ordinal);
-        Assert.Contains("the 0.05 us the run spends as trajectories", entered.Basis, StringComparison.Ordinal);
+        Assert.Contains("scaled to its 0.05 us, flown from the source through phase 'fly'", entered.Basis, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -152,7 +152,7 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
 
         // What the pilot flew: its steps and the time they covered, which the field decides.
         static string Pilot(string basis) =>
-            System.Text.RegularExpressions.Regex.Match(basis, @"Trajectory: [\d,]+ steps over [\d.Ee+-]+ us").Value;
+            System.Text.RegularExpressions.Regex.Match(basis, @"[\d,]+ steps over [\d.Ee+-]+ us").Value;
 
         var gentle = EstimateCommand.Execute(Extracting(2_000.0), calibrate: true);
         var strong = EstimateCommand.Execute(Extracting(2_000_000.0), calibrate: true);
@@ -163,6 +163,34 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         Assert.Contains("phase 'extract'", gentle.Basis, StringComparison.Ordinal);
         Assert.NotEmpty(Pilot(gentle.Basis));
         Assert.NotEqual(Pilot(gentle.Basis), Pilot(strong.Basis));
+    }
+
+    /// <summary>
+    /// Every trajectory phase of a sequence is piloted through its own field, not only the first:
+    /// a cheap hold flown as trajectories before an expensive extraction bills the extraction too.
+    /// </summary>
+    [Fact]
+    public void EveryTrajectoryPhaseIsPiloted()
+    {
+        var model = Model("tube-plain", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "pushField": { "value": 0.0, "unit": "V/m" } }""");
+            document["fields"]![0] = JsonNode.Parse("""{ "type": "uniform", "field": { "expression": [ "pushField", "0", "0" ] } }""");
+            document["sequence"] = JsonNode.Parse("""
+                [ { "name": "cool", "duration": { "value": 1, "unit": "us" } },
+                  { "name": "hold", "duration": { "value": 2, "unit": "us" }, "mode": "trajectory" },
+                  { "name": "extract", "duration": { "value": 3, "unit": "us" }, "mode": "trajectory",
+                    "set": { "pushField": { "value": 2000000, "unit": "V/m" } } } ]
+                """);
+        });
+
+        var estimate = EstimateCommand.Execute(model, calibrate: true);
+
+        output.WriteLine(estimate.Basis);
+
+        Assert.Contains("phase 'hold'", estimate.Basis, StringComparison.Ordinal);
+        Assert.Contains("phase 'extract'", estimate.Basis, StringComparison.Ordinal);
+        Assert.Contains("flown from the source rather than from where the packet is", estimate.Basis, StringComparison.Ordinal);
     }
 
     /// <summary>

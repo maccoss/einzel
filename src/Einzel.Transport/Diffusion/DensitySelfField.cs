@@ -57,6 +57,14 @@ public sealed class DensitySelfField
     // was a grid of garbage a step - and, alive through a refresh that did solve, one more
     // array in a reading of what the run holds.
     private double[]? _rho;
+
+    // The Poisson solve's source, made once and written over at every solve: every node of it is
+    // set from the density before the solve reads it. Made new for each solve it was a grid of
+    // garbage a refresh, in a loop that refreshes as the density moves.
+    private ScalarField2D? _source;
+
+    /// <summary>The source the last solve was handed, for a test that it is the same one each time.</summary>
+    internal ScalarField2D? Source => _source;
     private double _solvedCharge;
 
     /// <summary>Builds the self-field solver for a tracked region.</summary>
@@ -219,7 +227,7 @@ public sealed class DensitySelfField
             }
         }
 
-        var source = new ScalarField2D(_grid);
+        var source = _source ??= new ScalarField2D(_grid);
 
         for (var j = 0; j < _grid.CountY; j++)
         {
@@ -381,7 +389,7 @@ public sealed class DensitySelfField
             }
         }
 
-        var source = new ScalarField2D(_grid);
+        var source = _source ??= new ScalarField2D(_grid);
 
         for (var j = 0; j < _grid.CountY; j++)
         {

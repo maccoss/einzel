@@ -76,6 +76,22 @@ public sealed class FaceCoefficients
     /// </summary>
     private static readonly (int Di, int Dj)[] FaceOffsets = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
+    /// <summary>The domain edge each face meets, by name, in the order of <see cref="FaceOffsets"/>.</summary>
+    /// <remarks>
+    /// Static for the reason the offsets are: a ramped phase assembles the operator at every
+    /// step, and two arrays made new for each assembly were garbage in a loop meant to make none.
+    /// </remarks>
+    private static readonly string[] FaceNames = ["maxX", "minX", "maxY", "minY"];
+
+    /// <summary>The domain edge a face meets, in the order of <see cref="FaceOffsets"/>, with no array made.</summary>
+    private static Escape EdgeOf(DriftDiffusion.DomainEdges edges, int face) => face switch
+    {
+        0 => edges.MaxX,
+        1 => edges.MinX,
+        2 => edges.MaxY,
+        _ => edges.MinY,
+    };
+
     /// <summary>
     /// The flux across one face, as the exact expression the explicit path used
     /// before this operator existed.
@@ -210,9 +226,6 @@ public sealed class FaceCoefficients
 
         var offsets = FaceOffsets;
 
-        var faceEdges = new[] { edges.MaxX, edges.MinX, edges.MaxY, edges.MinY };
-        var faceNames = new[] { "maxX", "minX", "maxY", "minY" };
-
         for (var j = 0; j < grid.CountY; j++)
         {
             for (var i = 0; i < grid.CountX; i++)
@@ -240,7 +253,7 @@ public sealed class FaceCoefficients
                     var (scale, bHere, bThere, leaves, name, collects) = Face(
                         grid, driftX, driftY, gasX, gasY, diffusion, potential, thermal,
                         i, j, i + di, j + dj, di != 0 ? di : dj, spacing,
-                        faceEdges[face], faceNames[face], absorbers, weight, di != 0);
+                        EdgeOf(edges, face), FaceNames[face], absorbers, weight, di != 0);
 
                     built._scale[(cell * Faces) + face] = scale;
                     built._weight[(cell * Faces) + face] = weight;

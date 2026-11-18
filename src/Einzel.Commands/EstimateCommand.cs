@@ -524,9 +524,8 @@ public static class EstimateCommand
             var (built, _) = Fields.FieldAssembly.BuildReported(coarse);
 
             var startsAt = phase is null ? 0.0 : phase.EndsAtSeconds - phase.DurationSeconds;
-            Fields.IElectrostaticField field = startsAt > 0.0 && built is Fields.ITimeVaryingField driven
-                ? new Fields.TimeShiftedField(driven, startsAt)
-                : built;
+            // The run's own shift, so the pilot and the leg see one instrument.
+            var field = SequencedRun.Instant(built, startsAt);
 
             var species = Transport.IonSpecies.FromModel(coarse);
 
@@ -602,12 +601,11 @@ public static class EstimateCommand
                 pilotSeconds * scale,
                 $"{flown.AcceptedSteps:N0} steps over {covered * 1e6:G4} us took "
                 + $"{pilotSeconds * 1000.0:F0} ms, scaled to "
-                + (spanSeconds is null
-                    ? $"the declared {span * 1e6:G4} us"
-                    : $"the {span * 1e6:G4} us the run spends as trajectories")
-                + (phase is null
-                    ? string.Empty
-                    : $", flown from the source through phase '{phase.Name}' as it is from {startsAt * 1e6:G4} us")
+                + (phase is not null
+                    ? $"its {span * 1e6:G4} us, flown from the source through phase '{phase.Name}' as it is from {startsAt * 1e6:G4} us"
+                    : spanSeconds is null
+                        ? $"the declared {span * 1e6:G4} us"
+                        : $"the {span * 1e6:G4} us the run spends as trajectories")
                 + ". Flown through a field solved at "
                 + $"{coarsening:G2}x the cell size, so this is a FLOOR wherever the step is "
                 + "capped by resolution rather than by tolerance");
@@ -845,7 +843,7 @@ public static class EstimateCommand
         // diffusive run's cost is the density stepping, which is estimated below from the
         // stability limits and needs no pilot.
         var trajectory = calibrate && spans.TrajectorySeconds > 0.0
-            ? PilotFlight(model, PilotCoarsening, spanSeconds: spans.TrajectorySeconds, phase: spans.FirstTrajectoryPhase)
+            ? Pilots(model, spans)
             : (Seconds: 0.0, How: string.Empty);
 
         // A CLOUD FLIES ONCE PER ION THROUGH ONE SOLVED FIELD, so the flight is paid as many
@@ -2128,15 +2126,86 @@ public static class EstimateCommand
     /// </remarks>
     private const double EstimatedSteps = 1e4;
 
+    /// <summary>The most trajectory phases of a sequence piloted one by one.</summary>
+    /// <remarks>
+    /// Each pilot is a short flight, a fraction of a second at most, so a handful keeps the estimate
+    /// cheap; past it the longest are piloted and the rest are charged at the dearest rate any
+    /// pilot measured, the direction that cannot under-bill what was piloted.
+    /// </remarks>
+    private const int MostPilotedPhases = 8;
+
+    /// <summary>
+    /// What a run's trajectories cost: one pilot over its whole flight, or for a sequence one pilot
+    /// through each trajectory phase over that phase's own duration, summed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Each phase by its own field.</b> A sequence's trajectory legs fly different instruments -
+    /// a hold with nothing pushing, then an extraction - and one pilot through the first, scaled
+    /// to all of them, billed the extraction at the hold's rate. Each is flown through its own
+    /// field, shifted to its start as the run's leg is, and costed over its own duration.
+    /// </para>
+    /// <para>
+    /// <b>Each flown from the source.</b> The run's leg starts wherever the packet is when the
+    /// phase begins, which no estimate knows without running the phases before it; the pilot
+    /// starts at the source, as declared. That is said in the basis rather than presented as the
+    /// packet's own flight.
+    /// </para>
+    /// </remarks>
+    private static (double Seconds, string How) Pilots(CompiledModel model, TransportSpans spans)
+    {
+        if (spans.TrajectoryPhases.Count == 0)
+        {
+            return PilotFlight(model, PilotCoarsening, spanSeconds: spans.TrajectorySeconds);
+        }
+
+        var piloted = spans.TrajectoryPhases
+            .OrderByDescending(p => p.DurationSeconds)
+            .Take(MostPilotedPhases)
+            .ToHashSet();
+
+        var seconds = 0.0;
+        var dearest = 0.0;
+        var lines = new List<string>();
+
+        foreach (var phase in spans.TrajectoryPhases.Where(piloted.Contains))
+        {
+            var (phaseSeconds, how) = PilotFlight(
+                model, PilotCoarsening, spanSeconds: phase.DurationSeconds, phase: phase);
+
+            seconds += phaseSeconds;
+            dearest = Math.Max(dearest, phaseSeconds / phase.DurationSeconds);
+            lines.Add(string.Create(Inv, $"phase '{phase.Name}', {phaseSeconds:G3} s: {how}"));
+        }
+
+        var unpiloted = spans.TrajectoryPhases.Where(p => !piloted.Contains(p)).Sum(p => p.DurationSeconds);
+
+        if (unpiloted > 0.0)
+        {
+            seconds += dearest * unpiloted;
+            lines.Add(string.Create(
+                Inv,
+                $"the other {spans.TrajectoryPhases.Count - piloted.Count} trajectory phase(s), "
+                + $"{unpiloted * 1e6:G4} us in all, at the dearest rate piloted"));
+        }
+
+        return (
+            seconds,
+            $"each trajectory phase piloted through its own field over its own duration, each "
+            + $"flown from the source rather than from where the packet is when the phase begins - "
+            + string.Join("; ", lines));
+    }
+
     /// <summary>How long a run flies trajectories and how long it steps a density.</summary>
     /// <param name="TrajectorySeconds">Simulated time spent as trajectories.</param>
     /// <param name="DiffusiveSeconds">Simulated time spent as a density.</param>
-    /// <param name="FirstTrajectoryPhase">
-    /// For a run walked phase by phase, the first phase flown as trajectories - where its pilot
-    /// flies - or null: a run flown whole is piloted from the start of its flight.
+    /// <param name="TrajectoryPhases">
+    /// For a run walked phase by phase, the phases flown as trajectories, each piloted through its
+    /// own field over its own duration; empty for a run flown whole, which is piloted from the
+    /// start of its flight.
     /// </param>
     private readonly record struct TransportSpans(
-        double TrajectorySeconds, double DiffusiveSeconds, CompiledPhase? FirstTrajectoryPhase = null);
+        double TrajectorySeconds, double DiffusiveSeconds, IReadOnlyList<CompiledPhase> TrajectoryPhases);
 
     /// <summary>
     /// The one decomposition of a run's time by transport mode, which every part of an estimate
@@ -2158,14 +2227,14 @@ public static class EstimateCommand
         if (!model.NeedsSequencedTransport)
         {
             return model.TransportMode == "diffusion"
-                ? new(0.0, model.MaximumFlightTimeSi)
-                : new(model.MaximumFlightTimeSi, 0.0);
+                ? new(0.0, model.MaximumFlightTimeSi, [])
+                : new(model.MaximumFlightTimeSi, 0.0, []);
         }
 
         var diffusive = model.Phases.Where(p => p.Mode == "diffusion").Sum(p => p.DurationSeconds);
         var trajectory = model.Phases.Where(p => p.Mode != "diffusion").Sum(p => p.DurationSeconds);
 
-        return new(trajectory, diffusive, model.Phases.FirstOrDefault(p => p.Mode != "diffusion"));
+        return new(trajectory, diffusive, [.. model.Phases.Where(p => p.Mode != "diffusion")]);
     }
 
     /// <summary>

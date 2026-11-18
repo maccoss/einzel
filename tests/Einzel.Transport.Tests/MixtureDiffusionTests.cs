@@ -483,6 +483,33 @@ public sealed class MixtureDiffusionTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A self-field solved again is handed the same source it was handed before, written over,
+    /// for one species and for a mixture alike: no grid is made for the source at each solve.
+    /// </summary>
+    [Fact]
+    public void ASolveAgainReusesItsSource()
+    {
+        var grid = Grid2D.OverBox(-0.01, -0.01, 0.01, 0.01, 64, 64);
+        var charge = 1.602176634e-19;
+
+        var single = new DensitySelfField(grid, false, AbsorbingCells.None, Bore, charge);
+        Assert.True(single.Refresh(Blob(grid, 0.0, 1.5e-3, 1e8)));
+        var first = single.Source;
+        Assert.True(single.Refresh(Blob(grid, 3.0e-3, 1.5e-3, 1e8)));
+
+        Assert.NotNull(first);
+        Assert.Same(first, single.Source);
+
+        var mixture = new DensitySelfField(grid, false, AbsorbingCells.None, Bore, charge);
+        Assert.True(mixture.Refresh([Blob(grid, 0.0, 1.5e-3, 1e8)], [charge]));
+        var before = mixture.Source;
+        Assert.True(mixture.Refresh([Blob(grid, 3.0e-3, 1.5e-3, 1e8)], [charge]));
+
+        Assert.NotNull(before);
+        Assert.Same(before, mixture.Source);
+    }
+
+    /// <summary>
     /// The shared step is the shortest any species needed, and the result names which one.
     /// </summary>
     /// <remarks>

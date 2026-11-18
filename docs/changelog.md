@@ -3904,3 +3904,28 @@ Two findings from Stage 1 that bear on the spec:
   density is refused by its own exception type, `NonFiniteDensityException`, which the sequence
   catches to locate it, rather than by an error code and an unlocated path. The timeline's path
   comes out of the call that resolves the timeline instead of a second resolution.
+
+  **A fourteenth review.** One pilot through the first trajectory phase, scaled to all of them,
+  billed a later extraction at a hold's rate: every trajectory phase is now piloted through its
+  own field over its own duration and the costs summed, the eight longest piloted and any others
+  charged at the dearest rate measured, and the basis says each was flown from the source rather
+  than from where the packet is. The pilot and the run's leg shift the field by one function
+  now, `SequencedRun.Instant`. A refusal of a non-finite density says what the document can
+  change - the gain or the scheme where the phase steps implicitly, the inputs that set the
+  stability limit where it does not - since `densityStep` has no step of its own to shorten. A
+  finite density whose population overflows a double is refused as that, not as a density that
+  is not a number. `--snapshots` with no number is refused by name. The face operator's edge and
+  name per face come from static data, so re-assembling it allocates nothing (asserted: 0 bytes
+  over ten re-assemblies), and a self-field keeps its Poisson source between solves.
+
+  **The memory tests were loading the CI runners, measured.** On run 44230667544 the diffusive
+  memory class took 483 s of the Linux runner's test step and 248 s of the Windows one's, the
+  Fields memory classes about 120 s more, and on Windows the extension tests took 394 s where they
+  take 26 s on `main` - the runaway-timeout test waited 21 s for a kill declared at 1.2 s. Locally
+  the measuring children took **264 s of processor time in 183 s**, and one, the ramped bore at
+  257 by 257, **114 s in 27 s**: its coefficient sweep spread across every core. Contained without
+  touching a bound: each child is pinned to one core and told it has one (135 s of processor time
+  in 188 s after, the ramped bore 47 s in 60 s, the class 13 s longer), and a machine-wide turn -
+  a lock file every test process sees - lets one measuring child run at a time across both
+  measuring assemblies, and none while the energy-member cost test or the runaway-timeout test is
+  timing.

@@ -294,10 +294,10 @@ become a feature release without being renamed twice.
 - **`einzel estimate --snapshots <n>`** bills the instants a diffusive run is to record its
   density at - 8 bytes a density node each, kept to the end. A run records none; a render at an
   instant asks for one and an animation for one a frame. It is refused for a model that steps
-  no density in any phase, and for a mixture, whose run records none, rather than accepted and
-  billed for copies nothing makes.
-- **A sequenced run is estimated phase by phase**: trajectory phases by a pilot flown through
-  the first trajectory phase's own field, scaled to their duration, diffusive phases by density steps over theirs, and the basis says both. A
+  no density in any phase, for a mixture, whose run records none, and when given no number,
+  rather than accepted and billed for copies nothing makes.
+- **A sequenced run is estimated phase by phase**: each trajectory phase by a pilot flown
+  through its own field over its own duration, diffusive phases by density steps over theirs, and the basis says both. A
   trajectory model entering a diffusive phase was billed nothing for its density, and a
   diffusive model leaving its density was stepped through its trajectory phases.
 - **A mixture's self-field no longer makes a grid of garbage at every step**: its summed charge
