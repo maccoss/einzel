@@ -150,11 +150,30 @@ public static class ArtifactFiles
     /// <summary>Whether two paths name one file.</summary>
     /// <param name="first">One path.</param>
     /// <param name="second">The other.</param>
-    /// <returns>True where they are the same file name, as the file system compares names.</returns>
+    /// <returns>
+    /// True where they are the same file once each symbolic link is followed to the file it
+    /// names, as the file system compares names.
+    /// </returns>
+    /// <remarks>
+    /// Compared where the bytes would go, because that is where they are written: a write goes
+    /// through a link to its target, so <c>--out link.png</c> with <c>link.png</c> naming the
+    /// model replaced the model while a comparison of the names said they differed.
+    /// </remarks>
     public static bool Same(string first, string second) => string.Equals(
-        Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
-        Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
+        Path.TrimEndingDirectorySeparator(Resolved(first)),
+        Path.TrimEndingDirectorySeparator(Resolved(second)),
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    // A path as a full path, followed through a symbolic link to the end where it is one.
+    private static string Resolved(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var info = new FileInfo(full);
+
+        return info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } final
+            ? Path.GetFullPath(final.FullName)
+            : full;
+    }
 
     /// <summary>Writes one file, whole or not at all.</summary>
     /// <param name="flag">The flag that names it, without its dashes; null where the user named none.</param>
@@ -350,14 +369,8 @@ public static class ArtifactFiles
     // written.
     private static string Destination(string? flag, string path)
     {
-        var full = Path.GetFullPath(path);
+        var full = Resolved(path);
         var info = new FileInfo(full);
-
-        if (info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } final)
-        {
-            full = Path.GetFullPath(final.FullName);
-            info = new FileInfo(full);
-        }
 
         if (info.Exists && info.IsReadOnly)
         {

@@ -26,7 +26,54 @@ public sealed class HeldConductorsTests(ITestOutputHelper output)
             .Select(t => t.Name)
             .Order(StringComparer.Ordinal);
 
-        Assert.Equal(["DrivenSolvedField", "SolvedField2D", "SolvedField3D"], holders);
+        Assert.Equal(["DrivenSolvedField", "StaticHeldConductors"], holders);
+    }
+
+    /// <summary>
+    /// What a conductor holds is a source the leaf is built with, never a flag a builder must
+    /// remember: no type in the assembly carries a settable switch saying whether it holds.
+    /// </summary>
+    /// <remarks>
+    /// The solved fields were the holders, gated by an init-only <c>HoldsDeclaredPotentials</c>
+    /// that each builder had to set; one that forgot it got conductors holding nothing, silently.
+    /// A static solve's leaf is now built with <see cref="Solved.StaticHeldConductors"/> and a
+    /// driven solve's coefficients are <c>required</c>.
+    /// </remarks>
+    [Fact]
+    public void NoBuilderHasAHoldingFlagToForget()
+    {
+        var flags = typeof(IHeldConductors).Assembly.GetTypes()
+            .SelectMany(t => t.GetProperties())
+            .Where(p => p.Name.StartsWith("Holds", StringComparison.Ordinal) && p.PropertyType == typeof(bool))
+            .Select(p => $"{p.DeclaringType!.Name}.{p.Name}");
+
+        Assert.Empty(flags);
+
+        var coefficients = typeof(Solved.DrivenSolvedField).GetProperty(nameof(Solved.DrivenSolvedField.ConductorCoefficients))!;
+        Assert.Contains(
+            coefficients.CustomAttributes,
+            a => a.AttributeType.Name == "RequiredMemberAttribute");
+    }
+
+    /// <summary>
+    /// A static solve holds each electrode at its declared potential, and an edge-profiled board
+    /// at none: its own potential compiles to zero, and an entry would claim the board holds 0 V.
+    /// </summary>
+    [Fact]
+    public void AStaticEdgeProfiledBoardHoldsNoSinglePotential()
+    {
+        var electrodes = new[]
+        {
+            new Core.Model.CompiledElectrode { Name = "cap", Shape = Core.Model.ElectrodeShape.Rectangle, Potential = 4800.0 },
+            new Core.Model.CompiledElectrode { Name = "topBoard", Shape = Core.Model.ElectrodeShape.EdgeProfile },
+        };
+
+        var held = Solved.StaticHeldConductors.Of(electrodes);
+
+        Assert.Equal(4800.0, held.HeldPotentialOf("cap", 0.0));
+        Assert.Null(held.HeldPotentialOf("topBoard", 0.0));
+        Assert.Null(held.HeldCycleMeanOf("topBoard", 0.0, 1e-6, 8));
+        Assert.Null(held.HeldPotentialOf("absent", 0.0));
     }
 
     /// <summary>

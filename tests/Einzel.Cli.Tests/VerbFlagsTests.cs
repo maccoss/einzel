@@ -260,6 +260,8 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     [InlineData("render --out x.png still m.json", "render still")]
     [InlineData("render --cycle-mean --at-us 1 surface m.json", "render surface")]
     [InlineData("ext list", "ext list")]
+    [InlineData("render --progress section m.json", "render section")]
+    [InlineData("render --progress 5 section m.json", "render section")]
     public void TheSubVerbIsTheFirstWordThatIsNoFlag(string line, string key)
     {
         Assert.Equal(key, VerbFlags.For(line.Split(' '))?.Key);

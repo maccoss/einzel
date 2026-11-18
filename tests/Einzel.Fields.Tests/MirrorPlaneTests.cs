@@ -32,7 +32,7 @@ public sealed class MirrorPlaneTests
     public void ThePlaneIsCountedOnce()
     {
         var half = new Half();
-        var image = new ReflectedField(half, Plane);
+        var image = new ReflectedField(half, Plane, imageAbove: true);
         var whole = new SuperposedField([half, image]);
 
         foreach (var x in new[] { 0.03, double.BitDecrement(Plane), Plane, double.BitIncrement(Plane), 0.05 })

@@ -203,6 +203,38 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>
+    /// A point on the sampled plane is put on the right model axes, for every plane, and costs
+    /// no allocation: it is asked once per sample inside the parallel loop.
+    /// </summary>
+    [Fact]
+    public void APlanePointIsOnItsAxesAndAllocatesNothing()
+    {
+        foreach (var (across, deep, normal) in new[] { (0, 1, 2), (0, 2, 1), (1, 2, 0), (2, 0, 1) })
+        {
+            var p = SurfaceCommand.PlanePoint(across, deep, normal, 1.0, 2.0, 3.0);
+            double[] got = [p.X, p.Y, p.Z];
+
+            Assert.Equal(1.0, got[across]);
+            Assert.Equal(2.0, got[deep]);
+            Assert.Equal(3.0, got[normal]);
+        }
+
+        SurfaceCommand.PlanePoint(0, 1, 2, 1.0, 2.0, 3.0);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var sum = 0.0;
+
+        for (var i = 0; i < 10_000; i++)
+        {
+            sum += SurfaceCommand.PlanePoint(i % 3, (i + 1) % 3, (i + 2) % 3, i, 2.0, 3.0).X;
+        }
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        output.WriteLine($"{allocated} bytes over 10,000 points ({sum})");
+
+        Assert.Equal(0, allocated);
+    }
+
+    /// <summary>
     /// Under <c>--cycle-mean</c> no phase is drawn, so an instant too late to place in the cycle
     /// is not refused: it picks the operating point, and the mean is the same as at any other.
     /// </summary>

@@ -143,10 +143,12 @@ public sealed record VerbFlags(
         }
 
         var prefix = args[0] + " ";
-        var switches = ByVerb
+        var family = ByVerb
             .Where(e => e.Key == args[0] || e.Key.StartsWith(prefix, StringComparison.Ordinal))
-            .SelectMany(e => e.Value.Switches)
-            .ToHashSet(StringComparer.Ordinal);
+            .Select(e => e.Value)
+            .ToList();
+        var switches = family.SelectMany(f => f.Switches).ToHashSet(StringComparer.Ordinal);
+        var optional = family.SelectMany(f => f.Optional).ToHashSet(StringComparer.Ordinal);
 
         for (var i = 1; i < args.Count; i++)
         {
@@ -166,14 +168,39 @@ public sealed record VerbFlags(
                 continue;
             }
 
-            // A flag that takes a value consumes the next word, unless that word is a flag.
-            if (i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            // A flag that takes a value consumes the next word, unless that word is a flag - or
+            // the flag's value may be left off and the word is not one: `render --progress
+            // section m.json` is a bare --progress before the kind.
+            if (i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
+                && (!optional.Contains(name) || LooksLikeOptionalValue(args[i + 1])))
             {
                 i++;
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Whether the word after a flag whose value may be left off is that value, rather than the
+    /// next positional argument.
+    /// </summary>
+    /// <param name="word">The next word on the command line.</param>
+    /// <returns>True where it begins as a number does: a digit, a point, or a sign before one.</returns>
+    /// <remarks>
+    /// <c>--progress</c> is the only such flag, and its value is a number of seconds, where a
+    /// model or a sub-verb never begins with a digit. Read by its first characters, not parsed:
+    /// whether it IS a number is the flag reader's question, and <c>--progress 5s</c> is still
+    /// refused by it, by name. Without this a bare <c>--progress</c> before the model took the
+    /// model as its value and refused it as an interval.
+    /// </remarks>
+    public static bool LooksLikeOptionalValue(string word)
+    {
+        ArgumentNullException.ThrowIfNull(word);
+
+        var body = word.Length > 1 && word[0] is '+' or '-' ? word[1..] : word;
+
+        return body.Length > 0 && (char.IsAsciiDigit(body[0]) || body[0] == '.');
     }
 
     private static VerbFlags Of(

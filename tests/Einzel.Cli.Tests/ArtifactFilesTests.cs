@@ -102,6 +102,46 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A destination that is a link to a file the command reads is that file, and two
+    /// destinations that are one file through a link are one file.
+    /// </summary>
+    /// <remarks>
+    /// The writes followed the link while the checks compared names, so <c>--out link.png</c>,
+    /// where <c>link.png</c> names the model, passed the check and replaced the model. Needs a
+    /// symbolic link: on Windows without developer mode there is none to make and the test says
+    /// so and checks nothing; Linux CI always runs it.
+    /// </remarks>
+    [Fact]
+    public void ALinkToAnInputIsThatInput()
+    {
+        Directory.CreateDirectory(_root);
+        var model = Path.Combine(_root, "model.json");
+        var link = Path.Combine(_root, "link.png");
+        var other = Path.Combine(_root, "other.csv");
+        File.WriteAllText(model, "{}");
+
+        try
+        {
+            File.CreateSymbolicLink(link, model);
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            output.WriteLine($"no symbolic link here ({failure.Message}); nothing to check");
+            return;
+        }
+
+        var refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.Write("out", link, [1], model));
+        Assert.Equal("/args/--out", refusal.Error.Path);
+        Assert.Equal("{}", File.ReadAllText(model));
+
+        // Two outputs that are one file through a link.
+        File.CreateSymbolicLink(other, Path.Combine(_root, "real.csv"));
+        var both = Assert.Throws<EinzelException>(
+            () => ArtifactFiles.WriteAll([("out", Path.Combine(_root, "real.csv"), [1]), ("csv", other, [2])]));
+        Assert.Equal("/args/--csv", both.Error.Path);
+    }
+
+    /// <summary>
     /// A replaced file is never absent: a reader watching the destination through the whole write
     /// always finds a file there, old or new.
     /// </summary>

@@ -477,6 +477,12 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
     [InlineData("render section {model} --progress 0.5 --dry-run")]
     [InlineData("render animation {film} --dry-run --progress")]
     [InlineData("render animation {film} --dry-run --progress 2")]
+    [InlineData("run --progress {model}")]
+    [InlineData("run --progress {model} --json")]
+    [InlineData("render section --progress {model} --dry-run")]
+    [InlineData("render --progress section {model} --dry-run")]
+    [InlineData("render animation --progress {film} --dry-run")]
+    [InlineData("run --progress .5 {model}")]
     public void ABareProgressIsTheDefaultInterval(string line)
     {
         Project();
@@ -780,6 +786,29 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
         // And without --json, stdout is left alone, as it was.
         Assert.Equal(string.Empty, Run(Words(line)).Stdout);
+    }
+
+    /// <summary>
+    /// A refused <c>--mesh-lines</c> states the range the surface takes, which starts at one: the
+    /// reader took 0 as its minimum while the request check refused anything below 1, so the
+    /// message advertised a value the command then refused.
+    /// </summary>
+    [Fact]
+    public void MeshLinesAdvertisesTheRangeItTakes()
+    {
+        Project();
+
+        var (code, _, stderr) = Run(Words("render surface {model} --dry-run --box-mm 0,0,10,10 --mesh-lines -1"));
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+        Assert.Contains("1 or more", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("0 or more", stderr, StringComparison.Ordinal);
+
+        // And 0 is refused by the reader, with the same range, not by a second rule after it.
+        var (zero, _, zeroError) = Run(Words("render surface {model} --dry-run --box-mm 0,0,10,10 --mesh-lines 0"));
+        Assert.Equal(1, zero);
+        Assert.Contains("1 or more", zeroError, StringComparison.Ordinal);
     }
 
     /// <summary>

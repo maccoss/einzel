@@ -17,8 +17,9 @@ namespace Einzel.Fields;
 /// <param name="imageAbove">
 /// Which side of the plane the image lies on: true where the declared half is below the plane
 /// (the usual <c>reflectAboutX</c> at a solve's <c>maxX</c>), false where it is above, and null
-/// where the declared half has no edge on the plane (an analytic field filling all space), so the
-/// image answers everywhere but on the plane itself. See <see cref="Contributes"/>.
+/// where the declared half has no edge on the plane - it runs past it, or fills all space - so
+/// the two genuinely overlap and the image answers everywhere, the plane included. See
+/// <see cref="Contributes"/>.
 /// </param>
 public sealed class ReflectedField(IElectrostaticField inner, double planeX, bool? imageAbove = null)
     : IElectrostaticField, IConductorBounded
@@ -57,7 +58,9 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     /// <param name="position">The point, in the world.</param>
     /// <returns>
     /// True strictly on the image's side of the plane, judged on the point's own x; false on the
-    /// declared side and on the plane. With no side given, true everywhere but on the plane.
+    /// declared side and on the plane. With no side given, true everywhere: a half with no edge on
+    /// the plane overlaps its image, and the sum there is both. Leaving the image out on the plane
+    /// alone, as the first version did, made that sum jump at the plane.
     /// </returns>
     /// <remarks>
     /// <para>
@@ -81,7 +84,7 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     {
         true => position.X > planeX,
         false => position.X < planeX,
-        null => position.X != planeX,
+        null => true,
     };
 
     /// <summary>Which side of its plane a reflected solve's image lies on.</summary>

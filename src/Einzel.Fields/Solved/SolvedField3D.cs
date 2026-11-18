@@ -11,7 +11,7 @@ namespace Einzel.Fields.Solved;
 /// what a segmented quadrupole, an auxiliary DC wedge or a bent flight tube needs
 /// and what neither of the others can express.
 /// </remarks>
-public sealed class SolvedField3D : IElectrostaticField, IConductorBounded, IHeldConductors
+public sealed class SolvedField3D : IElectrostaticField, IConductorBounded
 {
     private readonly TricubicInterpolant _interpolant;
     private readonly Grid3D _grid;
@@ -100,36 +100,6 @@ public sealed class SolvedField3D : IElectrostaticField, IConductorBounded, IHel
 
     /// <inheritdoc/>
     public double SignedDistanceToConductor(in Vec3 position) => NearestConductor(in position, out _);
-
-    /// <summary>
-    /// Whether this field is a whole static solve, whose electrodes hold their declared
-    /// potentials; false for a basis channel of a driven solve. Set by the builder.
-    /// </summary>
-    public bool HoldsDeclaredPotentials { get; init; }
-
-    /// <inheritdoc/>
-    public double? HeldPotentialOf(string conductor, double timeSeconds)
-    {
-        if (!HoldsDeclaredPotentials)
-        {
-            return null;
-        }
-
-        foreach (var inside in _conductors)
-        {
-            if (string.Equals(inside.Name, conductor, StringComparison.Ordinal))
-            {
-                return inside.Potential;
-            }
-        }
-
-        return null;
-    }
-
-    /// <inheritdoc/>
-    /// <remarks>A static solve holds the same potential at every instant, so its mean is that potential.</remarks>
-    public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples) =>
-        HeldPotentialOf(conductor, fromSeconds);
 
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position)

@@ -3673,5 +3673,28 @@ Two findings from Stage 1 that bear on the spec:
   surface evaluated the field vector at every node to drop it, and asked each solve's domain twice;
   and `SolvedField2D`/`3D` walked their conductors three times over in three copies of one loop.
 
+  **A fourteenth review.** A bare `--progress` before a positional took the positional as its
+  value (`einzel run --progress models/r.json` refused "models/r.json" as an interval): the word
+  after a flag whose value may be left off is its value only if it begins as a number does, or if
+  the verb has no room for it otherwise. A destination was compared with the inputs by name while
+  the write went through a link to its target, so a link to the model passed the check and the
+  model was replaced; both now compare where the bytes go. **The mirror pair's own sum is now
+  chosen by how its halves meet**: a union with the plane given to the declared half where the
+  solved mirror ends before the plane, and a genuine overlap of two tails, image included on the
+  plane, where it runs past it - the single-stage pair at focus ends at 150 mm against a plane at
+  145.2 mm, and the old rule (the image everywhere but on the plane) dropped a 1.1e-4 V tail at the
+  plane, where the ion is launched every period. That moves the single-stage study's printout:
+  c1 1.382e-7 to 3.843e-7 (the focus is bisected to 1e-6 in separation, so c1 is zero to the
+  search), c3 -0.1330 to -0.1331, energy drift 5.23e-8 to 6.88e-8, R at ±3% 8,347 to 8,346; the
+  two-stage pair, whose mirror ends well before its plane, is unchanged. What a static solve's
+  conductors hold is a source the leaf is built with (`StaticHeldConductors`, a name-to-potential
+  map) rather than a role the solved field played behind an init flag a builder had to remember,
+  and a driven solve's coefficients are `required`. The surface's plane point allocates nothing,
+  and `--mesh-lines` takes its minimum from `SurfaceCommand.MinimumMeshLines`, so it no longer
+  advertises 0. The review's first finding - an edge-profiled board held at 0 V on a static
+  solve - did not reproduce: the static solved field leaves edge profiles out of its conductors,
+  so the arm removed in the thirteenth round was unreachable; the held source now leaves them out
+  itself, tested.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

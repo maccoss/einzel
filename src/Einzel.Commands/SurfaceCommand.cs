@@ -439,6 +439,12 @@ public static class SurfaceCommand
     /// <summary>Mesh lines along the longer side unless asked otherwise.</summary>
     public const int DefaultMeshLines = 40;
 
+    /// <summary>
+    /// The fewest mesh lines a surface may be drawn with: the one statement of the rule, which
+    /// the request check applies and the CLI's reader takes its range from.
+    /// </summary>
+    public const int MinimumMeshLines = 1;
+
     /// <summary>The drawn height of the whole range, as a fraction of the longer side.</summary>
     public const double DefaultRelief = 0.35;
 
@@ -708,7 +714,7 @@ public static class SurfaceCommand
             for (var j = 0; j < nv; j++)
             {
                 var k = (i * nv) + j;
-                var point = FieldProbe.MillimetresToMetres(Point(across, deep, n, us[i], vs[j], offset));
+                var point = FieldProbe.MillimetresToMetres(PlanePoint(across, deep, n, us[i], vs[j], offset));
                 var status = probe.SamplePotential(
                     in point, at, cycleMean, out raw[k], out var distance, out var conductor, out var element, out var volts);
 
@@ -2345,14 +2351,23 @@ public static class SurfaceCommand
 
     private static Vec3 Mid(Vec3 a, Vec3 b) => new((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0, (a.Z + b.Z) / 2.0);
 
-    private static Vec3 Point(int across, int deep, int normal, double u, double v, double offset)
+    /// <summary>A point on the sampled plane, in the model's axes.</summary>
+    /// <param name="across">The model axis (0 x, 1 y, 2 z) the plane's first coordinate runs along.</param>
+    /// <param name="deep">The model axis its second coordinate runs along.</param>
+    /// <param name="normal">The model axis normal to the plane.</param>
+    /// <param name="u">The first coordinate.</param>
+    /// <param name="v">The second coordinate.</param>
+    /// <param name="offset">How far along the normal.</param>
+    /// <returns>The point.</returns>
+    /// <remarks>
+    /// Called once per sample inside the parallel loop, so it allocates nothing: it used to fill a
+    /// three-element array per sample, a million arrays for a surface at its largest.
+    /// </remarks>
+    public static Vec3 PlanePoint(int across, int deep, int normal, double u, double v, double offset)
     {
-        var c = new double[3];
-        c[across] = u;
-        c[deep] = v;
-        c[normal] = offset;
+        double On(int axis) => axis == across ? u : axis == deep ? v : axis == normal ? offset : double.NaN;
 
-        return new Vec3(c[0], c[1], c[2]);
+        return new Vec3(On(0), On(1), On(2));
     }
 
     private static double[] Grid(double from, double to, int count)
@@ -2392,9 +2407,9 @@ public static class SurfaceCommand
             throw Refusal("/surface/samples", $"samples along the longer side are 3 to {MaximumSamples}; got {request.Samples}");
         }
 
-        if (request.MeshLines < 1)
+        if (request.MeshLines < MinimumMeshLines)
         {
-            throw Refusal("/surface/mesh-lines", $"at least one mesh line; got {request.MeshLines}");
+            throw Refusal("/surface/mesh-lines", $"at least {MinimumMeshLines} mesh line; got {request.MeshLines}");
         }
 
         if (request.Height is not (SurfaceHeight.Potential or SurfaceHeight.Energy))

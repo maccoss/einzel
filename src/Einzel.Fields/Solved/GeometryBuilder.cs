@@ -1062,10 +1062,7 @@ public static class GeometryBuilder
             potential,
             new BicubicInterpolant(potential),
             boundaryIsDiscontinuous: solve.BoundaryIsDiscontinuous,
-            conductors: solve.Electrodes)
-        {
-            HoldsDeclaredPotentials = true,
-        };
+            conductors: solve.Electrodes);
 
         IElectrostaticField field = solved;
 
@@ -1077,7 +1074,7 @@ public static class GeometryBuilder
             field = new AxisymmetricField(field);
         }
 
-        var leaves = ConductorLeaf.Of(field, solve.ReflectAboutX, solved);
+        var leaves = ConductorLeaf.Of(field, solve.ReflectAboutX, StaticHeldConductors.Of(solve.Electrodes));
 
         if (solve.ReflectAboutX is { } plane)
         {

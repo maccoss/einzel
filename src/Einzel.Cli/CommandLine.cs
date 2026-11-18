@@ -65,9 +65,15 @@ public sealed class CommandLine
         // Asked of the verb named, so a name may be a switch for one verb and take a value for
         // another. A command line naming no verb this knows has only --json and --help, which
         // every verb takes; whatever it is, it is refused or answered with a usage.
-        var switches = VerbFlags.For(args)?.Flags.Switches;
+        var flags = VerbFlags.For(args)?.Flags;
 
-        bool IsSwitch(string flag) => flag is "json" or "help" || (switches?.Contains(flag) ?? false);
+        bool IsSwitch(string flag) => flag is "json" or "help" || (flags?.Switches.Contains(flag) ?? false);
+        bool IsOptional(string flag) => flags?.Optional.Contains(flag) ?? false;
+
+        // A word after a flag whose value may be left off, which does not look like that value:
+        // held as a positional for now, and given to the flag after all only if the command line
+        // would otherwise have more positionals than the verb takes.
+        (int Positional, int Option, string Name)? tentative = null;
 
         for (var i = 1; i < args.Length; i++)
         {
@@ -91,7 +97,19 @@ public sealed class CommandLine
 
             // A following argument that is not itself an option is this option's
             // value - unless this is a switch, which never has one.
-            if (!IsSwitch(name) && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            var next = !IsSwitch(name) && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal);
+
+            if (next && IsOptional(name) && !VerbFlags.LooksLikeOptionalValue(args[i + 1]))
+            {
+                // A flag whose value may be left off, followed by a word that does not look like
+                // its value: `run --progress models/r.json` is the default interval and a model,
+                // not an interval called models/r.json. Bare for now; settled below.
+                parsed._options[name] = null;
+                parsed._all.Add((name, null));
+                tentative = (parsed._positional.Count, parsed._all.Count - 1, name);
+                parsed._positional.Add(args[++i]);
+            }
+            else if (next)
             {
                 parsed._options[name] = args[++i];
                 parsed._all.Add((name, args[i]));
@@ -101,6 +119,17 @@ public sealed class CommandLine
                 parsed._options[name] = null;
                 parsed._all.Add((name, null));
             }
+        }
+
+        // Settled: a word the verb has no room for is the flag's value after all, so `run
+        // m.json --progress soon` is still refused by the flag's reader, by name, as a value that
+        // is no interval - not as a stray argument.
+        if (tentative is { } held && flags is not null && parsed._positional.Count > flags.Positionals)
+        {
+            var word = parsed._positional[held.Positional];
+            parsed._positional.RemoveAt(held.Positional);
+            parsed._options[held.Name] = word;
+            parsed._all[held.Option] = (held.Name, word);
         }
 
         return parsed;

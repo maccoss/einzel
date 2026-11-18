@@ -921,7 +921,7 @@ anywhere, and `TryParse` in the two readers alone.
 | `--width-px`, `--height-px` | 16 to 8192 |
 | `--samples` (`probe`) | 2 to 1,000,000 |
 | `--samples` (`render surface`) | 3 to 1001, or `NxM` with M from 2 |
-| `--mesh-lines` | 1 to 1001 |
+| `--mesh-lines` | 1 or more (`SurfaceCommand.MinimumMeshLines`) |
 | `--equipotentials` | 0 to 1000 |
 | `--fps` | 1 to 1000 |
 | `--ions` | 1 to 1,000,000 |
@@ -943,7 +943,9 @@ all**, and one that cannot be written is refused at its flag, exit 1 (`ArtifactF
 `render surface`, `render still`, `render section`, `render animation`, `probe --csv`, `report
 --out` and `export`). A file the user named no flag for - a default figure, the report page with
 no `--out`, an export in the project's `.einzel/` folder - is refused at `/` with the file in the
-message, not at a flag that did not name it. **Each file is replaced in one rename**, so a
+message, not at a flag that did not name it. **A destination is compared with the inputs, and
+with the other destinations, where its bytes would go** - through a symbolic link to the file it
+names - so `--out link.png` naming the model is refused as the model. **Each file is replaced in one rename**, so a
 process killed mid-write leaves the old file or the new one, never neither; a destination that is
 a symbolic link is written through to the file it names, and a read-only one is refused. Several
 files are put in place one after another with the replaced ones kept as backups until the last is
@@ -968,8 +970,12 @@ nothing read. **No destination may be a file the command reads, or another desti
 way puts back what was there**, where it used to delete it.
 
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
-unless turned off, so the flag alone is the default interval, as it always was. Every other flag that
-takes a value is refused bare; before this they were read as though absent.
+unless turned off, so the flag alone is the default interval, as it always was. **A bare
+`--progress` before a positional is still bare**: the next word is its value only if it begins as a
+number does, or if the verb has no room for it as a positional - so `einzel run --progress
+models/reflectron.json` runs at the default interval, and `einzel run models/reflectron.json
+--progress soon` is refused at `--progress` as no interval. Every other flag that takes a value is
+refused bare; before this they were read as though absent.
 
 **The whole surface is run as one table on every change.** `CommandLineMatrixTests` drives every
 verb in the registry through its help, each flag with a value it takes, each value flag bare, each

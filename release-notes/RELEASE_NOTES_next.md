@@ -206,7 +206,10 @@ become a feature release without being renamed twice.
   is checked before the work, `--dry-run` included. A file no flag named is refused with its own
   path rather than at `--project` or `--out`.
 - **Flags may come before a sub-verb** again: `einzel ext --json list`, `einzel agents --json
-  tasks`. `render surface --cycle-mean` no longer refuses an `--at-us` too late to place in the
+  tasks`; and a bare `--progress` before the model is the default interval again (`einzel run
+  --progress models/reflectron.json`) rather than an interval called the model's path. A
+  destination that is a symbolic link to the model, or to another destination, is refused as that
+  file. `render surface --cycle-mean` no longer refuses an `--at-us` too late to place in the
   drive cycle, since no instant of the drive is drawn.
 - **`einzel schema --units`** lists every unit symbol with its dimension and SI factor - the
   command an unknown unit's error has always named.

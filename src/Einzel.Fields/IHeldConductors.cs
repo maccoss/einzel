@@ -28,7 +28,9 @@ namespace Einzel.Fields;
 /// this point" from the shape alone drew a plateau where nothing had been solved.
 /// </para>
 /// <para>
-/// <b>Only the solves themselves implement this</b> - a static solve and a driven one, in the
+/// <b>Only the solves' held sources implement this</b> - a static solve's
+/// (<see cref="Solved.StaticHeldConductors"/>, built from the declared potentials) and a driven
+/// one (<see cref="Solved.DrivenSolvedField"/>, from its required channel coefficients), in the
 /// plane and in a volume. A wrapper that mirrors, rotates or sums fields does not: the assembly
 /// hands out each conductor-bearing leaf with the solve that holds it
 /// (<see cref="FieldLeaf"/>), so nothing has to forward the question through whatever stands

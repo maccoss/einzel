@@ -59,6 +59,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     private readonly double? _operatingPoint;
 
     /// <summary>The same field with its operating point held at an instant.</summary>
+    [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
     private DrivenSolvedField(DrivenSolvedField source, double operatingPoint)
     {
         // FINITE, not merely non-negative. `Math.Clamp(NaN, 0, 1)` is NaN, so a non-finite
@@ -97,9 +98,10 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// Each conductor's coefficient in each channel's pattern, by name: what the conductor is
     /// held at in a channel's solve, so that at any instant it holds the sum over channels of
     /// that coefficient times the channel's weight. An edge-profiled board has no single
-    /// coefficient and no entry. Set by the builder; null where none was given.
+    /// coefficient and no entry. Required: a driven solve made without saying what its
+    /// conductors hold would hold nothing, and the probe would draw the interpolant in the metal.
     /// </summary>
-    public IReadOnlyDictionary<string, double[]>? ConductorCoefficients { get; init; }
+    public required IReadOnlyDictionary<string, double[]> ConductorCoefficients { get; init; }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -110,7 +112,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// </remarks>
     public double? HeldPotentialOf(string conductor, double timeSeconds)
     {
-        if (ConductorCoefficients is null || !ConductorCoefficients.TryGetValue(conductor, out var coefficients))
+        if (!ConductorCoefficients.TryGetValue(conductor, out var coefficients))
         {
             return null;
         }
@@ -131,7 +133,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// <inheritdoc/>
     public double? HeldCycleMeanOf(string conductor, double fromSeconds, double periodSeconds, int samples)
     {
-        if (ConductorCoefficients is null || !ConductorCoefficients.TryGetValue(conductor, out var coefficients))
+        if (!ConductorCoefficients.TryGetValue(conductor, out var coefficients))
         {
             return null;
         }

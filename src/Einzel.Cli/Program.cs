@@ -2381,7 +2381,7 @@ public static class Program
             || !TryNumberFlag(options, "height-mm-per-ev", "a number of millimetres per electronvolt", out var perEv)
             || !TryNumberFlag(options, "at-us", "a time in microseconds", out var at)
             || !TrySurfaceSamples(options, out var samples, out var deepSamples)
-            || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, 0, int.MaxValue, out var meshLines, "a whole number of mesh lines")
+            || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, SurfaceCommand.MinimumMeshLines, int.MaxValue, out var meshLines, "a whole number of mesh lines")
             || !TryPictureSize(options, "a surface picture", out var width, out var height)
             || !TryChoiceFlag(options, "height", SurfaceHeight.Spellings, out var heightGiven, exact: true)
             || !TryChoiceFlag(options, "view", SurfaceCommand.Views.Keys, out var named, exact: true))

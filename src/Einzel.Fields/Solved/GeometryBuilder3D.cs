@@ -405,7 +405,7 @@ public static class GeometryBuilder3D
             coarsen: Coarsener(geometry));
 
         return (
-            new SolvedField3D(potential, geometry.Electrodes) { HoldsDeclaredPotentials = true },
+            new SolvedField3D(potential, geometry.Electrodes),
             report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) });
     }
 
@@ -873,7 +873,7 @@ public static class GeometryBuilder3D
         if (geometry.Drives.Count == 0 && geometry.Stages.Count == 0)
         {
             var (statik, staticReport) = Build(geometry);
-            return (Reflected(statik, geometry), staticReport, ConductorLeaf.Of(statik, geometry.ReflectAboutX, statik));
+            return (Reflected(statik, geometry), staticReport, ConductorLeaf.Of(statik, geometry.ReflectAboutX, StaticHeldConductors.Of(geometry.Electrodes)));
         }
 
         var groups = Groups(geometry);
