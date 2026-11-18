@@ -193,6 +193,11 @@ become a feature release without being renamed twice.
   `agents` flags are checked per sub-verb (`ext list --kind y` is refused). A destination that is
   the model itself, or another destination, is refused; a failed write restores the file that
   was there.
+- **A reflected solve whose mirror plane lies inside its own box is symmetric about it**: the
+  half and its image overlap there and are summed on both sides, where only the half answered
+  below the plane. The image's conductors stop ions only where its field answers. An animation
+  is written whole or not at all, and two conductors whose surface labels would read alike are
+  two plateaus.
 - **A point in a conductor's declared shape past the edge of its solve is `outside-domain`**, with
   a note naming the shape, even where another element covers it; it was `ok` there. This changes
   `probe` rows, the `probe.outside-domain` count of `export --composite`, and where `render surface`

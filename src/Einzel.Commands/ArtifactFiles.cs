@@ -209,6 +209,11 @@ public static class ArtifactFiles
     {
         ArgumentNullException.ThrowIfNull(destinations);
 
+        // Each destination resolved once and looked up, not compared with every other: a film is
+        // hundreds of frames, and every comparison follows links on disk.
+        var seen = new Dictionary<string, int>(
+            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
         for (var i = 0; i < destinations.Count; i++)
         {
             var (flag, path) = destinations[i];
@@ -216,17 +221,18 @@ public static class ArtifactFiles
             Check(flag, path);
             CheckNotAnInput(flag, path, inputs);
 
-            for (var j = 0; j < i; j++)
+            var target = Path.TrimEndingDirectorySeparator(Resolved(path));
+
+            if (seen.TryGetValue(target, out var j))
             {
-                if (Same(path, destinations[j].Path))
-                {
-                    throw Refusal(
-                        flag,
-                        Path.GetFullPath(path),
-                        (destinations[j].Flag is { } other ? $"--{other}" : "another output") + " names the same file, and one would be written over the other",
-                        flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
-                }
+                throw Refusal(
+                    flag,
+                    Path.GetFullPath(path),
+                    (destinations[j].Flag is { } other ? $"--{other}" : "another output") + " names the same file, and one would be written over the other",
+                    flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
             }
+
+            seen[target] = i;
         }
     }
 

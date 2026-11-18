@@ -3696,5 +3696,22 @@ Two findings from Stage 1 that bear on the spec:
   so the arm removed in the thirteenth round was unreachable; the held source now leaves them out
   itself, tested.
 
+  **A fifteenth review found the reflected-solve side applied to every solve**, including one
+  whose plane lies strictly inside its own box - legal, since the plane is bounded only to the
+  box - so below the plane one half answered and above it both. `ReflectedField.ImageSide` is
+  now the one rule for every reflected sum, the solve builders and `MirrorPair` alike: a union
+  where the half meets the plane at its edge, a sum of two overlapping halves where the plane is
+  inside. Refusing a plane inside the box was considered and not done: it is the same overlap the
+  shipped single-stage mirror pair has (its fringe run past its mid-plane), the sum is the
+  superposition each half's own boundary implies, and refusing it would break documents that
+  are valid today. `AppliedRange` states twice the element's range for such a sum. The image's
+  conductors now answer only where its field does, so an image of metal carried past the plane
+  cannot stop an ion on the declared side. An animation's frames and manifest are one
+  all-or-none write; a mesh with the wrong number of vertex colors is refused by name; plateaus
+  are grouped by element and name and labelled uniquely after, so a conductor literally named
+  `plate (element 1)` is no longer merged with element 1's `plate`, in one bucketing pass; and
+  `NoCommentHasTwoSummaries` reads every source file for a doubled `<summary>`, which found 21
+  older ones, listed in the test and left for their own change.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

@@ -428,6 +428,20 @@ public sealed class FieldProbe
                 elementHigh = Math.Max(elementHigh, holds);
             }
 
+            // A reflected solve whose plane lies inside its own box runs past the plane and overlaps
+            // its image, and there the field is the two summed (ReflectedField.ImageSide): each
+            // within the element's range, so the sum within twice it. Where the halves meet at the
+            // plane they are a union and the range is the element's own.
+            var reflect = element.Solve is { } p ? (p.ReflectAboutX, p.MinX, p.MaxX)
+                : element.Solve3D is { } v ? (v.ReflectAboutX, v.MinX, v.MaxX)
+                : (null, 0.0, 0.0);
+
+            if (reflect.ReflectAboutX is { } mirror && ReflectedField.ImageSide(reflect.MinX, reflect.MaxX, mirror) is null)
+            {
+                elementLow *= 2.0;
+                elementHigh *= 2.0;
+            }
+
             low += elementLow;
             high += elementHigh;
         }

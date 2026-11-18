@@ -244,4 +244,109 @@ public sealed class MirrorPlaneTests
         Assert.Equal(on, below, 1e-6 * Math.Abs(on));
         Assert.Equal(on, above, 1e-6 * Math.Abs(on));
     }
+    /// <summary>
+    /// A plane strictly inside its own solve's box: the half runs past the plane and overlaps its
+    /// image, so the two are summed everywhere and the field is symmetric about the plane - in the
+    /// plane and in a volume.
+    /// </summary>
+    /// <remarks>
+    /// Every reflected solve used to be given a side, so here the declared half alone answered
+    /// below the plane and both above it: asymmetric about its own mirror.
+    /// </remarks>
+    [Fact]
+    public void APlaneInsideItsBoxIsSymmetricAboutIt()
+    {
+        const double plane = 0.010;
+
+        var solve = new CompiledSolvedField
+        {
+            MinX = 0.0, MaxX = 0.013, MinY = 0.0, MaxY = 0.008,
+            CellSize = 0.25e-3, Tolerance = 1e-10,
+            ReflectAboutX = plane,
+            Electrodes =
+            [
+                new CompiledElectrode
+                {
+                    Name = "plate", Shape = ElectrodeShape.Rectangle,
+                    MinX = 0.004, MaxX = 0.006, MinY = 0.003, MaxY = 0.005, Potential = 100.0,
+                },
+            ],
+        };
+
+        var (plain, _) = GeometryBuilder.Build(solve);
+        AssertSymmetric(plain, plane, 0.004, 0.0);
+
+        var geometry = new Geometry3D(
+            0.0, -3.0e-3, -3.0e-3, 0.013, 3.0e-3, 3.0e-3, 0.5e-3,
+            [
+                new CompiledElectrode3D
+                {
+                    Name = "block", Shape = Electrode3DShape.Box,
+                    MinX = 0.004, MaxX = 0.006, MinY = -1.0e-3, MaxY = 1.0e-3, MinZ = -1.0e-3, MaxZ = 1.0e-3,
+                    Potential = 100.0,
+                },
+            ],
+            1e-9)
+        {
+            ReflectAboutX = plane,
+        };
+
+        var (volume, _) = GeometryBuilder3D.BuildField(geometry);
+        AssertSymmetric(volume, plane, 1.5e-3, 0.5e-3);
+    }
+
+    private static void AssertSymmetric(IElectrostaticField field, double plane, double y, double z)
+    {
+        foreach (var a in new[] { 0.5e-3, 1.0e-3, 2.0e-3, 2.9e-3 })
+        {
+            var below = field.PotentialAt(new Vec3(plane - a, y, z));
+            var above = field.PotentialAt(new Vec3(plane + a, y, z));
+
+            Assert.True(Math.Abs(below) > 1e-6, $"a potential to compare at {a}");
+            Assert.Equal(below, above, 1e-9 * Math.Abs(below));
+        }
+    }
+
+    // Metal from 1 to 3 mm past the plane: a shape the declared half carries over its mirror.
+    private sealed class MetalPastThePlane : IElectrostaticField, IConductorBounded
+    {
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double SignedDistanceToConductor(in Vec3 position) =>
+            Math.Max((Plane + 0.001) - position.X, position.X - (Plane + 0.003));
+
+        public string? ConductorAt(in Vec3 position) => "past";
+
+        public double NearestConductor(in Vec3 position, out string? name)
+        {
+            name = "past";
+            return SignedDistanceToConductor(in position);
+        }
+    }
+
+    /// <summary>
+    /// The image's conductors are where its field is: none on the declared side, so an image of
+    /// metal carried past the plane cannot stop an ion where the image answers nothing.
+    /// </summary>
+    [Fact]
+    public void TheImagesMetalIsOnlyWhereItsFieldIs()
+    {
+        var image = new ReflectedField(new MetalPastThePlane(), Plane, imageAbove: true);
+        var declaredSide = new Vec3(Plane - 0.002, 0.0, 0.0);
+
+        Assert.Equal(double.PositiveInfinity, image.SignedDistanceToConductor(in declaredSide));
+        Assert.Null(image.ConductorAt(in declaredSide));
+        Assert.Equal(double.PositiveInfinity, image.NearestConductor(in declaredSide, out var name));
+        Assert.Null(name);
+
+        // On its own side it is the reflection of the inner shape, as before.
+        var imageSide = new Vec3(Plane + 0.002, 0.0, 0.0);
+        Assert.Equal(new MetalPastThePlane().SignedDistanceToConductor(new Vec3(Plane - 0.002, 0.0, 0.0)), image.SignedDistanceToConductor(in imageSide));
+
+        // With no side the two overlap, and the image's metal stands wherever its field does.
+        var overlap = new ReflectedField(new MetalPastThePlane(), Plane);
+        Assert.True(overlap.SignedDistanceToConductor(in declaredSide) < 0.0);
+    }
 }

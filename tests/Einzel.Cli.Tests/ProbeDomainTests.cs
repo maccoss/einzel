@@ -403,6 +403,31 @@ public sealed class ProbeDomainTests : IDisposable
         Assert.Contains("probe.outside-domain", vti, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A reflected solve whose plane lies inside its own box overlaps its image, and the range the
+    /// potential can take is the sum of the two halves', not one half's.
+    /// </summary>
+    [Fact]
+    public void AnOverlappingReflectedSolveStatesTheRangeOfTheSum()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Template("example", "slit-transmission")))!;
+        var solve = node["fields"]![0]!["solve"]!;
+        solve["electrodes"]![0]!["potential"]!["value"] = 40.0;
+        solve["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("{ \"value\": 15, \"unit\": \"mm\" }");
+
+        var path = Path.Combine(_root, "overlap.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var probe = FieldProbe.Open(path);
+
+        Assert.Equal((0.0, 80.0), probe.AppliedRange(0.0, cycleMean: false));
+
+        // The control: the plane on the box's face is a union, and the range is one half's.
+        solve["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("{ \"value\": 20, \"unit\": \"mm\" }");
+        File.WriteAllText(path, node.ToJsonString());
+        Assert.Equal((0.0, 40.0), FieldProbe.Open(path).AppliedRange(0.0, cycleMean: false));
+    }
+
     [Fact]
     public void ARefusedNodeIsWrittenAsLowerCaseNanAndMarkedInvalidAndReadsBack()
     {

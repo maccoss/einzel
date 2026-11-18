@@ -943,7 +943,7 @@ all**, and one that cannot be written is refused at its flag, exit 1 (`ArtifactF
 `render surface`, `render still`, `render section`, `render animation`, `probe --csv`, `report
 --out` and `export`). A file the user named no flag for - a default figure, the report page with
 no `--out`, an export in the project's `.einzel/` folder - is refused at `/` with the file in the
-message, not at a flag that did not name it. **A destination is compared with the inputs, and
+message, not at a flag that did not name it. **An animation's frames and `frames.json` are written all together or not at all.** **A destination is compared with the inputs, and
 with the other destinations, where its bytes would go** - through a symbolic link to the file it
 names - so `--out link.png` naming the model is refused as the model. **Each file is replaced in one rename**, so a
 process killed mid-write leaves the old file or the new one, never neither; a destination that is

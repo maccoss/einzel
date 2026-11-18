@@ -2924,6 +2924,90 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.NotEmpty(Draw(good));
     }
 
+    /// <summary>
+    /// A mesh whose per-vertex colors do not fit its vertices is refused before anything is drawn,
+    /// naming its layer and both counts, as a line's segment colors are.
+    /// </summary>
+    /// <remarks>The colors were indexed by vertex unchecked: a short list was an index out of range mid-picture.</remarks>
+    [Fact]
+    public void VertexColorsThatDoNotFitAreRefusedBeforeAnythingIsDrawn()
+    {
+        static byte[] Draw(Einzel.Render.RasterMesh mesh) => Einzel.Render.Rasterizer.Draw(
+            [new Einzel.Render.RasterLayer([mesh], [], 1.0, true, Name: "surface")],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            new Einzel.Render.RasterLighting((_, _, _) => 1.0, 1.0),
+            (1.0, 1.0, 1.0),
+            16,
+            16);
+
+        var good = new Einzel.Render.RasterMesh(
+            [-0.5, -0.5, 0, 0.5, -0.5, 0, 0, 0.5, 0], [0, 0, 1, 0, 0, 1, 0, 0, 1], [0, 1, 2], 1, 1, 1,
+            [1, 0, 0, 0, 1, 0, 0, 0, 1]);
+
+        var refused = Assert.Throws<ArgumentException>(() => Draw(good with { Colors = [1, 0, 0] }));
+        Assert.Contains("layer 'surface', mesh 0", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("3 vertex color values for 3 vertices", refused.Message, StringComparison.Ordinal);
+
+        Assert.NotEmpty(Draw(good));
+    }
+
+    /// <summary>
+    /// Two conductors whose labels would read alike are two plateaus: one named <c>plate</c> in two
+    /// elements, and one literally named <c>plate (element 1)</c> in a third.
+    /// </summary>
+    /// <remarks>
+    /// Plateaus were grouped by their label, so the literal name and element 1's <c>plate</c> were
+    /// one group and were drawn at one potential. They are grouped by element and name now, and
+    /// the labels are made unique after.
+    /// </remarks>
+    [Fact]
+    public void LabelsAreUniqueAmongTheConductorsMet()
+    {
+        var labels = SurfaceCommand.Labels([(0, "plate (element 1)"), (1, "plate"), (2, "plate"), (3, "ring")]);
+
+        Assert.Equal(4, labels.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal("plate (element 1)", labels[0]);
+        Assert.Equal("plate (element 1) [2]", labels[1]);
+        Assert.Equal("plate (element 2)", labels[2]);
+        Assert.Equal("ring", labels[3]);
+
+        // And on a surface: three solves side by side, the first holding a conductor literally
+        // named as the second's plateau would be labelled.
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Model("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+        var template = fields[0]!.DeepClone();
+        fields.Clear();
+
+        foreach (var (index, name, volts) in new[] { (0, "plate (element 1)", 10.0), (1, "plate", 50.0), (2, "plate", 90.0) })
+        {
+            var solve = template.DeepClone();
+            solve["solve"]!["minX"]!["value"] = -20.0 + (40.0 * index);
+            solve["solve"]!["maxX"]!["value"] = 20.0 + (40.0 * index);
+            var plates = solve["solve"]!["electrodes"]!.AsArray();
+            plates.RemoveAt(1);
+            plates[0]!["name"] = name;
+            plates[0]!["potential"]!["value"] = volts;
+            plates[0]!["minX"]!["value"] = -5.0 + (40.0 * index);
+            plates[0]!["maxX"]!["value"] = 5.0 + (40.0 * index);
+            plates[0]!["minY"]!["value"] = 2.0;
+            plates[0]!["maxY"]!["value"] = 6.0;
+            fields.Add(solve);
+        }
+
+        node["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[99, 0, 0]");
+        var path = Path.Combine(_root, "alike.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-19, -9, 99, 9], Samples: 241));
+
+        output.WriteLine(string.Join("; ", surface.Plateaus.Select(p => $"{p.Conductor} = {p.PotentialV} V (element {p.Element})")));
+
+        Assert.Equal(3, surface.Plateaus.Count);
+        Assert.Equal([10.0, 50.0, 90.0], surface.Plateaus.OrderBy(p => p.Element).Select(p => p.PotentialV));
+        Assert.Equal(3, surface.Plateaus.Select(p => p.Conductor).Distinct(StringComparer.Ordinal).Count());
+    }
+
+
     private static IEnumerable<(double X, double Y, double Z)> Triples(IReadOnlyList<double> flat)
     {
         for (var i = 0; i + 2 < flat.Count; i += 3)

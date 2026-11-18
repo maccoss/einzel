@@ -29,23 +29,26 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     /// The inner geometry seen through the mirror, so an electrode in the original
     /// half has a solid twin in the reflected one. Leaving this out would make a
     /// reflected mirror pair solid on one side and transparent on the other, which
-    /// is worse than transparent on both.
+    /// is worse than transparent on both. And only where the image answers at all
+    /// (<see cref="Contributes"/>): an image conductor on the declared side would stop an ion,
+    /// and be itemized as a loss, where the image's field had been declared absent - metal
+    /// standing where the solve holds none.
     /// </remarks>
     public double SignedDistanceToConductor(in Vec3 position) =>
-        inner is IConductorBounded bounded
+        inner is IConductorBounded bounded && Contributes(in position)
             ? bounded.SignedDistanceToConductor(Reflect(in position))
             : double.PositiveInfinity;
 
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position) =>
-        inner is IConductorBounded bounded ? bounded.ConductorAt(Reflect(in position)) : null;
+        inner is IConductorBounded bounded && Contributes(in position) ? bounded.ConductorAt(Reflect(in position)) : null;
 
     /// <inheritdoc/>
     public double NearestConductor(in Vec3 position, out string? name)
     {
         name = null;
 
-        return inner is IConductorBounded bounded
+        return inner is IConductorBounded bounded && Contributes(in position)
             ? bounded.NearestConductor(Reflect(in position), out name)
             : double.PositiveInfinity;
     }
@@ -87,15 +90,23 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
         null => true,
     };
 
-    /// <summary>Which side of its plane a reflected solve's image lies on.</summary>
+    /// <summary>How a declared half and its image meet at the plane: the side the image takes, or none.</summary>
     /// <param name="minX">The low x edge of the declared half.</param>
     /// <param name="maxX">The high x edge of the declared half.</param>
     /// <param name="planeX">The mirror plane.</param>
     /// <returns>
-    /// True where the declared half is below the plane - the plane at <paramref name="maxX"/>, or
-    /// nearer it than <paramref name="minX"/> - so the image is above.
+    /// True where the declared half ends at or below the plane, so the image is above and the two
+    /// are a union; false where it starts at or above it; null where the plane lies strictly
+    /// inside the declared half, so the half runs past the plane, overlaps its image, and the two
+    /// are summed everywhere.
     /// </returns>
-    public static bool ImageAbove(double minX, double maxX, double planeX) => planeX - minX >= maxX - planeX;
+    /// <remarks>
+    /// The one rule for every reflected sum: the solve builders and <c>MirrorPair</c> both ask it.
+    /// The first version gave a side whatever the box, so a plane inside the box made the sum
+    /// one half below the plane and both above it - asymmetric about its own mirror.
+    /// </remarks>
+    public static bool? ImageSide(double minX, double maxX, double planeX) =>
+        planeX >= maxX ? true : planeX <= minX ? false : null;
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)

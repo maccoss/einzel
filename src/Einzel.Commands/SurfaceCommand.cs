@@ -753,53 +753,51 @@ public static class SurfaceCommand
         // Keyed by element and name together: a name is unique only within one solve, so two
         // elements may each have a "plate", and one median over both would draw two conductors
         // at a potential neither holds. Where a name does repeat, the label says which element.
-        var plateaus = new List<SurfacePlateau>();
-        var level = new Dictionary<string, double>(StringComparer.Ordinal);
-        var onFaceOnly = new HashSet<string>(StringComparer.Ordinal);
-
-        var repeated = Enumerable.Range(0, raw.Length)
-            .Where(k => names[k] is not null)
-            .GroupBy(k => names[k]!, StringComparer.Ordinal)
-            .Where(g => g.Select(k => elements[k]).Distinct().Count() > 1)
-            .Select(g => g.Key)
-            .ToHashSet(StringComparer.Ordinal);
-
-        var inside = new string?[nu * nv];
-
-        // One label for each conductor, made once and shared by every sample inside it: a
-        // repeated name's label is built from the name and the element, and building it per
-        // sample was a new string for each of up to a million nodes, compared by value after.
-        var labels = new Dictionary<(string Name, int? Element), string>();
+        // One pass over the nodes, bucketing each sample in metal by its conductor's identity -
+        // the element and the name together. A label is derived from the identity afterwards
+        // and only for showing: grouping by the label merged a conductor named "plate" in one
+        // element with one literally named "plate (element 1)" in another.
+        var keys = new List<(int? Element, string Name)>();
+        var keyIndex = new Dictionary<(int? Element, string Name), int>();
+        var keyOf = new int[raw.Length];
+        var members = new List<List<int>>();
 
         for (var k = 0; k < raw.Length; k++)
         {
+            keyOf[k] = -1;
+
             if (names[k] is not { } name)
             {
                 continue;
             }
 
-            if (!repeated.Contains(name))
+            var identity = (elements[k], name);
+
+            if (!keyIndex.TryGetValue(identity, out var index))
             {
-                inside[k] = name;
-                continue;
+                index = keys.Count;
+                keyIndex[identity] = index;
+                keys.Add(identity);
+                members.Add([]);
             }
 
-            if (!labels.TryGetValue((name, elements[k]), out var label))
-            {
-                label = string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"{name} (element {elements[k]?.ToString(CultureInfo.InvariantCulture) ?? "?"})");
-                labels[(name, elements[k])] = label;
-            }
+            keyOf[k] = index;
 
-            inside[k] = label;
+            if (double.IsFinite(raw[k]))
+            {
+                members[index].Add(k);
+            }
         }
 
-        foreach (var group in Enumerable.Range(0, raw.Length)
-            .Where(k => inside[k] is not null && double.IsFinite(raw[k]))
-            .GroupBy(k => inside[k]!, StringComparer.Ordinal)
-            .OrderBy(g => g.Key, StringComparer.Ordinal))
+        var labels = Labels(keys);
+        var level = new double?[keys.Count];
+        var plateaus = new List<SurfacePlateau>();
+        var onFaceOnly = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var index in Enumerable.Range(0, keys.Count).Where(i => members[i].Count > 0).OrderBy(i => labels[i], StringComparer.Ordinal))
         {
+            var group = members[index];
+
             // The deeper half, by signed distance, and its median value: deepest alone fails on a
             // conductor written as two halves meeting on a line, where a plane beside the seam is
             // never more than its offset deep and the "deepest" sample is any of them, including
@@ -809,39 +807,72 @@ public static class SurfaceCommand
             // face at the edge of its solve is drawn at what the conductor holds, but what the
             // interpolant reads there is a reading of the step and says nothing about what is
             // summed inside the metal.
-            var within = group.Where(k => depth[k] < 0.0).ToList();
-            var read = within.Count > 0 ? within : [.. group];
+            var read = new List<int>(group.Count);
+            var readLow = double.PositiveInfinity;
+            var readHigh = double.NegativeInfinity;
 
-            if (within.Count == 0)
+            foreach (var k in group)
+            {
+                if (depth[k] < 0.0)
+                {
+                    read.Add(k);
+                }
+            }
+
+            if (read.Count == 0)
             {
                 // Met only on its face: nothing was read inside it to disagree with what it holds.
-                onFaceOnly.Add(group.Key);
+                onFaceOnly.Add(labels[index]);
+                read.AddRange(group);
             }
-            var ordered = read.OrderBy(k => depth[k]).ToList();
-            var deeper = ordered.Take(Math.Max(1, ordered.Count / 2)).Select(k => raw[k]).Order().ToList();
-            var sampled = deeper[deeper.Count / 2];
+
+            foreach (var k in read)
+            {
+                readLow = Math.Min(readLow, raw[k]);
+                readHigh = Math.Max(readHigh, raw[k]);
+            }
+
+            // By depth, equal depths in node order - the order the stable LINQ sort it replaces
+            // gave, so the median is the same sample.
+            var ordered = read.ToArray();
+            Array.Sort(ordered, (x, y) => depth[x].CompareTo(depth[y]) is var c && c != 0 ? c : x.CompareTo(y));
+
+            var deeper = new double[Math.Max(1, ordered.Length / 2)];
+
+            for (var m = 0; m < deeper.Length; m++)
+            {
+                deeper[m] = raw[ordered[m]];
+            }
+
+            Array.Sort(deeper);
+
             var potential = held[ordered[0]];
-            level[group.Key] = potential;
+            level[index] = potential;
 
             plateaus.Add(new SurfacePlateau(
-                group.Key,
+                labels[index],
                 potential,
                 factor * potential,
-                group.Count(),
-                read.Min(k => raw[k]),
-                read.Max(k => raw[k]),
-                elements[group.First()],
-                names[group.First()])
+                group.Count,
+                readLow,
+                readHigh,
+                keys[index].Element,
+                keys[index].Name)
             {
-                SampledV = sampled,
+                SampledV = deeper[deeper.Length / 2],
             });
         }
 
         var values = new double[raw.Length];
 
+        // Each node in metal names its conductor's label - one string per conductor, shared.
+        var inside = new string?[raw.Length];
+
         for (var k = 0; k < raw.Length; k++)
         {
-            var v = inside[k] is { } label && level.TryGetValue(label, out var flat) ? flat : raw[k];
+            inside[k] = keyOf[k] >= 0 ? labels[keyOf[k]] : null;
+
+            var v = keyOf[k] >= 0 && level[keyOf[k]] is { } flat ? flat : raw[k];
             values[k] = (factor * v) + 0.0;
         }
 
@@ -1694,7 +1725,6 @@ public static class SurfaceCommand
         return double.IsFinite(down) ? down : 0.0;
     }
 
-    /// <summary>The lowest and highest finite values on a surface.</summary>
     /// <summary>
     /// The range a surface is stated and scaled by: what was sampled, held to what the conductors
     /// hold where that is known.
@@ -1717,6 +1747,7 @@ public static class SurfaceCommand
         return (low, high);
     }
 
+    /// <summary>The lowest and highest finite values on a surface.</summary>
     private static (double Low, double High) Range(double[] values)
     {
         var (low, high) = (double.PositiveInfinity, double.NegativeInfinity);
@@ -2350,6 +2381,61 @@ public static class SurfaceCommand
     private static double Component(Vec3 v, int axis) => axis switch { 0 => v.X, 1 => v.Y, _ => v.Z };
 
     private static Vec3 Mid(Vec3 a, Vec3 b) => new((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0, (a.Z + b.Z) / 2.0);
+
+    /// <summary>A label for each conductor met on the plane, unique among them.</summary>
+    /// <param name="keys">Each conductor's element and name.</param>
+    /// <returns>The labels, in the order of <paramref name="keys"/>.</returns>
+    /// <remarks>
+    /// The name alone where only one element has a conductor of that name, and <c>name (element
+    /// N)</c> where several do. A label that still collides - a conductor literally named
+    /// <c>plate (element 1)</c> beside element 1's <c>plate</c> - takes a further <c>[2]</c>,
+    /// <c>[3]</c>, in the order of element and name, so no two conductors share one: a shared
+    /// label was a shared plateau.
+    /// </remarks>
+    public static IReadOnlyList<string> Labels(IReadOnlyList<(int? Element, string Name)> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        var elementsOf = new Dictionary<string, HashSet<int?>>(StringComparer.Ordinal);
+
+        foreach (var (element, name) in keys)
+        {
+            if (!elementsOf.TryGetValue(name, out var set))
+            {
+                elementsOf[name] = set = [];
+            }
+
+            set.Add(element);
+        }
+
+        var labels = new string[keys.Count];
+        var used = new HashSet<string>(StringComparer.Ordinal);
+
+        // Plain names first, so a conductor whose own name is unique keeps it.
+        var order = Enumerable.Range(0, keys.Count)
+            .OrderBy(i => elementsOf[keys[i].Name].Count > 1 ? 1 : 0)
+            .ThenBy(i => keys[i].Element ?? -1)
+            .ThenBy(i => keys[i].Name, StringComparer.Ordinal);
+
+        foreach (var i in order)
+        {
+            var (element, name) = keys[i];
+            var label = elementsOf[name].Count > 1
+                ? string.Create(CultureInfo.InvariantCulture, $"{name} (element {element?.ToString(CultureInfo.InvariantCulture) ?? "?"})")
+                : name;
+
+            var candidate = label;
+
+            for (var n = 2; !used.Add(candidate); n++)
+            {
+                candidate = string.Create(CultureInfo.InvariantCulture, $"{label} [{n}]");
+            }
+
+            labels[i] = candidate;
+        }
+
+        return labels;
+    }
 
     /// <summary>A point on the sampled plane, in the model's axes.</summary>
     /// <param name="across">The model axis (0 x, 1 y, 2 z) the plane's first coordinate runs along.</param>

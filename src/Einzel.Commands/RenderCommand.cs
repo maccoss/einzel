@@ -620,19 +620,22 @@ public static class RenderCommand
 
         if (!dryRun)
         {
+            // Every frame and the manifest together, or none of them: written one at a time, a
+            // failure at frame 37 left a film of 36 new frames and the old rest, and a manifest
+            // describing neither.
+            var files = new List<(string? Flag, string Path, byte[] Content)>(frames.Count + 1);
+
             for (var i = 0; i < frames.Count; i++)
             {
-                ArtifactFiles.Write(
+                files.Add((
                     outFlag,
                     artifacts[i],
                     spec.Format == FigureFormat.Pdf
                         ? PdfWriter.Write(frames[i].Figure.Scene)
-                        : ArtifactFiles.Utf8(SvgWriter.Write(frames[i].Figure.Scene)),
-                    absolute,
-                    spec0);
+                        : ArtifactFiles.Utf8(SvgWriter.Write(frames[i].Figure.Scene))));
             }
 
-            ArtifactFiles.WriteText(outFlag, manifest, CommandJson.Write(new AnimationManifest
+            files.Add((outFlag, manifest, ArtifactFiles.Utf8(CommandJson.Write(new AnimationManifest
             {
                 Model = Path.GetFileName(absolute),
                 ModelHash = hash,
@@ -651,7 +654,9 @@ public static class RenderCommand
                         Phase = f.Frame.PhaseLabel,
                     }),
                 ],
-            }));
+            }))));
+
+            ArtifactFiles.WriteAll(files, absolute, spec0);
         }
 
         var byLayer = new SortedDictionary<string, int>(StringComparer.Ordinal);

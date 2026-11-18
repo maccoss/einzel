@@ -789,6 +789,39 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
     }
 
     /// <summary>
+    /// An animation's frames and its manifest are written all together or not at all: one frame
+    /// that cannot be written leaves the earlier film as it was and no manifest.
+    /// </summary>
+    /// <remarks>
+    /// Each frame was its own write, so a failure at frame 3 left frames 0 to 2 of the new film
+    /// beside the rest of the old one, and no manifest describing either.
+    /// </remarks>
+    [Fact]
+    public void AFilmIsWrittenWholeOrNotAtAll()
+    {
+        Project();
+
+        var folder = Path.Combine(_root, "film-out");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "frame-00000.svg"), "old");
+        Directory.CreateDirectory(Path.Combine(folder, "frame-00002.svg"));
+
+        var (code, _, stderr) = Run(Words("render animation {film} --out {root}/film-out"));
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+        Assert.Equal("old", File.ReadAllText(Path.Combine(folder, "frame-00000.svg")));
+        Assert.False(File.Exists(Path.Combine(folder, "frame-00001.svg")));
+        Assert.False(File.Exists(Path.Combine(folder, "frames.json")));
+
+        // The control: with nothing in the way the whole film and its manifest are written.
+        Directory.Delete(Path.Combine(folder, "frame-00002.svg"));
+        Assert.Equal(0, Run(Words("render animation {film} --out {root}/film-out")).ExitCode);
+        Assert.True(File.Exists(Path.Combine(folder, "frames.json")));
+        Assert.NotEqual("old", File.ReadAllText(Path.Combine(folder, "frame-00000.svg")));
+    }
+
+    /// <summary>
     /// A refused <c>--mesh-lines</c> states the range the surface takes, which starts at one: the
     /// reader took 0 as its minimum while the request check refused anything below 1, so the
     /// message advertised a value the command then refused.

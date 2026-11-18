@@ -18,7 +18,21 @@ public sealed record RasterMesh(
     double R,
     double G,
     double B,
-    IReadOnlyList<double>? Colors = null);
+    IReadOnlyList<double>? Colors = null)
+{
+    /// <summary>What is wrong with the mesh's per-vertex colors, or null where they fit its vertices.</summary>
+    /// <returns>A sentence naming both counts, or null.</returns>
+    /// <remarks>
+    /// The same rule as <see cref="RasterLine.SegmentColorsProblem"/>, three numbers for each
+    /// vertex, asked by <see cref="Rasterizer.Draw"/> of every mesh before anything is drawn: the
+    /// colors were indexed by vertex unchecked, so a short list was an index out of range part
+    /// way through a picture, reported as a defect in the engine.
+    /// </remarks>
+    public string? ColorsProblem() =>
+        Colors is { } colors && colors.Count != VerticesMm.Count - (VerticesMm.Count % 3)
+            ? $"{colors.Count} vertex color values for {VerticesMm.Count / 3} vertices; a mesh needs three for each"
+            : null;
+}
 
 /// <summary>A polyline to rasterize, already colored.</summary>
 /// <param name="PointsMm">Consecutive x, y, z triples, in millimetres.</param>
@@ -195,6 +209,16 @@ public static class Rasterizer
         // constructor or `with` made it.
         for (var l = 0; l < layers.Count; l++)
         {
+            for (var i = 0; i < layers[l].Meshes.Count; i++)
+            {
+                if (layers[l].Meshes[i].ColorsProblem() is { } problem)
+                {
+                    throw new ArgumentException(
+                        $"layer {(layers[l].Name is { } name ? $"'{name}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture))}, mesh {i}: {problem}",
+                        nameof(layers));
+                }
+            }
+
             for (var i = 0; i < layers[l].Lines.Count; i++)
             {
                 if (layers[l].Lines[i].SegmentColorsProblem() is { } problem)
