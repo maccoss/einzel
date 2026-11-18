@@ -3728,6 +3728,18 @@ public static class Program
             return false;
         }
 
+        // Zero is the documented silence; a negative interval is not a second spelling of it. It
+        // was accepted and meant off, so `--progress -5` - a typo for 5 as often as anything -
+        // ran an eight-hour job with no checkpoint and nothing said.
+        if (interval < 0.0)
+        {
+            return Refuse(
+                options,
+                "progress",
+                string.Create(CultureInfo.InvariantCulture, $"--progress takes an interval in seconds, and {interval:G} is negative."),
+                "Use 0 to turn it off, or a positive number of seconds.");
+        }
+
         progress = new RunProgress(interval ?? 30.0, Console.Error.WriteLine);
         return true;
     }

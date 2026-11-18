@@ -1681,6 +1681,21 @@ public static class SurfaceCommand
     /// scale share a resolution, so a rounding residue of -0.0002 V beside a 20 V range reads 0.
     /// </param>
     /// <returns>Its text, using only characters the stroke font draws; empty for a value that is not finite.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A nonzero value read at its own size is never written 0.</b> Fixed notation is held to six
+    /// decimals, so below a thousandth of a unit three significant figures need an exponent:
+    /// 3e-8 V came out "0", a zero nothing measured. It is written "3e-8" now, in characters the
+    /// stroke font has.
+    /// </para>
+    /// <para>
+    /// On a shared scale (<paramref name="span"/> given) a value under half the scale's last digit
+    /// still reads 0, deliberately: it is zero to the resolution every label on that scale is read
+    /// at, and a residue printed as -2e-4 beside a 20 V range would state a precision the scale
+    /// does not have. That holds whatever the scale's size - a span of 3e-8 V is written in
+    /// exponent form, and only what is under its own resolution reads 0.
+    /// </para>
+    /// </remarks>
     public static string Format(double value, double span = 0.0)
     {
         // Not a number is no label at all: "0" beside a NaN would state a value nothing measured.
@@ -1694,8 +1709,26 @@ public static class SurfaceCommand
             return "0";
         }
 
-        var magnitude = span > 0.0 && double.IsFinite(span) ? span : Math.Abs(value);
-        var decimals = Math.Clamp(2 - (int)Math.Floor(Math.Log10(magnitude)), 0, 6);
+        var shared = span > 0.0 && double.IsFinite(span);
+        var magnitude = shared ? span : Math.Abs(value);
+        var exponent = (int)Math.Floor(Math.Log10(magnitude));
+
+        var decimals = 2 - exponent;
+
+        // The scale's last digit - three significant figures, and never coarser than a whole
+        // unit, as fixed notation writes it: under half of it, a value on a shared scale is zero
+        // to that scale's resolution.
+        if (shared && Math.Abs(value) < 0.5 * Math.Pow(10.0, -Math.Max(decimals, 0)))
+        {
+            return "0";
+        }
+
+        if (decimals > 6)
+        {
+            return Exponent(value);
+        }
+
+        decimals = Math.Max(decimals, 0);
         var text = Math.Round(value, decimals).ToString("F" + decimals.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 
         if (text.Contains('.', StringComparison.Ordinal))
@@ -1703,8 +1736,13 @@ public static class SurfaceCommand
             text = text.TrimEnd('0').TrimEnd('.');
         }
 
-        return text == "-0" ? "0" : text;
+        // Read at its own size a nonzero value cannot round to zero at three figures; this guards
+        // the rule rather than the arithmetic.
+        return text is "0" or "-0" ? (shared ? "0" : Exponent(value)) : text;
     }
+
+    // Three significant figures in exponent form, in characters the stroke font draws: 3e-8, -1.25e-12.
+    private static string Exponent(double value) => value.ToString("0.##e+0", CultureInfo.InvariantCulture);
 
     /// <summary>An instant as the picture states it: compact at any size, in characters the stroke font draws.</summary>
     /// <param name="microseconds">The instant.</param>
@@ -1744,7 +1782,11 @@ public static class SurfaceCommand
                 text = text.TrimEnd('0').TrimEnd('.');
             }
 
-            return $"t={(text == "-0" ? "0" : text)} {unit}";
+            // Never a nonzero instant written 0: an instant under the digits a period needs is
+            // still not t = 0, and a caption saying it was would name a state not drawn.
+            return text is "0" or "-0"
+                ? microseconds == 0.0 ? $"t=0 {unit}" : $"t={Exponent(microseconds * scale)} {unit}"
+                : $"t={text} {unit}";
         }
 
         return a < 1e9

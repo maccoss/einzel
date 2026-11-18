@@ -996,7 +996,9 @@ older than the registry; the registry now refuses the flag, saying `run` has no 
 dry run of `run` is left for its own change.
 
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
-unless turned off, so the flag alone is the default interval, as it always was. **A bare
+unless turned off, so the flag alone is the default interval, as it always was. **`--progress 0` is
+off, and the only spelling of it**: a negative interval is refused at `--progress` (it used to mean
+off too, silently, so `--progress -5` ran a long job with no checkpoint). **A bare
 `--progress` before a positional is still bare**: the next word is its value only if **the whole
 word parses as a number** (`CommandNumber.Parses`, invariant culture - an overflow such as `1e400`,
 and `NaN`, included, so the reader refuses them as intervals rather than a model called 1e400 being

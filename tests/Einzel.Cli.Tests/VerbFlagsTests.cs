@@ -477,4 +477,44 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Contains("'bogus' is not " + constraint, problem.Constraint, StringComparison.Ordinal);
         Assert.Contains(suggestion, problem.Suggestion, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// No flag is a switch in one sub-verb of a family and takes a value in another: the sub-verb
+    /// is found before its own table is known, by skipping the family's switches, and a flag of
+    /// both kinds would make that search and the parse read one line two ways.
+    /// </summary>
+    [Fact]
+    public void NoFlagIsASwitchInOneSubVerbAndTakesAValueInAnother()
+    {
+        var conflicts = new List<string>();
+
+        foreach (var verb in new[] { "render", "ext", "agents" })
+        {
+            var members = VerbFlags.ByVerb.Where(e => e.Key == verb || e.Key.StartsWith(verb + " ", StringComparison.Ordinal)).ToList();
+            Assert.True(members.Count > 1, $"{verb} has sub-verbs");
+
+            foreach (var (key, flags) in members)
+            {
+                foreach (var flag in flags.Switches)
+                {
+                    conflicts.AddRange(members
+                        .Where(m => m.Value.Values.Contains(flag) || m.Value.Optional.Contains(flag))
+                        .Select(m => $"--{flag}: a switch in '{key}', takes a value in '{m.Key}'"));
+                }
+            }
+        }
+
+        Assert.True(conflicts.Count == 0, string.Join(Environment.NewLine, conflicts));
+
+        // And the family's switches are exactly what that leaves: a flag taking a value anywhere
+        // in the family is not skipped as a switch.
+        foreach (var verb in new[] { "render", "ext", "agents" })
+        {
+            var (switches, _) = VerbFlags.Family(verb)!.Value;
+            var taking = VerbFlags.ByVerb.Where(e => e.Key.StartsWith(verb + " ", StringComparison.Ordinal) || e.Key == verb)
+                .SelectMany(e => e.Value.Values.Concat(e.Value.Optional));
+
+            Assert.Empty(switches.Intersect(taking));
+        }
+    }
 }

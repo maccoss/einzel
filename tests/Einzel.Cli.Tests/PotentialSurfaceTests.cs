@@ -2888,6 +2888,35 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Equal("2.5", SurfaceCommand.Format(2.5));
     }
 
+    /// <summary>
+    /// A nonzero value read at its own size is never written 0, however small; on a shared scale
+    /// only what is under that scale's resolution reads 0, at any scale's size.
+    /// </summary>
+    /// <remarks>
+    /// Fixed notation was held to six decimals, so 3e-8 came out "0" - and so did a whole scale
+    /// of labels on a span of 3e-8.
+    /// </remarks>
+    [Fact]
+    public void ANonzeroValueIsNeverWrittenZero()
+    {
+        Assert.Equal("3e-8", SurfaceCommand.Format(3e-8));
+        Assert.Equal("-1.25e-12", SurfaceCommand.Format(-1.25e-12));
+        Assert.Equal("0.000123", SurfaceCommand.Format(1.23e-4));
+
+        // A scale of 3e-8 V writes its labels, not a column of zeros.
+        Assert.Equal("1.5e-8", SurfaceCommand.Format(1.5e-8, 3e-8));
+        Assert.Equal("0", SurfaceCommand.Format(1e-15, 3e-8));
+
+        // The shared-scale rule as it was: a residue beside a 20 V range is zero to that range.
+        Assert.Equal("0", SurfaceCommand.Format(-0.0002, 20.0));
+        Assert.Equal("3", SurfaceCommand.Format(3.0, 2000.0));
+
+        // The caption: an instant too small for its digits is not t = 0.
+        Assert.Equal("t=3e-8 µs", SurfaceCommand.Instant(3e-8));
+        Assert.Equal("t=1e-4 µs", SurfaceCommand.Instant(1e-4, 1.0));
+        Assert.Equal("t=0 µs", SurfaceCommand.Instant(0.0, 1.0));
+    }
+
     /// <summary>The mesh-line counts reported are those of the mesh drawn.</summary>
     [Fact]
     public void TheReportedMeshLinesAreTheOnesDrawn()

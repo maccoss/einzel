@@ -547,4 +547,21 @@ public sealed class RunCheckpointTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(1, bare);
         Assert.Contains("run was given 'often', which it does not take", bareError, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// A negative interval is refused: zero is the documented silence, and a negative one is not a
+    /// second spelling of it. It was accepted and turned reporting off, with nothing said.
+    /// </summary>
+    [Theory]
+    [InlineData("--progress", "-5")]
+    [InlineData("--progress=-0.5", null)]
+    public void ANegativeIntervalIsRefused(string flag, string? value)
+    {
+        var (exit, _, stderr) = value is null ? Run("run", Project(), flag) : Run("run", Project(), flag, value);
+
+        Assert.Equal(1, exit);
+        Assert.Contains("at /args/--progress:", stderr, StringComparison.Ordinal);
+        Assert.Contains("is negative", stderr, StringComparison.Ordinal);
+        Assert.Contains("Use 0 to turn it off", stderr, StringComparison.Ordinal);
+    }
 }

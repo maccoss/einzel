@@ -247,8 +247,16 @@ public sealed record VerbFlags(
             .Select(e => e.Value)
             .ToList();
 
+        // A switch for the family only where no member reads it as taking a value: with the
+        // sub-verb not yet known, skipping a flag as a switch when the sub-verb turns out to read
+        // its value would find the value as the sub-verb, and Parse - which asks the sub-verb's
+        // own table once it is known - would read the line another way. No such flag exists
+        // today, and VerbFlagsTests fails if one is added; this keeps the two readings agreeing
+        // if it ever is.
+        var taking = members.SelectMany(f => f.Values.Concat(f.Optional)).ToHashSet(StringComparer.Ordinal);
+
         return (
-            members.SelectMany(f => f.Switches).ToHashSet(StringComparer.Ordinal),
+            members.SelectMany(f => f.Switches).Where(s => !taking.Contains(s)).ToHashSet(StringComparer.Ordinal),
             members.SelectMany(f => f.Optional).ToHashSet(StringComparer.Ordinal));
     }
 

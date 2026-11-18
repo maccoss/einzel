@@ -3816,5 +3816,14 @@ Two findings from Stage 1 that bear on the spec:
   cast. The duplicate-destination check runs once per path, and why links are followed when a set
   is checked rather than when each file is staged is written down.
 
+  **A twenty-fourth review.** A surface label was held to six decimals, so a nonzero value under a
+  thousandth of a unit read "0", and a whole scale of labels on a span that small did too; a value
+  read at its own size is now written with an exponent (3e-8), the caption likewise, and only what
+  is under a shared scale's own resolution reads 0. A negative `--progress` interval meant off
+  without saying so; zero is the one spelling of off and a negative interval is refused. And the
+  sub-verb search skips a flag as a switch only where no sub-verb of the family reads its value,
+  with a registry test that fails if a flag is ever a switch in one sub-verb and takes a value in
+  another - no such flag exists today.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.
