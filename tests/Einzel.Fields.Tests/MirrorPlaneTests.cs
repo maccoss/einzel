@@ -384,11 +384,18 @@ public sealed class MirrorPlaneTests
         Assert.Equal(0.003, image.FieldFreeRunLength(in declaredSide, in plusX), 12);
         Assert.Equal(double.PositiveInfinity, image.FieldFreeRunLength(in declaredSide, new Vec3(-1.0, 0.0, 0.0)));
 
-        // The inner field's face is the plane: one surface there, its sign changing across it.
+        // The inner field's face is the plane: the image does not change sign there - the declared
+        // half owns that surface - so the sum has exactly one surface at the plane, not two that
+        // cancel.
         var before = image.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0));
         var after = image.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.0, 0.0));
-        Assert.True(Math.Sign(before) != Math.Sign(after), $"{before} then {after}");
+        Assert.Equal(Math.Sign(before), Math.Sign(after));
         Assert.Equal(0.001, Math.Abs(before), 12);
+
+        var sum = new Reflection(Plane, true).Sum(new Edged(Plane));
+        Assert.NotEqual(
+            Math.Sign(sum.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0))),
+            Math.Sign(sum.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.0, 0.0))));
 
         // A surface the inner field declares 2 mm past its edge is no surface on the declared side:
         // the measure there is the image's own at the plane, constant, so it changes sign neither
@@ -420,16 +427,16 @@ public sealed class MirrorPlaneTests
 
     /// <summary>
     /// The plane's face test and the point past it where the sign is read scale with the geometry:
-    /// a face on the plane to a rounding at kilometre scale is a face, so the image declares the
-    /// plane as the surface it is.
+    /// a face on the plane to a rounding at kilometre scale is a face, so the declared half - which
+    /// owns the plane - declares it as the surface it is.
     /// </summary>
     [Fact]
     public void TheFaceTestScalesWithTheGeometry()
     {
-        var image = new Reflection(FarEdge.Mirror, true).Image(new FarEdge());
+        var owner = new Reflection(FarEdge.Mirror, true).Declared(new FarEdge());
 
-        var below = image.SignedDistanceToDiscontinuity(new Vec3(FarEdge.Mirror - 1.0, 0.0, 0.0));
-        var above = image.SignedDistanceToDiscontinuity(new Vec3(FarEdge.Mirror + 1.0, 0.0, 0.0));
+        var below = owner.SignedDistanceToDiscontinuity(new Vec3(FarEdge.Mirror - 1.0, 0.0, 0.0));
+        var above = owner.SignedDistanceToDiscontinuity(new Vec3(FarEdge.Mirror + 1.0, 0.0, 0.0));
 
         Assert.Equal(1.0, Math.Abs(below), 6);
         Assert.NotEqual(Math.Sign(below), Math.Sign(above));

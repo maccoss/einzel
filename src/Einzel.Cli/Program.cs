@@ -393,17 +393,12 @@ public static class Program
         return words.Count == 0 ? null : string.Join("; ", words);
     }
 
-    // The extensions of the files a command line names: a word ending in one is a file, not a
-    // mistyped number. Named, not "any extension beginning with a letter", which took '1.e5' and
-    // '2.s' - an exponent and a unit typo - for files.
-    private static readonly HashSet<string> ModelExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".json", ".vti", ".vtu", ".vtk", ".csv", ".svg", ".pdf", ".png", ".obj", ".md", ".html",
-    };
+    private static readonly System.Buffers.SearchValues<char> Letters =
+        System.Buffers.SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
     // Whether a word could be a mistyped number - a digit first, or a sign or a point and then a
-    // digit: '5s', '0,5', '-2x', '1.e5' - and not a path: one with a separator in it, or one of
-    // the extensions a command line names files by (2026-trap.json, 3d/lens). A note about a
+    // digit: '5s', '0,5', '-2x', '1.e5x' - and not a path: one with a separator in it, or an
+    // extension of two letters or more (2026-trap.json, 3cases.txt, 3d/lens). A note about a
     // model name that happens to start with a digit would send somebody to fix a word that was
     // right.
     internal static bool LooksNumeric(string word)
@@ -413,7 +408,12 @@ public static class Program
             return false;
         }
 
-        if (ModelExtensions.Contains(Path.GetExtension(word)))
+        // An extension of two letters or more, all letters - .json, .txt, .msh, .py - makes it a
+        // file name. Not one letter, nor one with a digit in it: '2.s' and '1.e5x' are a unit typo
+        // and an exponent. A named list of extensions missed the files people actually have.
+        var extension = Path.GetExtension(word);
+
+        if (extension.Length > 2 && extension.AsSpan(1).IndexOfAnyExcept(Letters) < 0)
         {
             return false;
         }

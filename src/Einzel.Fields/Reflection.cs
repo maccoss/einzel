@@ -98,64 +98,13 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
         Overlaps ? declared : new GatedMetal(declared, this);
 
     /// <summary>
-    /// The discontinuity measure of a half at a point where it contributes nothing: the image on
-    /// the declared side, or the declared half on the image's.
+    /// How a half reads its discontinuity measure where it contributes nothing: the declared half
+    /// on the image's side, which owns the plane, or the image on the declared side, which does not.
     /// </summary>
     /// <param name="inner">The declared half's field, in its own frame.</param>
-    /// <param name="position">The point, on the side where the half answers nothing.</param>
-    /// <returns>
-    /// The half's own measure at the plane, constant across this side, where it has no face on the
-    /// plane; the distance from the plane, signed as the half is just past its face, where it has.
-    /// </returns>
-    /// <remarks>
-    /// <para>
-    /// Where a half answers nothing it has no discontinuity of its own, so none of its surfaces is
-    /// declared there - a surface it declares beyond its edge would otherwise be a phantom the
-    /// integrator stops at. The one surface that can be there is the plane, where the half starts
-    /// to answer, and only where its field jumps there: where it has a face on the plane.
-    /// Otherwise the measure is the half's own at the plane, so its sign changes nowhere the field
-    /// is continuous. Infinity here, beside a finite value beyond the plane, was a change of sign at
-    /// a plane where nothing is discontinuous - the paired-surface layout that once cost an ion
-    /// 2.6e-4 of its energy.
-    /// </para>
-    /// <para>
-    /// <b>One rule for both halves.</b> The image's side of a declared half and the declared side
-    /// of its image are the same situation seen through the mirror, and the point just past the
-    /// plane on the image's side, in the half's own frame, is where either reads the sign. Held
-    /// here so the two cannot part company: the declared half used to declare its surfaces on the
-    /// image's side, where the image's were already held back.
-    /// </para>
-    /// </remarks>
-    public double WhereAbsent(IElectrostaticField inner, in Vec3 position)
-    {
-        ArgumentNullException.ThrowIfNull(inner);
-
-        var onPlane = new Vec3(PlaneX, position.Y, position.Z);
-        var atPlane = inner.SignedDistanceToDiscontinuity(in onPlane);
-        var length = LengthOf(inner);
-
-        if (Math.Abs(atPlane) > FaceTolerance * length)
-        {
-            return atPlane;
-        }
-
-        var past = new Vec3(PlaneX + ((ImageAbove == true ? 1.0 : -1.0) * PastFraction * length), position.Y, position.Z);
-        return Math.CopySign(Math.Abs(position.X - PlaneX), inner.SignedDistanceToDiscontinuity(in past));
-    }
-
-    // Both as fractions of the half's own length scale, as the shared-face check takes 1e-9 of
-    // the finest spacing: how near zero its discontinuity measure must be on the plane for the
-    // plane to be a face, and how far past the plane its sign is read. Fixed lengths in metres
-    // were too tight for a kilometre of geometry and too loose for a micron.
-    private const double FaceTolerance = 1e-9;
-    private const double PastFraction = 1e-6;
-
-    // The half's length scale: its resolution where it has one, else the plane's own distance
-    // from the origin, else a millimetre - an analytic field at the origin has no scale of its own.
-    private double LengthOf(IElectrostaticField inner) =>
-        double.IsFinite(inner.ResolutionLength) && inner.ResolutionLength > 0.0 ? inner.ResolutionLength
-        : PlaneX != 0.0 ? Math.Abs(PlaneX)
-        : 1e-3;
+    /// <param name="ownsPlane">Whether this half declares the plane as a surface where the field jumps there.</param>
+    /// <returns>The measure, made once per half and asked per point.</returns>
+    public PlaneFace FaceOf(IElectrostaticField inner, bool ownsPlane) => new(inner, this, ownsPlane);
 
     /// <summary>An x coordinate seen through the mirror.</summary>
     /// <param name="x">The coordinate.</param>
@@ -171,4 +120,89 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
     /// <param name="declared">The declared half.</param>
     /// <returns>The whole reflected solve.</returns>
     public IElectrostaticField Sum(IElectrostaticField declared) => new SuperposedField([Declared(declared), Image(declared)]);
+}
+
+/// <summary>
+/// A half's discontinuity measure where it contributes nothing, and whether it owns the plane.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Where a half answers nothing it has no discontinuity of its own, so none of its surfaces is
+/// declared there - a surface it declares beyond its edge would otherwise be a phantom the
+/// integrator stops at. The one surface that can be there is the plane, and only where the field
+/// jumps there: where the half has a face on the plane. Otherwise the measure is the half's own
+/// at the plane, so its sign changes nowhere the field is continuous.
+/// </para>
+/// <para>
+/// <b>Exactly one half owns the plane.</b> A sum multiplies its members' signs
+/// (<see cref="DiscontinuityDistance.Combine"/>), so a surface both halves declare at one place
+/// cancels: where the declared half's box ends on the plane and the field is not zero there, the
+/// union's field jumps from +E to -E across it, both halves changed sign there, and the sum
+/// reported no surface at all - Stage 4's paired-surface failure, at the one plane every reflected
+/// solve has. Measured on a uniform field reflected at its box's edge: an energy drift of 5.1e-8
+/// across the plane, against below 1e-12 landed on. So the declared half changes sign at the plane
+/// and the image reads its measure on the declared side with the sign it has just past the plane
+/// on its own side - continuous with itself, no surface.
+/// </para>
+/// <para>
+/// <b>Asked once per point.</b> The face test asks the half at the plane, beneath the point; the
+/// sign beyond the face is read once, on the first point that finds a face, and held - it depends
+/// on which side of the half's own boundary is outside, which a geometry does not change - and the
+/// length scale is fixed at construction.
+/// </para>
+/// </remarks>
+public sealed class PlaneFace
+{
+    // As fractions of the half's own length scale, as the shared-face check takes 1e-9 of the
+    // finest spacing: how near zero its measure must be on the plane for the plane to be a face,
+    // and how far from the plane its sign is read. Fixed lengths in metres were too tight for a
+    // kilometre of geometry and too loose for a micron.
+    private const double FaceTolerance = 1e-9;
+    private const double PastFraction = 1e-6;
+
+    private readonly IElectrostaticField _inner;
+    private readonly double _plane;
+    private readonly double _length;
+    private readonly double _readAt;
+    private double _sign = double.NaN;
+
+    internal PlaneFace(IElectrostaticField inner, Reflection reflection, bool ownsPlane)
+    {
+        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _plane = reflection.PlaneX;
+
+        // The half's length scale: its resolution where it has one, else the plane's distance from
+        // the origin, else a millimetre - an analytic field at the origin has no scale of its own.
+        _length = double.IsFinite(inner.ResolutionLength) && inner.ResolutionLength > 0.0 ? inner.ResolutionLength
+            : _plane != 0.0 ? Math.Abs(_plane)
+            : 1e-3;
+
+        // Where, in the half's own frame, the sign is read: just past the face on the image's side
+        // for the owner, so it changes sign at the plane; just inside the declared side for the
+        // image, which is the sign the image has just past the plane on its own side.
+        var imageSide = reflection.ImageAbove == true ? 1.0 : -1.0;
+        _readAt = _plane + ((ownsPlane ? imageSide : -imageSide) * PastFraction * _length);
+    }
+
+    /// <summary>The measure at a point on the side where the half answers nothing.</summary>
+    /// <param name="position">The point.</param>
+    /// <returns>The measure.</returns>
+    public double At(in Vec3 position)
+    {
+        var onPlane = new Vec3(_plane, position.Y, position.Z);
+        var atPlane = _inner.SignedDistanceToDiscontinuity(in onPlane);
+
+        if (Math.Abs(atPlane) > FaceTolerance * _length)
+        {
+            return atPlane;
+        }
+
+        if (double.IsNaN(_sign))
+        {
+            var read = new Vec3(_readAt, position.Y, position.Z);
+            _sign = Math.CopySign(1.0, _inner.SignedDistanceToDiscontinuity(in read));
+        }
+
+        return Math.CopySign(Math.Abs(position.X - _plane), _sign);
+    }
 }

@@ -276,7 +276,7 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
 
         var backup = Directory.GetFiles(_root, "*.bak").Single();
 
-        Assert.Contains($"the original of {second} is now at {backup}", refusal.Error.Constraint, StringComparison.Ordinal);
+        Assert.Contains($"the original of {second} could not be put back and is at {backup}", refusal.Error.Constraint, StringComparison.Ordinal);
         Assert.Equal([2], File.ReadAllBytes(backup));
         Assert.Equal([1], File.ReadAllBytes(first));
 
@@ -355,21 +355,34 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         }
 
         output.WriteLine(refusal.Error.Constraint);
-        Assert.Equal([1], File.ReadAllBytes(first));
+        output.WriteLine(refusal.Error.Suggestion);
 
         if (left == "unreadable")
         {
-            // Neither touched: the target is not restored over, and the backup is not deleted.
+            // Nothing put back anywhere in the set, and every backup kept: restoring the first file
+            // while the second may hold the new bytes would leave a mixed set and call it rolled
+            // back. Each file's state is said, with advice that fits it.
             Assert.Equal([2], File.ReadAllBytes(second));
             Assert.Equal([7], File.ReadAllBytes(backupAt!));
-            Assert.Contains($"could not be told whether {second} was replaced: a copy of its original is at {backupAt}", refusal.Error.Constraint, StringComparison.Ordinal);
-            Assert.DoesNotContain("is now at", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.Equal([8], File.ReadAllBytes(first));
+
+            var firstOriginal = Directory.GetFiles(_root, "*.bak").Single(b => b != backupAt);
+            Assert.Equal([1], File.ReadAllBytes(firstOriginal));
+
+            Assert.Contains($"it could not be told whether {second} was replaced: a copy of its original is at {backupAt}", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.Contains($"{first} holds the new file and its original is at {firstOriginal}", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.Contains("compare a file with the copy named beside it", refusal.Error.Suggestion, StringComparison.Ordinal);
+            Assert.Contains("move an original back over the file named beside it to undo it", refusal.Error.Suggestion, StringComparison.Ordinal);
             return;
         }
 
+        Assert.Equal([1], File.ReadAllBytes(first));
+
         if (left == "blocked")
         {
-            Assert.Contains($"the original of {second} is now at {backupAt}", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.Contains($"the original of {second} could not be put back and is at {backupAt}", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.Contains("move an original back over the file named beside it", refusal.Error.Suggestion, StringComparison.Ordinal);
+            Assert.DoesNotContain("compare", refusal.Error.Suggestion, StringComparison.Ordinal);
             Assert.Equal([2], File.ReadAllBytes(backupAt!));
             Directory.Delete(second);
             return;

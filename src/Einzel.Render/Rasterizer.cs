@@ -72,7 +72,8 @@ public sealed record RasterLine(
 /// <param name="DepthBias">
 /// How much nearer than its geometry the layer is depth-tested, in clip-space depth units: a
 /// wire mesh drawn exactly on a surface has the surface's depth, and without a bias whether a
-/// line pixel survives the test is a coin toss on rounding. Biased layers are resolved together,
+/// line pixel survives the test is a coin toss on rounding. A biased layer must be opaque. Biased
+/// layers are resolved together,
 /// after every opaque layer and before every translucent one: each is tested against the opaque
 /// depth up to its bias, the nearest passing fragment of a sample is drawn, and one that writes
 /// depth stores its true depth - so the order layers are listed in does not change the picture.
@@ -220,6 +221,17 @@ public static class Rasterizer
                         $"layer {(layers[l].Name is { } name ? $"'{name}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture))}, mesh {i}: {problem}",
                         nameof(layers));
                 }
+            }
+
+            // A biased layer is a mark on an opaque surface - a wire mesh on the surface it
+            // outlines - and is resolved as one fragment a sample. A translucent one would fully
+            // hide another biased layer behind it, which is not what translucent means; refused by
+            // name rather than drawn wrong.
+            if (layers[l].DepthBias > 0.0 && !(layers[l].Alpha >= 1.0))
+            {
+                throw new ArgumentException(
+                    $"layer {(layers[l].Name is { } name ? $"'{name}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture))}: a depth-biased layer must be opaque, and this one has an opacity of {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    nameof(layers));
             }
 
             for (var i = 0; i < layers[l].Lines.Count; i++)
@@ -392,11 +404,11 @@ public static class Rasterizer
         private readonly double[] _depth;
 
         // The nearest biased fragment of each sample that passes against the opaque depth: its
-        // true depth (infinity for none), colour, opacity and whether its layer writes depth. Held
+        // true depth (infinity for none), colour and whether its layer writes depth - a biased
+        // layer is opaque, so there is no opacity to keep. Held
         // only when a picture has a biased layer at all.
         private readonly double[]? _biased;
         private readonly double[]? _biasedColor;
-        private readonly double[]? _biasedAlpha;
         private readonly bool[]? _biasedWrites;
         private readonly IReadOnlyList<double> _m;
 
@@ -418,7 +430,6 @@ public static class Rasterizer
             _depth = new double[width * capacity];
             _biased = biased ? new double[width * capacity] : null;
             _biasedColor = biased ? new double[3 * width * capacity] : null;
-            _biasedAlpha = biased ? new double[width * capacity] : null;
             _biasedWrites = biased ? new bool[width * capacity] : null;
         }
 
@@ -451,7 +462,7 @@ public static class Rasterizer
                     continue;
                 }
 
-                Put(i, _biasedColor![3 * i], _biasedColor[(3 * i) + 1], _biasedColor[(3 * i) + 2], _biasedAlpha![i]);
+                Put(i, _biasedColor![3 * i], _biasedColor[(3 * i) + 1], _biasedColor[(3 * i) + 2], 1.0);
 
                 if (_biasedWrites![i] && depth < _depth[i])
                 {
@@ -525,7 +536,6 @@ public static class Rasterizer
                 _biasedColor![3 * index] = r;
                 _biasedColor[(3 * index) + 1] = g;
                 _biasedColor[(3 * index) + 2] = b;
-                _biasedAlpha![index] = alpha;
                 _biasedWrites![index] = writesDepth;
                 return;
             }

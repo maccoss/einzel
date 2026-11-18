@@ -89,6 +89,82 @@ public sealed class MirrorGapFlightTests
         Assert.Equal((detectorX - startX) / v0, result.FlightTimeSeconds, 15);
     }
 
+    // A declared half whose box ends on the plane, its field not zero there: the union's field
+    // jumps from +S to -S across the plane, a real discontinuity both halves see a face at.
+    private sealed class Faced : IElectrostaticField
+    {
+        private static bool Inside(in Vec3 p) => p.X >= 0.0 && p.X <= Plane;
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => Inside(in position) ? new Vec3(Strength, 0.0, 0.0) : default;
+
+        public double PotentialAt(in Vec3 position) => Inside(in position) ? -Strength * position.X : 0.0;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) =>
+            Inside(in position) ? Math.Min(position.X, Plane - position.X) : -Math.Max(-position.X, position.X - Plane);
+    }
+
+    // The same field written whole, as one field with its three surfaces: +S over the half, -S
+    // over where the image is, nothing outside.
+    private sealed class Whole : IElectrostaticField
+    {
+        public Vec3 ElectricFieldAt(in Vec3 p) =>
+            p.X < 0.0 || p.X > 2.0 * Plane ? default : new Vec3(p.X <= Plane ? Strength : -Strength, 0.0, 0.0);
+
+        public double PotentialAt(in Vec3 p) =>
+            p.X < 0.0 || p.X > 2.0 * Plane ? 0.0 : p.X <= Plane ? -Strength * p.X : -Strength * ((2.0 * Plane) - p.X);
+
+        public double SignedDistanceToDiscontinuity(in Vec3 p)
+        {
+            var d = Math.Min(Math.Abs(p.X), Math.Min(Math.Abs(p.X - Plane), Math.Abs(p.X - (2.0 * Plane))));
+            var crossed = (p.X > 0.0 ? 1 : 0) + (p.X > Plane ? 1 : 0) + (p.X > 2.0 * Plane ? 1 : 0);
+            return crossed % 2 == 0 ? d : -d;
+        }
+    }
+
+    /// <summary>
+    /// Where the union's field jumps at the plane, the sum declares one surface there - its sign
+    /// changes across it - and an ion crossing it flies exactly as through the same field written
+    /// whole, with the plane landed on.
+    /// </summary>
+    /// <remarks>
+    /// Both halves have a face on the plane and each declared a change of sign there; the sum
+    /// multiplies its members' signs, so the two cancelled and the composite reported no surface -
+    /// Stage 4's paired-surface failure, at the one plane a reflected solve always has. Measured at
+    /// a relative tolerance of 1e-13: 1.79e-10 against the closed form, twice the 8.88e-11 of the
+    /// same field written whole, and an energy drift of 1.9e-9 against 9.7e-10. The declared half
+    /// owns the plane now; the union flies the whole field's flight to the last digit.
+    /// </remarks>
+    [Fact]
+    public void AJumpAtThePlaneIsOneSurfaceAndIsLandedOn()
+    {
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var union = new Reflection(Plane, ImageAbove: true).Sum(new Faced());
+
+        double Sign(double x) => Math.Sign(union.SignedDistanceToDiscontinuity(new Vec3(x, 0.0, 0.0)));
+
+        Assert.NotEqual(Sign(Plane - 0.0005), Sign(Plane + 0.0005));
+
+        var v0 = species.SpeedAfterAcceleration(Quantity.From(100.0, "V")).SiValue;
+        var acceleration = species.ChargeSi * Strength / species.MassSi;
+        var v1 = Math.Sqrt((v0 * v0) + (2.0 * acceleration * Plane));
+
+        // Free 1 mm, accelerated over the half, decelerated over its image, free 1 mm.
+        var exact = (2.0 * 0.001 / v0) + (2.0 * (v1 - v0) / acceleration);
+
+        var launch = new PhaseState(new Vec3(-0.001, 0.0, 0.0), new Vec3(v0, 0.0, 0.0));
+        var settings = new IntegrationSettings { MaximumFlightTime = 1e-3, RelativeTolerance = 1e-13 };
+        TrajectoryStopFunction detector = (in PhaseState s) => (2.0 * Plane) + 0.001 - s.Position.X;
+
+        var flown = TrajectoryIntegrator.Integrate(launch, species, union, settings, detector);
+        var whole = TrajectoryIntegrator.Integrate(launch, species, new Whole(), settings, detector);
+        var relative = Math.Abs(flown.FlightTimeSeconds - exact) / exact;
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, flown.Outcome);
+        Assert.Equal(whole.FlightTimeSeconds, flown.FlightTimeSeconds);
+        Assert.Equal(whole.MaximumRelativeEnergyDrift, flown.MaximumRelativeEnergyDrift);
+        Assert.True(relative < 1e-10, $"flight across the plane {flown.FlightTimeSeconds:R} s against {exact:R} s, relative {relative:E3}");
+    }
+
     [Fact]
     public void AFlightThroughTheGapMatchesTheClosedForm()
     {

@@ -538,60 +538,90 @@ public static class ArtifactFiles
             }
             catch (Exception failure)
             {
-                // A replace that failed part way: the original is under its backup name and the
-                // target is empty, so it goes back first. Where the target is still there the
-                // replace moved nothing, and the backup - if it exists - is not the only copy.
-                // Every original that could not be put back, and where it now is: said in the
-                // refusal, not swallowed, since the one copy of the user's file is there.
-                var stranded = new List<(string Target, string Backup)>();
+                // What became of each file, said per file in the refusal: the one copy of a user's
+                // file may be under a backup name, and advice that fits one state misleads in another.
+                var report = new List<string>();
+                var advice = new HashSet<string>(StringComparer.Ordinal);
 
-                // A file a failed replace left where it could not be told whether the target was
-                // replaced: both kept and named, since restoring over an untouched original - one
-                // only locked against reading - would be the loss this exists to prevent.
-                var unknown = new List<(string Target, string Backup)>();
+                // The file being replaced when it failed, and what the failure left of it.
+                var same = Sameness.Different;
 
-                if (replacing is { } risk && File.Exists(risk.Backup))
+                if (replacing is { } failed && File.Exists(failed.Backup))
                 {
-                    var same = File.Exists(risk.Target) ? Compare(risk.Backup, risk.Target) : Sameness.Different;
-
-                    if (same == Sameness.Same)
-                    {
-                        // The replace failed with both still there and the target as it was: the
-                        // backup is a copy of it, and nothing needs it.
-                        TryDelete(risk.Backup);
-                    }
-                    else if (same == Sameness.Unknown)
-                    {
-                        unknown.Add(risk);
-                    }
-                    else if (!TryRestore(risk.Backup, risk.Target))
-                    {
-                        // The target is gone, or holds something else - most likely the new
-                        // bytes, with the original under the backup name. Put back as a placed
-                        // file is; where it cannot be, the refusal names both.
-                        stranded.Add(risk);
-                    }
+                    same = File.Exists(failed.Target) ? Compare(failed.Backup, failed.Target) : Sameness.Different;
                 }
 
-                // None of them, then, whatever went wrong: newest first, each back as it was.
-                for (var i = placed.Count - 1; i >= 0; i--)
+                if (same == Sameness.Unknown)
                 {
-                    var (target, backup) = placed[i];
+                    // Whether the target was replaced cannot be told - a file locked against reading
+                    // - so nothing is put back, here or anywhere in the set: restoring the others
+                    // while this one may hold the new bytes would leave a mixed set and call it
+                    // rolled back. Every backup is kept, and every file's state is said.
+                    var (unclear, copy) = replacing!.Value;
+                    report.Add($"it could not be told whether {unclear} was replaced: a copy of its original is at {copy}");
+                    advice.Add("compare a file with the copy named beside it and keep the one you want");
 
-                    if (backup is not null)
+                    foreach (var (target, backup) in placed)
                     {
-                        if (!TryRestore(backup, target) && File.Exists(backup))
+                        report.Add(backup is null
+                            ? $"{target} was written and was not there before"
+                            : $"{target} holds the new file and its original is at {backup}");
+
+                        if (backup is not null)
                         {
-                            stranded.Add((target, backup));
+                            advice.Add("move an original back over the file named beside it to undo it");
                         }
                     }
-                    else
-                    {
-                        TryDelete(target);
-                    }
-                }
 
-                placed.Clear();
+                    for (var i = at + 1; i < count; i++)
+                    {
+                        report.Add($"{_files[i].Target} is unchanged");
+                    }
+
+                    // Kept: the backups are the originals now, and the finally below must not delete them.
+                    placed.Clear();
+                }
+                else
+                {
+                    if (replacing is { } risk && File.Exists(risk.Backup))
+                    {
+                        if (same == Sameness.Same)
+                        {
+                            // The replace failed with both still there and the target as it was:
+                            // the backup is a copy of it, and nothing needs it.
+                            TryDelete(risk.Backup);
+                        }
+                        else if (!TryRestore(risk.Backup, risk.Target))
+                        {
+                            // The target is gone, or holds something else - most likely the new
+                            // bytes, with the original under the backup name. Put back as a placed
+                            // file is; where it cannot be, the refusal names both.
+                            report.Add($"the original of {risk.Target} could not be put back and is at {risk.Backup}");
+                            advice.Add("move an original back over the file named beside it");
+                        }
+                    }
+
+                    // None of them, then, whatever went wrong: newest first, each back as it was.
+                    for (var i = placed.Count - 1; i >= 0; i--)
+                    {
+                        var (target, backup) = placed[i];
+
+                        if (backup is not null)
+                        {
+                            if (!TryRestore(backup, target) && File.Exists(backup))
+                            {
+                                report.Add($"the original of {target} could not be put back and is at {backup}");
+                                advice.Add("move an original back over the file named beside it");
+                            }
+                        }
+                        else
+                        {
+                            TryDelete(target);
+                        }
+                    }
+
+                    placed.Clear();
+                }
 
                 var (flag, path, _, _) = _files[Math.Min(at, count - 1)];
 
@@ -605,15 +635,7 @@ public static class ArtifactFiles
                 RemoveCreatedFolders();
                 _finished = true;
 
-                var left = stranded.Count == 0
-                    ? string.Empty
-                    : "; and it could not be put back as it was: "
-                        + string.Join("; ", stranded.Select(s => $"the original of {s.Target} is now at {s.Backup}"));
-
-                left += string.Concat(unknown.Select(u =>
-                    $"; and it could not be told whether {u.Target} was replaced: a copy of its original is at {u.Backup}"));
-
-                if (stranded.Count == 0 && unknown.Count == 0
+                if (report.Count == 0
                     && failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
                 {
                     // Not a destination that cannot be written: rolled back, and raised as itself.
@@ -623,10 +645,8 @@ public static class ArtifactFiles
                 throw Refusal(
                     flag,
                     Path.GetFullPath(path),
-                    failure.Message + left,
-                    stranded.Count == 0 && unknown.Count == 0
-                        ? null
-                        : "compare each file with the copy named beside it and keep the one you want; nothing of either was deleted");
+                    failure.Message + (report.Count == 0 ? string.Empty : "; and it could not be rolled back as it was: " + string.Join("; ", report)),
+                    advice.Count == 0 ? null : string.Join("; ", advice) + "; nothing of any original was deleted");
             }
             finally
             {

@@ -18,6 +18,10 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
 {
     private readonly GatedMetal? _metal = inner is IConductorBounded metal ? new GatedMetal(metal, reflection) : null;
 
+    // The declared half owns the plane: where the field jumps there, it is the one member that
+    // declares the surface (PlaneFace).
+    private readonly PlaneFace _face = reflection.FaceOf(inner, ownsPlane: true);
+
     /// <inheritdoc/>
     /// <remarks>
     /// Gated as the image is, by the one side rule (<see cref="Reflection.DeclaredAnswersAt"/>):
@@ -42,15 +46,14 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Gated as the image's is, by the one rule (<see cref="Reflection.WhereAbsent"/>): on the
-    /// image's side, where this half contributes nothing, it declares none of its own surfaces -
-    /// only the plane, where it has a face there. It used to declare every surface of the inner
-    /// field there, phantoms where its field had been gated away.
+    /// Gated as the image's is, by one rule (<see cref="PlaneFace"/>): on the image's side, where
+    /// this half contributes nothing, it declares none of its own surfaces - only the plane, where
+    /// it has a face there, and it is the one member of the sum that does.
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position) =>
         reflection.DeclaredAnswersAt(position.X)
             ? inner.SignedDistanceToDiscontinuity(in position)
-            : reflection.WhereAbsent(inner, in position);
+            : _face.At(in position);
 
     /// <inheritdoc/>
     public double ResolutionLength => inner.ResolutionLength;

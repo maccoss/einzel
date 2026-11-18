@@ -316,6 +316,22 @@ public sealed class RasterTests(ITestOutputHelper output)
         Assert.Equal((128, 0, 128), At(pictures[0], 21, 15, 3));
     }
 
+    /// <summary>
+    /// A translucent biased layer is refused by name: biased layers are resolved one fragment a
+    /// sample, which is right for an opaque mark on a surface and would let a translucent one hide
+    /// another biased layer behind it completely.
+    /// </summary>
+    [Fact]
+    public void ATranslucentBiasedLayerIsRefused()
+    {
+        var glassMesh = new RasterLayer([Square(z: 0.0, 1.0, 0.0, 0.0)], [], 0.5, WritesDepth: false, DepthBias: 0.2, Name: "glass mesh");
+
+        var refused = Assert.Throws<ArgumentException>(() => Rasterizer.Draw([glassMesh], Scale(10.0), Flat, White, 21, 21));
+
+        Assert.Contains("'glass mesh'", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("must be opaque", refused.Message, StringComparison.Ordinal);
+    }
+
     private static RasterLayer Layer(RasterMesh mesh) => new([mesh], [], 1.0, WritesDepth: true);
 
     private static RasterMesh Square(double z, double r, double g, double b) =>

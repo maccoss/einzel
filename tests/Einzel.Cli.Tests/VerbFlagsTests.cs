@@ -367,6 +367,8 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     [InlineData("--progress 2026-trap.json", null)]
     [InlineData("--progress 2026-trap.json extra", null)]
     [InlineData("--progress 3d/lens", null)]
+    [InlineData("--progress 3cases.txt", null)]
+    [InlineData("--progress 2026-mesh.msh", null)]
     [InlineData("--progress 1.e5x m.json", "'1.e5x'")]
     [InlineData("--progress 2.s", "'2.s'")]
     [InlineData("--progress m.json extra", null)]

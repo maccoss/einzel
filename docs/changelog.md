@@ -3869,5 +3869,18 @@ Two findings from Stage 1 that bear on the spec:
   image's side, through the same rule as the image (`Reflection.WhereAbsent`). Path flags are read
   by a typed key (`PathOption`), so an unmarked one cannot be read as a path at all.
 
+  **A twenty-eighth review, and a paired surface this PR had made.** Where a reflected union's
+  field jumps at its plane - the declared half's box ending on it with the field not zero there -
+  both halves declared a change of sign at the plane, and the sum multiplies its members' signs,
+  so the two cancelled and the composite reported no surface: Stage 4's rule 1, at the one plane
+  every reflected solve has. Measured on a uniform field reflected at its box's edge, at a
+  relative tolerance of 1e-13: 1.79e-10 against the closed form where the same field written whole
+  gives 8.88e-11, energy drift 1.9e-9 against 9.7e-10. The declared half owns the plane now
+  (`PlaneFace`), and the union flies the whole field's flight to the last digit; the four reference
+  flights do not move. A depth-biased raster layer must be opaque, refused by name otherwise. A
+  rollback that cannot tell whether one file was replaced puts back none of the set and says each
+  file's state, with advice per state. And an extension of two letters or more makes a word a file
+  name, so `3cases.txt` and `2026-mesh.msh` are not taken for mistyped intervals.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.
