@@ -992,16 +992,17 @@ dry run of `run` is left for its own change.
 
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
 unless turned off, so the flag alone is the default interval, as it always was. **A bare
-`--progress` before a positional is still bare**: the next word is its value only if it begins as a
-number does (a digit, or a point before one: `./models/r.json` is a path). **Where that leaves more
-words than the verb takes, nothing is guessed**: `einzel run --progress m.json extra.json` may be an
-interval called m.json or a model and a stray, and nothing on the line says which, so it is refused
-at `--progress` naming every word that could be the one meant ("'m.json' and 'extra.json' are two
-words where run takes one") and suggesting `--progress=<seconds>` or `--progress` last. So
-`einzel run --progress models/reflectron.json` runs at the default interval, while `einzel run
---progress soon m.json`, `einzel run m.json --progress soon` and `einzel run --progress m.json
-extra.json` are all refused the same way, whatever the order: none runs a model it did not mean, and
-none blames one word where another was as likely - which three earlier settlements each did. A command line naming no
+`--progress` before a positional is still bare**: the next word is its value only if **the whole
+word is a finite number** (invariant culture), and otherwise it is an ordinary positional. So
+`--progress 5` is a five-second interval, as the shell's journal spells it, while `einzel run
+--progress models/reflectron.json`, `--progress 2026-lens.json`, `--progress 3d-trap.json` and
+`--progress ./models/r.json` are the default interval and a model, and `einzel run m.json --progress
+often` is the default interval, a model and a stray 'often', refused as an argument run does not take.
+A value that is not a number is given as `--progress=often` and refused by the flag's reader by name.
+No word is ever both, so nothing is ambiguous: the first-character guess this replaced read
+`2026-lens.json` as an interval, and three rounds of machinery - words held, settled, then lines
+refused as ambiguous - existed to recover from it for one flag. `VerbFlags.SubVerb` finds the
+sub-verb by the same rule. A command line naming no
 sub-verb (`einzel render --dry-run m.json`, an implicit section) is read with the switches of all
 its verb's sub-verbs, so a switch does not take the model as its value. A flag that takes a value
 is refused bare at any occurrence, not only its last. Every other flag that takes a value is

@@ -21,7 +21,14 @@ public static class FieldInstants
     /// <see cref="ResolutionFraction"/> of the period.
     /// </returns>
     public static bool Resolvable(double seconds, double periodSeconds) =>
-        Math.Abs(double.BitIncrement(seconds) - seconds) <= ResolutionFraction * periodSeconds;
+        Places(Spacing(seconds), periodSeconds);
+
+    // How far apart neighbouring doubles are at an instant, and whether that spacing places an
+    // instant in a period: one computation and one test, shared by the question and the refusal,
+    // so the number a refusal quotes is the number that was tested.
+    private static double Spacing(double seconds) => Math.Abs(double.BitIncrement(seconds) - seconds);
+
+    private static bool Places(double spacing, double periodSeconds) => spacing <= ResolutionFraction * periodSeconds;
 
     /// <summary>
     /// Refuses an instant so late that where it falls in a field's drive cycle is decided by
@@ -56,10 +63,10 @@ public static class FieldInstants
             return;
         }
 
-        var spacing = Math.Abs(double.BitIncrement(seconds) - seconds);
+        var spacing = Spacing(seconds);
         var period = driven.ShortestPeriodSeconds;
 
-        if (!Resolvable(seconds, period))
+        if (!Places(spacing, period))
         {
             var us = seconds * 1e6;
 

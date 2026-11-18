@@ -3784,5 +3784,15 @@ Two findings from Stage 1 that bear on the spec:
   a bare optional flag followed by more words than the verb takes is refused naming every candidate
   word, instead of guessing which was meant.
 
+  **A twenty-first review**, and the last item above did not last a round. The guess it recovered
+  from was the first-character rule, which read `2026-lens.json` and `3d-trap.json` as intervals;
+  a word is now `--progress`'s value only if the whole word is a finite number, so no word is ever
+  both and the held words, the settlement and the ambiguity refusal are gone. A `File.Replace` that
+  fails after moving the original to its backup name now puts it back. `WriteAll` checks and
+  resolves each destination once. `ReflectedField` holds its `Reflection` and asks it where the
+  image answers. A conductor's held cycle mean asks each channel's mean once. Every refusal
+  document is written by one helper that asks the call's tally, where the flag readers' copy did
+  not. And `FieldInstants` tests the spacing its refusal quotes.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

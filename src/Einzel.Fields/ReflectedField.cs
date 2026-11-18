@@ -6,24 +6,47 @@ namespace Einzel.Fields;
 /// A field reflected through a plane normal to x.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The second mirror of a pair is the first one turned around, so it is built by
 /// reflection rather than solved again. That is not only cheaper: it makes the
 /// two halves identical by construction, so a difference between the inbound and
 /// outbound legs of a trajectory cannot come from the two mirrors having been
 /// meshed differently.
+/// </para>
+/// <para>
+/// <b>The side rule is the <see cref="Reflection"/>'s, held, not restated.</b> Where the image
+/// answers, and which side it takes, were written here as well as there, and two statements of
+/// one rule are two rules the first time either is edited.
+/// </para>
 /// </remarks>
-/// <param name="inner">The declared half.</param>
-/// <param name="planeX">The mirror plane, as an x coordinate.</param>
-/// <param name="imageAbove">
-/// Which side of the plane the image lies on: true where the declared half is below the plane
-/// (the usual <c>reflectAboutX</c> at a solve's <c>maxX</c>), false where it is above, and null
-/// where the declared half has no edge on the plane - it runs past it, or fills all space - so
-/// the two genuinely overlap and the image answers everywhere, the plane included. See
-/// <see cref="Contributes"/>.
-/// </param>
-public sealed class ReflectedField(IElectrostaticField inner, double planeX, bool? imageAbove = null)
-    : IElectrostaticField, IConductorBounded
+public sealed class ReflectedField : IElectrostaticField, IConductorBounded
 {
+    private readonly IElectrostaticField _inner;
+    private readonly Reflection _reflection;
+
+    /// <summary>The image of a declared half, answering where a reflection says it does.</summary>
+    /// <param name="inner">The declared half.</param>
+    /// <param name="reflection">The plane, and the side the image takes.</param>
+    public ReflectedField(IElectrostaticField inner, Reflection reflection)
+    {
+        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _reflection = reflection ?? throw new ArgumentNullException(nameof(reflection));
+    }
+
+    /// <summary>The image of a declared half through a plane, on a side given directly.</summary>
+    /// <param name="inner">The declared half.</param>
+    /// <param name="planeX">The mirror plane, as an x coordinate.</param>
+    /// <param name="imageAbove">
+    /// Which side of the plane the image lies on: true where the declared half is below the plane
+    /// (the usual <c>reflectAboutX</c> at a solve's <c>maxX</c>), false where it is above, and null
+    /// where the declared half has no edge on the plane - it runs past it, or fills all space - so
+    /// the two genuinely overlap and the image answers everywhere, the plane included.
+    /// </param>
+    public ReflectedField(IElectrostaticField inner, double planeX, bool? imageAbove = null)
+        : this(inner, new Reflection(planeX, imageAbove))
+    {
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// The inner geometry seen through the mirror, so an electrode in the original
@@ -35,27 +58,25 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     /// standing where the solve holds none.
     /// </remarks>
     public double SignedDistanceToConductor(in Vec3 position) =>
-        inner is IConductorBounded bounded && Contributes(in position)
+        _inner is IConductorBounded bounded && Contributes(in position)
             ? bounded.SignedDistanceToConductor(Reflect(in position))
             : double.PositiveInfinity;
 
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position) =>
-        inner is IConductorBounded bounded && Contributes(in position) ? bounded.ConductorAt(Reflect(in position)) : null;
+        _inner is IConductorBounded bounded && Contributes(in position) ? bounded.ConductorAt(Reflect(in position)) : null;
 
     /// <inheritdoc/>
     public double NearestConductor(in Vec3 position, out string? name)
     {
         name = null;
 
-        return inner is IConductorBounded bounded && Contributes(in position)
+        return _inner is IConductorBounded bounded && Contributes(in position)
             ? bounded.NearestConductor(Reflect(in position), out name)
             : double.PositiveInfinity;
     }
 
-    private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-
-    private Vec3 Reflect(in Vec3 position) => new((2.0 * planeX) - position.X, position.Y, position.Z);
+    private Vec3 Reflect(in Vec3 position) => new(_reflection.ReflectX(position.X), position.Y, position.Z);
 
     /// <summary>Whether the image answers at a point at all.</summary>
     /// <param name="position">The point, in the world.</param>
@@ -83,30 +104,7 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     /// its side only, and no rounding of the reflection can put a point in both.
     /// </para>
     /// </remarks>
-    public bool Contributes(in Vec3 position) => imageAbove switch
-    {
-        true => position.X > planeX,
-        false => position.X < planeX,
-        null => true,
-    };
-
-    /// <summary>How a declared half and its image meet at the plane: the side the image takes, or none.</summary>
-    /// <param name="minX">The low x edge of the declared half.</param>
-    /// <param name="maxX">The high x edge of the declared half.</param>
-    /// <param name="planeX">The mirror plane.</param>
-    /// <returns>
-    /// True where the declared half ends at or below the plane, so the image is above and the two
-    /// are a union; false where it starts at or above it; null where the plane lies strictly
-    /// inside the declared half, so the half runs past the plane, overlaps its image, and the two
-    /// are summed everywhere.
-    /// </returns>
-    /// <remarks>
-    /// The one rule for every reflected sum: the solve builders and <c>MirrorPair</c> both ask it.
-    /// The first version gave a side whatever the box, so a plane inside the box made the sum
-    /// one half below the plane and both above it - asymmetric about its own mirror.
-    /// </remarks>
-    public static bool? ImageSide(double minX, double maxX, double planeX) =>
-        planeX >= maxX ? true : planeX <= minX ? false : null;
+    public bool Contributes(in Vec3 position) => _reflection.ImageAnswersAt(position.X);
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)
@@ -159,18 +157,18 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
 
         if (!Contributes(in position))
         {
-            var towards = imageAbove == true ? direction.X : -direction.X;
+            var towards = _reflection.ImageAbove == true ? direction.X : -direction.X;
 
             if (towards <= 0.0)
             {
                 return double.PositiveInfinity;
             }
 
-            var toPlane = Math.Abs(planeX - position.X) / towards;
+            var toPlane = Math.Abs(_reflection.PlaneX - position.X) / towards;
 
             // Where the ray crosses the plane, x set to the plane exactly rather than to a
             // rounded sum, seen through the mirror: the plane is its own image.
-            var crossing = new Vec3(planeX, position.Y + (toPlane * direction.Y), position.Z + (toPlane * direction.Z));
+            var crossing = new Vec3(_reflection.PlaneX, position.Y + (toPlane * direction.Y), position.Z + (toPlane * direction.Z));
             var beyond = _inner.FieldFreeRunLength(in crossing, in mirroredDirection);
 
             return toPlane + beyond;
@@ -195,7 +193,7 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     {
         if (!Contributes(in position))
         {
-            var onPlane = new Vec3(planeX, position.Y, position.Z);
+            var onPlane = new Vec3(_reflection.PlaneX, position.Y, position.Z);
 
             var atPlane = _inner.SignedDistanceToDiscontinuity(in onPlane);
             var length = Length;
@@ -215,8 +213,8 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
             // The sign the inner field gives just past its face on the plane - the side this point
             // mirrors to - so the change of sign is at the plane whichever way round the inner
             // field counts, and no further surface of the inner field reaches this side.
-            var past = new Vec3(planeX + ((imageAbove == true ? 1.0 : -1.0) * PastFraction * length), position.Y, position.Z);
-            return Math.CopySign(Math.Abs(position.X - planeX), _inner.SignedDistanceToDiscontinuity(in past));
+            var past = new Vec3(_reflection.PlaneX + ((_reflection.ImageAbove == true ? 1.0 : -1.0) * PastFraction * length), position.Y, position.Z);
+            return Math.CopySign(Math.Abs(position.X - _reflection.PlaneX), _inner.SignedDistanceToDiscontinuity(in past));
         }
 
         var mirrored = Reflect(in position);
@@ -235,7 +233,7 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     // of its own to take.
     private double Length =>
         double.IsFinite(_inner.ResolutionLength) && _inner.ResolutionLength > 0.0 ? _inner.ResolutionLength
-        : planeX != 0.0 ? Math.Abs(planeX)
+        : _reflection.PlaneX != 0.0 ? Math.Abs(_reflection.PlaneX)
         : 1e-3;
 
     /// <inheritdoc/>

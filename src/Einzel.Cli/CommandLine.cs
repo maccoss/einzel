@@ -1,5 +1,3 @@
-using Einzel.Core.Errors;
-
 namespace Einzel.Cli;
 
 /// <summary>
@@ -26,12 +24,6 @@ public sealed class CommandLine
 
     /// <summary>Every flag given, without its dashes, in the order first given.</summary>
     public IReadOnlyList<string> Flags => [.. _all.Select(o => o.Name).Distinct()];
-
-    /// <summary>
-    /// Where a flag whose value may be left off is followed by more words than the verb takes,
-    /// the refusal saying so; null where the line can be read one way.
-    /// </summary>
-    public EinzelError? Ambiguity { get; private set; }
 
     /// <summary>Whether a flag was supplied.</summary>
     /// <param name="name">The flag name, without dashes.</param>
@@ -73,8 +65,7 @@ public sealed class CommandLine
         // Asked of the verb named, so a name may be a switch for one verb and take a value for
         // another. A command line naming no verb this knows has only --json and --help, which
         // every verb takes; whatever it is, it is refused or answered with a usage.
-        var verb = VerbFlags.For(args);
-        var flags = verb?.Flags;
+        var flags = VerbFlags.For(args)?.Flags;
 
         // A command line naming no sub-verb this knows - `render --dry-run m.json`, an implicit
         // section - is read with the switches every sub-verb of its verb has, the set SubVerb
@@ -84,12 +75,6 @@ public sealed class CommandLine
         bool IsSwitch(string flag) =>
             flag is "json" or "help" || (flags?.Switches.Contains(flag) ?? family?.Switches.Contains(flag) ?? false);
         bool IsOptional(string flag) => flags?.Optional.Contains(flag) ?? family?.Optional.Contains(flag) ?? false;
-
-        // Each word after a flag whose value may be left off that does not look like that value:
-        // held as a positional for now, and given to its flag after all only if it falls past the
-        // positionals the verb takes. Every one held, not the last: a second bare flag of the
-        // kind overwrote the first's.
-        var tentative = new List<(int Positional, int Option, string Name)>();
 
         for (var i = 1; i < args.Length; i++)
         {
@@ -115,15 +100,15 @@ public sealed class CommandLine
             // value - unless this is a switch, which never has one.
             var next = !IsSwitch(name) && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal);
 
-            if (next && IsOptional(name) && !VerbFlags.LooksLikeOptionalValue(args[i + 1]))
+            if (next && IsOptional(name) && !VerbFlags.IsOptionalValue(args[i + 1]))
             {
-                // A flag whose value may be left off, followed by a word that does not look like
-                // its value: `run --progress models/r.json` is the default interval and a model,
-                // not an interval called models/r.json. Bare for now; settled below.
+                // A flag whose value may be left off, followed by a word that is not a number:
+                // the flag is bare and the word is an ordinary positional, read on the next turn
+                // of the loop. `run --progress models/r.json` and `run --progress 2026-lens.json`
+                // are the default interval and a model; `run m.json --progress often` is the
+                // default interval, a model and a stray 'often', refused as an extra argument.
                 parsed._options[name] = null;
                 parsed._all.Add((name, null));
-                tentative.Add((parsed._positional.Count, parsed._all.Count - 1, name));
-                parsed._positional.Add(args[++i]);
             }
             else if (next)
             {
@@ -137,58 +122,6 @@ public sealed class CommandLine
             }
         }
 
-        // Settled without guessing. Where the count fits, the held words are positionals. Where
-        // the verb has more positionals than it takes, some held word was meant as a value or some
-        // positional is a stray, and nothing on the line says which: `run --progress m.json
-        // extra.json` may be an interval called m.json or a model and a stray. Every reading
-        // that picks one runs a model somebody may not have meant or blames a word somebody did
-        // mean - three rounds of review moved the blame from word to word - so the line is
-        // refused, naming the flag and every word that could be the one meant.
-        if (flags is not null && tentative.Count > 0 && parsed._positional.Count > flags.Positionals)
-        {
-            parsed.Ambiguity = Ambiguous(verb!.Value.Key, flags, [.. tentative.Select(t => t.Name).Distinct(StringComparer.Ordinal)], parsed._positional);
-        }
-
         return parsed;
-    }
-
-    // The refusal for a line whose words could be read more than one way: the flags, every
-    // candidate word - the positionals past the sub-verb, any of which may be the one meant - and
-    // the two spellings that cannot be misread.
-    private static EinzelError Ambiguous(string key, VerbFlags flags, IReadOnlyList<string> names, IReadOnlyList<string> positional)
-    {
-        static string Count(int n) => n switch
-        {
-            1 => "one",
-            2 => "two",
-            3 => "three",
-            4 => "four",
-            _ => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        };
-
-        static string Joined(IReadOnlyList<string> items) => items.Count switch
-        {
-            1 => items[0],
-            2 => $"{items[0]} and {items[1]}",
-            _ => string.Join(", ", items.Take(items.Count - 1)) + $" and {items[^1]}",
-        };
-
-        var sub = key.Count(c => c == ' ');
-        var candidates = positional.Skip(sub).Select(p => $"'{p}'").ToList();
-        var takes = flags.Positionals - sub;
-        var flagged = names.Select(n => "--" + n).ToList();
-        var first = flagged[0];
-
-        return new EinzelError
-        {
-            Code = ErrorCodes.SchemaInvalid,
-            Path = FlagPath.Of(names[0]),
-            Constraint = $"{Joined(flagged)} {(names.Count == 1 ? "takes an optional value" : "take optional values")}, and "
-                + $"{Joined(candidates)} are {Count(candidates.Count)} words where {key} takes {Count(takes)}: "
-                + $"which {(names.Count == 1 ? "word is " + first + "'s value" : "words are values")} and which "
-                + $"{(takes == 1 ? "is the argument" : "are the arguments")} cannot be told from the line",
-            Suggestion = $"give the value with an equals sign, as {first}=<value>, or put {first} last on the line; "
-                + $"then every word is an argument, and {key} takes {Count(takes)}",
-        };
     }
 }

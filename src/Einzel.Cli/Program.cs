@@ -42,16 +42,8 @@ public static class Program
         // ends in one document for a caller who asked for one.
         var json = args is not null && args.Any(a => a is "--json" || (a?.StartsWith("--json=", StringComparison.Ordinal) ?? false));
 
-        void Refuse(string code, string constraint, string? suggestion = null)
-        {
-            if (json && !tally.Written)
-            {
-                Console.Out.Write(CommandJson.Write(new CommandLineRefusal
-                {
-                    Errors = [new EinzelError { Code = code, Path = "/", Constraint = constraint, Suggestion = suggestion }],
-                }));
-            }
-        }
+        void Refuse(string code, string constraint, string? suggestion = null) =>
+            WriteRefusal(json, [new EinzelError { Code = code, Path = "/", Constraint = constraint, Suggestion = suggestion }]);
 
         try
         {
@@ -74,10 +66,7 @@ public static class Program
             // A refusal made here in the command line was already JSON; one thrown from a command
             // - a relief of zero, a box written backwards, a destination that cannot be written -
             // left an agent an empty stream and an exit code.
-            if (json && !tally.Written)
-            {
-                Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [.. failure.Errors] }));
-            }
+            WriteRefusal(json, failure.Errors);
 
             // CLI-3 wants a distinct exit code per failure class, and the class is
             // in the error rather than in how it reached here. A regime violation
@@ -274,13 +263,6 @@ public static class Program
             }
         }
 
-        // More words than the verb takes after a flag whose value may be left off: refused with
-        // every word that could be the one meant, not as a stray at whichever came last.
-        if (refusal is null && options.Ambiguity is { } ambiguous)
-        {
-            refusal = ambiguous;
-        }
-
         if (refusal is null && options.Positional.Count > flags.Positionals)
         {
             refusal = new EinzelError
@@ -355,18 +337,32 @@ public static class Program
                 Suggestion = suggestion,
             });
 
-    private static bool Refuse(CommandLine options, EinzelError refusal)
+    internal static bool Refuse(CommandLine options, EinzelError refusal)
     {
         // CLI-2's split, and AGT-3's: the reason on stderr, and under --json the same error as
         // JSON on stdout, so an agent gets a machine-readable refusal and not an empty stream.
         Console.Error.WriteLine(refusal.ToString());
-
-        if (options.Has("json"))
-        {
-            Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [refusal] }));
-        }
+        WriteRefusal(options.Has("json"), [refusal]);
 
         return false;
+    }
+
+    /// <summary>
+    /// Writes a refusal as JSON on stdout under <c>--json</c>, unless this call has already
+    /// written to stdout: the one place a refusal document is written, so there is one rule for
+    /// when.
+    /// </summary>
+    /// <remarks>
+    /// Main had its own copy that asked the call's tally, and the flag readers' copy did not ask
+    /// it, so a reader refusing after the verb had written its result added a second document
+    /// to stdout - which no JSON reader can parse.
+    /// </remarks>
+    private static void WriteRefusal(bool json, IReadOnlyList<EinzelError> errors)
+    {
+        if (json && !StdoutTally.WrittenByThisCall)
+        {
+            Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [.. errors] }));
+        }
     }
 
     private static int Unknown(string verb)

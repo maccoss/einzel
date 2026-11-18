@@ -267,96 +267,83 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Equal(key, VerbFlags.For(line.Split(' '))?.Key);
     }
     /// <summary>
-    /// Where a bare <c>--progress</c> is followed by more words than the verb takes, no word is
-    /// guessed to be the one meant: the line is refused at <c>--progress</c>, naming every word
-    /// that could be the model or the value, and saying how to write it so it cannot be misread.
+    /// The word after a bare <c>--progress</c> is its value only where the whole word is a finite
+    /// number; anything else is an ordinary positional, so a model whose name begins with a digit
+    /// or a point is the model.
     /// </summary>
     /// <remarks>
-    /// Three rounds of review each settled this a different way - a held word that fitted kept as
-    /// the model, then every held word given to the flag, then the flag's reader refusing the
-    /// first - and each answer blamed one word where another was as likely, or ran a model that
-    /// may not have been meant. Nothing on the line says which reading is right, so none is taken.
+    /// The first characters were read instead, so <c>2026-lens.json</c> and <c>3d-trap.json</c>
+    /// were taken for intervals, and three rounds of machinery - words held, then settled, then a
+    /// line refused as ambiguous - existed to recover from that guess for one flag.
     /// </remarks>
     [Theory]
-    [InlineData("run --progress soon m.json", "'soon' and 'm.json'")]
-    [InlineData("run m.json --progress soon", "'m.json' and 'soon'")]
-    [InlineData("run --progress m.json extra.json", "'m.json' and 'extra.json'")]
-    [InlineData("run --progress ./m.json ./extra.json", "'./m.json' and './extra.json'")]
-    [InlineData("run --progress ../m.json extra.json", "'../m.json' and 'extra.json'")]
-    [InlineData("render section --progress m.json extra.json", "'m.json' and 'extra.json'")]
-    public void TooManyWordsAfterAnOptionalValueAreRefusedNamingEveryOne(string line, string words)
-    {
-        var parsed = CommandLine.Parse(line.Split(' '));
-        var problem = Program.CommandLineProblem(line.Split(' '));
-
-        Assert.NotNull(parsed.Ambiguity);
-        Assert.NotNull(problem);
-        Assert.Equal("/args/--progress", problem!.Path);
-        Assert.Contains(words + " are two words where", problem.Constraint, StringComparison.Ordinal);
-        Assert.Contains("takes one", problem.Constraint, StringComparison.Ordinal);
-        Assert.Contains("--progress=<value>", problem.Suggestion, StringComparison.Ordinal);
-        Assert.Contains("--progress last", problem.Suggestion, StringComparison.Ordinal);
-
-        // Nothing taken from the positionals and given to the flag: no word was chosen.
-        Assert.Null(parsed.Value("progress"));
-        Assert.Equal(2, parsed.Positional.Count - (line.StartsWith("render", StringComparison.Ordinal) ? 1 : 0));
-    }
-
-    /// <summary>
-    /// The two spellings the refusal suggests are read one way, and the run they name is the
-    /// model's: an equals sign, or the flag last.
-    /// </summary>
-    [Theory]
-    [InlineData("run --progress=5 m.json")]
-    [InlineData("run m.json --progress")]
-    [InlineData("run m.json --progress 5")]
-    public void TheSuggestedSpellingsAreNotAmbiguous(string line)
-    {
-        var parsed = CommandLine.Parse(line.Split(' '));
-
-        Assert.Null(parsed.Ambiguity);
-        Assert.Null(Program.CommandLineProblem(line.Split(' ')));
-        Assert.Equal(["m.json"], parsed.Positional);
-    }
-
-    /// <summary>
-    /// A path beginning with a point is a path, not an interval: a leading point counts as a
-    /// number only before a digit.
-    /// </summary>
-    [Theory]
+    [InlineData("2026-lens.json")]
+    [InlineData("3d-trap.json")]
     [InlineData("./models/r.json")]
     [InlineData("../m.json")]
     [InlineData(".hidden.json")]
-    public void APathStartingWithAPointIsNotAnInterval(string path)
+    [InlineData("1e3.json")]
+    [InlineData("Infinity")]
+    public void AWordThatIsNotWhollyANumberIsAPositional(string word)
     {
-        var parsed = CommandLine.Parse(["run", "--progress", path]);
+        var parsed = CommandLine.Parse(["run", "--progress", word]);
 
-        Assert.Equal([path], parsed.Positional);
+        Assert.Equal([word], parsed.Positional);
+        Assert.True(parsed.Has("progress"));
         Assert.Null(parsed.Value("progress"));
-        Assert.Equal("render section", VerbFlags.For(["render", "--progress", path, "section"])?.Key is var k && k == "render section" ? k : VerbFlags.For(["render", "--progress", ".5", "section", path])?.Key);
-        Assert.False(VerbFlags.LooksLikeOptionalValue(path));
-        Assert.True(VerbFlags.LooksLikeOptionalValue(".5"));
-        Assert.True(VerbFlags.LooksLikeOptionalValue("-.5"));
+        Assert.Null(Program.CommandLineProblem(["run", "--progress", word]));
+        Assert.False(VerbFlags.IsOptionalValue(word));
+
+        // The sub-verb is found by the same rule: a bare --progress before it.
+        Assert.Equal("render section", VerbFlags.For(["render", "--progress", "section", word])?.Key);
+    }
+
+    /// <summary>A whole number is the interval, as the docs and the shell's journal spell it.</summary>
+    [Theory]
+    [InlineData("5")]
+    [InlineData("0")]
+    [InlineData(".5")]
+    [InlineData("2.5")]
+    [InlineData("1e1")]
+    [InlineData("-1")]
+    public void AWordThatIsWhollyANumberIsTheValue(string word)
+    {
+        var parsed = CommandLine.Parse(["run", "m.json", "--progress", word]);
+
+        Assert.Equal(["m.json"], parsed.Positional);
+        Assert.Equal(word, parsed.Value("progress"));
+        Assert.True(VerbFlags.IsOptionalValue(word));
+        Assert.Equal("render section", VerbFlags.For(["render", "--progress", word, "section", "m.json"])?.Key);
     }
 
     /// <summary>
-    /// A held word given to its flag after the line is read does not overwrite a later explicit
-    /// value: the last occurrence on the line is the value, and the occurrences are in line order.
+    /// A word after a bare <c>--progress</c> that is no number is a positional like any other, so
+    /// one too many is refused as the stray it is, named and located.
     /// </summary>
-    /// <remarks>
-    /// With a word held and two left over the line is still ambiguous - m.json may be an
-    /// interval or the model - and is refused naming both; what the flag holds meanwhile is its
-    /// last occurrence, as for any flag.
-    /// </remarks>
-    [Fact]
-    public void ALaterExplicitValueWinsOverAHeldWord()
+    [Theory]
+    [InlineData("run m.json --progress often", "'often'")]
+    [InlineData("run --progress soon m.json", "'m.json'")]
+    [InlineData("run --progress m.json extra.json", "'extra.json'")]
+    [InlineData("run --progress ./m.json ./extra.json", "'./extra.json'")]
+    public void AStrayWordAfterABareProgressIsAnExtraArgument(string line, string stray)
     {
-        var parsed = CommandLine.Parse(["run", "--progress", "m.json", "--progress", "10", "extra.json"]);
+        var problem = Program.CommandLineProblem(line.Split(' '));
+
+        Assert.NotNull(problem);
+        Assert.Equal("/args/1", problem!.Path);
+        Assert.Contains("run was given " + stray + ", which it does not take", problem.Constraint, StringComparison.Ordinal);
+        Assert.Null(CommandLine.Parse(line.Split(' ')).Value("progress"));
+    }
+
+    /// <summary>A later explicit value is the value: the last occurrence on the line, as for any flag.</summary>
+    [Fact]
+    public void ALaterExplicitValueWins()
+    {
+        var parsed = CommandLine.Parse(["run", "--progress", "m.json", "--progress", "10"]);
 
         Assert.Equal("10", parsed.Value("progress"));
         Assert.Equal([null, "10"], parsed.Values("progress"));
-        Assert.Equal(["m.json", "extra.json"], parsed.Positional);
-        Assert.Contains("'m.json' and 'extra.json'", parsed.Ambiguity!.Constraint, StringComparison.Ordinal);
+        Assert.Equal(["m.json"], parsed.Positional);
     }
 
     /// <summary>
@@ -406,15 +393,5 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
 
         Assert.NotNull(problem);
         Assert.Equal("/args/--set", problem!.Path);
-    }
-
-    /// <summary>Every held word is a candidate, not only the last: two bare optional flags name all three words.</summary>
-    [Fact]
-    public void EveryHeldWordIsACandidate()
-    {
-        var twice = CommandLine.Parse(["run", "m.json", "--progress", "soon", "--progress", "later"]);
-
-        Assert.Equal(["m.json", "soon", "later"], twice.Positional);
-        Assert.Contains("'m.json', 'soon' and 'later' are three words where run takes one", twice.Ambiguity!.Constraint, StringComparison.Ordinal);
     }
 }

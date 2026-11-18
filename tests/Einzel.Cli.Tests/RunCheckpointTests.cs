@@ -540,10 +540,11 @@ public sealed class RunCheckpointTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(1, exit);
         Assert.Contains("--progress takes an interval in seconds", stderr, StringComparison.Ordinal);
 
-        // Bare after the model, 'often' could be the interval or a second model: refused naming both.
+        // Bare after the model, 'often' is no number, so --progress is bare and 'often' a stray
+        // argument, refused as one.
         var (bare, _, bareError) = Run("run", Project(), "--progress", "often");
 
         Assert.Equal(1, bare);
-        Assert.Contains("'often' are two words where run takes one", bareError, StringComparison.Ordinal);
+        Assert.Contains("run was given 'often', which it does not take", bareError, StringComparison.Ordinal);
     }
 }

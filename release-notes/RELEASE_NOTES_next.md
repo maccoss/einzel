@@ -196,9 +196,10 @@ become a feature release without being renamed twice.
 - **`einzel run --progress ./models/r.json`** reads the path as the model, not the interval.
   `einzel run --dry-run` is refused (it was ignored, and the model ran), pointing at `einzel
   preview` and `einzel estimate`.
-- **`einzel run --progress m.json extra.json`** (or any order of a bare `--progress` and more words
-  than the verb takes) is refused naming every word that could be the one meant, and suggesting
-  `--progress=<seconds>` or `--progress` last. Every flag error is located at `/args/--flag`,
+- **A bare `--progress` takes the next word as its interval only if the whole word is a number**:
+  `einzel run --progress 2026-lens.json` runs that model at the default interval, `--progress 5`
+  is still five seconds, and `einzel run m.json --progress often` is refused for the stray 'often'
+  (write `--progress=often` to have the interval itself refused by name). Every flag error is located at `/args/--flag`,
   whichever verb raised it (`probe` and `render section` had their own pointers). The probe's
   `--csv` quotes a conductor name holding a comma or a quote. `einzel export` of several solved
   elements holds one element's solve at a time.

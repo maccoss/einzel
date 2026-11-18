@@ -142,21 +142,22 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
         // channels the conductor taps, so where one it does not tap had no closed form the plateau
         // was averaged in closed form and the field around it by sampling - two different means
         // on either side of the conductor's face.
+        //
+        // One pass, each channel's mean asked once, as CycleMeanPotentialAt does it: the first
+        // channel with no closed form sends the whole mean to sampling, and the sum is in channel
+        // order skipping zeros, so it is the same arithmetic as before in the same sequence.
+        var total = 0.0;
+
         for (var k = 0; k < _channels.Length; k++)
         {
-            if (CycleMeanWeight(k, fromSeconds, periodSeconds) is null)
+            if (CycleMeanWeight(k, fromSeconds, periodSeconds) is not { } mean)
             {
                 return HeldConductors.SampledMean(this, conductor, fromSeconds, periodSeconds, samples);
             }
-        }
 
-        var total = 0.0;
-
-        for (var k = 0; k < coefficients.Length && k < _channels.Length; k++)
-        {
-            if (coefficients[k] != 0.0)
+            if (k < coefficients.Length && coefficients[k] != 0.0)
             {
-                total += coefficients[k] * CycleMeanWeight(k, fromSeconds, periodSeconds)!.Value;
+                total += coefficients[k] * mean;
             }
         }
 

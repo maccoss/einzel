@@ -44,6 +44,12 @@ public sealed class StdoutTally : IDisposable
     /// <summary>Whether this call has written anything to standard output.</summary>
     public bool Written => Volatile.Read(ref _written);
 
+    /// <summary>
+    /// Whether the call running on this flow has written anything to standard output; false where
+    /// no call is running.
+    /// </summary>
+    public static bool WrittenByThisCall => Current.Value?.Written ?? false;
+
     /// <summary>Begins counting this call's writes to standard output.</summary>
     /// <returns>The call's tally; dispose it when the call ends.</returns>
     public static StdoutTally Enter()

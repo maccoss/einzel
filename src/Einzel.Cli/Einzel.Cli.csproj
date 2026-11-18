@@ -14,4 +14,8 @@
     <ProjectReference Include="..\Einzel.Commands\Einzel.Commands.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Einzel.Cli.Tests" />
+  </ItemGroup>
+
 </Project>

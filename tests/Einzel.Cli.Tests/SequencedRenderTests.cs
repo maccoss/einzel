@@ -344,11 +344,11 @@ public sealed class SequencedRenderTests : IDisposable
         Assert.NotEqual(0, exit);
         Assert.Contains("--progress takes an interval in seconds", stderr, StringComparison.Ordinal);
 
-        // Written bare after the model, 'soon' could be the interval or a second model: refused as
-        // that, naming both, rather than guessed to be either.
+        // Written bare after the model, 'soon' is no number: --progress is bare and 'soon' a stray
+        // argument, refused as one.
         var (bare, _, bareError) = Cli("render", "section", path, "--progress", "soon");
 
         Assert.NotEqual(0, bare);
-        Assert.Contains("'soon' are two words", bareError, StringComparison.Ordinal);
+        Assert.Contains("'soon', which it does not take", bareError, StringComparison.Ordinal);
     }
 }

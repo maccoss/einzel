@@ -194,4 +194,50 @@ public sealed class StdoutTallyTests
         using var document = System.Text.Json.JsonDocument.Parse(stdout.ToString());
         Assert.Equal("INTERNAL_ERROR", document.RootElement.GetProperty("errors")[0].GetProperty("code").GetString());
     }
+
+    /// <summary>
+    /// A flag reader's refusal under --json, after the call has written its result, adds no
+    /// second document: every refusal asks the call's tally, not only Main's.
+    /// </summary>
+    /// <remarks>
+    /// Main had a refusal writer of its own that asked the tally, and the flag readers' did not,
+    /// so a refusal after the verb had written left two documents on stdout.
+    /// </remarks>
+    [Fact]
+    public void AReadersRefusalAfterAWriteAddsNoSecondDocument()
+    {
+        var original = Console.Out;
+        var originalError = Console.Error;
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        Console.SetError(new StringWriter());
+
+        try
+        {
+            var refusal = new Einzel.Core.Errors.EinzelError { Code = "SCHEMA_INVALID", Path = "/args/--x", Constraint = "refused" };
+
+            using (StdoutTally.Enter())
+            {
+                Console.Out.Write("{\"result\": 1}");
+                Program.Refuse(CommandLine.Parse(["run", "--json"]), refusal);
+            }
+
+            Assert.Equal("{\"result\": 1}", stdout.ToString());
+
+            // The control: with nothing written, the refusal is the document.
+            stdout.GetStringBuilder().Clear();
+
+            using (StdoutTally.Enter())
+            {
+                Program.Refuse(CommandLine.Parse(["run", "--json"]), refusal);
+            }
+
+            Assert.Contains("\"refused\"", stdout.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Console.SetOut(original);
+            Console.SetError(originalError);
+        }
+    }
 }

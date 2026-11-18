@@ -291,7 +291,12 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
                 if (bad is not null)
                 {
-                    yield return new Case(verb, "garbage", [.. words, .. form, "--" + flag, bad], "/args/--" + flag);
+                    // A value that is no number, after a flag whose value may be left off, is a
+                    // positional rather than the value; given as the value, with an equals sign,
+                    // it is refused by the flag's reader by name.
+                    yield return optional
+                        ? new Case(verb, "garbage", [.. words, .. form, $"--{flag}={bad}"], "/args/--" + flag)
+                        : new Case(verb, "garbage", [.. words, .. form, "--" + flag, bad], "/args/--" + flag);
                 }
             }
 
@@ -505,12 +510,12 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         var (code, _, stderr) = Run(Words("run {model} --progress soon"));
 
         Assert.Equal(1, code);
-        Assert.Contains(" at /args/--progress:", stderr, StringComparison.Ordinal);
+        Assert.Contains(" at /args/1:", stderr, StringComparison.Ordinal);
         Assert.Contains("'soon'", stderr, StringComparison.Ordinal);
 
-        // A word that is no interval after a bare --progress, with the model before it, is two
-        // words where run takes one: refused as the ambiguity it is, naming both.
-        Assert.Contains("--progress=<value>", stderr, StringComparison.Ordinal);
+        // A word that is no number after a bare --progress, with the model before it, is a stray
+        // argument: --progress is bare, and run takes one positional.
+        Assert.Contains("which it does not take", stderr, StringComparison.Ordinal);
 
         var (named, _, namedError) = Run(Words("run {model} --progress=soon"));
 
@@ -1072,7 +1077,9 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
         // The control: the scan finds the readers, so an empty list above is not a scan that
         // matched nothing.
-        Assert.Equal(["TryNumber", "TryWhole"], parsers.Order(StringComparer.Ordinal));
+        // IsOptionalValue asks whether a word is a number in order to decide whether it is a
+        // flag's value at all; reading the value is still the readers' alone.
+        Assert.Equal(["IsOptionalValue", "TryNumber", "TryWhole"], parsers.Order(StringComparer.Ordinal));
 
         // And it has teeth: the lines this replaced are caught.
         Assert.Single(Throwing("FramesPerSecond = int.Parse(fps, CultureInfo.InvariantCulture)"));

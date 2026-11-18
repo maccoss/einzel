@@ -6,7 +6,7 @@ namespace Einzel.Fields;
 /// </summary>
 /// <param name="PlaneX">The mirror plane.</param>
 /// <param name="ImageAbove">
-/// The side the image takes, as <see cref="ReflectedField.ImageSide"/> decides it: true or false
+/// The side the image takes, as <see cref="SideOf"/> decides it: true or false
 /// for a union, null where the declared half runs past the plane and the two overlap.
 /// </param>
 /// <remarks>
@@ -28,7 +28,25 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
     /// <param name="maxX">The high x edge of the declared half.</param>
     /// <returns>The reflection, with its side decided; null where there is no plane.</returns>
     public static Reflection? Of(double? planeX, double minX, double maxX) =>
-        planeX is { } plane ? new Reflection(plane, ReflectedField.ImageSide(minX, maxX, plane)) : null;
+        planeX is { } plane ? new Reflection(plane, SideOf(minX, maxX, plane)) : null;
+
+    /// <summary>How a declared half and its image meet at the plane: the side the image takes, or none.</summary>
+    /// <param name="minX">The low x edge of the declared half.</param>
+    /// <param name="maxX">The high x edge of the declared half.</param>
+    /// <param name="planeX">The mirror plane.</param>
+    /// <returns>
+    /// True where the declared half ends at or below the plane, so the image is above and the two
+    /// are a union; false where it starts at or above it; null where the plane lies strictly
+    /// inside the declared half, so the half runs past the plane, overlaps its image, and the two
+    /// are summed everywhere.
+    /// </returns>
+    /// <remarks>
+    /// The one rule for every reflected sum: the solve builders and <c>MirrorPair</c> both reach it through <see cref="Of"/>.
+    /// The first version gave a side whatever the box, so a plane inside the box made the sum
+    /// one half below the plane and both above it - asymmetric about its own mirror.
+    /// </remarks>
+    public static bool? SideOf(double minX, double maxX, double planeX) =>
+        planeX >= maxX ? true : planeX <= minX ? false : null;
 
     /// <summary>Whether the declared half runs past the plane and overlaps its image, so the two are summed.</summary>
     public bool Overlaps => ImageAbove is null;
@@ -73,7 +91,7 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
     /// <summary>The declared half's image, answering where this reflection says it does.</summary>
     /// <param name="declared">The declared half.</param>
     /// <returns>The image.</returns>
-    public ReflectedField Image(IElectrostaticField declared) => new(declared, PlaneX, ImageAbove);
+    public ReflectedField Image(IElectrostaticField declared) => new(declared, this);
 
     /// <summary>The declared half and its image, summed.</summary>
     /// <param name="declared">The declared half.</param>

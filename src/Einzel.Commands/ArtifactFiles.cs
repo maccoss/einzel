@@ -205,9 +205,16 @@ public static class ArtifactFiles
     /// <param name="destinations">Each destination's flag (null where the user named none) and path.</param>
     /// <param name="inputs">The files the command reads.</param>
     /// <exception cref="EinzelException">One of them is refused.</exception>
-    public static void CheckAll(IReadOnlyList<(string? Flag, string Path)> destinations, params string?[] inputs)
+    public static void CheckAll(IReadOnlyList<(string? Flag, string Path)> destinations, params string?[] inputs) =>
+        Checked(destinations, inputs);
+
+    // The checks, returning each destination as resolved, so a caller that goes on to write them
+    // follows each link once rather than again for every file.
+    private static string[] Checked(IReadOnlyList<(string? Flag, string Path)> destinations, string?[] inputs)
     {
         ArgumentNullException.ThrowIfNull(destinations);
+
+        var resolved = new string[destinations.Count];
 
         // Each destination resolved once and looked up, not compared with every other: a film is
         // hundreds of frames, and every comparison follows links on disk.
@@ -221,7 +228,8 @@ public static class ArtifactFiles
             Check(flag, path);
             CheckNotAnInput(flag, path, inputs);
 
-            var target = Path.TrimEndingDirectorySeparator(Resolved(path));
+            resolved[i] = Resolved(path);
+            var target = Path.TrimEndingDirectorySeparator(resolved[i]);
 
             if (seen.TryGetValue(target, out var j))
             {
@@ -234,6 +242,8 @@ public static class ArtifactFiles
 
             seen[target] = i;
         }
+
+        return resolved;
     }
 
     /// <summary>Writes several files: every one of them, or none, as far as a file system allows.</summary>
@@ -304,15 +314,16 @@ public static class ArtifactFiles
         ArgumentNullException.ThrowIfNull(destinations);
         ArgumentNullException.ThrowIfNull(write);
 
-        // Every destination refused before any is written, where all of them are known up front.
-        CheckAll(destinations, inputs);
+        // Every destination refused before any is written, where all of them are known up front -
+        // and checked once: each is staged as already resolved, not checked and followed again.
+        var resolved = Checked(destinations, inputs ?? []);
 
-        using var set = Begin(inputs);
+        using var set = Begin(inputs ?? []);
 
         for (var i = 0; i < destinations.Count; i++)
         {
             var index = i;
-            set.Stage(destinations[i].Flag, destinations[i].Path, stream => write(index, stream));
+            set.StageResolved(destinations[i].Flag, destinations[i].Path, resolved[i], stream => write(index, stream));
         }
 
         set.Commit();
@@ -388,14 +399,35 @@ public static class ArtifactFiles
             ArgumentNullException.ThrowIfNull(write);
             ObjectDisposedException.ThrowIf(_finished, this);
 
-            string? temporary = null;
+            string resolved;
 
             try
             {
                 Check(flag, path);
                 CheckNotAnInput(flag, path, _inputs);
+                resolved = Resolved(path);
+            }
+            catch
+            {
+                Abort();
+                throw;
+            }
 
-                var resolved = Path.TrimEndingDirectorySeparator(Resolved(path));
+            StageResolved(flag, path, resolved, write);
+        }
+
+        // Stages a destination the caller has already checked and resolved (WriteAll, after
+        // Checked): only what is particular to this set - a second file at the same place - and
+        // what checking cannot know ahead, a read-only file, is asked here.
+        internal void StageResolved(string? flag, string path, string full, Action<Stream> write)
+        {
+            ObjectDisposedException.ThrowIf(_finished, this);
+
+            string? temporary = null;
+
+            try
+            {
+                var resolved = Path.TrimEndingDirectorySeparator(full);
 
                 if (_seen.TryGetValue(resolved, out var j))
                 {
@@ -406,7 +438,7 @@ public static class ArtifactFiles
                         flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
                 }
 
-                var target = Destination(flag, path);
+                var target = Writable(flag, full);
                 var folder = Path.GetDirectoryName(target)!;
                 Create(folder, _created);
                 temporary = ShortName(folder, ".tmp");
@@ -455,6 +487,12 @@ public static class ArtifactFiles
             var keepBackups = count > 1;
             var at = 0;
 
+            // The file being replaced while File.Replace runs, and its backup: on Windows the
+            // replace is two moves, and one that fails after moving the original to the backup name
+            // (ERROR_UNABLE_TO_MOVE_REPLACEMENT_2) leaves no file at the target and the user's file
+            // under the backup name - not yet in placed, so the rollback never knew it was there.
+            (string Target, string Backup)? replacing = null;
+
             try
             {
                 for (at = 0; at < count; at++)
@@ -469,7 +507,10 @@ public static class ArtifactFiles
                         // Replaced in one step, the old file kept under a backup name until every
                         // other file is in place, so a later failure can put it back.
                         backup = ShortName(Path.GetDirectoryName(target)!, ".bak");
+                        replacing = (target, backup);
                         File.Replace(temporary, target, backup, ignoreMetadataErrors: true);
+                        Failing.Value?.Invoke("replaced", at);
+                        replacing = null;
                     }
                     else
                     {
@@ -482,6 +523,14 @@ public static class ArtifactFiles
             }
             catch (Exception failure)
             {
+                // A replace that failed part way: the original is under its backup name and the
+                // target is empty, so it goes back first. Where the target is still there the
+                // replace moved nothing, and the backup - if it exists - is not the only copy.
+                if (replacing is { } risk && File.Exists(risk.Backup) && !File.Exists(risk.Target))
+                {
+                    TryRestore(risk.Backup, risk.Target);
+                }
+
                 // None of them, then, whatever went wrong: newest first, each back as it was.
                 for (var i = placed.Count - 1; i >= 0; i--)
                 {
@@ -622,12 +671,11 @@ public static class ArtifactFiles
     /// </summary>
     internal static readonly AsyncLocal<Action<string, int>?> Failing = new();
 
-    // Where a destination's bytes actually go: the file a symbolic link names, followed to the
-    // end, or the path itself. An existing read-only file is refused here, before anything is
-    // written.
-    private static string Destination(string? flag, string path)
+    // A destination already resolved to where its bytes go - the file a symbolic link names,
+    // followed to the end, or the path itself - refused if it is an existing read-only file,
+    // before anything is written.
+    private static string Writable(string? flag, string full)
     {
-        var full = Resolved(path);
         var info = new FileInfo(full);
 
         if (info.Exists && info.IsReadOnly)

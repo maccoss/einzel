@@ -163,10 +163,11 @@ public sealed record VerbFlags(
             }
 
             // A flag that takes a value consumes the next word, unless that word is a flag - or
-            // the flag's value may be left off and the word is not one: `render --progress
-            // section m.json` is a bare --progress before the kind.
+            // the flag's value may be left off and the word is not a number: `render --progress
+            // section m.json` is a bare --progress before the kind. The parser's rule, so the two
+            // cannot read one line two ways.
             if (i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
-                && (!optional.Contains(name) || LooksLikeOptionalValue(args[i + 1])))
+                && (!optional.Contains(name) || IsOptionalValue(args[i + 1])))
             {
                 i++;
             }
@@ -212,24 +213,28 @@ public sealed record VerbFlags(
     /// next positional argument.
     /// </summary>
     /// <param name="word">The next word on the command line.</param>
-    /// <returns>True where it begins as a number does: a digit, a point before a digit, or a sign before either.</returns>
+    /// <returns>True only where the whole word is a finite number, read in the invariant culture.</returns>
     /// <remarks>
-    /// <c>--progress</c> is the only such flag, and its value is a number of seconds, where a
-    /// model or a sub-verb never begins with a digit. Read by its first characters, not parsed:
-    /// whether it IS a number is the flag reader's question, and <c>--progress 5s</c> is still
-    /// refused by it, by name. Without this a bare <c>--progress</c> before the model took the
-    /// model as its value and refused it as an interval.
+    /// <para>
+    /// <c>--progress</c> is the only such flag, and its value is a number of seconds. The whole
+    /// word, not its first characters: a guess from the first character took
+    /// <c>2026-lens.json</c> and <c>3d-trap.json</c> for intervals, and the machinery built to
+    /// recover from that guess - holding words, refusing lines as ambiguous - existed for one
+    /// flag. Read whole, a word is the value or a positional and never both, so nothing is
+    /// ambiguous: <c>--progress 5</c> is an interval of five seconds, as the docs and the shell's
+    /// journal spell it, and <c>--progress soon</c> is a bare --progress beside a stray 'soon'.
+    /// </para>
+    /// <para>
+    /// A value that is not a number is given explicitly, as <c>--progress=soon</c>, and refused
+    /// by the flag's reader by name.
+    /// </para>
     /// </remarks>
-    public static bool LooksLikeOptionalValue(string word)
+    public static bool IsOptionalValue(string word)
     {
         ArgumentNullException.ThrowIfNull(word);
 
-        var body = word.Length > 1 && word[0] is '+' or '-' ? word[1..] : word;
-
-        // A point only before a digit: ".5" is an interval, "./models/r.json" and "../m.json" are
-        // paths, and taking them as the interval refused the model as one.
-        return body.Length > 0
-            && (char.IsAsciiDigit(body[0]) || (body[0] == '.' && body.Length > 1 && char.IsAsciiDigit(body[1])));
+        return double.TryParse(word, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            && double.IsFinite(value);
     }
 
     private static VerbFlags Of(

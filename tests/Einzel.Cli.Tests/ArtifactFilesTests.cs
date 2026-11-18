@@ -159,6 +159,48 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A replace that fails after moving the original to its backup name leaves the target empty;
+    /// the original is put back, not left as a stray backup beside a refusal claiming all or none.
+    /// </summary>
+    /// <remarks>
+    /// On Windows File.Replace is two moves, and ERROR_UNABLE_TO_MOVE_REPLACEMENT_2 is the failure
+    /// between them. The target was added to what had been placed only after Replace returned, so
+    /// the rollback did not know it existed. Simulated here: the replace succeeds, the target is
+    /// then removed - the state that failure leaves - and the set fails.
+    /// </remarks>
+    [Fact]
+    public void AReplaceThatFailsHalfWayPutsTheOriginalBack()
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first.vti");
+        var second = Path.Combine(_root, "second.vti");
+        File.WriteAllBytes(first, [1]);
+        File.WriteAllBytes(second, [2]);
+
+        ArtifactFiles.Failing.Value = (phase, index) =>
+        {
+            if (phase == "replaced" && index == 1)
+            {
+                File.Delete(second);
+                throw new IOException("unable to move the replacement file to the file to be replaced");
+            }
+        };
+
+        try
+        {
+            Assert.Throws<EinzelException>(() => ArtifactFiles.WriteAll([(null, first, [8]), (null, second, [9])]));
+        }
+        finally
+        {
+            ArtifactFiles.Failing.Value = null;
+        }
+
+        Assert.Equal([1], File.ReadAllBytes(first));
+        Assert.Equal([2], File.ReadAllBytes(second));
+        Assert.Equal(["first.vti", "second.vti"], Directory.GetFiles(_root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
     /// A set staged one file at a time puts nothing in place until it is committed, and a set
     /// abandoned part way leaves nothing behind: no file, no staging file, no folder it made.
     /// </summary>
