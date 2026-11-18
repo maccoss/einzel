@@ -99,7 +99,16 @@ public sealed class StdoutTally : IDisposable
         }
     }
 
-    private static void Mark() => Current.Value?.MarkWritten();
+    // Every call on the writing flow, the innermost and each it is nested in: a nested call's
+    // output is the outer call's output too, and marking only the innermost let the outer write a
+    // second JSON document after it.
+    private static void Mark()
+    {
+        for (var tally = Current.Value; tally is not null; tally = tally._outer)
+        {
+            tally.MarkWritten();
+        }
+    }
 
     private void MarkWritten() => Volatile.Write(ref _written, true);
 

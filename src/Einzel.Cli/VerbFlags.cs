@@ -212,7 +212,7 @@ public sealed record VerbFlags(
     /// next positional argument.
     /// </summary>
     /// <param name="word">The next word on the command line.</param>
-    /// <returns>True where it begins as a number does: a digit, a point, or a sign before one.</returns>
+    /// <returns>True where it begins as a number does: a digit, a point before a digit, or a sign before either.</returns>
     /// <remarks>
     /// <c>--progress</c> is the only such flag, and its value is a number of seconds, where a
     /// model or a sub-verb never begins with a digit. Read by its first characters, not parsed:
@@ -226,7 +226,10 @@ public sealed record VerbFlags(
 
         var body = word.Length > 1 && word[0] is '+' or '-' ? word[1..] : word;
 
-        return body.Length > 0 && (char.IsAsciiDigit(body[0]) || body[0] == '.');
+        // A point only before a digit: ".5" is an interval, "./models/r.json" and "../m.json" are
+        // paths, and taking them as the interval refused the model as one.
+        return body.Length > 0
+            && (char.IsAsciiDigit(body[0]) || (body[0] == '.' && body.Length > 1 && char.IsAsciiDigit(body[1])));
     }
 
     private static VerbFlags Of(

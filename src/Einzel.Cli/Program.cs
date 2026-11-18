@@ -237,9 +237,14 @@ public static class Program
                 {
                     Code = ErrorCodes.SchemaInvalid,
                     Path = $"/args/--{flag}",
-                    Constraint = $"unknown flag --{flag} for {key}",
-                    Suggestion = $"the flags {key} reads are "
-                        + string.Join(", ", flags.Switches.Concat(flags.Values).Concat(flags.Optional).Concat(VerbFlags.Global).Order(StringComparer.Ordinal).Select(f => "--" + f)),
+                    Constraint = flag == "dry-run"
+                        ? $"unknown flag --dry-run for {key}: {key} has no --dry-run, and a dry run of it is not built"
+                        : $"unknown flag --{flag} for {key}",
+                    Suggestion = flag == "dry-run"
+                        ? $"to see what {key} would do without writing anything, 'einzel preview <model.json>' evaluates the model and 'einzel estimate <model.json>' states what it would cost; the flags {key} reads are "
+                            + string.Join(", ", flags.Switches.Concat(flags.Values).Concat(flags.Optional).Concat(VerbFlags.Global).Order(StringComparer.Ordinal).Select(f => "--" + f))
+                        : $"the flags {key} reads are "
+                            + string.Join(", ", flags.Switches.Concat(flags.Values).Concat(flags.Optional).Concat(VerbFlags.Global).Order(StringComparer.Ordinal).Select(f => "--" + f)),
                 };
                 break;
             }

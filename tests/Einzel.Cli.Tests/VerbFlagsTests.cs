@@ -288,6 +288,56 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Single(parsed.Positional);
     }
 
+    /// <summary>
+    /// A path beginning with a point is a path, not an interval: a leading point counts as a
+    /// number only before a digit.
+    /// </summary>
+    [Theory]
+    [InlineData("./models/r.json")]
+    [InlineData("../m.json")]
+    [InlineData(".hidden.json")]
+    public void APathStartingWithAPointIsNotAnInterval(string path)
+    {
+        var parsed = CommandLine.Parse(["run", "--progress", path]);
+
+        Assert.Equal([path], parsed.Positional);
+        Assert.Null(parsed.Value("progress"));
+        Assert.Equal("render section", VerbFlags.For(["render", "--progress", path, "section"])?.Key is var k && k == "render section" ? k : VerbFlags.For(["render", "--progress", ".5", "section", path])?.Key);
+        Assert.False(VerbFlags.LooksLikeOptionalValue(path));
+        Assert.True(VerbFlags.LooksLikeOptionalValue(".5"));
+        Assert.True(VerbFlags.LooksLikeOptionalValue("-.5"));
+    }
+
+    /// <summary>
+    /// A held word given to its flag after the line is read does not overwrite a later explicit
+    /// value: the last occurrence on the line is the value, and the occurrences are in line order.
+    /// </summary>
+    [Fact]
+    public void ALaterExplicitValueWinsOverAHeldWord()
+    {
+        var parsed = CommandLine.Parse(["run", "--progress", "m.json", "--progress", "10", "extra.json"]);
+
+        Assert.Equal("10", parsed.Value("progress"));
+        Assert.Equal(["m.json", "10"], parsed.Values("progress"));
+        Assert.Equal(["extra.json"], parsed.Positional);
+    }
+
+    /// <summary>
+    /// A verb with no --dry-run refuses it saying so and naming what to use instead: on main
+    /// `run --dry-run` was accepted and ignored, and the model ran and wrote its results.
+    /// </summary>
+    [Fact]
+    public void ADryRunAVerbDoesNotHavePointsAtPreviewAndEstimate()
+    {
+        var problem = Program.CommandLineProblem(["run", "m.json", "--dry-run"]);
+
+        Assert.NotNull(problem);
+        Assert.Equal("/args/--dry-run", problem!.Path);
+        Assert.Contains("no --dry-run", problem.Constraint, StringComparison.Ordinal);
+        Assert.Contains("einzel preview", problem.Suggestion, StringComparison.Ordinal);
+        Assert.Contains("einzel estimate", problem.Suggestion, StringComparison.Ordinal);
+    }
+
     /// <summary>The control: where the count fits, a bare --progress is bare and the word is the model.</summary>
     [Fact]
     public void AHeldWordThatFitsIsThePositional()

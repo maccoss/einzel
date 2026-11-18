@@ -3758,5 +3758,15 @@ Two findings from Stage 1 that bear on the spec:
   occurrence. An animation streams each frame to a short-named staging file beside it and commits
   by rename, holding one frame in memory; a failed set removes the folders it made.
 
+  **A nineteenth review.** A leading point counted as a number, so `run --progress ./models/r.json`
+  took the path as the interval; a point now counts only before a digit. An export's channel files
+  are one all-or-none set rather than a write each. `run --dry-run` was accepted and ignored on
+  main - the model ran - and is now refused naming `einzel preview` and `einzel estimate`, the
+  missing dry run recorded as an open item in `docs/cli.md`. A nested `StdoutTally` scope's writes
+  mark every enclosing call. A held word settled onto its flag no longer overwrites a later
+  explicit value. The mirror's face test and the point past the plane where its sign is read scale
+  with the inner field's resolution, as the shared-face check does. And a doubled `<inheritdoc/>`
+  is now caught by `NoCommentHasTwoSummaries`.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

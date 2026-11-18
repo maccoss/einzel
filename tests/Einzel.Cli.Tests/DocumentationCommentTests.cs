@@ -55,6 +55,7 @@ public sealed class DocumentationCommentTests(ITestOutputHelper output)
         {
             var lines = File.ReadAllLines(file);
             var summaries = 0;
+            var inherits = 0;
 
             for (var i = 0; i <= lines.Length; i++)
             {
@@ -63,8 +64,17 @@ public sealed class DocumentationCommentTests(ITestOutputHelper output)
                 if (line.StartsWith("///", StringComparison.Ordinal))
                 {
                     summaries += line.Contains("<summary>", StringComparison.Ordinal) ? 1 : 0;
+                    inherits += line.Contains("<inheritdoc", StringComparison.Ordinal) ? 1 : 0;
                     continue;
                 }
+
+                // An inherited comment said twice is the same orphan in another spelling.
+                if (inherits > 1)
+                {
+                    found.Add(Path.GetRelativePath(root, file).Replace('\\', '/') + "|" + line + $" (line {i + 1}, inheritdoc twice)");
+                }
+
+                inherits = 0;
 
                 if (summaries > 1)
                 {

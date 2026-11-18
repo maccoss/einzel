@@ -193,6 +193,9 @@ become a feature release without being renamed twice.
   `agents` flags are checked per sub-verb (`ext list --kind y` is refused). A destination that is
   the model itself, or another destination, is refused; a failed write restores the file that
   was there.
+- **`einzel run --progress ./models/r.json`** reads the path as the model, not the interval.
+  `einzel run --dry-run` is refused (it was ignored, and the model ran), pointing at `einzel
+  preview` and `einzel estimate`.
 - **A reflected solve's metal is where its field is, on both sides of the mirror**: an electrode
   declared past the plane no longer stops ions in the image's half. A surface's bound on what the
   field can be is taken at each node.

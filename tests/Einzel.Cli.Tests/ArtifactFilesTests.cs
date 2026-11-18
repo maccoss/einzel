@@ -116,6 +116,48 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_root, "made")), "a folder the failed write made was left behind");
     }
 
+    /// <summary>
+    /// An export of several channels is written all together or not at all: a failure part way
+    /// leaves the earlier export's channel files as they were, none mixed in.
+    /// </summary>
+    [Fact]
+    public void AnExportOfSeveralChannelsIsWrittenWholeOrNotAtAll()
+    {
+        var project = Path.Combine(_root, "project");
+        var model = Path.Combine(_root, "funnel.json");
+        Directory.CreateDirectory(_root);
+        Assert.Equal(0, Program.Main(["new", model, "--from-template", "ion-funnel"]));
+        Assert.Equal(0, Program.Main(["export", model, "--project", project]));
+
+        var files = Directory.GetFiles(Path.Combine(project, ".einzel"), "funnel*.vti").Order(StringComparer.Ordinal).ToArray();
+        Assert.True(files.Length > 1, $"{files.Length} channel file(s): the template should export several");
+
+        foreach (var file in files)
+        {
+            File.WriteAllText(file, "earlier export");
+        }
+
+        ArtifactFiles.Failing.Value = (phase, index) =>
+        {
+            if (phase == "place" && index == 1)
+            {
+                throw new IOException("failed on purpose");
+            }
+        };
+
+        try
+        {
+            Assert.Equal(1, Program.Main(["export", model, "--project", project]));
+        }
+        finally
+        {
+            ArtifactFiles.Failing.Value = null;
+        }
+
+        Assert.All(files, f => Assert.Equal("earlier export", File.ReadAllText(f)));
+        Assert.Equal(files, Directory.GetFiles(Path.Combine(project, ".einzel"), "funnel*.vti").Order(StringComparer.Ordinal).ToArray());
+    }
+
     /// <summary>A read-only destination is refused and left as it was.</summary>
     [Fact]
     public void AReadOnlyDestinationIsRefusedAndKept()

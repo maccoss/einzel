@@ -142,9 +142,15 @@ public sealed class CommandLine
             // then the words out of the positionals from the back, so no index moves under another.
             foreach (var held in given)
             {
-                var word = parsed._positional[held.Positional];
-                parsed._options[held.Name] = word;
-                parsed._all[held.Option] = (held.Name, word);
+                parsed._all[held.Option] = (held.Name, parsed._positional[held.Positional]);
+            }
+
+            // The value is the last occurrence on the line, as for any flag: a held word given to
+            // its flag after the line was read must not overwrite a later explicit value, as in
+            // `run --progress m.json --progress 10 extra.json`.
+            foreach (var name in given.Select(h => h.Name).Distinct(StringComparer.Ordinal))
+            {
+                parsed._options[name] = parsed._all.Last(o => string.Equals(o.Name, name, StringComparison.Ordinal)).Value;
             }
 
             for (var t = given.Count - 1; t >= 0; t--)

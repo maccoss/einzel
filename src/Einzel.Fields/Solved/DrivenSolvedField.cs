@@ -521,7 +521,6 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     }
 
     /// <inheritdoc/>
-    /// <inheritdoc/>
     public double CycleMeanPotentialAt(
         in Vec3 position, double fromSeconds, double periodSeconds, int samples)
     {

@@ -530,6 +530,11 @@ public static class ExportCommand
         var warnings = new List<ValidityWarning>();
         var solved = 0;
 
+        // Every channel file of every element, written together at the end - all of them or none.
+        // Written one at a time, a failure part way left new channel files beside stale ones from
+        // an earlier export, which read as one consistent set.
+        var pending = new List<(string Path, Func<string> Content)>();
+
         var solvedElements = model.Fields.Count(f => f.Solve is not null || f.Solve3D is not null);
 
         for (var index = 0; index < model.Fields.Count; index++)
@@ -603,7 +608,14 @@ public static class ExportCommand
                     ]);
             }
 
-            artifacts.AddRange(Write(element, project.Scratch, name, hash, project, dryRun, warnings));
+            artifacts.AddRange(Write(element, project.Scratch, name, hash, project, dryRun, warnings, pending));
+        }
+
+        if (!dryRun && pending.Count > 0)
+        {
+            ArtifactFiles.WriteAll(
+                [.. pending.Select(p => ((string?)null, p.Path))],
+                (index, stream) => stream.Write(ArtifactFiles.Utf8(pending[index].Content())));
         }
 
         if (solved == 0)
@@ -663,10 +675,10 @@ public static class ExportCommand
         Func<string, IReadOnlyList<string>, string> Write);
 
     /// <summary>
-    /// Refuses an unconverged element, then writes one file per channel with the element's
-    /// provenance and warnings in its header.
+    /// Refuses an unconverged element, then adds one file per channel to the export's set, with
+    /// the element's provenance and warnings in its header; the caller writes the set.
     /// </summary>
-    /// <returns>The paths written, or that would be under a dry run.</returns>
+    /// <returns>The paths the set will hold, or would under a dry run.</returns>
     private static List<string> Write(
         Element element,
         string directory,
@@ -674,7 +686,8 @@ public static class ExportCommand
         string hash,
         ProjectLayout project,
         bool dryRun,
-        List<ValidityWarning> warnings)
+        List<ValidityWarning> warnings,
+        List<(string Path, Func<string> Content)> pending)
     {
         var channels = element.Channels;
 
@@ -747,7 +760,8 @@ public static class ExportCommand
             // engine saying the numbers may not describe the document (GRD-3).
             provenance.AddRange(found.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
 
-            ArtifactFiles.WriteText(null, channelPath, channel.Write(array, provenance));
+            // Made when its staging file is written, one file's text at a time.
+            pending.Add((channelPath, () => channel.Write(array, provenance)));
         }
 
         return written;

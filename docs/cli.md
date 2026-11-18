@@ -971,10 +971,18 @@ nothing read. **No destination may be a file the command reads, or another desti
 `--out model.json` used to replace the model with its own picture. **And a write that fails part
 way puts back what was there**, where it used to delete it.
 
+**Open: `run` has no `--dry-run`.** The CLI contract (CLI-4) asks for `--dry-run` on every
+mutating command, and `run` writes `results/` and a manifest. Before the flag registry `einzel run
+m.json --dry-run` was accepted and ignored - the model ran and wrote its results - so the gap is
+older than the registry; the registry now refuses the flag, saying `run` has no dry run and naming
+`einzel preview` (evaluates without writing) and `einzel estimate` (states the cost). Building a
+dry run of `run` is left for its own change.
+
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
 unless turned off, so the flag alone is the default interval, as it always was. **A bare
 `--progress` before a positional is still bare**: the next word is its value only if it begins as a
-number does, or if the verb has more positionals than it takes, in which case every word held
+number does (a digit, or a point before one: `./models/r.json` is a path), or if the verb has
+more positionals than it takes, in which case every word held
 that way is the flag's and is refused by its reader by name - so `einzel run --progress
 models/reflectron.json` runs at the default interval, while `einzel run --progress soon m.json`,
 `einzel run m.json --progress soon` and `einzel run --progress m.json extra.json` are all refused at

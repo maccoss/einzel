@@ -405,4 +405,33 @@ public sealed class MirrorPlaneTests
             new Edged(Plane + 0.002).SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0)),
             phantom.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.0, 0.0)));
     }
+    // A declared half at kilometre scale whose box edge is the plane to a rounding: its measure on
+    // the plane is 1e-10 m, which is a face at that scale and was not one by a fixed 1e-12 m.
+    private sealed class FarEdge : IElectrostaticField
+    {
+        public const double Mirror = 1000.0;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) => (Mirror + 1e-10) - position.X;
+    }
+
+    /// <summary>
+    /// The plane's face test and the point past it where the sign is read scale with the geometry:
+    /// a face on the plane to a rounding at kilometre scale is a face, so the image declares the
+    /// plane as the surface it is.
+    /// </summary>
+    [Fact]
+    public void TheFaceTestScalesWithTheGeometry()
+    {
+        var image = new ReflectedField(new FarEdge(), FarEdge.Mirror, imageAbove: true);
+
+        var below = image.SignedDistanceToDiscontinuity(new Vec3(FarEdge.Mirror - 1.0, 0.0, 0.0));
+        var above = image.SignedDistanceToDiscontinuity(new Vec3(FarEdge.Mirror + 1.0, 0.0, 0.0));
+
+        Assert.Equal(1.0, Math.Abs(below), 6);
+        Assert.NotEqual(Math.Sign(below), Math.Sign(above));
+    }
 }

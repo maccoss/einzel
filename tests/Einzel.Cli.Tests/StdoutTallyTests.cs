@@ -103,6 +103,34 @@ public sealed class StdoutTallyTests
         }
     }
 
+    /// <summary>
+    /// A nested call's output is the enclosing call's output too: both are marked, so the outer
+    /// does not add a second document after it.
+    /// </summary>
+    [Fact]
+    public void ANestedCallsWritesMarkTheEnclosingCall()
+    {
+        var original = Console.Out;
+        Console.SetOut(new StringWriter());
+
+        try
+        {
+            using var outer = StdoutTally.Enter();
+
+            using (var inner = StdoutTally.Enter())
+            {
+                Console.Out.Write("inner's document");
+                Assert.True(inner.Written);
+            }
+
+            Assert.True(outer.Written, "the enclosing call did not see its nested call's output");
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+    }
+
     /// <summary>A call that writes nothing is not written, and one that writes is.</summary>
     [Fact]
     public void ACallKnowsWhetherItWrote()
