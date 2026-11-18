@@ -30,6 +30,8 @@ namespace Einzel.Cli.Tests;
 /// <item><c>mixture</c> and <c>mixture-charged</c> - two species, and their shared self-field.</item>
 /// <item><c>ramped</c> - a sequence whose second phase ramps the wall's potential, so the
 /// operator is re-assembled as it goes, through the sequenced path.</item>
+/// <item><c>clear</c> - the bore with its density grid inside the wall, on the same nodes: no
+/// electrode claims a node, so the conductors' map is not kept.</item>
 /// <item><c>entered</c> - a trajectory model whose sequence flies a small cloud briefly and then
 /// enters the diffusive description, converting it: the density's working set on a model
 /// whose own mode is not diffusive. The cloud is the same size on both grids, so what the
@@ -106,11 +108,21 @@ internal static class RunMemoryCases
                 document["fields"]![1]!["solve"]!["electrodes"]![0]!["potential"] =
                     JsonNode.Parse("""{ "expression": "wallVolts", "unit": "V" }""");
 
+                // Short, because every ramped step re-assembles the operator and a measuring child
+                // has one core: at 2 + 4 us the 256-interval build took eight of its ten minutes in
+                // a Debug child and ran out of them under load. What is read is the working set,
+                // which is whole after one re-assembly; the test asks for a hundred.
                 document["sequence"] = JsonNode.Parse("""
-                    [ { "name": "hold", "duration": { "value": 2, "unit": "us" } },
-                      { "name": "ramp", "duration": { "value": 4, "unit": "us" },
+                    [ { "name": "hold", "duration": { "value": 1, "unit": "us" } },
+                      { "name": "ramp", "duration": { "value": 2, "unit": "us" },
                         "ramp": { "wallVolts": { "value": 5.0, "unit": "V" } } } ]
                     """);
+                break;
+
+            case "clear" when geometry == "bore":
+                // The density grid inside the bore, clear of the wall, on the same nodes: the run
+                // builds the conductors' map, finds no conductor in it, and lets it go.
+                document["transport"]!["densityGrid"]!["maxY"] = JsonNode.Parse("""{ "value": 2.5, "unit": "mm" }""");
                 break;
 
             case "entered" when geometry == "tube":

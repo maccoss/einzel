@@ -3929,3 +3929,22 @@ Two findings from Stage 1 that bear on the spec:
   a lock file every test process sees - lets one measuring child run at a time across both
   measuring assemblies, and none while the energy-member cost test or the runaway-timeout test is
   timing.
+
+  **A fifteenth review, and the instant the diffusive drift limit was read at.** The drift limit
+  was sampled at a list of instants, and for a field that is staged but not driven every one of
+  them read the field at zero: only the cycle average of a driven field ever saw the instant.
+  It now reads the instrument at each instant by the run's own shift, at the diffusive phases'
+  own starts and ends - an extraction flown as trajectories is no longer read, before or after
+  the hold. A hold beside a 2 MV/m extraction is estimated at **68 steps, the 68 the run takes**,
+  in either order, where reading the extraction gave 9,600. A phase whose pilot fails is charged
+  at the dearest rate measured, and if none was measured the cost is reported unknown and the
+  gate refuses rather than billing the trajectories nothing; the pilots share one coarse solve;
+  phases are chosen by index; a calibrated study over a sequenced model re-flies its trajectory
+  phases phase by phase across its range. The conductor map is billed only where an electrode
+  claims a node of the density grid, the test the run keeps it by. `--snapshots 0` is accepted
+  for a study, and every refusal of the flag is an AGT-3 error at `/snapshots`, JSON under
+  `--json`. A non-finite density with no known producing phase names none.
+  The ramped memory case is shorter (1 + 2 us, from 2 + 4): on the one core a measuring child
+  now has, its 256-interval build took eight of its ten minutes in a Debug child and ran out of
+  them under load. Its working set is whole after one re-assembly and it still makes several
+  hundred; the 256 child now takes 262 s on core 0, with 169 s of that processor time.

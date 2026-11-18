@@ -60,6 +60,13 @@ public sealed class SequencedNotFiniteTests(ITestOutputHelper output)
         Assert.DoesNotContain("densityStep", located.Suggestion, StringComparison.Ordinal);
         Assert.Contains("transport.densityStep.gain", implicitly.Suggestion, StringComparison.Ordinal);
         Assert.Contains("64x", implicitly.Suggestion, StringComparison.Ordinal);
+
+        // No producing phase known: located at the timeline, naming none.
+        var unknown = SequencedRun.NotFiniteAtBoundary(refused.Error, "/sequence", null, null, implicitGain: null);
+
+        Assert.Equal("/sequence", unknown.Path);
+        Assert.Contains("the diffusive phase before this boundary", unknown.Suggestion, StringComparison.Ordinal);
+        Assert.DoesNotContain("'trap'", unknown.Suggestion, StringComparison.Ordinal);
     }
 }
 

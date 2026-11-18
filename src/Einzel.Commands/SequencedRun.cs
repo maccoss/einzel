@@ -62,6 +62,10 @@ namespace Einzel.Commands;
 /// different densities, and one number for the run would be the larger of the two with
 /// nothing saying which phase it belonged to.
 /// </param>
+/// <param name="DensitySteps">
+/// How many steps a diffusive phase took the density through, or <c>null</c> for a trajectory
+/// phase, which steps none - what <c>einzel estimate</c> predicts, phase by phase.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>Every trajectory is accounted for within a phase</b>, which ACC-5 requires and
@@ -94,7 +98,8 @@ public sealed record PhaseOutcome(
     int Assemblies = 0,
     int WellRebuilds = 0,
     int? SelfFieldSolves = null,
-    double? PeakSelfPotentialVolts = null);
+    double? PeakSelfPotentialVolts = null,
+    int? DensitySteps = null);
 
 /// <summary>What a run across a changing transport mode did.</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -295,8 +300,10 @@ public static class SequencedRun
         PhaseState[]? states = null;
         DensityField? density = null;
 
-        // Which phase the density was last stepped by, for a refusal of it to point at.
-        var producedBy = 0;
+        // Which phase the density was last stepped by, for a refusal of it to point at - or null
+        // where nothing stepped it, which a refusal then says rather than naming a phase that
+        // did not produce it.
+        int? producedBy = null;
 
         var started = 0.0;
 
@@ -363,7 +370,7 @@ public static class SequencedRun
                                 refused.Error,
                                 model.TimelinePath,
                                 producedBy,
-                                model.Phases[producedBy].Name,
+                                producedBy is { } by ? model.Phases[by].Name : null,
                                 model.DensityStep.IsImplicit ? model.DensityStep.Gain : null),
                             refused);
                     }
@@ -528,7 +535,8 @@ public static class SequencedRun
                     // is the question, and reading it off a value of zero would answer a
                     // different one.
                     model.ModelsMeanField ? diffused.SelfFieldSolves : null,
-                    model.ModelsMeanField ? diffused.PeakSelfPotentialVolts : null));
+                    model.ModelsMeanField ? diffused.PeakSelfPotentialVolts : null,
+                    diffused.Steps));
             }
 
             // A FINISHED PHASE IS A MEASUREMENT. Handed over whole, so a run killed in
@@ -848,8 +856,12 @@ public static class SequencedRun
     /// </remarks>
     /// <param name="refused">The conversion's unlocated refusal.</param>
     /// <param name="timeline">Where the document declares the timeline (<see cref="CompiledModel.TimelinePath"/>).</param>
-    /// <param name="index">The index there of the phase that produced the density.</param>
-    /// <param name="phase">That phase's name, for the sentence.</param>
+    /// <param name="index">
+    /// The index there of the phase that produced the density, or null where no phase is known to
+    /// have: the refusal is then located at the timeline and names no phase, rather than one that
+    /// did not produce it.
+    /// </param>
+    /// <param name="phase">That phase's name, for the sentence, or null with the index.</param>
     /// <param name="implicitGain">
     /// The gain the density is stepped at past its stability limit, where it steps implicitly,
     /// or null where it steps explicitly - at the limit itself.
@@ -861,20 +873,26 @@ public static class SequencedRun
     /// that limit times the gain.
     /// </remarks>
     internal static EinzelError NotFiniteAtBoundary(
-        EinzelError refused, string timeline, int index, string phase, double? implicitGain) =>
-        refused.At(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{timeline}/{index}")) with
+        EinzelError refused, string timeline, int? index, string? phase, double? implicitGain)
+    {
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        var path = index is { } at ? string.Create(invariant, $"{timeline}/{at}") : timeline;
+        var which = phase is null ? "the diffusive phase before this boundary" : $"the diffusive phase '{phase}'";
+
+        return refused.At(path) with
         {
             Suggestion = implicitGain is { } gain
                 ? string.Create(
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    $"the diffusive phase '{phase}' did not stay finite. It steps implicitly at {gain:G4}x its "
+                    invariant,
+                    $"{which} did not stay finite. It steps implicitly at {gain:G4}x its "
                     + $"stability limit: lower transport.densityStep.gain, or set its scheme to \"explicit\", "
                     + $"which steps at the limit itself; then check the field and the mobility near that cell")
-                : $"the diffusive phase '{phase}' did not stay finite although it steps explicitly, at its "
+                : $"{which} did not stay finite although it steps explicitly, at its "
                     + "stability limit, which nothing in the document lengthens: check the field, the mobility "
                     + "and the gas near that cell, which set that limit and the drift, and transport.densityGrid, "
                     + "whose spacing the limit is taken over",
         };
+    }
 
     /// <summary>The density a diffusive leg starts from, where the packet is not one yet.</summary>
     /// <remarks>

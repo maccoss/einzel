@@ -194,6 +194,87 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A diffusive hold before an extraction is stepped at the hold's own stability limit: the
+    /// estimate's step count for it is the run's, however hard the extraction pushes.
+    /// </summary>
+    [Fact]
+    public void AHoldIsSteppedAtItsOwnLimitNotTheExtractions()
+    {
+        // Both orders: a hold before the extraction, where reading every boundary reached the
+        // extraction's field; and one after it, where reading the bare field at zero did.
+        foreach (var (first, second, hold) in new[] { ("hold", "extract", 0), ("extract", "hold", 1) })
+        {
+            var path = Model("tube-plain", document =>
+            {
+                document["parameters"] = JsonNode.Parse("""{ "pushField": { "value": 0.0, "unit": "V/m" } }""");
+                document["fields"]![0] = JsonNode.Parse("""{ "type": "uniform", "field": { "expression": [ "pushField", "0", "0" ] } }""");
+                document["sequence"] = JsonNode.Parse(
+                    "[ " + Phase(first) + ", " + Phase(second) + " ]");
+            });
+
+            var estimate = EstimateCommand.Execute(path, calibrate: false);
+            var estimated = int.Parse(
+                System.Text.RegularExpressions.Regex.Match(estimate.Basis, @"about ([\d,]+) steps over").Groups[1].Value.Replace(",", ""),
+                System.Globalization.CultureInfo.InvariantCulture);
+
+            var model = Core.Model.ModelValidator.Validate(Io.ModelJson.Parse(File.ReadAllText(path)), null, Path.GetDirectoryName(path)).Model!;
+            var (field, _) = Fields.FieldAssembly.BuildReported(model);
+            var run = SequencedRun.Execute(model, field, Io.GasFlowImport.Resolve(model.Gas, Path.GetDirectoryName(path)!));
+            var stepped = run.Phases[hold].DensitySteps;
+
+            output.WriteLine($"{first} then {second}: estimated {estimated} steps for the hold; the run took {stepped}");
+
+            Assert.Equal(stepped, estimated);
+        }
+
+        static string Phase(string name) => name == "hold"
+            ? """{ "name": "hold", "duration": { "value": 3, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } }"""
+            : """{ "name": "extract", "duration": { "value": 3, "unit": "us" }, "mode": "trajectory", "set": { "pushField": { "value": 2000000, "unit": "V/m" } } }""";
+    }
+
+    /// <summary>
+    /// A phase whose pilot fails is not billed nothing: it is charged at the dearest rate another
+    /// pilot measured, and where none measured anything the cost is reported as unknown.
+    /// </summary>
+    [Fact]
+    public void AFailedPilotIsNeverBilledNothing()
+    {
+        var phases = new[]
+        {
+            new Core.Model.CompiledPhase("good", 2e-6, "trajectory", 2e-6, []),
+            new Core.Model.CompiledPhase("bad", 3e-6, "trajectory", 5e-6, []),
+        };
+
+        var some = EstimateCommand.PhasePilots(
+            phases, phase => phase.Name == "good" ? (4.0, "flown", true) : (0.0, "not measured", false));
+
+        // 4 s over 2 us is 2 s a microsecond, so the failed 3 us is charged 6 s.
+        Assert.True(some.Measured);
+        Assert.Equal(10.0, some.Seconds, 9);
+
+        var none = EstimateCommand.PhasePilots(phases, _ => (0.0, "not measured", false));
+
+        output.WriteLine(none.How);
+
+        Assert.False(none.Measured);
+        Assert.Contains("unknown, not zero", none.How, StringComparison.Ordinal);
+    }
+
+    /// <summary>Two phases declared alike are two phases, and both are piloted.</summary>
+    [Fact]
+    public void PhasesDeclaredAlikeAreEachPiloted()
+    {
+        IReadOnlyList<Core.Model.CompiledRamp> none = [];
+        var alike = new Core.Model.CompiledPhase("same", 1e-6, "trajectory", 1e-6, none);
+        var flown = 0;
+
+        var cost = EstimateCommand.PhasePilots([alike, alike], _ => { flown++; return (1.0, "flown", true); });
+
+        Assert.Equal(2, flown);
+        Assert.Equal(2.0, cost.Seconds, 9);
+    }
+
+    /// <summary>
     /// A study over a trajectory model that enters a diffusive phase is one whole sequenced run an
     /// evaluation, whose flights are already in the model's figure and are not added again.
     /// </summary>
@@ -214,5 +295,28 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
 
         Assert.Contains("is one whole run of the model", costed.Basis, StringComparison.Ordinal);
         Assert.Equal(0.0, costed.TrajectorySeconds);
+    }
+
+    /// <summary>
+    /// Calibrated, a study over a sequenced model re-flies its trajectory phases phase by phase,
+    /// rather than flying from zero over the whole flight or leaving them at the declared values.
+    /// </summary>
+    [Fact]
+    public void ACalibratedStudyOverASequencedModelPilotsItsPhases()
+    {
+        var model = Model("tube-entered", document =>
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }"""));
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "transitTime", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        var costed = EstimateCommand.ForStudy(study, calibrate: true);
+
+        output.WriteLine(costed.Basis);
+
+        Assert.Contains("trajectory phases piloted phase by phase", costed.Basis, StringComparison.Ordinal);
+        Assert.True(costed.TrajectorySeconds > 0.0, "the study's trajectory phases were not flown");
     }
 }

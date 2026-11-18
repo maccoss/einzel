@@ -80,6 +80,7 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
     [InlineData("tube-mixture-charged")]
     [InlineData("bore-ramped")]
     [InlineData("tube-entered")]
+    [InlineData("bore-clear")]
     public void ADiffusiveRunHoldsWhatTheEstimateCharges(string kind)
     {
         var small = runs.Optimized(output, kind, Small);
@@ -208,6 +209,28 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
         output.WriteLine(string.Join("; ", measured.Select(r => $"{r.Least:N0} to {r.Bound:N0}, {r.Retained:N0} left")));
 
         MemoryVerdict.Repeatable($"the charged {geometry} run", measured);
+    }
+
+    /// <summary>
+    /// The conductors' map is billed by the test the run keeps it by: where an electrode claims a
+    /// node of the density grid, and not where the grid lies clear of every conductor.
+    /// </summary>
+    /// <remarks>
+    /// The bore and the clear bore share their solve and their nodes and differ only in whether
+    /// the wall reaches the density grid, so the estimate's difference is the map alone - four
+    /// bytes a node, against nothing when the map was billed for any electrode anywhere. What
+    /// the clear bore holds is read in <see cref="ADiffusiveRunHoldsWhatTheEstimateCharges"/>;
+    /// a four-byte term is narrower than a difference of two readings can bound to two per cent.
+    /// </remarks>
+    [Fact]
+    public void TheConductorMapIsBilledOnlyWhereAnElectrodeClaimsANode()
+    {
+        var nodes = (Large + 1.0) * (Large + 1.0);
+        var map = (Stated("bore-plain", Large) - Stated("bore-clear", Large)) / nodes;
+
+        output.WriteLine($"the map billed at {map:F4} bytes a node");
+
+        Assert.Equal(sizeof(int), map, 6);
     }
 
     /// <summary>What the estimate says a run holds, in bytes: every term, the solved field's included.</summary>

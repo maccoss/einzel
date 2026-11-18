@@ -119,14 +119,16 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
     {
         var model = Model("tube-plain");
 
-        var (exit, _, stderr) = followedByAnotherFlag
+        // Followed by --json, the refusal is the JSON on stdout; alone, prose on stderr.
+        var (exit, stdout, stderr) = followedByAnotherFlag
             ? Run("estimate", model, "--no-calibrate", "--snapshots", "--json")
             : Run("estimate", model, "--no-calibrate", "--snapshots");
+        var said = followedByAnotherFlag ? stdout : stderr;
 
-        output.WriteLine($"exit {exit}: {stderr.Trim()}");
+        output.WriteLine($"exit {exit}: {said.Trim()}");
 
         Assert.Equal(1, exit);
-        Assert.Contains("--snapshots needs a whole number", stderr, StringComparison.Ordinal);
+        Assert.Contains("--snapshots takes a whole number", said, StringComparison.Ordinal);
     }
 
     /// <summary>A mixture's run records no instants, so recorded instants are refused for it.</summary>
@@ -166,6 +168,58 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
 
         Assert.Equal(1, exit);
         Assert.Contains("a study records none", stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Under <c>--json</c> every refusal of <c>--snapshots</c> is an AGT-3 error on stdout, located at
+    /// the flag - the CLI's own and the estimate's alike.
+    /// </summary>
+    [Theory]
+    [InlineData("three", "takes a whole number")]
+    [InlineData("3", "no diffusive mode")]
+    public void ARefusalOfSnapshotsIsJsonUnderJson(string instants, string says)
+    {
+        var model = Model("tube-plain");
+        var document = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(model))!;
+
+        document["transport"]!["mode"] = "trajectory";
+        File.WriteAllText(model, document.ToJsonString());
+
+        var (exit, stdout, _) = Run("estimate", model, "--no-calibrate", "--snapshots", instants, "--json");
+
+        output.WriteLine($"exit {exit}: {stdout.Trim()}");
+
+        Assert.Equal(1, exit);
+
+        var error = System.Text.Json.Nodes.JsonNode.Parse(stdout)!["errors"]![0]!;
+
+        Assert.Equal("/snapshots", error["path"]!.GetValue<string>());
+        Assert.Contains(says, error["constraint"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    /// <summary>A study asked for no recorded instants is asked for what a study records, and runs.</summary>
+    [Fact]
+    public void AStudyAskedForNoInstantsIsEstimated()
+    {
+        var model = Model("tube-plain");
+        var document = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(model))!;
+
+        document["parameters"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+        File.WriteAllText(model, document.ToJsonString());
+
+        var study = Path.Combine(_root, "study.json");
+
+        File.WriteAllText(study, $$"""
+            { "schemaVersion": "0.1", "name": "zero", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "transitTime", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        var (exit, _, stderr) = Run("estimate", study, "--no-calibrate", "--snapshots", "0");
+
+        output.WriteLine($"exit {exit}: {stderr.Trim()}");
+
+        Assert.NotEqual(1, exit);
     }
 
     private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)

@@ -702,6 +702,36 @@ public static class DiffusionRun
     }
 
     /// <summary>
+    /// Whether any electrode claims a node of the density grid - which is whether a run keeps the
+    /// map of which conductor owns each node (<see cref="Absorb"/> keeps it exactly then).
+    /// </summary>
+    /// <remarks>
+    /// The estimate asks this rather than whether a solve declares an electrode at all: a grid
+    /// that lies clear of every conductor builds the map, finds nothing in it, and lets it go.
+    /// </remarks>
+    internal static bool AnyElectrodeClaims(CompiledModel model, Grid2D grid)
+    {
+        foreach (var element in model.Fields)
+        {
+            foreach (var electrode in element.Solve?.Electrodes ?? [])
+            {
+                for (var j = 0; j < grid.CountY; j++)
+                {
+                    for (var i = 0; i < grid.CountX; i++)
+                    {
+                        if (electrode.Contains(grid.X(i), grid.Y(j)))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// The conductors, as cells that keep absorbing, plus whatever the seed already
     /// had inside them.
     /// </summary>
