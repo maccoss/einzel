@@ -45,9 +45,12 @@ public static class Program
         void Refuse(string code, string constraint, string? suggestion = null) =>
             WriteRefusal(json, [new EinzelError { Code = code, Path = "/", Constraint = constraint, Suggestion = suggestion }]);
 
+        // Kept outside the try, so a refusal raised later can say where a word stood on the line.
+        CommandLine? options = null;
+
         try
         {
-            var options = args is { Length: > 0 } ? CommandLine.Parse(args) : null;
+            options = args is { Length: > 0 } ? CommandLine.Parse(args) : null;
             json = options?.Has("json") ?? json;
 
             return Dispatch(args!, options);
@@ -82,8 +85,13 @@ public static class Program
         }
         catch (FileNotFoundException failure)
         {
-            Console.Error.WriteLine(failure.Message);
-            Refuse(ErrorCodes.SchemaInvalid, failure.Message, "check the path; it is read relative to the directory the command is run from");
+            // A file that is not there because a word meant as --progress's value was read as the
+            // model - `run --progress 5s` - says so, rather than only that 5s does not exist.
+            var note = options is null ? null : BareFollowerNote(options, failure.FileName);
+            var message = note is null ? failure.Message : $"{failure.Message.TrimEnd('.')}; {note}";
+
+            Console.Error.WriteLine(message);
+            Refuse(ErrorCodes.SchemaInvalid, message, "check the path; it is read relative to the directory the command is run from");
             return (int)ExitCode.ValidationFailure;
         }
         catch (DirectoryNotFoundException failure)
@@ -295,11 +303,17 @@ public static class Program
 
         if (refusal is null && options.Positional.Count > flags.Positionals)
         {
+            // Where a word read as an argument followed a bare flag whose value may be left off,
+            // the refusal says so: `run --progress 5s m.json` blamed m.json alone, where the word
+            // to fix is 5s. Nothing is reassigned - the line is refused either way.
+            var note = BareFollowerNote(options);
+
             refusal = new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
                 Path = $"/args/{flags.Positionals}",
-                Constraint = $"{key} was given {string.Join(", ", options.Positional.Skip(flags.Positionals).Select(p => $"'{p}'"))}, which it does not take",
+                Constraint = $"{key} was given {string.Join(", ", options.Positional.Skip(flags.Positionals).Select(p => $"'{p}'"))}, which it does not take"
+                    + (note is null ? string.Empty : $"; {note}"),
                 Suggestion = PositionalSuggestion(key, flags),
             };
         }
@@ -318,6 +332,42 @@ public static class Program
     /// its own flags that take a value.
     /// </remarks>
     private static readonly string[] FileFlags = ["out", "csv", "input"];
+
+    /// <summary>
+    /// What a refusal says about words read as arguments because they followed a bare flag whose
+    /// value may be left off and did not parse as a number; null where there were none.
+    /// </summary>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="missing">
+    /// A file that was not found: only a word naming it is mentioned. Null mentions every such word.
+    /// </param>
+    /// <returns>The sentence, or null.</returns>
+    internal static string? BareFollowerNote(CommandLine options, string? missing = null)
+    {
+        var words = options.BareFollowers
+            .Where(f => missing is null || SamePath(f.Word, missing))
+            .Select(f =>
+                $"'{f.Word}' followed a bare --{f.Flag} and is not a number, so it was read as an argument; "
+                + $"--{f.Flag}'s value must be a number, written --{f.Flag}=<{(f.Flag == "progress" ? "seconds" : "value")}> or --{f.Flag} <number>")
+            .ToList();
+
+        return words.Count == 0 ? null : string.Join("; ", words);
+
+        static bool SamePath(string word, string missing)
+        {
+            try
+            {
+                return string.Equals(
+                    Path.GetFullPath(word),
+                    Path.GetFullPath(missing),
+                    OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            }
+            catch (Exception failure) when (failure is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return false;
+            }
+        }
+    }
 
     // Flag names as a refusal lists them: sorted, each with its dashes.
     private static string Listed(IEnumerable<string> names) =>
@@ -1387,14 +1437,14 @@ public static class Program
     /// One number as a command line writes it: the invariant culture, and finite.
     /// </summary>
     /// <remarks>
-    /// The only place this file parses a real number, and <see cref="TryWhole"/> the only place
-    /// it parses a whole one (<c>FlagValuesAreReadByTheReadersTests</c> holds it to that): a
+    /// Through <see cref="CommandNumber.Parses(string, out double)"/>, the one rule for what parses
+    /// as a number, then finite; <see cref="TryWhole"/> is the only place this file parses a whole one (<c>FlagValuesAreReadByTheReadersTests</c> holds it to that): a
     /// <c>Parse</c> beside them throws a typo through to the handler for defects in the engine,
     /// exit 6, and a second <c>TryParse</c> is a second rule for what a number looks like.
     /// "NaN" and "Infinity" parse and are no measurement, so they are refused with the typos.
     /// </remarks>
     private static bool TryNumber(string text, out double value) =>
-        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && double.IsFinite(value);
+        CommandNumber.Parses(text, out value) && double.IsFinite(value);
 
     /// <summary>
     /// One whole number as a command line writes it: digits and nothing else, within a range.

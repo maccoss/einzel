@@ -3804,5 +3804,17 @@ Two findings from Stage 1 that bear on the spec:
   depth stores its true depth and biases only the test. And `run`'s missing `--dry-run` is now
   marked Partial against CLI-4 in `SPEC.md`, where the register still said Met.
 
+  **A twenty-third review.** The whole-word rule asked for a finite number, so `--progress 1e400`
+  opened a model called 1e400; one function now decides what parses as a number (`CommandNumber`),
+  overflow and NaN included, for the parser, the sub-verb search and the reader, and the reader
+  alone asks for finite. A word that did not parse and was read as an argument after a bare
+  `--progress` is named when the line then fails - `run --progress 5s m.json` and `run --progress
+  5s` both say '5s' followed a bare --progress and how to write the value. A replace is registered
+  with its backup the moment it returns, and an original that cannot be put back is named in the
+  refusal with where it now is. `ReflectedField` has no public constructor taking a side; main's
+  two-argument one stays, obsolete. The declared metal is gated through a typed overload, with no
+  cast. The duplicate-destination check runs once per path, and why links are followed when a set
+  is checked rather than when each file is staged is written down.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

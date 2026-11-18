@@ -33,17 +33,18 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
         _reflection = reflection ?? throw new ArgumentNullException(nameof(reflection));
     }
 
-    /// <summary>The image of a declared half through a plane, on a side given directly.</summary>
+    /// <summary>The image of a declared half through a plane, answering everywhere.</summary>
     /// <param name="inner">The declared half.</param>
     /// <param name="planeX">The mirror plane, as an x coordinate.</param>
-    /// <param name="imageAbove">
-    /// Which side of the plane the image lies on: true where the declared half is below the plane
-    /// (the usual <c>reflectAboutX</c> at a solve's <c>maxX</c>), false where it is above, and null
-    /// where the declared half has no edge on the plane - it runs past it, or fills all space - so
-    /// the two genuinely overlap and the image answers everywhere, the plane included.
-    /// </param>
-    public ReflectedField(IElectrostaticField inner, double planeX, bool? imageAbove = null)
-        : this(inner, new Reflection(planeX, imageAbove))
+    /// <remarks>
+    /// The constructor <c>main</c> had, kept so the type does not lose it: an image answering on
+    /// both sides of the plane, which is the overlapping sum. A side is not taken here - it is the
+    /// reflection's to decide from the declared half's box (<see cref="Reflection.Of"/>), and a
+    /// constructor taking one let a caller give a side the rule would not.
+    /// </remarks>
+    [Obsolete("Build the image through a Reflection - Reflection.Of(plane, minX, maxX).Image(declared) - which decides the side from the declared half's box.")]
+    public ReflectedField(IElectrostaticField inner, double planeX)
+        : this(inner, new Reflection(planeX, null))
     {
     }
 

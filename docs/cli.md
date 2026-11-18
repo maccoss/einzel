@@ -998,13 +998,19 @@ dry run of `run` is left for its own change.
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
 unless turned off, so the flag alone is the default interval, as it always was. **A bare
 `--progress` before a positional is still bare**: the next word is its value only if **the whole
-word is a finite number** (invariant culture), and otherwise it is an ordinary positional. So
+word parses as a number** (`CommandNumber.Parses`, invariant culture - an overflow such as `1e400`,
+and `NaN`, included, so the reader refuses them as intervals rather than a model called 1e400 being
+opened), and otherwise it is an ordinary positional. Where such a word then makes the line fail -
+too many arguments, or a model that is not there (`run --progress 5s`) - the refusal names it: it
+followed a bare `--progress`, and the value must be written `--progress=<seconds>` or `--progress
+<number>`. That is a message, not a reassignment. So
 `--progress 5` is a five-second interval, as the shell's journal spells it, while `einzel run
 --progress models/reflectron.json`, `--progress 2026-lens.json`, `--progress 3d-trap.json` and
 `--progress ./models/r.json` are the default interval and a model, and `einzel run m.json --progress
 often` is the default interval, a model and a stray 'often', refused as an argument run does not take.
 A value that is not a number is given as `--progress=often` and refused by the flag's reader by name.
-No word is ever both, so nothing is ambiguous: the first-character guess this replaced read
+One function decides what parses as a number, for the parser, `VerbFlags.SubVerb` and the reader,
+which then asks for finite. No word is ever both, so nothing is ambiguous: the first-character guess this replaced read
 `2026-lens.json` as an interval, and three rounds of machinery - words held, settled, then lines
 refused as ambiguous - existed to recover from it for one flag. `VerbFlags.SubVerb` finds the
 sub-verb by the same rule. A command line naming no

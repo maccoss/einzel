@@ -32,7 +32,7 @@ public sealed class MirrorPlaneTests
     public void ThePlaneIsCountedOnce()
     {
         var half = new Half();
-        var image = new ReflectedField(half, Plane, imageAbove: true);
+        var image = new Reflection(Plane, true).Image(half);
         var whole = new SuperposedField([half, image]);
 
         foreach (var x in new[] { 0.03, double.BitDecrement(Plane), Plane, double.BitIncrement(Plane), 0.05 })
@@ -157,7 +157,7 @@ public sealed class MirrorPlaneTests
     public void NoRoundingOfTheReflectionCountsThePlaneTwice(double plane, bool declaredBelow)
     {
         var half = new SidedHalf(plane, declaredBelow);
-        var whole = new SuperposedField([half, new ReflectedField(half, plane, imageAbove: declaredBelow)]);
+        var whole = new SuperposedField([half, new Reflection(plane, declaredBelow).Image(half)]);
 
         foreach (var x in new[] { double.BitDecrement(plane), plane, double.BitIncrement(plane) })
         {
@@ -333,7 +333,7 @@ public sealed class MirrorPlaneTests
     [Fact]
     public void TheImagesMetalIsOnlyWhereItsFieldIs()
     {
-        var image = new ReflectedField(new MetalPastThePlane(), Plane, imageAbove: true);
+        var image = new Reflection(Plane, true).Image(new MetalPastThePlane());
         var declaredSide = new Vec3(Plane - 0.002, 0.0, 0.0);
 
         Assert.Equal(double.PositiveInfinity, image.SignedDistanceToConductor(in declaredSide));
@@ -346,7 +346,7 @@ public sealed class MirrorPlaneTests
         Assert.Equal(new MetalPastThePlane().SignedDistanceToConductor(new Vec3(Plane - 0.002, 0.0, 0.0)), image.SignedDistanceToConductor(in imageSide));
 
         // With no side the two overlap, and the image's metal stands wherever its field does.
-        var overlap = new ReflectedField(new MetalPastThePlane(), Plane);
+        var overlap = new Reflection(Plane, null).Image(new MetalPastThePlane());
         Assert.True(overlap.SignedDistanceToConductor(in declaredSide) < 0.0);
     }
     // A declared half below the plane that is field-free beyond its own edge, with a
@@ -377,7 +377,7 @@ public sealed class MirrorPlaneTests
     public void WhereTheImageIsAbsentItShortensNoRunAndAddsNoSurface()
     {
         var plusX = new Vec3(1.0, 0.0, 0.0);
-        var image = new ReflectedField(new Edged(Plane), Plane, imageAbove: true);
+        var image = new Reflection(Plane, true).Image(new Edged(Plane));
         var declaredSide = new Vec3(Plane - 0.003, 0.0, 0.0);
 
         // Free as far as the plane along a ray heading for it, and without limit along one leaving.
@@ -393,7 +393,7 @@ public sealed class MirrorPlaneTests
         // A surface the inner field declares 2 mm past its edge is no surface on the declared side:
         // the measure there is the image's own at the plane, constant, so it changes sign neither
         // on this side nor at the plane - where nothing jumps.
-        var phantom = new ReflectedField(new Edged(Plane + 0.002), Plane, imageAbove: true);
+        var phantom = new Reflection(Plane, true).Image(new Edged(Plane + 0.002));
         var near = phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0));
         var far = phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.003, 0.0, 0.0));
         var beyond = phantom.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.0005, 0.0, 0.0));
@@ -426,7 +426,7 @@ public sealed class MirrorPlaneTests
     [Fact]
     public void TheFaceTestScalesWithTheGeometry()
     {
-        var image = new ReflectedField(new FarEdge(), FarEdge.Mirror, imageAbove: true);
+        var image = new Reflection(FarEdge.Mirror, true).Image(new FarEdge());
 
         var below = image.SignedDistanceToDiscontinuity(new Vec3(FarEdge.Mirror - 1.0, 0.0, 0.0));
         var above = image.SignedDistanceToDiscontinuity(new Vec3(FarEdge.Mirror + 1.0, 0.0, 0.0));
@@ -474,5 +474,20 @@ public sealed class MirrorPlaneTests
 
         Assert.Equal(eBelow.X, -eAbove.X, 9);
         Assert.Equal(eBelow.Y, eAbove.Y, 9);
+    }
+
+    /// <summary>
+    /// No public constructor takes a side: an image's side is the reflection's to decide, so a
+    /// caller cannot give one the rule would not.
+    /// </summary>
+    [Fact]
+    public void AnImagesSideIsGivenOnlyThroughAReflection()
+    {
+        var sides = typeof(ReflectedField).GetConstructors()
+            .Where(c => c.GetParameters().Any(p => p.ParameterType == typeof(bool?) || p.ParameterType == typeof(bool)))
+            .ToList();
+
+        Assert.Empty(sides);
+        Assert.Contains(typeof(ReflectedField).GetConstructors(), c => c.GetParameters().Any(p => p.ParameterType == typeof(Reflection)));
     }
 }

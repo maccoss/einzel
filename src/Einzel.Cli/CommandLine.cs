@@ -14,6 +14,7 @@ public sealed class CommandLine
     private readonly Dictionary<string, string?> _options = new(StringComparer.Ordinal);
     private readonly List<(string Name, string? Value)> _all = [];
     private readonly List<string> _positional = [];
+    private readonly List<(string Flag, string Word)> _bareFollowers = [];
 
     private CommandLine()
     {
@@ -24,6 +25,12 @@ public sealed class CommandLine
 
     /// <summary>Every flag given, without its dashes, in the order first given.</summary>
     public IReadOnlyList<string> Flags => [.. _all.Select(o => o.Name).Distinct()];
+
+    /// <summary>
+    /// Each word that directly followed a bare flag whose value may be left off, and did not parse
+    /// as a number, so was read as a positional: for a refusal to name, never to reassign.
+    /// </summary>
+    public IReadOnlyList<(string Flag, string Word)> BareFollowers => _bareFollowers;
 
     /// <summary>Whether a flag was supplied.</summary>
     /// <param name="name">The flag name, without dashes.</param>
@@ -100,15 +107,17 @@ public sealed class CommandLine
             // value - unless this is a switch, which never has one.
             var next = !IsSwitch(name) && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal);
 
-            if (next && IsOptional(name) && !VerbFlags.IsOptionalValue(args[i + 1]))
+            if (next && IsOptional(name) && !CommandNumber.Parses(args[i + 1]))
             {
-                // A flag whose value may be left off, followed by a word that is not a number:
-                // the flag is bare and the word is an ordinary positional, read on the next turn
-                // of the loop. `run --progress models/r.json` and `run --progress 2026-lens.json`
-                // are the default interval and a model; `run m.json --progress often` is the
-                // default interval, a model and a stray 'often', refused as an extra argument.
+                // A flag whose value may be left off, followed by a word that does not parse as a
+                // number: the flag is bare and the word is an ordinary positional, read on the
+                // next turn of the loop. `run --progress models/r.json` and `run --progress
+                // 2026-lens.json` are the default interval and a model. Nothing is reassigned
+                // later; the word is remembered only so a refusal that follows can say where it
+                // stood (`run --progress 5s` cannot find a model called 5s).
                 parsed._options[name] = null;
                 parsed._all.Add((name, null));
+                parsed._bareFollowers.Add((name, args[i + 1]));
             }
             else if (next)
             {

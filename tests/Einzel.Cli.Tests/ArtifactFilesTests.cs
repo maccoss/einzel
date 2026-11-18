@@ -201,6 +201,89 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A failure after a replace has succeeded - the target holding the new bytes, the original
+    /// under its backup name - puts the original back: the entry is registered the moment the
+    /// replace returns.
+    /// </summary>
+    [Fact]
+    public void AFailureAfterAReplacePutsTheOriginalBack()
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first.vti");
+        var second = Path.Combine(_root, "second.vti");
+        File.WriteAllBytes(first, [1]);
+        File.WriteAllBytes(second, [2]);
+
+        ArtifactFiles.Failing.Value = (phase, index) =>
+        {
+            if (phase == "replaced" && index == 1)
+            {
+                throw new InvalidOperationException("failed on purpose, with the new file in place");
+            }
+        };
+
+        try
+        {
+            Assert.ThrowsAny<Exception>(() => ArtifactFiles.WriteAll([(null, first, [8]), (null, second, [9])]));
+        }
+        finally
+        {
+            ArtifactFiles.Failing.Value = null;
+        }
+
+        Assert.Equal([1], File.ReadAllBytes(first));
+        Assert.Equal([2], File.ReadAllBytes(second));
+        Assert.Equal(["first.vti", "second.vti"], Directory.GetFiles(_root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// An original that cannot be put back is not swallowed: the refusal names where it now is,
+    /// and it is there.
+    /// </summary>
+    [Fact]
+    public void AnOriginalThatCannotGoBackIsNamed()
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first.vti");
+        var second = Path.Combine(_root, "second.vti");
+        File.WriteAllBytes(first, [1]);
+        File.WriteAllBytes(second, [2]);
+
+        ArtifactFiles.Failing.Value = (phase, index) =>
+        {
+            if (phase == "replaced" && index == 1)
+            {
+                // Something now stands where the original would go back: a folder, which no
+                // rename of a file can replace on any platform.
+                File.Delete(second);
+                Directory.CreateDirectory(second);
+                throw new IOException("failed on purpose");
+            }
+        };
+
+        EinzelException refusal;
+
+        try
+        {
+            refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.WriteAll([(null, first, [8]), (null, second, [9])]));
+        }
+        finally
+        {
+            ArtifactFiles.Failing.Value = null;
+        }
+
+        output.WriteLine(refusal.Error.Constraint);
+
+        var backup = Directory.GetFiles(_root, "*.bak").Single();
+
+        Assert.Contains($"the original of {second} is now at {backup}", refusal.Error.Constraint, StringComparison.Ordinal);
+        Assert.Equal([2], File.ReadAllBytes(backup));
+        Assert.Equal([1], File.ReadAllBytes(first));
+
+        Directory.Delete(second);
+    }
+
+    /// <summary>
     /// A set staged one file at a time puts nothing in place until it is committed, and a set
     /// abandoned part way leaves nothing behind: no file, no staging file, no folder it made.
     /// </summary>

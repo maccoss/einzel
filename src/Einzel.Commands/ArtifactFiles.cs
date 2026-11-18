@@ -316,6 +316,14 @@ public static class ArtifactFiles
 
         // Every destination refused before any is written, where all of them are known up front -
         // and checked once: each is staged as already resolved, not checked and followed again.
+        //
+        // So a link is followed when the set is checked, not when its file is staged, and a link
+        // retargeted while a long film is being written is written through to where it pointed
+        // then. Left so on purpose: catching two names for one file has to happen before any
+        // frame is made, which needs every link resolved up front, and resolving again at staging
+        // is the second resolution per file this was written to remove. The window is the user's
+        // own file system changing under a command they are running - the same as retargeting the
+        // link a moment after the command finished - and not a boundary anything relies on.
         var resolved = Checked(destinations, inputs ?? []);
 
         using var set = Begin(inputs ?? []);
@@ -400,12 +408,25 @@ public static class ArtifactFiles
             ObjectDisposedException.ThrowIf(_finished, this);
 
             string resolved;
+            string key;
 
             try
             {
                 Check(flag, path);
                 CheckNotAnInput(flag, path, _inputs);
                 resolved = Resolved(path);
+                key = Path.TrimEndingDirectorySeparator(resolved);
+
+                // A second file at one place: asked here, of a set built a file at a time.
+                // WriteAll asks it once, of the whole set, in Checked.
+                if (_seen.TryGetValue(key, out var j))
+                {
+                    throw Refusal(
+                        flag,
+                        Path.GetFullPath(path),
+                        (_files[j].Flag is { } other ? $"--{other}" : "another output") + " names the same file, and one would be written over the other",
+                        flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
+                }
             }
             catch
             {
@@ -414,11 +435,12 @@ public static class ArtifactFiles
             }
 
             StageResolved(flag, path, resolved, write);
+            _seen[key] = _files.Count - 1;
         }
 
-        // Stages a destination the caller has already checked and resolved (WriteAll, after
-        // Checked): only what is particular to this set - a second file at the same place - and
-        // what checking cannot know ahead, a read-only file, is asked here.
+        // Stages a destination the caller has already checked and resolved - every check, a second
+        // file at one place included (Stage, or Checked for WriteAll) - so only what checking cannot
+        // know ahead, a read-only file, is asked here.
         internal void StageResolved(string? flag, string path, string full, Action<Stream> write)
         {
             ObjectDisposedException.ThrowIf(_finished, this);
@@ -427,17 +449,6 @@ public static class ArtifactFiles
 
             try
             {
-                var resolved = Path.TrimEndingDirectorySeparator(full);
-
-                if (_seen.TryGetValue(resolved, out var j))
-                {
-                    throw Refusal(
-                        flag,
-                        Path.GetFullPath(path),
-                        (_files[j].Flag is { } other ? $"--{other}" : "another output") + " names the same file, and one would be written over the other",
-                        flag is null ? "name the output with its flag, a file of its own" : $"give --{flag} a file of its own");
-                }
-
                 var target = Writable(flag, full);
                 var folder = Path.GetDirectoryName(target)!;
                 Create(folder, _created);
@@ -450,7 +461,6 @@ public static class ArtifactFiles
                     write(stream);
                 }
 
-                _seen[resolved] = _files.Count;
                 _files.Add((flag, path, target, temporary));
                 temporary = null;
             }
@@ -509,16 +519,20 @@ public static class ArtifactFiles
                         backup = ShortName(Path.GetDirectoryName(target)!, ".bak");
                         replacing = (target, backup);
                         File.Replace(temporary, target, backup, ignoreMetadataErrors: true);
-                        Failing.Value?.Invoke("replaced", at);
+
+                        // Placed the moment the replace returns, with its backup, before anything
+                        // else can throw: registered after a hook, a failure there left the new
+                        // bytes in place and the original stranded under its backup name.
                         replacing = null;
+                        placed.Add((target, backup));
+                        Failing.Value?.Invoke("replaced", at);
                     }
                     else
                     {
                         // One rename over whatever is there, or into an empty place.
                         File.Move(temporary, target, overwrite: true);
+                        placed.Add((target, null));
                     }
-
-                    placed.Add((target, backup));
                 }
             }
             catch (Exception failure)
@@ -526,9 +540,14 @@ public static class ArtifactFiles
                 // A replace that failed part way: the original is under its backup name and the
                 // target is empty, so it goes back first. Where the target is still there the
                 // replace moved nothing, and the backup - if it exists - is not the only copy.
-                if (replacing is { } risk && File.Exists(risk.Backup) && !File.Exists(risk.Target))
+                // Every original that could not be put back, and where it now is: said in the
+                // refusal, not swallowed, since the one copy of the user's file is there.
+                var stranded = new List<(string Target, string Backup)>();
+
+                if (replacing is { } risk && File.Exists(risk.Backup) && !File.Exists(risk.Target)
+                    && !TryRestore(risk.Backup, risk.Target))
                 {
-                    TryRestore(risk.Backup, risk.Target);
+                    stranded.Add(risk);
                 }
 
                 // None of them, then, whatever went wrong: newest first, each back as it was.
@@ -538,7 +557,10 @@ public static class ArtifactFiles
 
                     if (backup is not null)
                     {
-                        TryRestore(backup, target);
+                        if (!TryRestore(backup, target) && File.Exists(backup))
+                        {
+                            stranded.Add((target, backup));
+                        }
                     }
                     else
                     {
@@ -560,13 +582,23 @@ public static class ArtifactFiles
                 RemoveCreatedFolders();
                 _finished = true;
 
-                if (failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
+                var left = stranded.Count == 0
+                    ? string.Empty
+                    : "; and it could not be put back as it was: "
+                        + string.Join("; ", stranded.Select(s => $"the original of {s.Target} is now at {s.Backup}"));
+
+                if (stranded.Count == 0
+                    && failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
                 {
                     // Not a destination that cannot be written: rolled back, and raised as itself.
                     throw;
                 }
 
-                throw Refusal(flag, Path.GetFullPath(path), failure.Message, null);
+                throw Refusal(
+                    flag,
+                    Path.GetFullPath(path),
+                    failure.Message + left,
+                    stranded.Count == 0 ? null : "move each original back over the file named beside it; nothing of it was deleted");
             }
             finally
             {
@@ -688,15 +720,18 @@ public static class ArtifactFiles
         return full;
     }
 
-    private static void TryRestore(string backup, string path)
+    // Whether the backup went back; false where it did not, and the caller says where it is.
+    private static bool TryRestore(string backup, string path)
     {
         try
         {
             File.Move(backup, path, overwrite: true);
+            return true;
         }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {
             // Left beside where it was, under its .bak name, rather than lost.
+            return false;
         }
     }
 

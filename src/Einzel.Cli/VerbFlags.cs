@@ -207,11 +207,11 @@ public sealed record VerbFlags(
             }
 
             // A flag that takes a value consumes the next word, unless that word is a flag - or
-            // the flag's value may be left off and the word is not a number: `render --progress
-            // section m.json` is a bare --progress before the kind. The parser's rule, so the two
-            // cannot read one line two ways.
+            // the flag's value may be left off and the word does not parse as a number:
+            // `render --progress section m.json` is a bare --progress before the kind. The
+            // parser's rule (CommandNumber.Parses), so the two cannot read one line two ways.
             if (i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
-                && (!optional.Contains(name) || IsOptionalValue(args[i + 1])))
+                && (!optional.Contains(name) || CommandNumber.Parses(args[i + 1])))
             {
                 i++;
             }
@@ -250,35 +250,6 @@ public sealed record VerbFlags(
         return (
             members.SelectMany(f => f.Switches).ToHashSet(StringComparer.Ordinal),
             members.SelectMany(f => f.Optional).ToHashSet(StringComparer.Ordinal));
-    }
-
-    /// <summary>
-    /// Whether the word after a flag whose value may be left off is that value, rather than the
-    /// next positional argument.
-    /// </summary>
-    /// <param name="word">The next word on the command line.</param>
-    /// <returns>True only where the whole word is a finite number, read in the invariant culture.</returns>
-    /// <remarks>
-    /// <para>
-    /// <c>--progress</c> is the only such flag, and its value is a number of seconds. The whole
-    /// word, not its first characters: a guess from the first character took
-    /// <c>2026-lens.json</c> and <c>3d-trap.json</c> for intervals, and the machinery built to
-    /// recover from that guess - holding words, refusing lines as ambiguous - existed for one
-    /// flag. Read whole, a word is the value or a positional and never both, so nothing is
-    /// ambiguous: <c>--progress 5</c> is an interval of five seconds, as the docs and the shell's
-    /// journal spell it, and <c>--progress soon</c> is a bare --progress beside a stray 'soon'.
-    /// </para>
-    /// <para>
-    /// A value that is not a number is given explicitly, as <c>--progress=soon</c>, and refused
-    /// by the flag's reader by name.
-    /// </para>
-    /// </remarks>
-    public static bool IsOptionalValue(string word)
-    {
-        ArgumentNullException.ThrowIfNull(word);
-
-        return double.TryParse(word, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value)
-            && double.IsFinite(value);
     }
 
     private static VerbFlags Of(

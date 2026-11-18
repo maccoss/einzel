@@ -199,7 +199,9 @@ become a feature release without being renamed twice.
 - **A bare `--progress` takes the next word as its interval only if the whole word is a number**:
   `einzel run --progress 2026-lens.json` runs that model at the default interval, `--progress 5`
   is still five seconds, and `einzel run m.json --progress often` is refused for the stray 'often'
-  (write `--progress=often` to have the interval itself refused by name). An empty value after `=`
+  (write `--progress=often` to have the interval itself refused by name). `--progress 1e400` is
+  refused as an interval rather than opened as a model, and a word read as a model after a bare
+  `--progress` (`einzel run --progress 5s`) is named in the refusal. An empty value after `=`
   (`--out=`) is refused at the flag rather than exiting 6; `einzel render --dry-run m.json` is held
   to the section's flags, so a typo there is refused rather than ignored; and an unknown `ext`,
   `agents` or `render` sub-verb is refused naming the known ones. Every flag error is located at `/args/--flag`,

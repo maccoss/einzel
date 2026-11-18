@@ -1082,9 +1082,9 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
         // The control: the scan finds the readers, so an empty list above is not a scan that
         // matched nothing.
-        // IsOptionalValue asks whether a word is a number in order to decide whether it is a
-        // flag's value at all; reading the value is still the readers' alone.
-        Assert.Equal(["IsOptionalValue", "TryNumber", "TryWhole"], parsers.Order(StringComparer.Ordinal));
+        // CommandNumber.Parses is the one rule for what parses as a number, asked by the parser,
+        // SubVerb and the real-number reader alike; TryWhole reads a whole one.
+        Assert.Equal(["Parses", "TryWhole"], parsers.Order(StringComparer.Ordinal));
 
         // And it has teeth: the lines this replaced are caught.
         Assert.Single(Throwing("FramesPerSecond = int.Parse(fps, CultureInfo.InvariantCulture)"));

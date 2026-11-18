@@ -84,6 +84,12 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
     public IElectrostaticField Declared(IElectrostaticField declared) =>
         Overlaps ? declared : new DeclaredHalf(declared, this);
 
+    /// <summary>The declared half's conductors, answering only where the half does.</summary>
+    /// <param name="declared">The declared half's conductors.</param>
+    /// <returns>Them, as they stand in the sum: gated by the same rule as <see cref="Declared(IElectrostaticField)"/>.</returns>
+    public IConductorBounded Declared(IConductorBounded declared) =>
+        Overlaps ? declared : new DeclaredMetal(declared, this);
+
     /// <summary>An x coordinate seen through the mirror.</summary>
     /// <param name="x">The coordinate.</param>
     /// <returns><c>2p - x</c>.</returns>

@@ -267,7 +267,7 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Equal(key, VerbFlags.For(line.Split(' '))?.Key);
     }
     /// <summary>
-    /// The word after a bare <c>--progress</c> is its value only where the whole word is a finite
+    /// The word after a bare <c>--progress</c> is its value only where the whole word parses as a
     /// number; anything else is an ordinary positional, so a model whose name begins with a digit
     /// or a point is the model.
     /// </summary>
@@ -283,7 +283,8 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     [InlineData("../m.json")]
     [InlineData(".hidden.json")]
     [InlineData("1e3.json")]
-    [InlineData("Infinity")]
+    [InlineData("5s")]
+    [InlineData("0,5")]
     public void AWordThatIsNotWhollyANumberIsAPositional(string word)
     {
         var parsed = CommandLine.Parse(["run", "--progress", word]);
@@ -292,13 +293,16 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.True(parsed.Has("progress"));
         Assert.Null(parsed.Value("progress"));
         Assert.Null(Program.CommandLineProblem(["run", "--progress", word]));
-        Assert.False(VerbFlags.IsOptionalValue(word));
+        Assert.False(CommandNumber.Parses(word));
 
         // The sub-verb is found by the same rule: a bare --progress before it.
         Assert.Equal("render section", VerbFlags.For(["render", "--progress", "section", word])?.Key);
     }
 
-    /// <summary>A whole number is the interval, as the docs and the shell's journal spell it.</summary>
+    /// <summary>
+    /// A word that parses as a number is the value - an overflow to infinity and the text NaN
+    /// included, so the flag's reader refuses it by name rather than it being opened as a model.
+    /// </summary>
     [Theory]
     [InlineData("5")]
     [InlineData("0")]
@@ -306,13 +310,16 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     [InlineData("2.5")]
     [InlineData("1e1")]
     [InlineData("-1")]
+    [InlineData("1e400")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
     public void AWordThatIsWhollyANumberIsTheValue(string word)
     {
         var parsed = CommandLine.Parse(["run", "m.json", "--progress", word]);
 
         Assert.Equal(["m.json"], parsed.Positional);
         Assert.Equal(word, parsed.Value("progress"));
-        Assert.True(VerbFlags.IsOptionalValue(word));
+        Assert.True(CommandNumber.Parses(word));
         Assert.Equal("render section", VerbFlags.For(["render", "--progress", word, "section", "m.json"])?.Key);
     }
 
@@ -333,6 +340,44 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Equal("/args/1", problem!.Path);
         Assert.Contains("run was given " + stray + ", which it does not take", problem.Constraint, StringComparison.Ordinal);
         Assert.Null(CommandLine.Parse(line.Split(' ')).Value("progress"));
+    }
+
+    /// <summary>
+    /// A word that did not parse as a number after a bare <c>--progress</c> is named when the line
+    /// then fails: as a stray-argument refusal, or as a model that is not there. Nothing is
+    /// reassigned - the note says where the word stood and how to write the value.
+    /// </summary>
+    /// <remarks>
+    /// <c>run --progress 5s m.json</c> blamed m.json alone, and <c>run --progress 5s</c> said only
+    /// that there was no model called 5s.
+    /// </remarks>
+    [Theory]
+    [InlineData("--progress 5s m.json", "'5s' followed a bare --progress")]
+    [InlineData("--progress 5s", "'5s' followed a bare --progress")]
+    [InlineData("--progress 0,5 m.json", "'0,5' followed a bare --progress")]
+    [InlineData("--progress 1e400 m.json", "--progress takes an interval in seconds, and '1e400' is not one")]
+    public void AWordThatFollowedABareProgressIsNamedWhenTheLineFails(string flags, string expected)
+    {
+        var model = Path.Combine(Path.GetTempPath(), "einzel-bare-" + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(model, "{}");
+
+        try
+        {
+            var line = (flags.Replace("m.json", model, StringComparison.Ordinal)).Split(' ');
+            var (code, _, stderr) = Cli(["run", .. line]);
+
+            Assert.Equal(1, code);
+            Assert.Contains(expected, stderr, StringComparison.Ordinal);
+
+            if (expected.Contains("followed", StringComparison.Ordinal))
+            {
+                Assert.Contains("--progress=<seconds> or --progress <number>", stderr, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            File.Delete(model);
+        }
     }
 
     /// <summary>A later explicit value is the value: the last occurrence on the line, as for any flag.</summary>

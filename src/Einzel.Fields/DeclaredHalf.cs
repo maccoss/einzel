@@ -11,12 +11,12 @@ namespace Einzel.Fields;
 /// mirror plane stopped ions on the image's side, where the image's metal - the reflection of the
 /// near side - is what stands. The image's conductors were already gated on the declared side;
 /// this is the other half of the same rule (<see cref="Reflection.DeclaredAnswersAt"/>), so the
-/// absorber is symmetric about the plane. Made only by <see cref="Reflection.Declared"/>, for a
+/// absorber is symmetric about the plane. Made only by <see cref="Reflection.Declared(IElectrostaticField)"/>, for a
 /// union: where the halves overlap there is nothing to gate.
 /// </remarks>
 internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflection) : IElectrostaticField, IConductorBounded
 {
-    private readonly IConductorBounded? _metal = inner as IConductorBounded;
+    private readonly DeclaredMetal? _metal = inner is IConductorBounded metal ? new DeclaredMetal(metal, reflection) : null;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -52,20 +52,44 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     public double ResolutionLength => inner.ResolutionLength;
 
     /// <inheritdoc/>
+    public double SignedDistanceToConductor(in Vec3 position) => _metal?.SignedDistanceToConductor(in position) ?? double.PositiveInfinity;
+
+    /// <inheritdoc/>
+    public string? ConductorAt(in Vec3 position) => _metal?.ConductorAt(in position);
+
+    /// <inheritdoc/>
+    public double NearestConductor(in Vec3 position, out string? name)
+    {
+        name = null;
+        return _metal?.NearestConductor(in position, out name) ?? double.PositiveInfinity;
+    }
+}
+
+/// <summary>
+/// The declared half's conductors as they stand in a union: only where the half answers.
+/// </summary>
+/// <remarks>
+/// The conductor half of <see cref="DeclaredHalf"/>, on its own, so a caller holding only the
+/// metal (<see cref="ConductorLeaf.Of"/>) gates it by the same rule without asking the field to
+/// be something it was not typed as.
+/// </remarks>
+internal sealed class DeclaredMetal(IConductorBounded inner, Reflection reflection) : IConductorBounded
+{
+    /// <inheritdoc/>
     public double SignedDistanceToConductor(in Vec3 position) =>
-        _metal is not null && reflection.DeclaredAnswersAt(position.X) ? _metal.SignedDistanceToConductor(in position) : double.PositiveInfinity;
+        reflection.DeclaredAnswersAt(position.X) ? inner.SignedDistanceToConductor(in position) : double.PositiveInfinity;
 
     /// <inheritdoc/>
     public string? ConductorAt(in Vec3 position) =>
-        _metal is not null && reflection.DeclaredAnswersAt(position.X) ? _metal.ConductorAt(in position) : null;
+        reflection.DeclaredAnswersAt(position.X) ? inner.ConductorAt(in position) : null;
 
     /// <inheritdoc/>
     public double NearestConductor(in Vec3 position, out string? name)
     {
         name = null;
 
-        return _metal is not null && reflection.DeclaredAnswersAt(position.X)
-            ? _metal.NearestConductor(in position, out name)
+        return reflection.DeclaredAnswersAt(position.X)
+            ? inner.NearestConductor(in position, out name)
             : double.PositiveInfinity;
     }
 }
