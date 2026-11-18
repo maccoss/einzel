@@ -413,25 +413,25 @@ public static class FieldAssembly
                     // geometry, because a rotation of a solved field is exact while a
                     // solve of a rotated geometry is not: the anisotropy the tilt exists
                     // to create is far below the field error of any affordable mesh.
-                    elements.Add(element.Solve!.TiltHalfTurns == 0.0
-                        ? plane
+                    var tilt = element.Solve!.TiltHalfTurns == 0.0
+                        ? null
                         : new RotatedField(
                             plane,
                             element.Solve!.TiltHalfTurns,
                             element.Solve!.TiltCentreX,
-                            element.Solve!.TiltCentreZ));
-                    // A leaf's shape stands where the element does: through the same rotation.
+                            element.Solve!.TiltCentreZ);
+
+                    elements.Add(tilt ?? plane);
+
+                    // A leaf's shape stands where the element does: through the same rotation,
+                    // the one built above, and the leaf carries it for whoever asks where in the
+                    // unrotated solve a point is.
                     leaves.AddRange(planeLeaves.Select(l => new FieldLeaf(
-                        element.Solve!.TiltHalfTurns == 0.0
-                            ? l.Shape
-                            : new RotatedField(
-                                (IElectrostaticField)l.Shape,
-                                element.Solve!.TiltHalfTurns,
-                                element.Solve!.TiltCentreX,
-                                element.Solve!.TiltCentreZ),
+                        tilt is null ? l.Shape : tilt.Around((IElectrostaticField)l.Shape),
                         l.Held,
                         index,
-                        l.Image)));
+                        l.Image,
+                        tilt)));
                     Note(warnings, report2d, index, "solved2d");
                     break;
                 }

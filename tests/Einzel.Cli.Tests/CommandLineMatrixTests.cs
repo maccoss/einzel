@@ -763,6 +763,9 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
     [InlineData("render section {model} --at-us -1 --dry-run", "/render/at-us")]
     [InlineData("probe {model} --at-mm 0,0,0 --at-us -1", "/probe/at-us")]
     [InlineData("new {root}/models/made.json --from-example no-such-example", null)]
+    [InlineData("validate {root}/models/missing.json", "/")]
+    [InlineData("validate {root}/nowhere/missing.json", "/")]
+    [InlineData("run {root}/models/missing.json --progress 0", "/")]
     public void EveryRefusalUnderJsonIsOneJsonDocument(string line, string? path)
     {
         Project();
@@ -788,6 +791,27 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
 
         // And without --json, stdout is left alone, as it was.
         Assert.Equal(string.Empty, Run(Words(line)).Stdout);
+    }
+
+    /// <summary>
+    /// <c>--json=true</c> is <c>--json</c> on every path, a refusal thrown from a command included:
+    /// that path asked the raw arguments for the literal "--json" while everything else asked the
+    /// parsed command line.
+    /// </summary>
+    [Fact]
+    public void JsonWithAValueIsJsonForEveryRefusal()
+    {
+        Project();
+
+        foreach (var line in new[] { "render surface {model} --dry-run --box-mm 10,10,0,0", "validate {root}/models/missing.json" })
+        {
+            var (code, stdout, stderr) = Run([.. Words(line), "--json=true"]);
+            output.WriteLine(stderr);
+
+            Assert.Equal(1, code);
+            using var document = JsonDocument.Parse(stdout);
+            Assert.False(document.RootElement.GetProperty("ran").GetBoolean());
+        }
     }
 
     /// <summary>

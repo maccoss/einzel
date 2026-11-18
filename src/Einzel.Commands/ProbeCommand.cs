@@ -229,15 +229,18 @@ public sealed class FieldProbe
         ModelPath = modelPath;
         ModelHash = modelHash;
 
-        // The rotation each tilted cross-section is evaluated through, built with the very
-        // arguments FieldAssembly gives it, so "is this point in that solve" is asked of the
-        // point the field itself asks the solve about.
-        _tilts =
-        [
-            .. model.Fields.Select(e => e.Solve is { TiltHalfTurns: not 0.0 } plane
-                ? new RotatedField(FieldFreeSpace.Instance, plane.TiltHalfTurns, plane.TiltCentreX, plane.TiltCentreZ)
-                : null),
-        ];
+        // The rotation each tilted cross-section is evaluated through: the element's own rotated
+        // field, handed out on its leaves, so "is this point in that solve" is asked of the point
+        // the field itself asks the solve about - one rotation, not a second built to agree.
+        _tilts = new RotatedField?[model.Fields.Count];
+
+        foreach (var leaf in leaves)
+        {
+            if (leaf.Tilt is { } tilt)
+            {
+                _tilts[leaf.Element] = tilt;
+            }
+        }
 
         Elements =
         [
@@ -373,7 +376,10 @@ public sealed class FieldProbe
     {
         RefuseMeanWithoutCycle(atSeconds, cycleMean);
 
-        double low = 0.0, high = 0.0;
+        // Each element's own range, then summed only over elements that can overlap: two solves
+        // side by side are never both answering at one point, and summing their ranges gave two
+        // 0-1000 V stages a range of 0-2000 V, loosening the clamp past real overshoot.
+        var ranges = new List<(int Index, double Low, double High)>();
 
         for (var index = 0; index < _model.Fields.Count; index++)
         {
@@ -450,8 +456,52 @@ public sealed class FieldProbe
                 elementHigh *= 2.0;
             }
 
-            low += elementLow;
-            high += elementHigh;
+            ranges.Add((index, elementLow, elementHigh));
+        }
+
+        return Combined(ranges);
+    }
+
+    // Elements whose occupied boxes meet - touching counts, since a shared face is in both - are
+    // summed; groups that do not meet are each their own range, and the whole is their union. A
+    // range always contains earth, so the union is the lowest low and the highest high.
+    private (double Low, double High) Combined(List<(int Index, double Low, double High)> ranges)
+    {
+        var group = Enumerable.Range(0, ranges.Count).ToArray();
+
+        int Find(int i) => group[i] == i ? i : group[i] = Find(group[i]);
+
+        // A cross-section repeats along its invariant axis without end, so it meets anything at
+        // its x and y whatever z the drawing gives it; tilted, that axis is turned into x as well,
+        // so it is taken to meet everything. Erring wide only sums more, never clamps a real value.
+        var boxes = ranges.Select(r => _model.Fields[r.Index].Solve is { Symmetry: not SolveSymmetry.Cylindrical } section
+            ? section.TiltHalfTurns != 0.0
+                ? [(new Vec3(double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity), new Vec3(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity))]
+                : Occupied(r.Index).Select(b => (new Vec3(b.Min.X, b.Min.Y, double.NegativeInfinity), new Vec3(b.Max.X, b.Max.Y, double.PositiveInfinity))).ToList()
+            : Occupied(r.Index).ToList()).ToList();
+
+        static bool Meet((Vec3 Min, Vec3 Max) a, (Vec3 Min, Vec3 Max) b) =>
+            a.Min.X <= b.Max.X && b.Min.X <= a.Max.X
+            && a.Min.Y <= b.Max.Y && b.Min.Y <= a.Max.Y
+            && a.Min.Z <= b.Max.Z && b.Min.Z <= a.Max.Z;
+
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            for (var j = i + 1; j < ranges.Count; j++)
+            {
+                if (boxes[i].Any(a => boxes[j].Any(b => Meet(a, b))))
+                {
+                    group[Find(i)] = Find(j);
+                }
+            }
+        }
+
+        double low = 0.0, high = 0.0;
+
+        foreach (var members in Enumerable.Range(0, ranges.Count).GroupBy(Find))
+        {
+            low = Math.Min(low, members.Sum(i => ranges[i].Low));
+            high = Math.Max(high, members.Sum(i => ranges[i].High));
         }
 
         return (low, high);
@@ -633,6 +683,20 @@ public sealed class FieldProbe
     /// </remarks>
     public double? CycleMeanWindowSecondsAt(double atSeconds) =>
         _driven is null ? null : HeldAt(atSeconds).Window;
+
+    /// <summary>
+    /// Where a cycle mean at an operating point opens its window: the instant itself, or zero
+    /// where a double cannot place the instant in the drive's cycle.
+    /// </summary>
+    /// <param name="atSeconds">The operating point.</param>
+    /// <returns>The window's opening in seconds; null where there is no drive cycle.</returns>
+    /// <remarks>
+    /// The field is held at the operating point either way, and a whole period of a periodic
+    /// drive has one mean wherever it opens - but a caller that states its window says where, so
+    /// it is told when the window had to move rather than finding it moved.
+    /// </remarks>
+    public double? CycleMeanWindowOpensAt(double atSeconds) =>
+        _driven is not null && HeldAt(atSeconds) is { Window: not null } state ? state.From : null;
 
     /// <summary>
     /// Whether the field held at an operating point oscillates at one frequency (or not at all),

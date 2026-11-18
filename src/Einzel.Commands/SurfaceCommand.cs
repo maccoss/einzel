@@ -1017,6 +1017,18 @@ public static class SurfaceCommand
                         CultureInfo.InvariantCulture,
                         $"the height is the potential averaged over one period of the fastest drive ({window:G6} us); this field carries more than one frequency, so a slower drive is averaged over part of its own cycle and its contribution is not its cycle mean unless its amplitude is zero"),
                     WarningSeverity.Qualified));
+
+            // Said, not substituted silently: an instant too late to place in the cycle picks the
+            // operating point, and the window it is averaged over opens at zero.
+            if (probe.CycleMeanWindowOpensAt(at) is { } opens && opens != at)
+            {
+                warnings.Add(new ValidityWarning(
+                    "render.cycle-mean-window-moved",
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"t = {at * 1e6:G6} us is too late for a double to place in the drive's cycle, so it picks only the operating point and the {window:G6} us window is averaged from t = {opens * 1e6:G6} us of the field held there: a whole period of a periodic drive has the same mean wherever it opens, and for several frequencies the window's opening is a choice this states rather than one the caption can"),
+                    WarningSeverity.Provenance));
+            }
         }
 
         if (energy && model.IsMixture)

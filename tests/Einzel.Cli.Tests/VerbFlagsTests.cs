@@ -266,4 +266,33 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     {
         Assert.Equal(key, VerbFlags.For(line.Split(' '))?.Key);
     }
+    /// <summary>
+    /// A word held after a bare <c>--progress</c> is given back to the flag only where the verb has
+    /// no positional for it: <c>run --progress m.json extra.json</c> keeps m.json as the model and
+    /// leaves extra.json to be refused as a stray, where giving m.json to the flag ran extra.json.
+    /// </summary>
+    [Fact]
+    public void AHeldWordInAPlaceTheVerbTakesIsNotGivenAway()
+    {
+        var wrongModel = CommandLine.Parse(["run", "--progress", "m.json", "extra.json"]);
+        Assert.Equal(["m.json", "extra.json"], wrongModel.Positional);
+        Assert.Null(wrongModel.Value("progress"));
+        Assert.NotNull(Program.CommandLineProblem(["run", "--progress", "m.json", "extra.json"]));
+
+        // Past the model, the word is the flag's, and its reader refuses it by name.
+        var late = CommandLine.Parse(["run", "m.json", "--progress", "soon"]);
+        Assert.Equal(["m.json"], late.Positional);
+        Assert.Equal("soon", late.Value("progress"));
+    }
+
+    /// <summary>Every held word is kept, not only the last: two bare optional flags each keep theirs.</summary>
+    [Fact]
+    public void EveryHeldWordIsSettled()
+    {
+        var twice = CommandLine.Parse(["run", "m.json", "--progress", "soon", "--progress", "later"]);
+
+        Assert.Equal(["m.json"], twice.Positional);
+        Assert.Equal("later", twice.Value("progress"));
+        Assert.Equal(["soon", "later"], twice.Values("progress"));
+    }
 }

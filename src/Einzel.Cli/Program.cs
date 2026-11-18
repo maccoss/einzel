@@ -33,6 +33,21 @@ public static class Program
         // swap of the global writer (StdoutTally).
         using var tally = StdoutTally.Enter();
 
+        // Under --json every way a call can fail ends in one JSON document on stdout. Asked of
+        // the parsed command line, as every verb asks it, so --json=true is --json here too.
+        var json = args is { Length: > 0 } && CommandLine.Parse(args).Has("json");
+
+        void Refuse(string code, string constraint, string? suggestion = null)
+        {
+            if (json && !tally.Written)
+            {
+                Console.Out.Write(CommandJson.Write(new CommandLineRefusal
+                {
+                    Errors = [new EinzelError { Code = code, Path = "/", Constraint = constraint, Suggestion = suggestion }],
+                }));
+            }
+        }
+
         try
         {
             return Dispatch(args);
@@ -51,7 +66,7 @@ public static class Program
             // A refusal made here in the command line was already JSON; one thrown from a command
             // - a relief of zero, a box written backwards, a destination that cannot be written -
             // left an agent an empty stream and an exit code.
-            if (args.Contains("--json") && !tally.Written)
+            if (json && !tally.Written)
             {
                 Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [.. failure.Errors] }));
             }
@@ -71,21 +86,25 @@ public static class Program
         catch (FileNotFoundException failure)
         {
             Console.Error.WriteLine(failure.Message);
+            Refuse(ErrorCodes.SchemaInvalid, failure.Message, "check the path; it is read relative to the directory the command is run from");
             return (int)ExitCode.ValidationFailure;
         }
         catch (DirectoryNotFoundException failure)
         {
             Console.Error.WriteLine(failure.Message);
+            Refuse(ErrorCodes.SchemaInvalid, failure.Message, "check the path; it is read relative to the directory the command is run from");
             return (int)ExitCode.ValidationFailure;
         }
         catch (IOException failure)
         {
             Console.Error.WriteLine(failure.Message);
+            Refuse(ErrorCodes.InternalError, failure.Message);
             return (int)ExitCode.InternalError;
         }
         catch (UnauthorizedAccessException failure)
         {
             Console.Error.WriteLine(failure.Message);
+            Refuse(ErrorCodes.InternalError, failure.Message);
             return (int)ExitCode.InternalError;
         }
 #pragma warning disable CA1031 // The process boundary is exactly where a catch-all belongs.
@@ -103,6 +122,10 @@ public static class Program
             Console.Error.WriteLine($"command you ran and this trace, against engine {EngineBuild.Version}:");
             Console.Error.WriteLine();
             Console.Error.WriteLine(failure.StackTrace);
+            Refuse(
+                ErrorCodes.InternalError,
+                $"{failure.GetType().Name}: {failure.Message}",
+                $"this is a defect in einzel, not in your model; please report it with the command and the trace on stderr, against engine {EngineBuild.Version}");
             return (int)ExitCode.InternalError;
         }
     }

@@ -193,6 +193,9 @@ become a feature release without being renamed twice.
   `agents` flags are checked per sub-verb (`ext list --kind y` is refused). A destination that is
   the model itself, or another destination, is refused; a failed write restores the file that
   was there.
+- **Under `--json` every failure is a JSON document on stdout** - a missing model and an internal
+  error included - and `--json=true` counts. `einzel run --progress m.json extra.json` refuses the
+  stray rather than running `extra.json` with `m.json` read as the interval.
 - **`--box-mm` whose corners are finite but whose width is not** (`-1e308,0,1e308,1`) is
   refused at the flag. Two CLI calls running in one process no longer share the "has written"
   flag that decides whether a refusal is written as JSON.

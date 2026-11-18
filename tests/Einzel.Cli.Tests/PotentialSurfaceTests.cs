@@ -251,10 +251,14 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
         File.WriteAllText(model, SetParameter(text, "dcPotential", 10.0));
 
         var request = new SurfaceRequest(Plane: "xy", BoxMm: [-3, -3, 3, 3], Samples: 21, CycleMean: true);
-        var (early, _, _) = SurfaceCommand.Sample(model, request with { AtUs = 0.0 });
-        var (late, _, _) = SurfaceCommand.Sample(model, request with { AtUs = 1e300 });
+        var (early, _, earlyWarnings) = SurfaceCommand.Sample(model, request with { AtUs = 0.0 });
+        var (late, _, lateWarnings) = SurfaceCommand.Sample(model, request with { AtUs = 1e300 });
 
         Assert.Equal(early.Values, late.Values);
+
+        // And the window that moved is said to have moved, not substituted silently.
+        Assert.Contains(lateWarnings, w => w.Code == "render.cycle-mean-window-moved");
+        Assert.DoesNotContain(earlyWarnings, w => w.Code == "render.cycle-mean-window-moved");
         Assert.True(early.Values.Max() > 1.0, "the DC saddle is there to compare");
 
         Assert.Equal(0, Cli("render", "surface", model, "--at-us", "1e300", "--cycle-mean", "--samples", "21", "--dry-run").ExitCode);

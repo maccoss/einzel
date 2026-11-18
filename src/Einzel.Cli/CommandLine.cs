@@ -70,10 +70,11 @@ public sealed class CommandLine
         bool IsSwitch(string flag) => flag is "json" or "help" || (flags?.Switches.Contains(flag) ?? false);
         bool IsOptional(string flag) => flags?.Optional.Contains(flag) ?? false;
 
-        // A word after a flag whose value may be left off, which does not look like that value:
-        // held as a positional for now, and given to the flag after all only if the command line
-        // would otherwise have more positionals than the verb takes.
-        (int Positional, int Option, string Name)? tentative = null;
+        // Each word after a flag whose value may be left off that does not look like that value:
+        // held as a positional for now, and given to its flag after all only if it falls past the
+        // positionals the verb takes. Every one held, not the last: a second bare flag of the
+        // kind overwrote the first's.
+        var tentative = new List<(int Positional, int Option, string Name)>();
 
         for (var i = 1; i < args.Length; i++)
         {
@@ -106,7 +107,7 @@ public sealed class CommandLine
                 // not an interval called models/r.json. Bare for now; settled below.
                 parsed._options[name] = null;
                 parsed._all.Add((name, null));
-                tentative = (parsed._positional.Count, parsed._all.Count - 1, name);
+                tentative.Add((parsed._positional.Count, parsed._all.Count - 1, name));
                 parsed._positional.Add(args[++i]);
             }
             else if (next)
@@ -121,15 +122,28 @@ public sealed class CommandLine
             }
         }
 
-        // Settled: a word the verb has no room for is the flag's value after all, so `run
-        // m.json --progress soon` is still refused by the flag's reader, by name, as a value that
-        // is no interval - not as a stray argument.
-        if (tentative is { } held && flags is not null && parsed._positional.Count > flags.Positionals)
+        // Settled: a held word in a place the verb has no positional for is its flag's value after
+        // all, so `run m.json --progress soon` is still refused by the flag's reader, by name, as
+        // a value that is no interval. One in a place the verb does take stays where it is: `run
+        // --progress m.json extra.json` keeps m.json as the model and refuses extra.json as a
+        // stray, where giving m.json to the flag ran extra.json - the wrong model, quietly.
+        if (flags is not null)
         {
-            var word = parsed._positional[held.Positional];
-            parsed._positional.RemoveAt(held.Positional);
-            parsed._options[held.Name] = word;
-            parsed._all[held.Option] = (held.Name, word);
+            var given = tentative.Where(held => held.Positional >= flags.Positionals).ToList();
+
+            // Values in the order given, so the last occurrence of a flag is its value as always;
+            // then the words out of the positionals from the back, so no index moves under another.
+            foreach (var held in given)
+            {
+                var word = parsed._positional[held.Positional];
+                parsed._options[held.Name] = word;
+                parsed._all[held.Option] = (held.Name, word);
+            }
+
+            for (var t = given.Count - 1; t >= 0; t--)
+            {
+                parsed._positional.RemoveAt(given[t].Positional);
+            }
         }
 
         return parsed;

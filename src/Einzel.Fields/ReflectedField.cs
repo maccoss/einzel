@@ -136,19 +136,62 @@ public sealed class ReflectedField(IElectrostaticField inner, double planeX, boo
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Where the image answers nothing (<see cref="Contributes"/>) it is field-free until the ray
+    /// reaches the plane, where it may start to answer: the distance to the plane along a ray
+    /// heading for the image's side, unbounded along one that is not. The inner field's own
+    /// run, asked at the reflected point, says nothing there - a half that is free beyond its own
+    /// edge claimed the image free straight through the plane and into its field.
+    /// </remarks>
     public double FieldFreeRunLength(in Vec3 position, in Vec3 direction)
     {
+        if (!Contributes(in position))
+        {
+            var towards = imageAbove == true ? direction.X : -direction.X;
+
+            return towards > 0.0 ? Math.Abs(planeX - position.X) / towards : double.PositiveInfinity;
+        }
+
         var mirrored = Reflect(in position);
         var mirroredDirection = new Vec3(-direction.X, direction.Y, direction.Z);
         return _inner.FieldFreeRunLength(in mirrored, in mirroredDirection);
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Where the image answers nothing it has no discontinuity of its own, so none of the inner
+    /// field's surfaces seen through the mirror is declared there - a surface the inner field
+    /// declares beyond its edge would otherwise land on the declared side as a phantom the
+    /// integrator stops at. The one surface that can be there is the plane, where the image
+    /// starts to answer: declared where the inner field itself has a surface on the plane, as its
+    /// distance from the plane, so the sign changes across the plane exactly as it does with the
+    /// image's own value beyond it; otherwise none.
+    /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
+        if (!Contributes(in position))
+        {
+            var onPlane = new Vec3(planeX, position.Y, position.Z);
+
+            if (Math.Abs(_inner.SignedDistanceToDiscontinuity(in onPlane)) > PlaneSurfaceTolerance)
+            {
+                return double.PositiveInfinity;
+            }
+
+            // The sign the inner field gives just past its face on the plane - the side this point
+            // mirrors to - so the change of sign is at the plane whichever way round the inner
+            // field counts, and no further surface of the inner field reaches this side.
+            var past = new Vec3(planeX + (imageAbove == true ? 1e-9 : -1e-9), position.Y, position.Z);
+            return Math.CopySign(Math.Abs(position.X - planeX), _inner.SignedDistanceToDiscontinuity(in past));
+        }
+
         var mirrored = Reflect(in position);
         return _inner.SignedDistanceToDiscontinuity(in mirrored);
     }
+
+    // How near zero the inner field's discontinuity measure must be on the plane for the plane to
+    // be one of its surfaces, in metres: a face that is the plane, to rounding.
+    private const double PlaneSurfaceTolerance = 1e-12;
 
     /// <inheritdoc/>
     public double ResolutionLength => _inner.ResolutionLength;

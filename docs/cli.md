@@ -957,8 +957,10 @@ anything is solved, with or without `--dry-run`. An animation's folder is checke
 the model under a name a frame or `frames.json` would take.
 
 **Under `--json` every refusal is JSON on stdout**, `{"ran": false, "errors": [...]}`, whichever
-layer raised it: the command line's own, and one thrown from a command (a relief of zero, a box
-written backwards, a destination that cannot be written). A verb that has already written its own
+layer raised it: the command line's own, one thrown from a command (a relief of zero, a box
+written backwards, a destination that cannot be written), a file that is not there, and an
+internal error (`INTERNAL_ERROR`, with the trace still on stderr). `--json=true` is `--json` here
+as on every verb. A verb that has already written its own
 answer is left with that one document. **A sub-verb is the first word that is not a flag or a
 flag's value**, wherever the flags stand: `einzel ext --json list`, `einzel ext --project p list` and
 `einzel agents --json tasks` are `ext list` and `agents tasks`, as they were before the registry.
@@ -972,9 +974,11 @@ way puts back what was there**, where it used to delete it.
 **`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
 unless turned off, so the flag alone is the default interval, as it always was. **A bare
 `--progress` before a positional is still bare**: the next word is its value only if it begins as a
-number does, or if the verb has no room for it as a positional - so `einzel run --progress
-models/reflectron.json` runs at the default interval, and `einzel run models/reflectron.json
---progress soon` is refused at `--progress` as no interval. Every other flag that takes a value is
+number does, or if it falls past the positionals the verb takes - so `einzel run --progress
+models/reflectron.json` runs at the default interval, `einzel run models/reflectron.json
+--progress soon` is refused at `--progress` as no interval, and `einzel run --progress
+models/reflectron.json extra.json` keeps the first as the model and refuses the second as a stray,
+rather than running it. Every other flag that takes a value is
 refused bare; before this they were read as though absent.
 
 **The whole surface is run as one table on every change.** `CommandLineMatrixTests` drives every

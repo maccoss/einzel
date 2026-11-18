@@ -3727,5 +3727,20 @@ Two findings from Stage 1 that bear on the spec:
   alike. `--box-mm` with finite corners and an infinite extent is refused. A reflected solve's
   two leaves share one held source, now held once per instant.
 
+  **A seventeenth review.** Under `--json` a missing file, an I/O failure and an internal error
+  wrote stderr and nothing on stdout; every failure now ends in the JSON document, and the check
+  asks the parsed command line, so `--json=true` is `--json` there too. A word held after a bare
+  `--progress` was given back to the flag whenever there was one positional too many, so `run
+  --progress m.json extra.json` ran extra.json; it is given back only where it falls past the
+  verb's positionals, and every held word is kept rather than the last. A cycle mean whose window
+  had to open at zero says so (`render.cycle-mean-window-moved`). `ArtifactFiles.WriteAll` rolled
+  back only on file-system exceptions and then deleted the backups: it restores on any failure
+  and rethrows. The image of a reflected solve neither caps a field-free run nor declares a
+  surface where it answers nothing - only the plane, where the inner field has a face there. A
+  tilted cross-section's leaves and the probe use the element's own rotation, one built and
+  shared. `AppliedRange` sums only elements whose domains meet, so two stages side by side state
+  the wider range, not the sum. And the stdout counter writes the wrapped writer's line ending and
+  format, byte for byte.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

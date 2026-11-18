@@ -104,9 +104,34 @@ public sealed class StdoutTally : IDisposable
     private void MarkWritten() => Volatile.Write(ref _written, true);
 
     /// <summary>The writer standing in for the console's own while any call is running.</summary>
-    private sealed class Counter(TextWriter inner) : TextWriter
+    /// <remarks>
+    /// Writes the bytes the wrapped writer would: its line ending, its format provider and its
+    /// encoding, not a <see cref="TextWriter"/>'s defaults. A base <c>WriteLine</c> appends this
+    /// writer's own line ending, which was the platform's - CR LF through a writer set to LF.
+    /// </remarks>
+    private sealed class Counter : TextWriter
     {
-        public TextWriter Inner { get; } = inner;
+        public Counter(TextWriter inner)
+            : base(inner.FormatProvider)
+        {
+            Inner = inner;
+            CoreNewLine = inner.NewLine.ToCharArray();
+        }
+
+        public TextWriter Inner { get; }
+
+        public override IFormatProvider FormatProvider => Inner.FormatProvider;
+
+        [System.Diagnostics.CodeAnalysis.AllowNull]
+        public override string NewLine
+        {
+            get => Inner.NewLine;
+            set
+            {
+                Inner.NewLine = value;
+                CoreNewLine = Inner.NewLine.ToCharArray();
+            }
+        }
 
         public int Users { get; set; }
 
@@ -138,6 +163,28 @@ public sealed class StdoutTally : IDisposable
             }
 
             Inner.Write(buffer, index, count);
+        }
+
+        public override void Write(ReadOnlySpan<char> buffer)
+        {
+            if (!buffer.IsEmpty)
+            {
+                Mark();
+            }
+
+            Inner.Write(buffer);
+        }
+
+        public override void WriteLine(string? value)
+        {
+            Mark();
+            Inner.WriteLine(value);
+        }
+
+        public override void WriteLine()
+        {
+            Mark();
+            Inner.WriteLine();
         }
 
         public override void Flush() => Inner.Flush();

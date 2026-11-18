@@ -428,6 +428,62 @@ public sealed class ProbeDomainTests : IDisposable
         Assert.Equal((0.0, 40.0), FieldProbe.Open(path).AppliedRange(0.0, cycleMean: false));
     }
 
+    /// <summary>
+    /// Two solves side by side are never both answering at one point, so the range is the wider of
+    /// the two, not their sum; two that overlap are summed.
+    /// </summary>
+    [Fact]
+    public void DisjointElementsTakeTheUnionOfTheirRanges()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Template("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+        var template = fields[0]!.DeepClone();
+        fields.Clear();
+
+        foreach (var offset in new[] { 0.0, 50.0 })
+        {
+            var solve = template.DeepClone();
+            solve["solve"]!["minX"]!["value"] = -20.0 + offset;
+            solve["solve"]!["maxX"]!["value"] = 20.0 + offset;
+            foreach (var plate in solve["solve"]!["electrodes"]!.AsArray())
+            {
+                plate!["potential"]!["value"] = 1000.0;
+                plate["minX"]!["value"] = offset;
+                plate["maxX"]!["value"] = 1.0 + offset;
+            }
+
+            fields.Add(solve);
+        }
+
+        node["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[69, 0, 0]");
+        var path = Path.Combine(_root, "stages.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        Assert.Equal((0.0, 1000.0), FieldProbe.Open(path).AppliedRange(0.0, cycleMean: false));
+
+        // The control: moved to overlap, they are summed.
+        fields[1]!["solve"]!["minX"]!["value"] = 10.0;
+        fields[1]!["solve"]!["maxX"]!["value"] = 70.0;
+        File.WriteAllText(path, node.ToJsonString());
+        Assert.Equal((0.0, 2000.0), FieldProbe.Open(path).AppliedRange(0.0, cycleMean: false));
+    }
+
+    /// <summary>
+    /// A tilted cross-section's leaves stand through the element's own rotation - one built, and
+    /// shared - rather than through further rotations built from the same arguments.
+    /// </summary>
+    [Fact]
+    public void ATiltedElementsLeavesShareItsRotation()
+    {
+        var model = FieldProbe.Open(FaceModel("tilted-share", tiltHalfTurns: 0.01)).Model;
+        var (_, _, leaves) = Einzel.Fields.FieldAssembly.BuildMapped(model);
+
+        Assert.NotEmpty(leaves);
+        Assert.All(leaves, l => Assert.NotNull(l.Tilt));
+        Assert.All(leaves, l => Assert.Equal(0.01, ((Einzel.Fields.RotatedField)l.Shape).HalfTurns));
+        Assert.All(leaves, l => Assert.Same(leaves[0].Tilt, l.Tilt));
+    }
+
     [Fact]
     public void ARefusedNodeIsWrittenAsLowerCaseNanAndMarkedInvalidAndReadsBack()
     {

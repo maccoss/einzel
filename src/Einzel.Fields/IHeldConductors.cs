@@ -148,4 +148,9 @@ public sealed record ConductorLeaf(IConductorBounded Shape, IHeldConductors Held
 /// <param name="Held">The solve that pinned them.</param>
 /// <param name="Element">The index of the element in <see cref="Core.Model.CompiledModel.Fields"/>.</param>
 /// <param name="Image">The reflection this leaf is the image half through; null for a declared half.</param>
-public sealed record FieldLeaf(IConductorBounded Shape, IHeldConductors Held, int Element, Reflection? Image);
+/// <param name="Tilt">
+/// The rotation a tilted cross-section's element is evaluated through - the element's own
+/// rotated field, whose <see cref="RotatedField.ToLocal"/> says where in the unrotated solve a
+/// point is asked; null where the element is not tilted.
+/// </param>
+public sealed record FieldLeaf(IConductorBounded Shape, IHeldConductors Held, int Element, Reflection? Image, RotatedField? Tilt = null);

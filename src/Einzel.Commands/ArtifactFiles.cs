@@ -306,6 +306,8 @@ public static class ArtifactFiles
             // ...and only then into place, each in one rename.
             for (at = 0; at < files.Count; at++)
             {
+                BeforePlacing.Value?.Invoke(at);
+
                 var target = targets[at];
                 string? backup = null;
 
@@ -326,9 +328,11 @@ public static class ArtifactFiles
                 placed.Add((target, backup));
             }
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException)
+        catch (Exception failure)
         {
-            // None of them, then: newest first, each back as it was.
+            // None of them, then, whatever went wrong: newest first, each back as it was. Only the
+            // file-system failures were caught, so anything else skipped the rollback and the
+            // backups were deleted on the way out - the set half-written and the originals gone.
             for (var i = placed.Count - 1; i >= 0; i--)
             {
                 var (target, backup) = placed[i];
@@ -344,6 +348,12 @@ public static class ArtifactFiles
             }
 
             placed.Clear();
+
+            if (failure is not (IOException or UnauthorizedAccessException or NotSupportedException or System.Security.SecurityException))
+            {
+                // Not a destination that cannot be written: rolled back, and raised as itself.
+                throw;
+            }
 
             var (flag, path, _) = files[Math.Min(at, files.Count - 1)];
 
@@ -369,6 +379,13 @@ public static class ArtifactFiles
             }
         }
     }
+
+    /// <summary>
+    /// Called before each file is put in place, with its index: a test's way to fail a write part
+    /// way through for a reason that is not the file system's. Per async flow, so tests running
+    /// beside each other do not see each other's.
+    /// </summary>
+    internal static readonly AsyncLocal<Action<int>?> BeforePlacing = new();
 
     // Where a destination's bytes actually go: the file a symbolic link names, followed to the
     // end, or the path itself. An existing read-only file is refused here, before anything is

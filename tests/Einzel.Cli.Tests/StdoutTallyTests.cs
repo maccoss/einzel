@@ -71,6 +71,38 @@ public sealed class StdoutTallyTests
         }
     }
 
+    /// <summary>
+    /// What goes through the tally is byte for byte what the console's own writer would write: its
+    /// line ending and its format provider, not a writer's defaults.
+    /// </summary>
+    [Fact]
+    public void TheTallyWritesTheBytesTheConsoleWould()
+    {
+        var original = Console.Out;
+        var comma = (System.Globalization.NumberFormatInfo)System.Globalization.CultureInfo.InvariantCulture.NumberFormat.Clone();
+        comma.NumberDecimalSeparator = ",";
+        var captured = new StringWriter(comma) { NewLine = "|\n" };
+        Console.SetOut(captured);
+
+        try
+        {
+            using (StdoutTally.Enter())
+            {
+                Console.Out.WriteLine("a");
+                Console.Out.WriteLine(1.5);
+                Console.Out.WriteLine();
+                Console.Out.WriteLine('c');
+                Console.Out.WriteLine(['d', 'e']);
+            }
+
+            Assert.Equal("a|\n1,5|\n|\nc|\nde|\n", captured.ToString());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+    }
+
     /// <summary>A call that writes nothing is not written, and one that writes is.</summary>
     [Fact]
     public void ACallKnowsWhetherItWrote()

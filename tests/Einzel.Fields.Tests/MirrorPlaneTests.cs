@@ -349,4 +349,55 @@ public sealed class MirrorPlaneTests
         var overlap = new ReflectedField(new MetalPastThePlane(), Plane);
         Assert.True(overlap.SignedDistanceToConductor(in declaredSide) < 0.0);
     }
+    // A declared half below the plane that is field-free beyond its own edge, with a
+    // discontinuity at a chosen x.
+    private sealed class Edged(double surfaceX) : IElectrostaticField
+    {
+        public double PotentialAt(in Vec3 position) => position.X <= Plane ? 100.0 : 0.0;
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => position.X <= Plane ? new Vec3(1000.0, 0.0, 0.0) : default;
+
+        public double FieldFreeRunLength(in Vec3 position, in Vec3 direction) =>
+            position.X > Plane ? double.PositiveInfinity : 0.0;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) => position.X - surfaceX;
+    }
+
+    /// <summary>
+    /// Where the image answers nothing it is field-free only as far as the plane, and declares no
+    /// surface but the plane itself where the inner field has one there.
+    /// </summary>
+    /// <remarks>
+    /// Both were asked of the inner field at the reflected point regardless. A half free beyond its
+    /// own edge made the image claim a free run straight through the plane into its field, so the
+    /// integrator would have skipped it; and a surface the half declares beyond its edge landed on
+    /// the declared side as a discontinuity the image does not have.
+    /// </remarks>
+    [Fact]
+    public void WhereTheImageIsAbsentItShortensNoRunAndAddsNoSurface()
+    {
+        var plusX = new Vec3(1.0, 0.0, 0.0);
+        var image = new ReflectedField(new Edged(Plane), Plane, imageAbove: true);
+        var declaredSide = new Vec3(Plane - 0.003, 0.0, 0.0);
+
+        // Free as far as the plane along a ray heading for it, and without limit along one leaving.
+        Assert.Equal(0.003, image.FieldFreeRunLength(in declaredSide, in plusX), 12);
+        Assert.Equal(double.PositiveInfinity, image.FieldFreeRunLength(in declaredSide, new Vec3(-1.0, 0.0, 0.0)));
+
+        // The inner field's face is the plane: one surface there, its sign changing across it.
+        var before = image.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0));
+        var after = image.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.0, 0.0));
+        Assert.True(Math.Sign(before) != Math.Sign(after), $"{before} then {after}");
+        Assert.Equal(0.001, Math.Abs(before), 12);
+
+        // A surface the inner field declares 2 mm past its edge is no surface on the declared side.
+        var phantom = new ReflectedField(new Edged(Plane + 0.002), Plane, imageAbove: true);
+        Assert.Equal(double.PositiveInfinity, phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0)));
+        Assert.Equal(double.PositiveInfinity, phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.003, 0.0, 0.0)));
+
+        // On the image's own side it is the reflection, as before.
+        Assert.Equal(
+            new Edged(Plane + 0.002).SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0)),
+            phantom.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.0, 0.0)));
+    }
 }

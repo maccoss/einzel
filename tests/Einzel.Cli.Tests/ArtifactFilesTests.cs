@@ -35,6 +35,45 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
         Directory.Delete(_root, recursive: true);
     }
 
+    /// <summary>
+    /// A write that fails part way for any reason - not only the file system's - puts back what
+    /// was there and leaves nothing beside it.
+    /// </summary>
+    /// <remarks>
+    /// The rollback caught only file-system exceptions; anything else skipped it, and the backups
+    /// were deleted on the way out, so the first file stood replaced and its original was lost.
+    /// </remarks>
+    [Fact]
+    public void AnyFailurePartWayPutsBackWhatWasThere()
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first.png");
+        var second = Path.Combine(_root, "second.csv");
+        File.WriteAllBytes(first, [1]);
+        File.WriteAllBytes(second, [2]);
+
+        ArtifactFiles.BeforePlacing.Value = index =>
+        {
+            if (index == 1)
+            {
+                throw new InvalidOperationException("failed on purpose");
+            }
+        };
+
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() => ArtifactFiles.WriteAll([("out", first, [8]), ("csv", second, [9])]));
+        }
+        finally
+        {
+            ArtifactFiles.BeforePlacing.Value = null;
+        }
+
+        Assert.Equal([1], File.ReadAllBytes(first));
+        Assert.Equal([2], File.ReadAllBytes(second));
+        Assert.Equal(["first.png", "second.csv"], Directory.GetFiles(_root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
     /// <summary>A read-only destination is refused and left as it was.</summary>
     [Fact]
     public void AReadOnlyDestinationIsRefusedAndKept()
