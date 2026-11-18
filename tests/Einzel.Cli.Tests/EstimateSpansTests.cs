@@ -125,6 +125,47 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A hold-then-extract sequence pilots its trajectories through the extraction, not through
+    /// the hold before it: two models differing only in the extraction field fly different
+    /// pilots.
+    /// </summary>
+    /// <remarks>
+    /// Flown from zero, both pilots would cross the same hold with nothing pushing, take the same
+    /// steps, and be scaled to the extraction alike - the pilot timing a phase the trajectories
+    /// never fly.
+    /// </remarks>
+    [Fact]
+    public void AHoldThenExtractIsPilotedThroughTheExtraction()
+    {
+        string Extracting(double voltsPerMetre) => Model("tube-plain", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "pushField": { "value": 0.0, "unit": "V/m" } }""");
+            document["fields"]![0] = JsonNode.Parse("""{ "type": "uniform", "field": { "expression": [ "pushField", "0", "0" ] } }""");
+            document["sequence"] = JsonNode.Parse(string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $$"""
+                [ { "name": "hold", "duration": { "value": 3, "unit": "us" } },
+                  { "name": "extract", "duration": { "value": 3, "unit": "us" }, "mode": "trajectory",
+                    "set": { "pushField": { "value": {{voltsPerMetre}}, "unit": "V/m" } } } ]
+                """));
+        });
+
+        // What the pilot flew: its steps and the time they covered, which the field decides.
+        static string Pilot(string basis) =>
+            System.Text.RegularExpressions.Regex.Match(basis, @"Trajectory: [\d,]+ steps over [\d.Ee+-]+ us").Value;
+
+        var gentle = EstimateCommand.Execute(Extracting(2_000.0), calibrate: true);
+        var strong = EstimateCommand.Execute(Extracting(2_000_000.0), calibrate: true);
+
+        output.WriteLine(Pilot(gentle.Basis));
+        output.WriteLine(Pilot(strong.Basis));
+
+        Assert.Contains("phase 'extract'", gentle.Basis, StringComparison.Ordinal);
+        Assert.NotEmpty(Pilot(gentle.Basis));
+        Assert.NotEqual(Pilot(gentle.Basis), Pilot(strong.Basis));
+    }
+
+    /// <summary>
     /// A study over a trajectory model that enters a diffusive phase is one whole sequenced run an
     /// evaluation, whose flights are already in the model's figure and are not added again.
     /// </summary>

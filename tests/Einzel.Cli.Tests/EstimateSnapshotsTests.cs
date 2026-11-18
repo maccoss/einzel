@@ -94,6 +94,7 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
         output.WriteLine(refused.Error.ToString());
 
         Assert.Equal(ErrorCodes.SchemaInvalid, refused.Error.Code);
+        Assert.Equal("/snapshots", refused.Error.Path);
         Assert.Contains("no diffusive mode", refused.Error.Constraint, StringComparison.Ordinal);
 
         // None asked for is the ordinary estimate.
@@ -105,6 +106,22 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
 
         Assert.Equal(1, exit);
         Assert.Contains("no diffusive mode", stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>A mixture's run records no instants, so recorded instants are refused for it.</summary>
+    [Fact]
+    public void RecordedInstantsAreRefusedForAMixture()
+    {
+        var mixture = Model("tube-mixture");
+
+        var refused = Assert.Throws<EinzelException>(
+            () => EstimateCommand.Execute(mixture, calibrate: false, snapshots: 2));
+
+        output.WriteLine(refused.Error.ToString());
+
+        Assert.Equal("/snapshots", refused.Error.Path);
+        Assert.Contains("2 species", refused.Error.Constraint, StringComparison.Ordinal);
+        Assert.True(EstimateCommand.Execute(mixture, calibrate: false).MemoryMiB > 0.0);
     }
 
     /// <summary>

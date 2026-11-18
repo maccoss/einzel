@@ -38,7 +38,7 @@ public sealed class SequencedNotFiniteTests(ITestOutputHelper output)
         };
         var ion = IonSpecies.FromMassToCharge(500.0, 1);
 
-        var refused = Assert.Throws<EinzelException>(() => PacketConversion.ToTrajectories(
+        var refused = Assert.Throws<NonFiniteDensityException>(() => PacketConversion.ToTrajectories(
             density, 10, ion, gas, FieldFreeSpace.Instance, Mobility.FromCrossSection(gas, ion), seed: 1));
 
         Assert.Equal("/", refused.Error.Path);

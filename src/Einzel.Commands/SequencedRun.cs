@@ -356,8 +356,7 @@ public static class SequencedRun
                             Mobility(model, gas, species),
                             model.Cloud.Seed);
                     }
-                    catch (EinzelException refused)
-                        when (refused.Error.Code == ErrorCodes.ConvergenceFailed && refused.Error.Path == "/")
+                    catch (NonFiniteDensityException refused)
                     {
                         throw new EinzelException(
                             NotFiniteAtBoundary(refused.Error, model.TimelinePath, producedBy, model.Phases[producedBy].Name),

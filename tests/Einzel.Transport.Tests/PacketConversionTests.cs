@@ -203,13 +203,14 @@ public sealed class PacketConversionTests(ITestOutputHelper output)
         density[5, 3] = bad;
         density[7, 7] = 1.0e12;
 
-        var refused = Assert.Throws<Einzel.Core.Errors.EinzelException>(() => PacketConversion.ToTrajectories(
+        var refused = Assert.Throws<NonFiniteDensityException>(() => PacketConversion.ToTrajectories(
             density, 100, Ion, Gas(), FieldFreeSpace.Instance, Mu(Gas()), seed: 3));
 
         output.WriteLine(refused.Error.ToString());
 
         Assert.Equal(Einzel.Core.Errors.ErrorCodes.ConvergenceFailed, refused.Error.Code);
         Assert.Contains("cell (5, 3)", refused.Error.Constraint, StringComparison.Ordinal);
+        Assert.Equal((5, 3), (refused.I, refused.J));
 
         // A general conversion does not know where the density came from: unlocated, for the
         // caller that does to locate.

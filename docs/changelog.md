@@ -3894,3 +3894,13 @@ Two findings from Stage 1 that bear on the spec:
   takes no `--snapshots` before parsing the number; a step's report no longer carries the run's
   reused ledger; and a mixture's seed shape is consumed in a method of its own, so what it
   became is not reachable under its old name.
+
+  **A thirteenth review.** The trajectory pilot of a sequenced run is now flown through the
+  first trajectory phase's own field - shifted to that phase's start, as the run's leg is -
+  where it was flown from zero through whatever came first: on a hold-then-extract tube the
+  pilot now takes 49 steps under a gentle extraction and 193 under a strong one, where both
+  crossed the same hold. `--snapshots` is refused for a mixture, whose run records no instants,
+  and the refusal is located at `/snapshots` rather than at the model's mode. A non-finite
+  density is refused by its own exception type, `NonFiniteDensityException`, which the sequence
+  catches to locate it, rather than by an error code and an unlocated path. The timeline's path
+  comes out of the call that resolves the timeline instead of a second resolution.

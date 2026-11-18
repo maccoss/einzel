@@ -876,10 +876,11 @@ public static class Program
         // because the file already says which it is and a flag would let the two
         // disagree - the cost of getting that wrong is a plan short by a factor of
         // the evaluation count.
+        var isStudy = IsStudy(path);
+
         // How many instants a diffusive run is to record its density at: none for a run, one for
         // a render at an instant, one a frame for an animation. Each is a copy held to the end.
         var snapshots = 0;
-        var isStudy = IsStudy(path);
 
         if (options.Value("snapshots") is { } instants)
         {
