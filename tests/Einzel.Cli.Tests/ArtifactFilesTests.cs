@@ -371,6 +371,12 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
 
             Assert.Contains($"it could not be told whether {second} was replaced: a copy of its original is at {backupAt}", refusal.Error.Constraint, StringComparison.Ordinal);
             Assert.Contains($"{first} holds the new file and its original is at {firstOriginal}", refusal.Error.Constraint, StringComparison.Ordinal);
+            // And the new version of the uncertain file is kept - the only copy of what the
+            // command made for it - beside it, under a name that says what it is.
+            Assert.Equal([9], File.ReadAllBytes(second + ".new"));
+            Assert.Contains($"the new version of {second} is at {second}.new", refusal.Error.Constraint, StringComparison.Ordinal);
+            Assert.Contains("move a new version over the file it is named after to complete the set", refusal.Error.Suggestion, StringComparison.Ordinal);
+            Assert.Empty(Directory.GetFiles(_root, "*.tmp"));
             Assert.Contains("compare a file with the copy named beside it", refusal.Error.Suggestion, StringComparison.Ordinal);
             Assert.Contains("move an original back over the file named beside it to undo it", refusal.Error.Suggestion, StringComparison.Ordinal);
             return;

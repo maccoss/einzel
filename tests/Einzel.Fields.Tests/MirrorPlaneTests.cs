@@ -420,7 +420,8 @@ public sealed class MirrorPlaneTests
 
         public double PotentialAt(in Vec3 position) => 0.0;
 
-        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+        // A field through the plane, so the face there is a jump and declared.
+        public Vec3 ElectricFieldAt(in Vec3 position) => new(1.0, 0.0, 0.0);
 
         public double SignedDistanceToDiscontinuity(in Vec3 position) => (Mirror + 1e-10) - position.X;
     }
@@ -548,5 +549,87 @@ public sealed class MirrorPlaneTests
         var faced = new Reflection(Plane, ImageAbove: true).Declared(new Edged(Plane));
         Assert.NotEqual(Math.Sign(Measure(faced, Plane - 0.001)), Math.Sign(Measure(faced, Plane + 0.001)));
         Assert.Equal(0.001, Math.Abs(Measure(faced, Plane + 0.001)), 12);
+    }
+
+    // A half with a face on the plane and a field through it or along it: its box is 0 to the
+    // plane, its field the given vector inside, and - for the run test - free outside in every
+    // direction, as a careless analytic field might claim. Its measure beyond the face may be
+    // signed by y, so a sign read once and kept is caught.
+    private sealed class Through(Vec3 inside, bool signedByY = false) : IElectrostaticField
+    {
+        private static bool In(in Vec3 p) => p.X >= 0.0 && p.X <= Plane;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => In(in position) ? inside : default;
+
+        public double FieldFreeRunLength(in Vec3 position, in Vec3 direction) =>
+            position.X > Plane ? double.PositiveInfinity : 0.0;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) =>
+            (signedByY && position.Y < 0.0 ? -1.0 : 1.0) * (Plane - position.X);
+    }
+
+    /// <summary>
+    /// A face on the plane is a surface only where the field jumps there: a mirror edge, its
+    /// normal field zero, gets none; a field through the plane gets one.
+    /// </summary>
+    /// <remarks>
+    /// The declared half took ownership of the plane wherever its box edge lay on it, so a Neumann
+    /// mirror with its boundary declared discontinuous gained a phantom surface from that half
+    /// alone - where the two halves' surfaces had cancelled, correctly by accident.
+    /// </remarks>
+    [Fact]
+    public void APlaneIsASurfaceOnlyWhereTheFieldJumps()
+    {
+        double Sign(IElectrostaticField field, double x) => Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(x, 0.001, 0.0)));
+
+        var mirror = new Reflection(Plane, ImageAbove: true).Sum(new Through(new Vec3(0.0, 1000.0, 0.0)));
+        Assert.Equal(Sign(mirror, Plane - 0.0005), Sign(mirror, Plane + 0.0005));
+
+        var through = new Reflection(Plane, ImageAbove: true).Sum(new Through(new Vec3(1000.0, 0.0, 0.0)));
+        Assert.NotEqual(Sign(through, Plane - 0.0005), Sign(through, Plane + 0.0005));
+    }
+
+    /// <summary>
+    /// The sign beyond the face is read at each point's own place, and the face holds no state a
+    /// query writes - so a packet's members sharing the field cannot see one another's answers.
+    /// </summary>
+    [Fact]
+    public void ThePlanesSignIsReadWhereThePointIsAndNothingIsHeld()
+    {
+        var owner = new Reflection(Plane, ImageAbove: true).Declared(new Through(new Vec3(1000.0, 0.0, 0.0), signedByY: true));
+
+        var above = owner.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.001, 0.0));
+        var below = owner.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, -0.001, 0.0));
+
+        Assert.NotEqual(Math.Sign(above), Math.Sign(below));
+
+        // Asked again in the other order, the same answers.
+        Assert.Equal(below, owner.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, -0.001, 0.0)));
+        Assert.Equal(above, owner.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.001, 0.0)));
+
+        Assert.All(
+            typeof(PlaneFace).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public),
+            f => Assert.True(f.IsInitOnly, $"PlaneFace.{f.Name} can be written after construction"));
+    }
+
+    /// <summary>
+    /// A field-free run toward a plane the declared half declares as a surface ends at the plane,
+    /// however far the inner field claims to be free.
+    /// </summary>
+    [Fact]
+    public void AFreeRunEndsAtAPlaneThatIsASurface()
+    {
+        var reflection = new Reflection(Plane, ImageAbove: true);
+        var minusX = new Vec3(-1.0, 0.0, 0.0);
+        var from = new Vec3(Plane + 0.002, 0.001, 0.0);
+
+        var jumping = reflection.Declared(new Through(new Vec3(1000.0, 0.0, 0.0)));
+        Assert.Equal(0.002, jumping.FieldFreeRunLength(in from, in minusX), 12);
+
+        // Where the plane is no surface, the run is the inner field's.
+        var mirror = reflection.Declared(new Through(new Vec3(0.0, 1000.0, 0.0)));
+        Assert.Equal(double.PositiveInfinity, mirror.FieldFreeRunLength(in from, in minusX));
     }
 }

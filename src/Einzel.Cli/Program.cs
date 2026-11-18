@@ -393,6 +393,13 @@ public static class Program
         return words.Count == 0 ? null : string.Join("; ", words);
     }
 
+    // Units a number on this command line is written in, which after a point mark a typo rather
+    // than a file extension: '2.ms' is two milliseconds mistyped, not a file called 2 of type ms.
+    private static readonly HashSet<string> UnitSuffixes = new(StringComparer.Ordinal)
+    {
+        "s", "ms", "us", "µs", "ns", "ps", "m", "mm", "um", "µm", "nm", "V", "kV", "mV", "Hz", "kHz", "MHz", "eV", "keV",
+    };
+
     private static readonly System.Buffers.SearchValues<char> Letters =
         System.Buffers.SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
@@ -408,6 +415,13 @@ public static class Program
             return false;
         }
 
+        // A unit after a point - '2.ms', '5.mm', '1.kV' - is a number with a typo in it, not a
+        // file: checked before the extension rule, which would take any two letters for a file.
+        if (UnitSuffixes.Contains(Path.GetExtension(word).TrimStart('.')))
+        {
+            return LeadsLikeANumber(word);
+        }
+
         // An extension of two letters or more, all letters - .json, .txt, .msh, .py - makes it a
         // file name. Not one letter, nor one with a digit in it: '2.s' and '1.e5x' are a unit typo
         // and an exponent. A named list of extensions missed the files people actually have.
@@ -418,6 +432,12 @@ public static class Program
             return false;
         }
 
+        return LeadsLikeANumber(word);
+    }
+
+    // A digit first, or a sign or a point and then a digit.
+    private static bool LeadsLikeANumber(string word)
+    {
         var body = word.Length > 0 && word[0] is '+' or '-' ? word[1..] : word;
         body = body.Length > 0 && body[0] == '.' ? body[1..] : body;
         return body.Length > 0 && char.IsAsciiDigit(body[0]);

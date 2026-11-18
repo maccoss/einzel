@@ -23,10 +23,21 @@ public static class CommandNumber
     /// <summary>Whether a word parses as a number, in the invariant culture.</summary>
     /// <param name="word">The word.</param>
     /// <param name="value">The number, which may be infinite or NaN.</param>
-    /// <returns>True where it parses, overflow to infinity and the text "NaN" included.</returns>
+    /// <returns>
+    /// True where the whole word parses, overflow to infinity and the texts "NaN" and "Infinity"
+    /// included; false for a word with leading or trailing white space.
+    /// </returns>
     public static bool Parses(string word, out double value)
     {
         ArgumentNullException.ThrowIfNull(word);
+
+        // Typed as a number means the whole word: NumberStyles.Float would take ' 5' and '5 ' too,
+        // a quoted word with spaces in it that nobody typed as a number.
+        if (word.Length == 0 || char.IsWhiteSpace(word[0]) || char.IsWhiteSpace(word[^1]))
+        {
+            value = double.NaN;
+            return false;
+        }
 
         return double.TryParse(word, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }

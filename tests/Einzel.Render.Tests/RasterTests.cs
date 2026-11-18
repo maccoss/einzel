@@ -332,6 +332,24 @@ public sealed class RasterTests(ITestOutputHelper output)
         Assert.Contains("must be opaque", refused.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>A bias that is not a finite non-negative depth, or an opacity outside 0 to 1, is refused by layer name.</summary>
+    [Theory]
+    [InlineData(double.NaN, 1.0, "depth bias")]
+    [InlineData(-0.1, 1.0, "depth bias")]
+    [InlineData(double.PositiveInfinity, 1.0, "depth bias")]
+    [InlineData(0.0, double.NaN, "opacity")]
+    [InlineData(0.0, 1.5, "opacity")]
+    [InlineData(0.0, -0.1, "opacity")]
+    public void ABadBiasOrOpacityIsRefusedByName(double bias, double alpha, string what)
+    {
+        var layer = new RasterLayer([Square(z: 0.0, 1.0, 0.0, 0.0)], [], alpha, WritesDepth: true, DepthBias: bias, Name: "odd");
+
+        var refused = Assert.Throws<ArgumentException>(() => Rasterizer.Draw([layer], Scale(10.0), Flat, White, 21, 21));
+
+        Assert.Contains("'odd'", refused.Message, StringComparison.Ordinal);
+        Assert.Contains(what, refused.Message, StringComparison.Ordinal);
+    }
+
     private static RasterLayer Layer(RasterMesh mesh) => new([mesh], [], 1.0, WritesDepth: true);
 
     private static RasterMesh Square(double z, double r, double g, double b) =>

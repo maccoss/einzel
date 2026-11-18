@@ -3882,5 +3882,18 @@ Two findings from Stage 1 that bear on the spec:
   file's state, with advice per state. And an extension of two letters or more makes a word a file
   name, so `3cases.txt` and `2026-mesh.msh` are not taken for mistyped intervals.
 
+  **A twenty-ninth review.** The plane is a surface only where the union's field jumps there - the
+  half's normal field at the plane not zero - so a Neumann mirror declared discontinuous gets none
+  from the declared half alone, where round 28 had given it a phantom. The sign beyond the face is
+  read at each point's own place, with no state a query writes, so a packet's members sharing the
+  field cannot see one another's answers. A field-free run toward a plane the half declares a
+  surface ends there. None of this reaches a shipped model: the two reflected templates declare
+  `boundaryIsDiscontinuous: false` with a Neumann mirror, and the volume solves declare no
+  surfaces, so the four reference flights and every sweep are unchanged. Also: a unit after a
+  point (`2.ms`, `1.kV`) still reads as a possible mistyped number; a rollback that cannot tell
+  whether a file was replaced keeps the new versions of it and of every file not yet placed, as
+  `<name>.new`, so the set can be completed by hand; a raster layer's bias and opacity are checked;
+  and a word with leading or trailing white space is not a typed number.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

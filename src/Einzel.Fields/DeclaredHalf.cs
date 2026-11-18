@@ -39,10 +39,32 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The inner field's run, unchanged: gating only takes field away, so wherever the inner field
-    /// is free the gated one is too, and the inner run is never longer than the true one.
+    /// The inner field's run - gating only takes field away, so wherever the inner field is free
+    /// the gated one is too - cut at the plane where the ray crosses it and this half declares a
+    /// surface there (<see cref="PlaneFace.Jumps"/>). An analytic drift ends where a surface is,
+    /// and a run that reached past the plane on the strength of an inner field free on both sides
+    /// of it would jump the one surface the sum declares there.
     /// </remarks>
-    public double FieldFreeRunLength(in Vec3 position, in Vec3 direction) => inner.FieldFreeRunLength(in position, in direction);
+    public double FieldFreeRunLength(in Vec3 position, in Vec3 direction)
+    {
+        var run = inner.FieldFreeRunLength(in position, in direction);
+
+        if (!(run > 0.0) || reflection.Overlaps || direction.X == 0.0)
+        {
+            return run;
+        }
+
+        var toPlane = (reflection.PlaneX - position.X) / direction.X;
+
+        if (!(toPlane > 0.0) || !(toPlane < run))
+        {
+            return run;
+        }
+
+        var y = position.Y + (toPlane * direction.Y);
+        var z = position.Z + (toPlane * direction.Z);
+        return _face.Jumps(y, z) ? toPlane : run;
+    }
 
     /// <inheritdoc/>
     /// <remarks>

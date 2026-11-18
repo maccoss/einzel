@@ -542,6 +542,7 @@ public static class ArtifactFiles
                 // file may be under a backup name, and advice that fits one state misleads in another.
                 var report = new List<string>();
                 var advice = new HashSet<string>(StringComparer.Ordinal);
+                var keepStaging = false;
 
                 // The file being replaced when it failed, and what the failure left of it.
                 var same = Sameness.Different;
@@ -573,10 +574,30 @@ public static class ArtifactFiles
                         }
                     }
 
-                    for (var i = at + 1; i < count; i++)
+                    // The new bytes of the uncertain file and of every file not yet placed are the
+                    // only copies of what the command made: kept beside their destinations under
+                    // names that say what they are, so the set can be completed by hand.
+                    for (var i = at; i < count; i++)
                     {
-                        report.Add($"{_files[i].Target} is unchanged");
+                        var (_, _, target, temporary) = _files[i];
+                        var kept = KeepAside(temporary, target);
+
+                        if (i > at)
+                        {
+                            report.Add(kept is null ? $"{target} is unchanged" : $"{target} is unchanged and its new version is at {kept}");
+                        }
+                        else if (kept is not null)
+                        {
+                            report.Add($"the new version of {target} is at {kept}");
+                        }
+
+                        if (kept is not null)
+                        {
+                            advice.Add("move a new version over the file it is named after to complete the set");
+                        }
                     }
+
+                    keepStaging = true;
 
                     // Kept: the backups are the originals now, and the finally below must not delete them.
                     placed.Clear();
@@ -625,8 +646,9 @@ public static class ArtifactFiles
 
                 var (flag, path, _, _) = _files[Math.Min(at, count - 1)];
 
-                // The staging files not yet renamed, and the folders this set made.
-                for (var i = at; i < count; i++)
+                // The staging files not yet renamed, and the folders this set made - except where they
+                // were kept aside as the only copies of the new files.
+                for (var i = at; i < count && !keepStaging; i++)
                 {
                     TryDelete(_files[i].Temporary);
                 }
@@ -774,7 +796,38 @@ public static class ArtifactFiles
         return full;
     }
 
-    // Whether two files hold the same bytes; false where either cannot be read.
+    // A staging file moved beside its destination as "<name>.new" (or .new2, ...), where it is
+    // the only copy of a file the command made; the name, or null where there was nothing to keep.
+    private static string? KeepAside(string temporary, string target)
+    {
+        if (!File.Exists(temporary))
+        {
+            return null;
+        }
+
+        for (var n = 1; n < 1000; n++)
+        {
+            var kept = target + (n == 1 ? ".new" : ".new" + n.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+            if (File.Exists(kept) || Directory.Exists(kept))
+            {
+                continue;
+            }
+
+            try
+            {
+                File.Move(temporary, kept);
+                return kept;
+            }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+            {
+                return temporary;
+            }
+        }
+
+        return temporary;
+    }
+
     // What a comparison of two files found: the same bytes, different bytes, or nothing either way.
     private enum Sameness
     {

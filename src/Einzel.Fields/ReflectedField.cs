@@ -188,11 +188,12 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
     /// Where the image answers nothing it has no discontinuity of its own, so none of the inner
     /// field's surfaces seen through the mirror is declared there - a surface the inner field
     /// declares beyond its edge would otherwise land on the declared side as a phantom the
-    /// integrator stops at. The one surface that can be there is the plane, where the image
-    /// starts to answer, and only where the image's field jumps there: where the inner field has a
-    /// face on the plane, declared as the distance from the plane with the sign the inner field
-    /// gives beyond that face. Otherwise the measure is the image's own at the plane, constant
-    /// across this side, so its sign changes nowhere the field is continuous.
+    /// integrator stops at. Nor does the image declare the plane: where the union's field jumps
+    /// there, the declared half is the one member that declares it (<see cref="PlaneFace"/>), since
+    /// the sum multiplies its members' signs and two surfaces at one place cancel. So on the
+    /// declared side the image's measure is its own at the plane where it has no face there, and
+    /// otherwise the distance from the plane signed as the image is just past the plane on its own
+    /// side - its sign changes nowhere on this side, nor at the plane.
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {

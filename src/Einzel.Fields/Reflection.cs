@@ -145,10 +145,10 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
 /// on its own side - continuous with itself, no surface.
 /// </para>
 /// <para>
-/// <b>Asked once per point.</b> The face test asks the half at the plane, beneath the point; the
-/// sign beyond the face is read once, on the first point that finds a face, and held - it depends
-/// on which side of the half's own boundary is outside, which a geometry does not change - and the
-/// length scale is fixed at construction.
+/// <b>A surface only where the field jumps.</b> A face on the plane is not enough: the union's
+/// normal field goes from E to -E there, so it jumps only where the half's normal field at the
+/// plane is not zero (<see cref="Jumps"/>). A Neumann mirror holds it at zero and gets no surface.
+/// Each point's measure is read at its own place, and the half holds no state that a query writes.
 /// </para>
 /// </remarks>
 public sealed class PlaneFace
@@ -160,16 +160,22 @@ public sealed class PlaneFace
     private const double FaceTolerance = 1e-9;
     private const double PastFraction = 1e-6;
 
+    // How large the normal field at the plane must be, against the whole field there, for the
+    // union's field to jump across it.
+    private const double JumpTolerance = 1e-9;
+
     private readonly IElectrostaticField _inner;
     private readonly double _plane;
     private readonly double _length;
-    private readonly double _readAt;
-    private double _sign = double.NaN;
+    private readonly double _inside;
+    private readonly double _past;
+    private readonly bool _owns;
 
     internal PlaneFace(IElectrostaticField inner, Reflection reflection, bool ownsPlane)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _plane = reflection.PlaneX;
+        _owns = ownsPlane;
 
         // The half's length scale: its resolution where it has one, else the plane's distance from
         // the origin, else a millimetre - an analytic field at the origin has no scale of its own.
@@ -177,16 +183,57 @@ public sealed class PlaneFace
             : _plane != 0.0 ? Math.Abs(_plane)
             : 1e-3;
 
-        // Where, in the half's own frame, the sign is read: just past the face on the image's side
-        // for the owner, so it changes sign at the plane; just inside the declared side for the
-        // image, which is the sign the image has just past the plane on its own side.
+        // In the half's own frame: just inside the declared side, and just past the face on the
+        // image's side.
         var imageSide = reflection.ImageAbove == true ? 1.0 : -1.0;
-        _readAt = _plane + ((ownsPlane ? imageSide : -imageSide) * PastFraction * _length);
+        _inside = _plane - (imageSide * PastFraction * _length);
+        _past = _plane + (imageSide * PastFraction * _length);
+    }
+
+    /// <summary>Whether the union's field jumps across the plane beneath a point.</summary>
+    /// <param name="y">The point's y.</param>
+    /// <param name="z">The point's z.</param>
+    /// <returns>True where the half has a face on the plane there and its normal field there is not zero.</returns>
+    /// <remarks>
+    /// A face on the plane is not enough. The image is the half seen through the mirror, so the
+    /// union's potential and its tangential field are continuous across the plane by construction,
+    /// and its normal field goes from <c>E_x</c> to <c>-E_x</c>: it jumps only where the half's
+    /// normal field at the plane is not zero. A Neumann mirror edge holds it at zero, and declaring
+    /// a surface there would be a phantom; a Dirichlet edge with a field through it is a real jump.
+    /// Asked of the field at the plane itself, where the declared half answers - just inside, a
+    /// mirror edge's normal field is a curvature times the offset rather than zero.
+    /// </remarks>
+    public bool Jumps(double y, double z)
+    {
+        var onPlane = new Vec3(_plane, y, z);
+
+        if (!(Math.Abs(_inner.SignedDistanceToDiscontinuity(in onPlane)) <= FaceTolerance * _length))
+        {
+            return false;
+        }
+
+        var field = _inner.ElectricFieldAt(in onPlane);
+        return Math.Abs(field.X) > JumpTolerance * field.Length;
     }
 
     /// <summary>The measure at a point on the side where the half answers nothing.</summary>
     /// <param name="position">The point.</param>
     /// <returns>The measure.</returns>
+    /// <remarks>
+    /// <para>
+    /// Where the half has no face on the plane beneath the point, its own measure at the plane,
+    /// held constant across this side. Where it has one, the distance from the plane, signed so
+    /// that the sum changes sign at the plane exactly where its field jumps there and nowhere
+    /// else: the owner takes the sign the half has just past its face, which changes sign at the
+    /// plane, where the field jumps; and the sign it has just inside the declared side, which does
+    /// not, where it does not. The image always takes the inside sign.
+    /// </para>
+    /// <para>
+    /// <b>Read at the point's own place, with nothing held.</b> The first version read the sign
+    /// once and kept it, which was wrong for a half whose outside differs from place to place and
+    /// was an unsynchronised write on a field a packet's members share.
+    /// </para>
+    /// </remarks>
     public double At(in Vec3 position)
     {
         var onPlane = new Vec3(_plane, position.Y, position.Z);
@@ -197,12 +244,10 @@ public sealed class PlaneFace
             return atPlane;
         }
 
-        if (double.IsNaN(_sign))
-        {
-            var read = new Vec3(_readAt, position.Y, position.Z);
-            _sign = Math.CopySign(1.0, _inner.SignedDistanceToDiscontinuity(in read));
-        }
+        var field = _inner.ElectricFieldAt(in onPlane);
+        var jumps = Math.Abs(field.X) > JumpTolerance * field.Length;
 
-        return Math.CopySign(Math.Abs(position.X - _plane), _sign);
+        var read = new Vec3(_owns && jumps ? _past : _inside, position.Y, position.Z);
+        return Math.CopySign(Math.Abs(position.X - _plane), _inner.SignedDistanceToDiscontinuity(in read));
     }
 }

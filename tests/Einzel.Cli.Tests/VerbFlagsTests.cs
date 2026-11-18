@@ -367,6 +367,10 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     [InlineData("--progress 2026-trap.json", null)]
     [InlineData("--progress 2026-trap.json extra", null)]
     [InlineData("--progress 3d/lens", null)]
+    [InlineData("--progress 2.ms", "'2.ms'")]
+    [InlineData("--progress 5.mm m.json", "'5.mm'")]
+    [InlineData("--progress 1.kV", "'1.kV'")]
+    [InlineData("--progress 3.us", "'3.us'")]
     [InlineData("--progress 3cases.txt", null)]
     [InlineData("--progress 2026-mesh.msh", null)]
     [InlineData("--progress 1.e5x m.json", "'1.e5x'")]
@@ -622,5 +626,21 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         Assert.Equal(1, code);
         Assert.Contains(" at /args/--from-template:", stderr, StringComparison.Ordinal);
         Assert.False(File.Exists(destination));
+    }
+
+    /// <summary>
+    /// A number is the whole word: one with a space before or after it is not a typed number, so
+    /// after a bare <c>--progress</c> it is an argument and a value given that way is refused.
+    /// </summary>
+    [Theory]
+    [InlineData(" 5")]
+    [InlineData("5 ")]
+    [InlineData("	5")]
+    [InlineData(" NaN")]
+    public void AWordWithSpacesIsNotANumber(string word)
+    {
+        Assert.False(CommandNumber.Parses(word));
+        Assert.True(CommandNumber.Parses(word.Trim()));
+        Assert.Equal([word], CommandLine.Parse(["run", "--progress", word]).Positional);
     }
 }

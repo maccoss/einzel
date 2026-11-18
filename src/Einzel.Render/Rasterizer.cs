@@ -227,6 +227,25 @@ public static class Rasterizer
             // outlines - and is resolved as one fragment a sample. A translucent one would fully
             // hide another biased layer behind it, which is not what translucent means; refused by
             // name rather than drawn wrong.
+            var label = layers[l].Name is { } named ? $"'{named}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            // A bias is a non-negative distance and an opacity a fraction: a NaN or a negative bias
+            // drew nothing or everything with no word, and an opacity past one blended outside the
+            // colours the layer has.
+            if (!double.IsFinite(layers[l].DepthBias) || layers[l].DepthBias < 0.0)
+            {
+                throw new ArgumentException(
+                    $"layer {label}: a depth bias is a finite, non-negative depth, and this one is {layers[l].DepthBias.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    nameof(layers));
+            }
+
+            if (!(layers[l].Alpha >= 0.0 && layers[l].Alpha <= 1.0))
+            {
+                throw new ArgumentException(
+                    $"layer {label}: an opacity is from 0 to 1, and this one is {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    nameof(layers));
+            }
+
             if (layers[l].DepthBias > 0.0 && !(layers[l].Alpha >= 1.0))
             {
                 throw new ArgumentException(
