@@ -3868,8 +3868,29 @@ Two findings from Stage 1 that bear on the spec:
   says it converted, so the conversion is counted where it happens; its warnings come first,
   as before. The conversion to trajectories refuses a non-finite density unlocated, and the
   sequence locates it and names the phase. The face operator's name is a pointer's size, not
-  eight. An export sizes its arrays from a lattice the source scan knows for a grid, so an
-  array of it made any other way is refused there as in the conductor map and the sequenced
-  leg - each shown by adding one. And the harness's comment was half wrong in the other
+  eight. The source scan now takes a local that its own member hands to `GridArrays` as a
+  size for a grid's (round twelve; round eleven had shaped the export around the scan with a
+  record it could recognise, which is gone), so an array of an export's node count made any
+  other way is refused there as in the conductor map and the sequenced leg - each shown by
+  adding one. And the harness's comment was half wrong in the other
   direction: `DOTNET_gcConcurrent=0` does not override `System.GC.Concurrent: true` on .NET 10,
   measured, though `DOTNET_gcServer` does override `System.GC.Server`.
+
+  **A twelfth review: the routing change of the eleventh paid some phases twice and dropped a
+  basis line.** Sending a trajectory model with a diffusive phase down the diffusive branch put
+  that branch's basis in place of the solve and trajectory lines, stepped the density over the
+  diffusive phases while the trajectory pilot was still scaled over the whole flight, and said
+  in its text that the steps ran over the whole flight; a diffusive model whose sequence leaves
+  the density was stepped through its trajectory phases; and a study decided whether an
+  evaluation is one whole run from the model's own mode. **Now one decomposition, `Spans`**: a
+  run not walked phase by phase spends its whole flight in its own mode, and one that is spends
+  each phase in that phase's mode for its duration. The pilot is scaled to the trajectory span,
+  the density stepped over the diffusive span and said to be, the two basis lines kept side by
+  side with a sentence giving both spans, and a study's whole-run decision asks the same split.
+  Measured with nothing solved: half a flight in each mode costs **0.5000** of the wholly
+  diffusive tube, a diffusive model leaving its density halfway **0.5000**, where both were
+  billed the whole. A refusal of a non-finite density names the phase that produced it by its
+  index (`/sequence/2`), since names need not be unique; `einzel estimate` decides that a study
+  takes no `--snapshots` before parsing the number; a step's report no longer carries the run's
+  reused ledger; and a mixture's seed shape is consumed in a method of its own, so what it
+  became is not reachable under its old name.

@@ -295,13 +295,14 @@ become a feature release without being renamed twice.
   density at - 8 bytes a density node each, kept to the end. A run records none; a render at an
   instant asks for one and an animation for one a frame. It is refused for a model that steps
   no density in any phase, rather than accepted and billed nothing.
-- **A trajectory model whose sequence enters a diffusive phase is billed its density** - the
-  working set, its recorded instants, and the stepping over that phase's duration. It was
-  billed nothing, because the estimate asked the model's own transport mode.
+- **A sequenced run is estimated phase by phase**: trajectory phases by the pilot flight over
+  their duration, diffusive phases by density steps over theirs, and the basis says both. A
+  trajectory model entering a diffusive phase was billed nothing for its density, and a
+  diffusive model leaving its density was stepped through its trajectory phases.
 - **A mixture's self-field no longer makes a grid of garbage at every step**: its summed charge
   is refilled in place.
 - **A density that is not a number is refused where it is handed to a trajectory phase**, naming
-  the cell (`CONVERGENCE_FAILED` at `/sequence`, and which phase it entered), instead of being drawn from: every ion was
+  the cell and the phase that produced it (`CONVERGENCE_FAILED` at `/sequence/<index>`), instead of being drawn from: every ion was
   placed in an arbitrary cell with nothing said.
 - **A diffusive run no longer allocates in its stepping loop.** Reading the face offsets built
   a new array four times a node a step - 224 bytes of garbage a node a step, a generation

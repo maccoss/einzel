@@ -32,6 +32,16 @@ public readonly record struct StepReport(
     int Sweeps,
     double SweepChange);
 
+/// <summary>What one step did, for a run that keeps its own ledger of what each surface took.</summary>
+/// <param name="Collected">Ions that reached a collecting edge.</param>
+/// <param name="Sweeps">Gauss-Seidel sweeps taken, zero on the explicit path.</param>
+/// <param name="SweepChange">The largest relative change the last sweep made.</param>
+/// <remarks>
+/// No list of what was absorbed: that is in the caller's ledger, which the next step empties,
+/// and a report carrying it would change under a step taken after it was kept.
+/// </remarks>
+internal readonly record struct StepTotals(double Collected, int Sweeps, double SweepChange);
+
 /// <summary>
 /// Advances a density one step, explicitly or implicitly.
 /// </summary>
@@ -94,8 +104,14 @@ public static class DensityStepper
         AbsorbingCells absorbers,
         StepScheme scheme,
         double dt,
-        double tolerance = 1e-10) =>
-        Advance(density, next, faces, absorbers, scheme, dt, new StepLedger(), tolerance);
+        double tolerance = 1e-10)
+    {
+        var ledger = new StepLedger();
+        var step = Advance(density, next, faces, absorbers, scheme, dt, ledger, tolerance);
+
+        // A copy, so that the report is what this step did and nothing a later one does.
+        return new StepReport(step.Collected, [.. ledger], step.Sweeps, step.SweepChange);
+    }
 
     /// <summary>Advances the density by one step, writing what each surface took into a ledger the caller keeps.</summary>
     /// <param name="density">The density now.</param>
@@ -105,8 +121,9 @@ public static class DensityStepper
     /// <param name="scheme">Which time discretisation to use.</param>
     /// <param name="dt">The step, in seconds.</param>
     /// <param name="ledger">
-    /// Emptied and filled; it is the report's <see cref="StepReport.Absorbed"/>, and is good
-    /// until the next step is taken with it.
+    /// Emptied and filled with what each surface took this step, and good until the next step is
+    /// taken with it. It is not returned: a report that carried the caller's ledger would change
+    /// under every later step.
     /// </param>
     /// <param name="tolerance">Relative sweep change the implicit solve stops at.</param>
     /// <returns>What the step did.</returns>
@@ -117,7 +134,7 @@ public static class DensityStepper
     /// loop allocates nothing (CMP-1), which is also what lets a memory test bound what the run
     /// holds between two of its arrays.
     /// </remarks>
-    internal static StepReport Advance(
+    internal static StepTotals Advance(
         DensityField density,
         DensityField next,
         FaceCoefficients faces,
@@ -157,7 +174,7 @@ public static class DensityStepper
 
         var collected = Ledger(ledgerAt, density, faces, absorbers, dt, ledger);
 
-        return new StepReport(collected, ledger, sweeps, change);
+        return new StepTotals(collected, sweeps, change);
     }
 
     private static void Forward(

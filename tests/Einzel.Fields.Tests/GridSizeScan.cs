@@ -55,8 +55,8 @@ internal sealed record Refused(SyntaxNode Node, Shown Shown);
 /// </list>
 /// <para>
 /// <b>A size is a grid's</b> when, followed back through the code, it reaches a member of
-/// <c>Grid2D</c>, <c>Grid3D</c> or an export's <c>SampledLattice</c>, or the length of an array
-/// <c>GridArrays</c> allocated.
+/// <c>Grid2D</c> or <c>Grid3D</c>, the length of an array <c>GridArrays</c> allocated, or a local
+/// that its own member hands to <c>GridArrays</c> as a size.
 /// <b>A size is small</b> when every path back ends in a constant, in the length of a collection
 /// of things or of a string, or in the processor count. Anything else is not shown.
 /// </para>
@@ -89,9 +89,7 @@ internal sealed record Refused(SyntaxNode Node, Shown Shown);
 /// </remarks>
 internal sealed class GridSizeScan
 {
-    // The solvers' two grids, and the lattice a sampled export writes, which is a grid too but
-    // may be one layer thick where Grid3D needs three nodes an axis.
-    private static readonly HashSet<string> GridTypes = ["Grid2D", "Grid3D", "SampledLattice"];
+    private static readonly HashSet<string> GridTypes = ["Grid2D", "Grid3D"];
 
     private static readonly HashSet<string> CopyingCalls =
     [
@@ -126,6 +124,7 @@ internal sealed class GridSizeScan
 
     private readonly CSharpCompilation _compilation;
     private readonly Dictionary<SyntaxTree, SemanticModel> _models = [];
+    private readonly Dictionary<ISymbol, bool> _sizesAGridArray = new(SymbolEqualityComparer.Default);
 
     // Every call of a method or constructor declared in the sources, by its definition.
     private readonly Dictionary<ISymbol, List<IOperation>> _calls = new(SymbolEqualityComparer.Default);
@@ -226,6 +225,43 @@ internal sealed class GridSizeScan
         {
             Expression: MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.Text: "GridArrays" } },
         };
+
+    /// <summary>
+    /// Whether a local is a grid's size by the code's own say: the member that declares it hands
+    /// it to <c>GridArrays</c> as a size.
+    /// </summary>
+    /// <remarks>
+    /// So a size computed some other way than from a <c>Grid2D</c> or <c>Grid3D</c> - an export's
+    /// lattice of nodes, worked out from a box and a step - is a grid's as soon as the code says
+    /// so by allocating through the allocator with it, and an array of it made any other way in
+    /// that member is refused. Nothing in the production code has to be shaped for the scan.
+    /// </remarks>
+    private Shown? SizesAGridArray(ILocalSymbol local)
+    {
+        local = (ILocalSymbol)local.OriginalDefinition;
+
+        if (!_sizesAGridArray.TryGetValue(local, out var sizes))
+        {
+            sizes = false;
+
+            if (local.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is { } declaration
+                && declaration.FirstAncestorOrSelf<MemberDeclarationSyntax>() is { } member)
+            {
+                var model = Model(declaration);
+
+                sizes = member.DescendantNodes()
+                    .Where(IsGridArrays)
+                    .Cast<InvocationExpressionSyntax>()
+                    .SelectMany(call => call.ArgumentList.Arguments)
+                    .SelectMany(argument => argument.Expression.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>())
+                    .Any(name => SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(name).Symbol, local));
+            }
+
+            _sizesAGridArray[local] = sizes;
+        }
+
+        return sizes ? new(Extent.Grid, $"{local.Name}, which its member hands to GridArrays as a size") : null;
+    }
 
     private SemanticModel Model(SyntaxNode node)
     {
@@ -436,6 +472,11 @@ internal sealed class GridSizeScan
         if (OfAGrid(symbol) is { } grid)
         {
             return grid;
+        }
+
+        if (symbol is ILocalSymbol local && SizesAGridArray(local) is { } handed)
+        {
+            return handed;
         }
 
         // An element of a tuple is whatever was put in that place.

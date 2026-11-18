@@ -257,24 +257,9 @@ public static class DiffusionRun
         var grid = GridFor(model);
         var cylindrical = model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);
 
-        // The shape every species is seeded with. Taken once and scaled per population, because
-        // one source emits them all: a mixture that seeded each species from its own geometry
-        // would be a model of several instruments.
-        var shape = Seed(model, grid, cylindrical);
-        var shapePopulation = shape.Population();
-
-        if (shapePopulation <= 0.0)
-        {
-            throw new EinzelException(new EinzelError
-            {
-                Code = ErrorCodes.SchemaInvalid,
-                Path = "/source",
-                Constraint = "the source seeded no density, so there is nothing to scale per species",
-                Suggestion = "check the source position lies inside the tracked region",
-            });
-        }
-
-        var (absorbers, seedLoss) = Absorb(model, grid, shape);
+        // One density a species, each the source's shape scaled to its population - made in a
+        // frame of its own, so that the shape is gone when they come back (see SeedEach).
+        var (seeds, absorbers, seedLoss, shapePopulation) = SeedEach(model, grid, cylindrical);
         var edges = EdgesFor(model, grid);
 
         var warnings = new List<ValidityWarning>(fieldWarnings);
@@ -283,8 +268,9 @@ public static class DiffusionRun
         var mobilities = new List<CompiledMobility>(model.Species.Count);
         var launched = new List<double>(model.Species.Count);
 
-        foreach (var declared in model.Species)
+        for (var s = 0; s < model.Species.Count; s++)
         {
+            var declared = model.Species[s];
             var species = IonSpecies.Create(
                 Quantity.Si(declared.MassSi, Dimension.MassDimension),
                 Quantity.Si(declared.ChargeSi, Dimension.Charge));
@@ -301,21 +287,7 @@ public static class DiffusionRun
 
             mobilities.Add(declared.Mobility with { ZeroFieldSi = mobility.ZeroFieldSi });
 
-            // The last species is seeded in the shape itself, scaled where it lies, and every
-            // other in a copy of it. A shape kept beside the species it was copied into is one
-            // more density held for the whole run, which the estimate does not bill and nothing
-            // reads again: unoptimized code keeps a local alive to the end of its method, and a
-            // mixture run in a Debug build read 504 bytes a node where 496 are billed.
-            var seeded = members.Count == model.Species.Count - 1 ? shape : shape.Clone();
-            var scale = declared.Population / shapePopulation;
-
-            for (var j = 0; j < grid.CountY; j++)
-            {
-                for (var i = 0; i < grid.CountX; i++)
-                {
-                    seeded[i, j] *= scale;
-                }
-            }
+            var seeded = seeds[s];
 
             launched.Add(seeded.Population());
 
@@ -669,6 +641,64 @@ public static class DiffusionRun
         }
 
         return density;
+    }
+
+    /// <summary>
+    /// One seeded density for each species of a mixture: the source's shape, emptied where it
+    /// overlaps metal and scaled to each species' population.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One shape for them all, because one source emits them all: a mixture that seeded each
+    /// species from its own geometry would be a model of several instruments.
+    /// </para>
+    /// <para>
+    /// <b>The last species is seeded in the shape itself and every other in a copy of it</b>,
+    /// so that no shape is held beside the densities made from it - one more density for the
+    /// whole run, which the estimate does not bill and nothing reads again; unoptimized code
+    /// keeps a local to the end of its method, and a mixture in a Debug build read 504 bytes a
+    /// node where 496 are billed. Done here, in a frame of its own, so that what the shape has
+    /// become is not reachable under its old name by the code that steps the species.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="EinzelException">The source seeds no density inside the tracked region.</exception>
+    private static (List<DensityField> Seeds, AbsorbingCells Absorbers, IReadOnlyDictionary<string, double> SeedLoss, double ShapePopulation)
+        SeedEach(CompiledModel model, Grid2D grid, bool cylindrical)
+    {
+        var shape = Seed(model, grid, cylindrical);
+        var shapePopulation = shape.Population();
+
+        if (shapePopulation <= 0.0)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/source",
+                Constraint = "the source seeded no density, so there is nothing to scale per species",
+                Suggestion = "check the source position lies inside the tracked region",
+            });
+        }
+
+        var (absorbers, seedLoss) = Absorb(model, grid, shape);
+        var seeds = new List<DensityField>(model.Species.Count);
+
+        for (var s = 0; s < model.Species.Count; s++)
+        {
+            var seeded = s == model.Species.Count - 1 ? shape : shape.Clone();
+            var scale = model.Species[s].Population / shapePopulation;
+
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    seeded[i, j] *= scale;
+                }
+            }
+
+            seeds.Add(seeded);
+        }
+
+        return (seeds, absorbers, seedLoss, shapePopulation);
     }
 
     /// <summary>

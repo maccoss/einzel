@@ -43,13 +43,14 @@ public sealed class SequencedNotFiniteTests(ITestOutputHelper output)
 
         Assert.Equal("/", refused.Error.Path);
 
-        var located = SequencedRun.NotFiniteAtBoundary(refused.Error, "extract");
+        var located = SequencedRun.NotFiniteAtBoundary(refused.Error, "/sequence", 2, "trap");
 
         output.WriteLine(located.ToString());
 
-        Assert.Equal("/sequence", located.Path);
+        // The phase by its index, since names need not be unique.
+        Assert.Equal("/sequence/2", located.Path);
         Assert.Equal(refused.Error.Constraint, located.Constraint);
-        Assert.Contains("before 'extract'", located.Suggestion, StringComparison.Ordinal);
+        Assert.Contains("'trap'", located.Suggestion, StringComparison.Ordinal);
         Assert.Contains("densityStep", located.Suggestion, StringComparison.Ordinal);
     }
 }

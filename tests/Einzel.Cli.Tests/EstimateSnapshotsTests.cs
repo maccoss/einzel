@@ -107,6 +107,29 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
         Assert.Contains("no diffusive mode", stderr, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// For a study the refusal is that a study records no instants, whatever was written after
+    /// the flag: what the option is about is decided before whether it is well formed.
+    /// </summary>
+    [Theory]
+    [InlineData("3")]
+    [InlineData("three")]
+    public void AStudyIsRefusedSnapshotsWhateverTheyAre(string instants)
+    {
+        Directory.CreateDirectory(_root);
+
+        var study = Path.Combine(_root, "study.json");
+
+        File.WriteAllText(study, """{ "schemaVersion": "0.1", "model": "model.json", "figureOfMerit": "transitTime" }""");
+
+        var (exit, _, stderr) = Run("estimate", study, "--snapshots", instants);
+
+        output.WriteLine($"exit {exit}: {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+        Assert.Contains("a study records none", stderr, StringComparison.Ordinal);
+    }
+
     private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)
     {
         var stdout = new StringWriter();

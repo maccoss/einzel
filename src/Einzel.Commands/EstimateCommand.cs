@@ -492,8 +492,12 @@ public static class EstimateCommand
     /// which of the two limits binds depends on the model.
     /// </para>
     /// </remarks>
+    /// <param name="spanSeconds">
+    /// The simulated time the run spends as trajectories (<see cref="Spans"/>), which the pilot
+    /// is scaled to; the whole declared flight when omitted.
+    /// </param>
     private static (double Seconds, string How) PilotFlight(
-        CompiledModel model, double coarsening, double? windowSeconds = null)
+        CompiledModel model, double coarsening, double? windowSeconds = null, double? spanSeconds = null)
     {
         try
         {
@@ -516,7 +520,8 @@ public static class EstimateCommand
             var point = coarse.DetectorPoint;
             var normal = coarse.DetectorNormal;
 
-            var window = windowSeconds ?? (coarse.MaximumFlightTimeSi * PilotFlightFraction);
+            var span = spanSeconds ?? coarse.MaximumFlightTimeSi;
+            var window = windowSeconds ?? (span * PilotFlightFraction);
 
             var settings = new Transport.Integration.IntegrationSettings
             {
@@ -571,13 +576,16 @@ public static class EstimateCommand
                 return (0.0, "not measured: the pilot flight covered no time at all");
             }
 
-            var scale = coarse.MaximumFlightTimeSi / covered;
+            var scale = span / covered;
 
             return (
                 pilotSeconds * scale,
                 $"{flown.AcceptedSteps:N0} steps over {covered * 1e6:G4} us took "
-                + $"{pilotSeconds * 1000.0:F0} ms, scaled to the declared "
-                + $"{coarse.MaximumFlightTimeSi * 1e6:G4} us. Flown through a field solved at "
+                + $"{pilotSeconds * 1000.0:F0} ms, scaled to "
+                + (spanSeconds is null
+                    ? $"the declared {span * 1e6:G4} us"
+                    : $"the {span * 1e6:G4} us the run spends as trajectories")
+                + ". Flown through a field solved at "
                 + $"{coarsening:G2}x the cell size, so this is a FLOOR wherever the step is "
                 + "capped by resolution rather than by tolerance");
         }
@@ -721,7 +729,9 @@ public static class EstimateCommand
         // A recorded instant is a copy of a density, so a run that steps none records none. Asked
         // of every mode the run uses, as the billing below is: a trajectory model whose sequence
         // enters a diffusive phase records densities there.
-        if (snapshots > 0 && !model.Modes.Contains("diffusion"))
+        var spans = Spans(model);
+
+        if (snapshots > 0 && spans.DiffusiveSeconds <= 0.0)
         {
             throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
             {
@@ -793,8 +803,8 @@ public static class EstimateCommand
         // The flight, measured rather than omitted. Only a trajectory run has one: a
         // diffusive run's cost is the density stepping, which is estimated below from the
         // stability limits and needs no pilot.
-        var trajectory = calibrate && model.TransportMode != "diffusion"
-            ? PilotFlight(model, PilotCoarsening)
+        var trajectory = calibrate && spans.TrajectorySeconds > 0.0
+            ? PilotFlight(model, PilotCoarsening, spanSeconds: spans.TrajectorySeconds)
             : (Seconds: 0.0, How: string.Empty);
 
         // A CLOUD FLIES ONCE PER ION THROUGH ONE SOLVED FIELD, so the flight is paid as many
@@ -808,7 +818,7 @@ public static class EstimateCommand
         // in lockstep so its members are not independent flights. In both the model's own
         // cost already IS the whole run.
         var members = model.Cloud.IsCloud && !model.ModelsSpaceCharge
-            && model.TransportMode != "diffusion"
+            && spans.TrajectorySeconds > 0.0
                 ? Math.Max(1, model.Cloud.Ions)
                 : 1;
 
@@ -940,15 +950,31 @@ public static class EstimateCommand
         // Whenever the run steps a density anywhere, not only when the model's own mode is
         // diffusive: a trajectory model whose sequence enters a diffusive phase holds the same
         // working set there, and was billed nothing for it - snapshots included.
-        if (model.Modes.Contains("diffusion"))
+        //
+        // Over the diffusive phases alone where the run is walked phase by phase, and added to
+        // the basis rather than put in its place: the solve and trajectory lines above are
+        // still in the number.
+        if (spans.DiffusiveSeconds > 0.0)
         {
             var diffusive = Diffusive(
-                model, Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory(), snapshots);
+                model,
+                Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory(),
+                spans.DiffusiveSeconds,
+                snapshots);
 
             seconds += diffusive.Seconds;
             diffusiveMemory = diffusive.MemoryMiB;
             cycleAveraged = diffusive.Averaged;
-            basis = diffusive.Basis;
+            basis = basis.Length > 0 ? basis + " " + diffusive.Basis : diffusive.Basis;
+        }
+
+        if (spans.TrajectorySeconds > 0.0 && spans.DiffusiveSeconds > 0.0)
+        {
+            basis = basis + string.Create(
+                Inv,
+                $" The sequence spends {spans.TrajectorySeconds * 1e6:G4} us as trajectories and "
+                + $"{spans.DiffusiveSeconds * 1e6:G4} us as a density, and each is costed over its "
+                + $"own phases.");
         }
 
         // The density is stepped over the solved fields, which stay live for the whole run.
@@ -1322,8 +1348,8 @@ public static class EstimateCommand
         // `members x flight` on top of those double-counts the very work they describe -
         // and for a diffusive model the flights do not exist at all, since that mode
         // produces no trajectories (TRN-2, RND-8).
-        var wholeRun = validation.Model?.ModelsSpaceCharge == true
-            || validation.Model?.TransportMode == "diffusion";
+        var wholeRun = validation.Model is { } run
+            && (run.ModelsSpaceCharge || Spans(run).DiffusiveSeconds > 0.0);
 
         // SAMPLED WHERE THE STUDY WILL GO, not only at the nominal. A study that varies
         // the geometry varies its own cost, and on the shipped mirror pair a separation
@@ -1517,7 +1543,7 @@ public static class EstimateCommand
                 continue;
             }
 
-            double? density = compiled.Modes.Contains("diffusion")
+            double? density = Spans(compiled).DiffusiveSeconds > 0.0
                 ? DiffusiveMemoryMiB(compiled, DiffusionRun.GridFor(compiled), averaged)
                 : null;
 
@@ -2061,16 +2087,40 @@ public static class EstimateCommand
     /// </remarks>
     private const double EstimatedSteps = 1e4;
 
-    /// <summary>How long a density is stepped for: the whole flight, or a sequence's diffusive phases.</summary>
+    /// <summary>How long a run flies trajectories and how long it steps a density.</summary>
+    /// <param name="TrajectorySeconds">Simulated time spent as trajectories.</param>
+    /// <param name="DiffusiveSeconds">Simulated time spent as a density.</param>
+    private readonly record struct TransportSpans(double TrajectorySeconds, double DiffusiveSeconds);
+
+    /// <summary>
+    /// The one decomposition of a run's time by transport mode, which every part of an estimate
+    /// reads: the trajectory pilot, the density stepping, whether a study's evaluation is one
+    /// whole run, and the basis text.
+    /// </summary>
     /// <remarks>
-    /// A model whose own mode is diffusive steps the density for its declared flight, as it
-    /// always has. A trajectory model steps one only through the phases that name the diffusive
-    /// mode, so those are what its stepping costs; the rest of its flight is trajectories.
+    /// A run that is not walked phase by phase flies its whole declared flight in its own mode,
+    /// a sequence of trajectory phases included - the integrator asks the field for the instant
+    /// it is at. A run that is (<see cref="CompiledModel.NeedsSequencedTransport"/>) spends each
+    /// phase in that phase's mode for that phase's duration and stops at the end of the last,
+    /// so each mode is costed over its own phases and nothing over the other's: a trajectory
+    /// pilot scaled over the whole flight beside density steps over the diffusive phases paid
+    /// those phases twice, and a diffusive model whose sequence leaves the density was billed
+    /// density steps through its trajectory phases.
     /// </remarks>
-    private static double DiffusiveSeconds(CompiledModel model) =>
-        model.TransportMode == "diffusion"
-            ? model.MaximumFlightTimeSi
-            : model.Phases.Where(p => p.Mode == "diffusion").Sum(p => p.DurationSeconds);
+    private static TransportSpans Spans(CompiledModel model)
+    {
+        if (!model.NeedsSequencedTransport)
+        {
+            return model.TransportMode == "diffusion"
+                ? new(0.0, model.MaximumFlightTimeSi)
+                : new(model.MaximumFlightTimeSi, 0.0);
+        }
+
+        var diffusive = model.Phases.Where(p => p.Mode == "diffusion").Sum(p => p.DurationSeconds);
+        var trajectory = model.Phases.Where(p => p.Mode != "diffusion").Sum(p => p.DurationSeconds);
+
+        return new(trajectory, diffusive);
+    }
 
     /// <summary>
     /// What a diffusive run will cost, from the mesh and the mobility alone.
@@ -2091,8 +2141,12 @@ public static class EstimateCommand
     /// intuition about which regime is expensive.
     /// </para>
     /// </remarks>
+    /// <param name="model">The model.</param>
+    /// <param name="modelDirectory">Where its referenced files are.</param>
+    /// <param name="spanSeconds">How long the density is stepped for (<see cref="Spans"/>).</param>
+    /// <param name="snapshots">How many instants the density is recorded at.</param>
     private static (double Seconds, double MemoryMiB, string Basis, bool Averaged) Diffusive(
-        CompiledModel model, string modelDirectory, int snapshots = 0)
+        CompiledModel model, string modelDirectory, double spanSeconds, int snapshots = 0)
     {
         var grid = DiffusionRun.GridFor(model);
 
@@ -2242,7 +2296,7 @@ public static class EstimateCommand
 
         var step = implicitly ? stable * model.DensityStep.Gain : stable;
 
-        var steps = Math.Max(1.0, Math.Ceiling(DiffusiveSeconds(model) / step));
+        var steps = Math.Max(1.0, Math.Ceiling(spanSeconds / step));
 
         // Measured at 3.0 on the shipped funnel across gains from 4 to 256, rising to
         // 4.9 at 1024. A sweep costs about what an explicit step costs - it is the
@@ -2284,7 +2338,9 @@ public static class EstimateCommand
                     + $"about {steps:N0} steps at an assumed {sweeps:F1} Gauss-Seidel sweeps each "
                     + "over "
                 : $"so about {steps:N0} steps over ")
-            + $"{model.MaximumFlightTimeSi * 1e6:G4} us, at {MegaCellsPerSecond:G2} million cell "
+            + $"{spanSeconds * 1e6:G4} us"
+            + (model.NeedsSequencedTransport ? " of diffusive phases" : string.Empty)
+            + $", at {MegaCellsPerSecond:G2} million cell "
             + "updates per second measured on this codebase. "
             + $"Both stability limits are included. The field was solved to get the drift one, "
             + $"which cost {solveWatch.Elapsed.TotalSeconds:F2} s of this estimate - a diffusive "

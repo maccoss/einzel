@@ -204,6 +204,7 @@ public static class ModelValidator
             // parameter overrides follow. So a model with no sequence and one whose
             // every phase runs in the declared mode are the same run.
             Phases = Schedule(timeline, transport.Mode),
+            TimelinePath = TimelinePathOf(document),
             RelativeTolerance = transport.RelativeTolerance,
             MaximumFlightTimeSi = transport.MaximumFlightTime,
             SampleIntervalSi = transport.SampleInterval,
@@ -1732,6 +1733,15 @@ public static class ModelValidator
     /// argument that refuses a geometry declaring both <c>drive</c> and <c>drives</c>.
     /// </para>
     /// </remarks>
+    /// <summary>Where the document declares its timeline, for a path to one of its phases.</summary>
+    /// <remarks>Asked of <see cref="Declared"/>, so the two cannot disagree; its refusals were already made.</remarks>
+    private static string TimelinePathOf(ModelDocument document)
+    {
+        _ = Declared(document, [], out var path);
+
+        return path;
+    }
+
     private static IReadOnlyList<StageDocument>? Declared(
         ModelDocument document, List<EinzelError> errors, out string path)
     {

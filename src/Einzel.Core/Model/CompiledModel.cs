@@ -91,6 +91,15 @@ public sealed record CompiledModel
     /// </remarks>
     public IReadOnlyList<CompiledPhase> Phases { get; init; } = [];
 
+    /// <summary>
+    /// Where the timeline is declared in the document - <c>/sequence</c>, or an element's
+    /// <c>stages</c> - so that an error about one phase can name it by its index there.
+    /// </summary>
+    /// <remarks>
+    /// A phase's name need not be unique, so the name alone is not an offending path (AGT-3).
+    /// </remarks>
+    public string TimelinePath { get; init; } = "/sequence";
+
     /// <summary>Whether the timeline changes transport mode at any boundary.</summary>
     /// <remarks>
     /// Distinct from having a sequence at all. A trap that holds and then extracts,

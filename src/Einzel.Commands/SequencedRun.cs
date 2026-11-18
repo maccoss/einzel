@@ -295,6 +295,9 @@ public static class SequencedRun
         PhaseState[]? states = null;
         DensityField? density = null;
 
+        // Which phase the density was last stepped by, for a refusal of it to point at.
+        var producedBy = 0;
+
         var started = 0.0;
 
         for (var i = 0; i < model.Phases.Count; i++)
@@ -356,7 +359,9 @@ public static class SequencedRun
                     catch (EinzelException refused)
                         when (refused.Error.Code == ErrorCodes.ConvergenceFailed && refused.Error.Path == "/")
                     {
-                        throw new EinzelException(NotFiniteAtBoundary(refused.Error, phase.Name), refused);
+                        throw new EinzelException(
+                            NotFiniteAtBoundary(refused.Error, model.TimelinePath, producedBy, model.Phases[producedBy].Name),
+                            refused);
                     }
 
                     states = back.States;
@@ -440,6 +445,7 @@ public static class SequencedRun
                     density, ref states, perTrajectory, model, field, gas, species, started, phase, warnings,
                     progress, out var entered, mine is { Count: > 0 } ? mine : null);
                 density = diffused.Density;
+                producedBy = i;
 
                 if (entered)
                 {
@@ -835,10 +841,14 @@ public static class SequencedRun
     /// The conversion is general and names only the cell. Only this layer knows the density came
     /// from the diffusive phase before the boundary into <paramref name="phase"/>.
     /// </remarks>
-    internal static EinzelError NotFiniteAtBoundary(EinzelError refused, string phase) =>
-        refused.At("/sequence") with
+    /// <param name="refused">The conversion's unlocated refusal.</param>
+    /// <param name="timeline">Where the document declares the timeline (<see cref="CompiledModel.TimelinePath"/>).</param>
+    /// <param name="index">The index there of the phase that produced the density.</param>
+    /// <param name="phase">That phase's name, for the sentence.</param>
+    internal static EinzelError NotFiniteAtBoundary(EinzelError refused, string timeline, int index, string phase) =>
+        refused.At(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{timeline}/{index}")) with
         {
-            Suggestion = $"the diffusive phase before '{phase}' did not stay finite: shorten its step "
+            Suggestion = $"the diffusive phase '{phase}' did not stay finite: shorten its step "
                 + "(transport.densityStep), or look at the field and the mobility near that cell",
         };
 

@@ -879,20 +879,28 @@ public static class Program
         // How many instants a diffusive run is to record its density at: none for a run, one for
         // a render at an instant, one a frame for an animation. Each is a copy held to the end.
         var snapshots = 0;
+        var isStudy = IsStudy(path);
 
-        if (options.Value("snapshots") is { } instants
-            && (!int.TryParse(instants, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out snapshots)
-                || IsStudy(path)))
+        if (options.Value("snapshots") is { } instants)
         {
-            Console.Error.WriteLine(
-                IsStudy(path)
-                    ? "--snapshots is about one diffusive run's recorded instants, and a study records none"
-                    : $"'{instants}' is not a whole number of instants");
+            // What the option is about first, then whether it is well formed: a study records
+            // no instants whatever number is given.
+            if (isStudy)
+            {
+                Console.Error.WriteLine("--snapshots is about one diffusive run's recorded instants, and a study records none");
 
-            return (int)ExitCode.ValidationFailure;
+                return (int)ExitCode.ValidationFailure;
+            }
+
+            if (!int.TryParse(instants, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out snapshots))
+            {
+                Console.Error.WriteLine($"'{instants}' is not a whole number of instants");
+
+                return (int)ExitCode.ValidationFailure;
+            }
         }
 
-        var outcome = IsStudy(path)
+        var outcome = isStudy
             ? EstimateCommand.ForStudy(path, calibrate, threshold)
             : EstimateCommand.Execute(path, calibrate, threshold, snapshots: snapshots);
 

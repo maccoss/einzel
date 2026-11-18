@@ -1436,7 +1436,7 @@ volume tests' is 0.90.
 estimate works out what a run holds from the model - its scheme, its drives, its species, its
 space charge, its conductors - and from how many instants it is told the run records
 (`einzel estimate --snapshots <n>`; a run records none, a render at an instant one, an animation
-one a frame). `--snapshots` on a model that steps no density in any phase is refused (`SCHEMA_INVALID` at `/transport/mode`), not billed nothing; the question is asked of every mode the run uses, as the billing is. Each row above is a run in a child process read at two grids, and each term is
+one a frame). `--snapshots` on a model that steps no density in any phase is refused (`SCHEMA_INVALID` at `/transport/mode`), not billed nothing. **A sequenced run is costed phase by phase**: a run not walked phase by phase spends its whole flight in its own mode, and one that is spends each phase in that phase's mode over that phase's duration - the trajectory pilot scaled to the time spent as trajectories, the density stepped over the time spent as a density - and the basis keeps both lines and states both spans. A study's evaluation is one whole run wherever a density is stepped. Each row above is a run in a child process read at two grids, and each term is
 also read as the difference between the run with it and the run without, so that an array too
 many in a 56-byte term is not hidden inside a 304-byte run.
 
