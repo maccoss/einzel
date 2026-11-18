@@ -294,8 +294,24 @@ public static class GeometryBuilder3D
         ReflectionOf(geometry) is { } mirror ? mirror.Sum(field) : field;
 
     /// <summary>The geometry's reflection: its plane and how the halves meet, decided once.</summary>
-    private static Reflection? ReflectionOf(Geometry3D geometry) =>
-        Reflection.Of(geometry.ReflectAboutX, geometry.MinX, geometry.MaxX);
+    /// <remarks>
+    /// A volume solve declares no discontinuity surfaces (<see cref="SolvedField3D"/>), so its plane
+    /// is no surface whatever its face condition; it is marked continuous where the face on the
+    /// plane is Neumann, and otherwise left to the safe default, which declares nothing here because
+    /// the half has no face to declare.
+    /// </remarks>
+    private static Reflection? ReflectionOf(Geometry3D geometry)
+    {
+        if (geometry.ReflectAboutX is not { } plane)
+        {
+            return null;
+        }
+
+        var side = Reflection.SideOf(geometry.MinX, geometry.MaxX, plane);
+        var face = geometry.Faces.Count == 6 ? geometry.Faces[side == true ? 1 : 0] : EdgeCondition.Dirichlet;
+
+        return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann);
+    }
 
     private static DirichletMask3D Assemble(
         Geometry3D geometry,

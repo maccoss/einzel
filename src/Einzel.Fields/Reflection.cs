@@ -22,15 +22,27 @@ namespace Einzel.Fields;
 /// where the field's image answered nothing.
 /// </para>
 /// </remarks>
-public sealed record Reflection(double PlaneX, bool? ImageAbove)
+/// <param name="EdgeIsContinuous">
+/// Whether the declared half's edge on the plane keeps the union's field continuous across it by
+/// construction - a Neumann (mirror) edge, or a solve that declares no edge surfaces at all - so
+/// the plane is no surface. False, the safe default, declares one wherever the half has a face on
+/// the plane: an extra landing where the field happens to be continuous costs a step, where a
+/// missed jump costs accuracy.
+/// </param>
+public sealed record Reflection(double PlaneX, bool? ImageAbove, bool EdgeIsContinuous = false)
 {
     /// <summary>The reflection of a solve, or none.</summary>
     /// <param name="planeX">The declared mirror plane, or null where the solve is not reflected.</param>
     /// <param name="minX">The low x edge of the declared half.</param>
     /// <param name="maxX">The high x edge of the declared half.</param>
     /// <returns>The reflection, with its side decided; null where there is no plane.</returns>
-    public static Reflection? Of(double? planeX, double minX, double maxX) =>
-        planeX is { } plane ? new Reflection(plane, SideOf(minX, maxX, plane)) : null;
+    /// <param name="edgeIsContinuous">
+    /// Whether the edge on the plane is continuous by construction - a Neumann edge, or a solve that
+    /// declares no edge surfaces. Decided from the boundary condition, once, by whoever builds the
+    /// solve.
+    /// </param>
+    public static Reflection? Of(double? planeX, double minX, double maxX, bool edgeIsContinuous = false) =>
+        planeX is { } plane ? new Reflection(plane, SideOf(minX, maxX, plane), edgeIsContinuous) : null;
 
     /// <summary>How a declared half and its image meet at the plane: the side the image takes, or none.</summary>
     /// <param name="minX">The low x edge of the declared half.</param>
@@ -102,7 +114,7 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
     /// on the image's side, which owns the plane, or the image on the declared side, which does not.
     /// </summary>
     /// <param name="inner">The declared half's field, in its own frame.</param>
-    /// <param name="ownsPlane">Whether this half declares the plane as a surface where the field jumps there.</param>
+    /// <param name="ownsPlane">Whether this half declares the plane as a surface where the edge makes it one.</param>
     /// <returns>The measure, made once per half and asked per point.</returns>
     public PlaneFace FaceOf(IElectrostaticField inner, bool ownsPlane) => new(inner, this, ownsPlane);
 
@@ -129,9 +141,9 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
 /// <para>
 /// Where a half answers nothing it has no discontinuity of its own, so none of its surfaces is
 /// declared there - a surface it declares beyond its edge would otherwise be a phantom the
-/// integrator stops at. The one surface that can be there is the plane, and only where the field
-/// jumps there: where the half has a face on the plane. Otherwise the measure is the half's own
-/// at the plane, so its sign changes nowhere the field is continuous.
+/// integrator stops at. The one surface that can be there is the plane, and only where the edge
+/// makes it one and the half has a face on it. Otherwise the measure is the half's own at the
+/// plane, so its sign changes nowhere on this side.
 /// </para>
 /// <para>
 /// <b>Exactly one half owns the plane.</b> A sum multiplies its members' signs
@@ -145,10 +157,14 @@ public sealed record Reflection(double PlaneX, bool? ImageAbove)
 /// on its own side - continuous with itself, no surface.
 /// </para>
 /// <para>
-/// <b>A surface only where the field jumps.</b> A face on the plane is not enough: the union's
-/// normal field goes from E to -E there, so it jumps only where the half's normal field at the
-/// plane is not zero (<see cref="Jumps"/>). A Neumann mirror holds it at zero and gets no surface.
-/// Each point's measure is read at its own place, and the half holds no state that a query writes.
+/// <b>Whether the plane is a surface is the edge's, decided once.</b> The union's normal field goes
+/// from E to -E across the plane, so it jumps unless the half's edge on the plane holds the normal
+/// field at zero - a Neumann mirror - or declares no surfaces at all. That is a property of the
+/// boundary condition, known when the solve is built (<see cref="Reflection.EdgeIsContinuous"/>), not
+/// of a field value: deciding it from the field at each point read a driven solve's first channel
+/// rather than its weighted sum, flipped wherever the normal field crossed zero along the plane,
+/// left the answer to round-off, and cost interpolations on every step. A surface declared where
+/// the field happens to be continuous costs a landing; a jump missed costs accuracy.
 /// </para>
 /// </remarks>
 public sealed class PlaneFace
@@ -160,22 +176,21 @@ public sealed class PlaneFace
     private const double FaceTolerance = 1e-9;
     private const double PastFraction = 1e-6;
 
-    // How large the normal field at the plane must be, against the whole field there, for the
-    // union's field to jump across it.
-    private const double JumpTolerance = 1e-9;
-
     private readonly IElectrostaticField _inner;
     private readonly double _plane;
     private readonly double _length;
     private readonly double _inside;
     private readonly double _past;
-    private readonly bool _owns;
+
+    // Whether this half declares the plane where it has a face there: the owner, on an edge that
+    // is not continuous by construction. Decided once, from the boundary condition.
+    private readonly bool _declares;
 
     internal PlaneFace(IElectrostaticField inner, Reflection reflection, bool ownsPlane)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _plane = reflection.PlaneX;
-        _owns = ownsPlane;
+        _declares = ownsPlane && !reflection.EdgeIsContinuous;
 
         // The half's length scale: its resolution where it has one, else the plane's distance from
         // the origin, else a millimetre - an analytic field at the origin has no scale of its own.
@@ -190,64 +205,37 @@ public sealed class PlaneFace
         _past = _plane + (imageSide * PastFraction * _length);
     }
 
-    /// <summary>Whether the union's field jumps across the plane beneath a point.</summary>
+    /// <summary>Whether this half declares the plane as a surface beneath a point.</summary>
     /// <param name="y">The point's y.</param>
     /// <param name="z">The point's z.</param>
-    /// <returns>True where the half has a face on the plane there and its normal field there is not zero.</returns>
-    /// <remarks>
-    /// A face on the plane is not enough. The image is the half seen through the mirror, so the
-    /// union's potential and its tangential field are continuous across the plane by construction,
-    /// and its normal field goes from <c>E_x</c> to <c>-E_x</c>: it jumps only where the half's
-    /// normal field at the plane is not zero. A Neumann mirror edge holds it at zero, and declaring
-    /// a surface there would be a phantom; a Dirichlet edge with a field through it is a real jump.
-    /// Asked of the field at the plane itself, where the declared half answers - just inside, a
-    /// mirror edge's normal field is a curvature times the offset rather than zero.
-    /// </remarks>
-    public bool Jumps(double y, double z)
-    {
-        var onPlane = new Vec3(_plane, y, z);
-
-        if (!(Math.Abs(_inner.SignedDistanceToDiscontinuity(in onPlane)) <= FaceTolerance * _length))
-        {
-            return false;
-        }
-
-        var field = _inner.ElectricFieldAt(in onPlane);
-        return Math.Abs(field.X) > JumpTolerance * field.Length;
-    }
+    /// <returns>True where it owns the plane, the edge is not continuous by construction, and it has a face there.</returns>
+    public bool Declares(double y, double z) =>
+        _declares && IsFace(_inner.SignedDistanceToDiscontinuity(new Vec3(_plane, y, z)));
 
     /// <summary>The measure at a point on the side where the half answers nothing.</summary>
     /// <param name="position">The point.</param>
     /// <returns>The measure.</returns>
     /// <remarks>
-    /// <para>
     /// Where the half has no face on the plane beneath the point, its own measure at the plane,
-    /// held constant across this side. Where it has one, the distance from the plane, signed so
-    /// that the sum changes sign at the plane exactly where its field jumps there and nowhere
-    /// else: the owner takes the sign the half has just past its face, which changes sign at the
-    /// plane, where the field jumps; and the sign it has just inside the declared side, which does
-    /// not, where it does not. The image always takes the inside sign.
-    /// </para>
-    /// <para>
-    /// <b>Read at the point's own place, with nothing held.</b> The first version read the sign
-    /// once and kept it, which was wrong for a half whose outside differs from place to place and
-    /// was an unsynchronised write on a field a packet's members share.
-    /// </para>
+    /// held constant across this side. Where it has one, the distance from the plane, signed as the
+    /// half is just past its face - changing sign at the plane - where this half declares the
+    /// surface, and as it is just inside the declared side - not changing - where it does not. Read
+    /// at the point's own place; nothing a query writes is held.
     /// </remarks>
     public double At(in Vec3 position)
     {
-        var onPlane = new Vec3(_plane, position.Y, position.Z);
-        var atPlane = _inner.SignedDistanceToDiscontinuity(in onPlane);
+        var atPlane = _inner.SignedDistanceToDiscontinuity(new Vec3(_plane, position.Y, position.Z));
 
-        if (Math.Abs(atPlane) > FaceTolerance * _length)
+        if (!IsFace(atPlane))
         {
             return atPlane;
         }
 
-        var field = _inner.ElectricFieldAt(in onPlane);
-        var jumps = Math.Abs(field.X) > JumpTolerance * field.Length;
-
-        var read = new Vec3(_owns && jumps ? _past : _inside, position.Y, position.Z);
+        var read = new Vec3(_declares ? _past : _inside, position.Y, position.Z);
         return Math.CopySign(Math.Abs(position.X - _plane), _inner.SignedDistanceToDiscontinuity(in read));
     }
+
+    // Whether the half's measure on the plane makes the plane a face: within a tolerance of zero,
+    // and a number. One test for the measure and the run, so the two cannot disagree.
+    private bool IsFace(double atPlane) => Math.Abs(atPlane) <= FaceTolerance * _length;
 }

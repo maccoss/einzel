@@ -571,24 +571,69 @@ public sealed class MirrorPlaneTests
     }
 
     /// <summary>
-    /// A face on the plane is a surface only where the field jumps there: a mirror edge, its
-    /// normal field zero, gets none; a field through the plane gets one.
+    /// Whether the plane is a surface is the edge's: a continuous edge - a mirror - gets none
+    /// whatever the field there; any other edge with a face on the plane gets exactly one.
     /// </summary>
     /// <remarks>
-    /// The declared half took ownership of the plane wherever its box edge lay on it, so a Neumann
-    /// mirror with its boundary declared discontinuous gained a phantom surface from that half
-    /// alone - where the two halves' surfaces had cancelled, correctly by accident.
+    /// Decided first from the field's normal component at each point, which read a driven solve's
+    /// first channel rather than its sum, flipped where the normal field crossed zero along the
+    /// plane, and was left to round-off. The edge condition is known when the solve is built.
     /// </remarks>
     [Fact]
-    public void APlaneIsASurfaceOnlyWhereTheFieldJumps()
+    public void APlaneIsASurfaceUnlessItsEdgeIsContinuous()
     {
-        double Sign(IElectrostaticField field, double x) => Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(x, 0.001, 0.0)));
+        double Sign(IElectrostaticField field, double x, double y = 0.001) => Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(x, y, 0.0)));
 
-        var mirror = new Reflection(Plane, ImageAbove: true).Sum(new Through(new Vec3(0.0, 1000.0, 0.0)));
-        Assert.Equal(Sign(mirror, Plane - 0.0005), Sign(mirror, Plane + 0.0005));
+        // A mirror edge: no surface, even with a field through it as its declared value says.
+        foreach (var inside in new[] { new Vec3(0.0, 1000.0, 0.0), new Vec3(1000.0, 0.0, 0.0) })
+        {
+            var mirror = new Reflection(Plane, ImageAbove: true, EdgeIsContinuous: true).Sum(new Through(inside));
+            Assert.Equal(Sign(mirror, Plane - 0.0005), Sign(mirror, Plane + 0.0005));
+        }
 
-        var through = new Reflection(Plane, ImageAbove: true).Sum(new Through(new Vec3(1000.0, 0.0, 0.0)));
-        Assert.NotEqual(Sign(through, Plane - 0.0005), Sign(through, Plane + 0.0005));
+        // Any other edge: one surface, whatever the field there - an extra landing where it
+        // happens to be continuous, never a missed jump - and the same on either side of y = 0.
+        foreach (var inside in new[] { new Vec3(0.0, 1000.0, 0.0), new Vec3(1000.0, 0.0, 0.0) })
+        {
+            var edged = new Reflection(Plane, ImageAbove: true).Sum(new Through(inside));
+            Assert.NotEqual(Sign(edged, Plane - 0.0005), Sign(edged, Plane + 0.0005));
+            Assert.NotEqual(Sign(edged, Plane - 0.0005, -0.001), Sign(edged, Plane + 0.0005, -0.001));
+        }
+    }
+
+    /// <summary>
+    /// A solved, reflected cross-section takes the plane's continuity from its edge: a Neumann edge
+    /// is no surface, a Dirichlet one is - and a driven solve answers the same for every channel,
+    /// since the answer is the geometry's.
+    /// </summary>
+    [Theory]
+    [InlineData(BoundaryKind.Neumann, false)]
+    [InlineData(BoundaryKind.Dirichlet, true)]
+    public void ASolvedEdgeDecidesThePlane(BoundaryKind edge, bool surface)
+    {
+        var solve = new CompiledSolvedField
+        {
+            MinX = 0.0, MaxX = Plane, MinY = 0.0, MaxY = 0.012,
+            CellSize = 0.5e-3, Tolerance = 1e-10,
+            RightEdge = edge,
+            BoundaryIsDiscontinuous = true,
+            ReflectAboutX = Plane,
+            Electrodes =
+            [
+                new CompiledElectrode
+                {
+                    Name = "plate", Shape = ElectrodeShape.Rectangle,
+                    MinX = 0.01, MaxX = 0.015, MinY = 0.0, MaxY = 0.004, Potential = 500.0,
+                },
+            ],
+        };
+
+        var (field, _) = GeometryBuilder.Build(solve);
+        var before = Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, 0.006, 0.0)));
+        var after = Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.006, 0.0)));
+
+        Assert.Equal(surface, before != after);
+        Assert.Equal(!surface, GeometryBuilder.ReflectionOf(solve)!.EdgeIsContinuous);
     }
 
     /// <summary>
@@ -629,7 +674,7 @@ public sealed class MirrorPlaneTests
         Assert.Equal(0.002, jumping.FieldFreeRunLength(in from, in minusX), 12);
 
         // Where the plane is no surface, the run is the inner field's.
-        var mirror = reflection.Declared(new Through(new Vec3(0.0, 1000.0, 0.0)));
+        var mirror = (reflection with { EdgeIsContinuous = true }).Declared(new Through(new Vec3(1000.0, 0.0, 0.0)));
         Assert.Equal(double.PositiveInfinity, mirror.FieldFreeRunLength(in from, in minusX));
     }
 }

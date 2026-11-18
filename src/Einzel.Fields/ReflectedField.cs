@@ -188,8 +188,8 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
     /// Where the image answers nothing it has no discontinuity of its own, so none of the inner
     /// field's surfaces seen through the mirror is declared there - a surface the inner field
     /// declares beyond its edge would otherwise land on the declared side as a phantom the
-    /// integrator stops at. Nor does the image declare the plane: where the union's field jumps
-    /// there, the declared half is the one member that declares it (<see cref="PlaneFace"/>), since
+    /// integrator stops at. Nor does the image declare the plane: where the plane is a surface -
+    /// an edge that is not continuous by construction - the declared half is the one member that declares it (<see cref="PlaneFace"/>), since
     /// the sum multiplies its members' signs and two surfaces at one place cancel. So on the
     /// declared side the image's measure is its own at the plane where it has no face there, and
     /// otherwise the distance from the plane signed as the image is just past the plane on its own

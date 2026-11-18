@@ -3895,5 +3895,23 @@ Two findings from Stage 1 that bear on the spec:
   `<name>.new`, so the set can be completed by hand; a raster layer's bias and opacity are checked;
   and a word with leading or trailing white space is not a typed number.
 
+  **A thirtieth review, and the plane decided by its edge.** Whether the plane is a surface is now
+  read from the boundary condition once, when the solve is built (`Reflection.EdgeIsContinuous`,
+  from `GeometryBuilder.ReflectionOf`): a Neumann edge, or a solve declaring no edge surfaces, is no
+  surface; any other edge is one wherever the half has a face on the plane. Deciding it from the
+  normal field at each point read a driven solve's first channel rather than its sum, flipped where
+  that field crossed zero along the plane, and was left to round-off. A surface where the field
+  happens to be continuous costs a landing; a missed jump costs accuracy. It is not a speed-up: on a
+  reflected solve, Neumann and Dirichlet, a query near the plane costs 186-221 ns before and 189-224
+  after, idle, within run-to-run noise, with the same answers summed over 4,096 points - a first
+  reading under a loaded machine said 0.6 to 0.9 and was the load. The four reference flights and
+  the sweep do not move. A surface-sampling allocation test that read 7,568 bytes once on Linux CI
+  now takes the cheapest of five windows after a warm-up, the floor being the property: 0 in each,
+  and 480,000 in each with a per-point array put back. A new version that cannot be kept aside, for any
+  reason, is said in the refusal with where its bytes are, rather than escaping and taking the
+  report of every file with it. A unit after a point marks a mistyped number only after a number,
+  in any case (`2.MS`, `5.MM`), and never for a word naming something on disk, so `trap.ps` and a
+  `1.ps` standing beside the command are files.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

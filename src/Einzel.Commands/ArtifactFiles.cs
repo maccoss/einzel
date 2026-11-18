@@ -580,7 +580,16 @@ public static class ArtifactFiles
                     for (var i = at; i < count; i++)
                     {
                         var (_, _, target, temporary) = _files[i];
-                        var kept = KeepAside(temporary, target);
+                        var kept = KeepAside(temporary, target, out var keepFailure);
+
+                        if (keepFailure is not null)
+                        {
+                            // Said, not raised: an exception here would leave this catch and take
+                            // the report of every file with it.
+                            report.Add(kept is null
+                                ? $"could not keep the new version of {target}: {keepFailure}"
+                                : $"could not keep the new version of {target}: {keepFailure}; it is still at {kept}");
+                        }
 
                         if (i > at)
                         {
@@ -796,10 +805,20 @@ public static class ArtifactFiles
         return full;
     }
 
+    /// <summary>
+    /// Called with a staging file and the name it is about to be kept under: a test's way to make
+    /// keeping a new version aside fail for any reason, not only the file system's.
+    /// </summary>
+    internal static readonly AsyncLocal<Action<string, string>?> Keeping = new();
+
     // A staging file moved beside its destination as "<name>.new" (or .new2, ...), where it is
-    // the only copy of a file the command made; the name, or null where there was nothing to keep.
-    private static string? KeepAside(string temporary, string target)
+    // the only copy of a file the command made: where it is now, or null where there was nothing
+    // to keep. Never throws - it is called while a failure's report is being written, and an
+    // exception would lose that report - so what went wrong is handed back in failure.
+    private static string? KeepAside(string temporary, string target, out string? failure)
     {
+        failure = null;
+
         if (!File.Exists(temporary))
         {
             return null;
@@ -814,17 +833,22 @@ public static class ArtifactFiles
                 continue;
             }
 
+#pragma warning disable CA1031 // Any failure is reported in the refusal, never raised over it.
             try
             {
+                Keeping.Value?.Invoke(temporary, kept);
                 File.Move(temporary, kept);
                 return kept;
             }
-            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+            catch (Exception moving)
             {
-                return temporary;
+                failure = moving.Message;
+                return File.Exists(temporary) ? temporary : null;
             }
+#pragma warning restore CA1031
         }
 
+        failure = "every name from .new to .new999 is taken";
         return temporary;
     }
 

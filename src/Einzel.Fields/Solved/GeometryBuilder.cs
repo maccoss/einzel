@@ -968,6 +968,28 @@ public static class GeometryBuilder
         return (potential, report, mask.FixedCount, mask.Cuts?.CutCount ?? 0, warnings);
     }
 
+    /// <summary>A solve's reflection, its plane edge's continuity decided from the boundary condition.</summary>
+    /// <param name="solve">The solve.</param>
+    /// <returns>The reflection, or null where the solve is not reflected.</returns>
+    /// <remarks>
+    /// The edge on the plane is continuous by construction where it is Neumann - a mirror holds the
+    /// normal field at zero - or where the solve declares no edge surfaces at all. Every channel of
+    /// a driven or staged solve shares this one answer, since it is the geometry's, not a field's.
+    /// </remarks>
+    public static Reflection? ReflectionOf(CompiledSolvedField solve)
+    {
+        if (solve.ReflectAboutX is not { } plane)
+        {
+            return null;
+        }
+
+        var side = Reflection.SideOf(solve.MinX, solve.MaxX, plane);
+        var edge = side == true ? solve.RightEdge : solve.LeftEdge;
+        var continuous = !solve.BoundaryIsDiscontinuous || edge == BoundaryKind.Neumann;
+
+        return Reflection.Of(plane, solve.MinX, solve.MaxX, continuous);
+    }
+
     /// <summary>What building a declared geometry will hold in memory, worked out without building it.</summary>
     /// <param name="solve">The declared geometry.</param>
     /// <returns>The node and channel counts and the bytes.</returns>
@@ -1074,7 +1096,7 @@ public static class GeometryBuilder
             field = new AxisymmetricField(field);
         }
 
-        var reflection = Reflection.Of(solve.ReflectAboutX, solve.MinX, solve.MaxX);
+        var reflection = ReflectionOf(solve);
         var leaves = ConductorLeaf.Of(field, reflection, StaticHeldConductors.Of(solve.Electrodes));
 
         if (reflection is { } mirror)
@@ -1111,7 +1133,7 @@ public static class GeometryBuilder
     {
         var grid = BuildGrid(solve);
         var (frequencies, waveforms, quadrature) = Clocks(solve.Drives);
-        var reflection = Reflection.Of(solve.ReflectAboutX, solve.MinX, solve.MaxX);
+        var reflection = ReflectionOf(solve);
 
         // Every stage is decomposed on its own and the patterns are then shared, so a
         // pattern appearing in two stages is solved once and simply weighted differently

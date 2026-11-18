@@ -371,6 +371,9 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
     [InlineData("--progress 5.mm m.json", "'5.mm'")]
     [InlineData("--progress 1.kV", "'1.kV'")]
     [InlineData("--progress 3.us", "'3.us'")]
+    [InlineData("--progress 2.MS", "'2.MS'")]
+    [InlineData("--progress 5.MM m.json", "'5.MM'")]
+    [InlineData("--progress trap.ps", null)]
     [InlineData("--progress 3cases.txt", null)]
     [InlineData("--progress 2026-mesh.msh", null)]
     [InlineData("--progress 1.e5x m.json", "'1.e5x'")]
@@ -403,6 +406,34 @@ public sealed class VerbFlagsTests(ITestOutputHelper output)
         {
             File.Delete(model);
         }
+    }
+
+    /// <summary>
+    /// A unit after a point marks a mistyped number only after a number, whatever its case, and
+    /// never for a word that names something on disk: units that are also extensions - .ps, .s,
+    /// .m - are a file after a name, and the file itself where one is there.
+    /// </summary>
+    /// <remarks>
+    /// Units were matched with case: 2.MS and 5.MM were taken for files of type MS and MM. And any
+    /// unit after any stem was a typo, so a PostScript file trap.ps, or 1.ps standing beside the
+    /// command, drew a note sending somebody to fix a word that was right.
+    /// </remarks>
+    [Theory]
+    [InlineData("1.ps", false, true)]
+    [InlineData("1.ps", true, false)]
+    [InlineData("2.MS", false, true)]
+    [InlineData("5.MM", false, true)]
+    [InlineData("1.KV", false, true)]
+    [InlineData("-0.5.ms", false, true)]
+    [InlineData("5.mm", true, false)]
+    [InlineData("trap.ps", false, false)]
+    [InlineData("fit.m", false, false)]
+    [InlineData("2026-trap.ps", false, false)]
+    [InlineData("5s", true, false)]
+    [InlineData("5s", false, true)]
+    public void AUnitAfterANumberIsATypoUnlessTheWordIsThere(string word, bool there, bool numeric)
+    {
+        Assert.Equal(numeric, Program.LooksNumeric(word, w => there && w == word));
     }
 
     /// <summary>An overflow is the value, refused by the reader as no interval rather than opened as a model.</summary>

@@ -18,9 +18,13 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
 {
     private readonly GatedMetal? _metal = inner is IConductorBounded metal ? new GatedMetal(metal, reflection) : null;
 
-    // The declared half owns the plane: where the field jumps there, it is the one member that
-    // declares the surface (PlaneFace).
-    private readonly PlaneFace _face = reflection.FaceOf(inner, ownsPlane: true);
+    // The declared half owns the plane: where its edge there is not continuous by construction,
+    // it is the one member that declares the surface (PlaneFace).
+    // Made only for a union: where the halves overlap there is no side to gate, and the sum uses
+    // the declared half as it is (Reflection.Declared).
+    private readonly PlaneFace _face = reflection.Overlaps
+        ? throw new ArgumentException("a declared half is gated only in a union; where the halves overlap it is used as it is", nameof(reflection))
+        : reflection.FaceOf(inner, ownsPlane: true);
 
     /// <inheritdoc/>
     /// <remarks>
@@ -41,7 +45,7 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     /// <remarks>
     /// The inner field's run - gating only takes field away, so wherever the inner field is free
     /// the gated one is too - cut at the plane where the ray crosses it and this half declares a
-    /// surface there (<see cref="PlaneFace.Jumps"/>). An analytic drift ends where a surface is,
+    /// surface there (<see cref="PlaneFace.Declares"/>). An analytic drift ends where a surface is,
     /// and a run that reached past the plane on the strength of an inner field free on both sides
     /// of it would jump the one surface the sum declares there.
     /// </remarks>
@@ -49,7 +53,7 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     {
         var run = inner.FieldFreeRunLength(in position, in direction);
 
-        if (!(run > 0.0) || reflection.Overlaps || direction.X == 0.0)
+        if (!(run > 0.0) || direction.X == 0.0)
         {
             return run;
         }
@@ -63,7 +67,7 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
 
         var y = position.Y + (toPlane * direction.Y);
         var z = position.Z + (toPlane * direction.Z);
-        return _face.Jumps(y, z) ? toPlane : run;
+        return _face.Declares(y, z) ? toPlane : run;
     }
 
     /// <inheritdoc/>

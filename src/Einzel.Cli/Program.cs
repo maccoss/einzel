@@ -393,9 +393,13 @@ public static class Program
         return words.Count == 0 ? null : string.Join("; ", words);
     }
 
-    // Units a number on this command line is written in, which after a point mark a typo rather
-    // than a file extension: '2.ms' is two milliseconds mistyped, not a file called 2 of type ms.
-    private static readonly HashSet<string> UnitSuffixes = new(StringComparer.Ordinal)
+    // Units a number on this command line is written in, which after a number and a point mark a
+    // typo rather than a file extension: '2.ms' is two milliseconds mistyped, not a file called 2
+    // of type ms. Compared ignoring case, which here costs nothing: a typo has no case to get
+    // right, 'MS' is no unit a command line would mean, and 2.MS is the same slip as 2.ms. That
+    // some of these are also real extensions - .ps, .s, .m - is settled by the rules below, not
+    // by leaving them out.
+    private static readonly HashSet<string> UnitSuffixes = new(StringComparer.OrdinalIgnoreCase)
     {
         "s", "ms", "us", "µs", "ns", "ps", "m", "mm", "um", "µm", "nm", "V", "kV", "mV", "Hz", "kHz", "MHz", "eV", "keV",
     };
@@ -403,36 +407,76 @@ public static class Program
     private static readonly System.Buffers.SearchValues<char> Letters =
         System.Buffers.SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
-    // Whether a word could be a mistyped number - a digit first, or a sign or a point and then a
-    // digit: '5s', '0,5', '-2x', '1.e5x' - and not a path: one with a separator in it, or an
-    // extension of two letters or more (2026-trap.json, 3cases.txt, 3d/lens). A note about a
-    // model name that happens to start with a digit would send somebody to fix a word that was
-    // right.
-    internal static bool LooksNumeric(string word)
+    // A number as the part of a word before its unit: a sign, then digits with at most one point.
+    private static readonly System.Text.RegularExpressions.Regex Numeral =
+        new(@"^[+-]?(\d+\.?\d*|\.\d+)$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Whether a word could be a mistyped number, so a refusal may say it was perhaps meant as a
+    /// flag's value - and is not a path.
+    /// </summary>
+    /// <param name="word">The word.</param>
+    /// <param name="exists">
+    /// Whether a file or folder of that name is there; by default asked of the disk, relative to
+    /// the directory the command is run from, as the word would be read.
+    /// </param>
+    /// <returns>
+    /// False for anything that is there on disk, has a separator in it, or ends in an extension of
+    /// two letters or more that is not a unit after a number; otherwise whether it leads like a
+    /// number - a digit first, or a sign or a point and then a digit: '5s', '0,5', '-2x', '1.e5x'.
+    /// </returns>
+    /// <remarks>
+    /// A unit after a point makes a typo only where what comes before the point is a number:
+    /// '2.ms', '5.MM', '1.kV' - but 'trap.ps' is a PostScript file and 'fit.m' a script. And a
+    /// word that names something on disk is that thing, whatever it looks like: '1.ps' beside a
+    /// file called 1.ps is the file. A note about a model name that happens to start with a digit
+    /// would send somebody to fix a word that was right.
+    /// </remarks>
+    internal static bool LooksNumeric(string word, Func<string, bool>? exists = null)
     {
         if (word.IndexOfAny(['/', '\\']) >= 0)
         {
             return false;
         }
 
-        // A unit after a point - '2.ms', '5.mm', '1.kV' - is a number with a typo in it, not a
-        // file: checked before the extension rule, which would take any two letters for a file.
-        if (UnitSuffixes.Contains(Path.GetExtension(word).TrimStart('.')))
+        exists ??= OnDisk;
+
+        if (exists(word))
         {
-            return LeadsLikeANumber(word);
+            return false;
         }
 
-        // An extension of two letters or more, all letters - .json, .txt, .msh, .py - makes it a
-        // file name. Not one letter, nor one with a digit in it: '2.s' and '1.e5x' are a unit typo
-        // and an exponent. A named list of extensions missed the files people actually have.
+        // A number, a point and a unit - '2.ms', '5.MM', '1.kV' - is a number with a typo in it:
+        // checked before the extension rule, which would take any two letters for a file.
         var extension = Path.GetExtension(word);
 
+        if (UnitSuffixes.Contains(extension.TrimStart('.')) && Numeral.IsMatch(word[..^extension.Length]))
+        {
+            return true;
+        }
+
+        // An extension of two letters or more, all letters - .json, .txt, .msh, .py, .ps after a
+        // name - makes it a file name. Not one letter, nor one with a digit in it: '2.s' and
+        // '1.e5x' are a unit typo and an exponent. A named list of extensions missed the files
+        // people actually have.
         if (extension.Length > 2 && extension.AsSpan(1).IndexOfAnyExcept(Letters) < 0)
         {
             return false;
         }
 
         return LeadsLikeANumber(word);
+    }
+
+    private static bool OnDisk(string word)
+    {
+        try
+        {
+            return File.Exists(word) || Directory.Exists(word);
+        }
+        catch (Exception failure) when (failure is ArgumentException or NotSupportedException or PathTooLongException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     // A digit first, or a sign or a point and then a digit.

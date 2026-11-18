@@ -1007,7 +1007,10 @@ and `NaN`, included, so the reader refuses them as intervals rather than a model
 opened), and otherwise it is an ordinary positional. Where such a word then makes the line fail,
 the refusal mentions it - conditionally, "if '5s' was meant as --progress's value", with how to
 write one - but only where that can be right: on too many arguments, when the word is itself one of
-the surplus or could be a mistyped number (a digit first, or a sign or point and then one); on a
+the surplus or could be a mistyped number (a digit first, or a sign or point and then one, and
+not the name of anything on disk - `1.ps` beside a file called 1.ps is that file; a unit after a
+point marks a typo only after a number and in any case - `2.ms`, `2.MS`, `5.MM` - while `trap.ps`
+and `fit.m` are files); on a
 model that is not there (`run --progress 5s`), only for such a word. `run --progress modls/r.json`
 is a missing model and nothing more. That is a message, not a reassignment. So
 `--progress 5` is a five-second interval, as the shell's journal spells it, while `einzel run

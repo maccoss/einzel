@@ -233,6 +233,14 @@ become a feature release without being renamed twice.
   power-of-two plane the image's reflected coordinate rounded back onto the plane and the sum
   doubled there. The plane and the declared side are the declared half's, the other side the
   image's, judged on the point itself.
+- **A reflected solve's mirror plane is a surface the integrator lands on unless its edge is a
+  mirror**: a solve declaring edge surfaces with a grounded (Dirichlet) edge on the plane gets one
+  surface there, owned by the declared half, decided from the boundary condition when the solve is
+  built rather than from the field at each step. A Neumann edge, or a solve declaring no edge
+  surfaces - every shipped reflected template - gets none, and its flights are unchanged.
+- **The note that a word after a bare `--progress` may have been its value** is given for a unit
+  after a number in any case (`2.MS`, `5.MM`), and not for a word naming something on disk or a
+  name with a unit-like extension (`trap.ps`, `fit.m`).
 - **Files are replaced in one rename**, written through a symbolic link, and a read-only
   destination is refused; every destination - including the render spec a figure was drawn from -
   is checked before the work, `--dry-run` included. A file no flag named is refused with its own

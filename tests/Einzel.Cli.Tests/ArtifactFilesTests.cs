@@ -399,6 +399,67 @@ public sealed class ArtifactFilesTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// Where a new version cannot be kept aside, for any reason, the refusal still reports every
+    /// file and says why that one was not kept and where its bytes are.
+    /// </summary>
+    /// <remarks>
+    /// Keeping aside caught only the file system's own failures; anything else escaped the catch
+    /// that was writing the report, and the report of every file went with it.
+    /// </remarks>
+    [Fact]
+    public void ANewVersionThatCannotBeKeptIsReportedNotRaised()
+    {
+        Directory.CreateDirectory(_root);
+        var first = Path.Combine(_root, "first.vti");
+        var second = Path.Combine(_root, "second.vti");
+        File.WriteAllBytes(first, [1]);
+        File.WriteAllBytes(second, [2]);
+        string? backupAt = null;
+
+        ArtifactFiles.Replacing.Value = (target, backup) =>
+        {
+            if (target != second)
+            {
+                return;
+            }
+
+            backupAt = backup;
+            File.WriteAllBytes(backup, [7]);
+            ArtifactFiles.Comparing.Value = (_, _) => throw new IOException("locked");
+            throw new IOException("the replace failed part way");
+        };
+        ArtifactFiles.Keeping.Value = (_, _) => throw new InvalidOperationException("not a file system failure");
+
+        EinzelException refusal;
+
+        try
+        {
+            refusal = Assert.Throws<EinzelException>(() => ArtifactFiles.WriteAll([(null, first, [8]), (null, second, [9])]));
+        }
+        finally
+        {
+            ArtifactFiles.Replacing.Value = null;
+            ArtifactFiles.Comparing.Value = null;
+            ArtifactFiles.Keeping.Value = null;
+        }
+
+        output.WriteLine(refusal.Error.Constraint);
+        var constraint = refusal.Error.Constraint;
+
+        // Every file's state is still said.
+        Assert.Contains($"it could not be told whether {second} was replaced: a copy of its original is at {backupAt}", constraint, StringComparison.Ordinal);
+        Assert.Contains($"{first} holds the new file and its original is at", constraint, StringComparison.Ordinal);
+
+        // And why the new version is not beside its destination, and where it is instead.
+        const string Lead = "could not keep the new version of ";
+        Assert.Contains($"{Lead}{second}: not a file system failure; it is still at ", constraint, StringComparison.Ordinal);
+        Assert.False(File.Exists(second + ".new"));
+        var still = constraint[(constraint.IndexOf("it is still at ", StringComparison.Ordinal) + "it is still at ".Length)..].Split(';')[0].Trim();
+        Assert.Equal([9], File.ReadAllBytes(still));
+        File.Delete(still);
+    }
+
+    /// <summary>
     /// A set staged one file at a time puts nothing in place until it is committed, and a set
     /// abandoned part way leaves nothing behind: no file, no staging file, no folder it made.
     /// </summary>

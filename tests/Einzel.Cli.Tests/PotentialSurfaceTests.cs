@@ -219,19 +219,35 @@ public sealed class PotentialSurfaceTests(ITestOutputHelper output) : IDisposabl
             Assert.Equal(3.0, got[normal]);
         }
 
-        SurfaceCommand.PlanePoint(0, 1, 2, 1.0, 2.0, 3.0);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var sum = 0.0;
+        // The cheapest of several windows after a warm-up: the runtime charges one-off costs - a
+        // tier-1 recompile, an on-stack replacement of this loop, a first-call stub - to whichever
+        // window they land in, and the property is a floor. Linux CI read 7,568 bytes in a single
+        // window; an allocation per point would be 10,000 times its size in every one.
+        var readings = new long[5];
+        var sum = Window();
 
-        for (var i = 0; i < 10_000; i++)
+        for (var w = 0; w < readings.Length; w++)
         {
-            sum += SurfaceCommand.PlanePoint(i % 3, (i + 1) % 3, (i + 2) % 3, i, 2.0, 3.0).X;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            sum += Window();
+            readings[w] = GC.GetAllocatedBytesForCurrentThread() - before;
         }
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        output.WriteLine($"{allocated} bytes over 10,000 points ({sum})");
+        output.WriteLine($"bytes over 10,000 points, per window: {string.Join(", ", readings)} ({sum})");
 
-        Assert.Equal(0, allocated);
+        Assert.Equal(0, readings.Min());
+
+        static double Window()
+        {
+            var total = 0.0;
+
+            for (var i = 0; i < 10_000; i++)
+            {
+                total += SurfaceCommand.PlanePoint(i % 3, (i + 1) % 3, (i + 2) % 3, i, 2.0, 3.0).X;
+            }
+
+            return total;
+        }
     }
 
     /// <summary>

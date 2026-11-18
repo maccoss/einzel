@@ -82,7 +82,9 @@ public sealed class MirrorPair
         // genuinely overlap and the pair is their sum everywhere, the plane included. A side
         // given there would drop the image's tail below the plane and keep the declared one's
         // above it, and the pair would stop being symmetric about its own mid-plane.
-        _field = Reflection.Of(plane, mirror.Potential.Grid.OriginX, mirror.Potential.Grid.MaxX)!.Sum(first);
+        // The mirror's field declares no edge surfaces (PlanarMirror.Field), so the plane is
+        // continuous by construction and no surface.
+        _field = Reflection.Of(plane, mirror.Potential.Grid.OriginX, mirror.Potential.Grid.MaxX, edgeIsContinuous: true)!.Sum(first);
     }
 
     /// <summary>The mirror both halves are built from.</summary>
