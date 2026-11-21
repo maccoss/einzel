@@ -302,7 +302,9 @@ become a feature release without being renamed twice.
   whose pilots could be flown is gated rather than billed without its flights
   (`trajectoryMeasured: false`). `--snapshots 00` is accepted for a study, as `0` is, and a
   refusal of the flag is located at `/args/--snapshots`. A study over a sequenced model bills
-  the flights its figure of merit asks for rather than the model's cloud.
+  the flights one evaluation makes: the sequence's cloud (one packet under space charge) for a
+  figure read off the sequenced run, the figure's own ions otherwise. A pilot that fails through
+  the coarsened field is flown again at the declared resolution before the gate refuses.
 - **A sequenced run is estimated phase by phase**: each trajectory phase by a pilot flown
   through its own field over its own duration, diffusive phases by density steps over theirs, and the basis says both. A
   trajectory model entering a diffusive phase was billed nothing for its density, and a

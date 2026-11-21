@@ -505,6 +505,135 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         Assert.Equal([0.0, Math.BitDecrement(3e-6), 6e-6, Math.BitDecrement(7e-6)], instants);
     }
 
+    /// <summary>
+    /// A study over a sequenced model bills what one evaluation flies: a figure read off the
+    /// sequenced run flies the sequence's cloud, and any other flies its own ions outside it.
+    /// </summary>
+    /// <param name="figure">The study's figure of merit.</param>
+    /// <param name="flights">The flights one evaluation makes.</param>
+    [Theory]
+    [InlineData("transitTime", 2000)]
+    [InlineData("flightTime", 3)]
+    public void ASequencedStudyBillsTheFlightsAnEvaluationMakes(string figure, int flights)
+    {
+        var model = Model("tube-entered", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+            document["source"]!["cloud"]!["ions"] = 2000;
+        });
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "{{figure}}", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        EstimateOutcome costed;
+
+        using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+        {
+            costed = EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(costed.Basis);
+
+        Assert.Equal(flights, costed.Study!.Members);
+    }
+
+    /// <summary>
+    /// Under space charge a sequenced evaluation advances one packet, whatever the figure asks
+    /// for, and is not re-billed as that many independent flights.
+    /// </summary>
+    [Fact]
+    public void ASpaceChargeSequenceIsBilledAsItsPacket()
+    {
+        var model = Model("tube-entered", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+            document["transport"]!["spaceCharge"] = "direct";
+        });
+
+        double PerEvaluation(int ions, out StudyEstimate estimated)
+        {
+            var path = Write($"study{ions}", $$"""
+                { "schemaVersion": "0.1", "name": "charged", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "transmission", "ions": {{ions}},
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                estimated = EstimateCommand.ForStudy(path, calibrate: true, threshold: 1e12).Study!;
+            }
+
+            return estimated.SecondsPerEvaluation;
+        }
+
+        var many = PerEvaluation(1000, out var manyStudy);
+        var few = PerEvaluation(10, out _);
+
+        output.WriteLine($"{many:F3} s an evaluation at 1000 ions, {few:F3} at 10, {manyStudy.Members} flights");
+
+        Assert.Equal(1, manyStudy.Members);
+        Assert.True(Math.Abs(many - few) < 1.0, $"a packet was billed as independent flights: {many - few:F1} s apart");
+    }
+
+    /// <summary>
+    /// A pilot that cannot be flown through the coarsened field is flown again at the declared
+    /// resolution before the gate refuses anything, and the basis says why.
+    /// </summary>
+    [Fact]
+    public void ACoarsenedPilotThatFailsIsFlownAsDeclared()
+    {
+        var model = Model("tube-entered");
+        var failed = new EstimateCommand.Pilot(0.0, "not measured: no field at that coarsening, for a test", false, 0.0);
+        var flown = new EstimateCommand.Pilot(0.5, "half a second, for a test", true, 1.0);
+
+        EstimateOutcome retried;
+
+        using (EstimateCommand.PilotsForTestBy(coarsening => coarsening > 1.0 ? failed : flown))
+        {
+            retried = EstimateCommand.Execute(model, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(retried.Basis);
+
+        Assert.True(retried.TrajectoryMeasured);
+        Assert.False(retried.AboveThreshold);
+        Assert.Contains("flown at the declared resolution", retried.Basis, StringComparison.Ordinal);
+
+        // The control: where the declared resolution fails too, the cost is unknown and gated.
+        EstimateOutcome neither;
+
+        using (EstimateCommand.PilotsForTestBy(_ => failed))
+        {
+            neither = EstimateCommand.Execute(model, calibrate: true, threshold: 1e12);
+        }
+
+        Assert.False(neither.TrajectoryMeasured);
+        Assert.True(neither.AboveThreshold);
+        Assert.Contains("nor at the declared resolution", neither.Basis, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// What the phases' cost covers is the time actually flown and the time charged at the
+    /// dearest rate, not every phase's whole duration.
+    /// </summary>
+    [Fact]
+    public void ThePhasesCoverWhatWasFlownAndCharged()
+    {
+        var phases = new[]
+        {
+            new Core.Model.CompiledPhase("early", 2e-6, "trajectory", 2e-6, []),
+            new Core.Model.CompiledPhase("bad", 3e-6, "trajectory", 5e-6, []),
+        };
+
+        var cost = EstimateCommand.PhasePilots(
+            phases, phase => phase.Name == "early" ? new(4.0, "arrived", true, 1e-6) : new(0.0, "not measured", false, 0.0));
+
+        // A microsecond flown before the ion arrived, and the failed phase's three charged.
+        Assert.Equal(4e-6, cost.CoveredSeconds, 15);
+    }
+
     /// <summary>Two phases declared alike are two phases, and both are piloted.</summary>
     [Fact]
     public void PhasesDeclaredAlikeAreEachPiloted()

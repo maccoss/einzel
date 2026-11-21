@@ -1294,6 +1294,21 @@ public static class FiguresOfMerit
         });
     }
 
+    /// <summary>
+    /// Whether a figure of merit is read off the run itself - through <see cref="DiffusiveRun"/>,
+    /// which walks a sequenced model phase by phase - rather than off flights it makes of its own.
+    /// </summary>
+    /// <param name="figureOfMerit">The figure's name.</param>
+    /// <returns>True for a transit, a mobility resolving power and a radial spread.</returns>
+    /// <remarks>
+    /// What a study's estimate asks, because one evaluation of such a figure over a sequenced
+    /// model is a whole sequenced run, flying the sequence's packet; every other figure flies its
+    /// own ions through the instrument and does not walk the sequence. Kept beside
+    /// <see cref="DiffusiveRun"/>: a figure that starts reading it belongs here too.
+    /// </remarks>
+    internal static bool ReadsTheSequencedRun(string? figureOfMerit) =>
+        figureOfMerit is "transitTime" or "mobilityResolvingPower" or "radialSpread";
+
     /// <summary>Runs a diffusive model the way <c>einzel run</c> would, and returns its arrivals.</summary>
     /// <remarks>
     /// <para>

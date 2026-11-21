@@ -3986,3 +3986,19 @@ Two findings from Stage 1 that bear on the spec:
   face-operator reuse test, which asserts a re-assembly allocates nothing, read 7,344 bytes in one
   window of a Debug run of the whole suite and none on repeat: it now takes the least of five
   windows, as the allocation tests here already do, and still requires zero.
+
+  **An eighteenth review, landed after the merge.** A study over a sequenced model now bills what one evaluation flies.
+  A figure read off the sequenced run (`transitTime`, `mobilityResolvingPower`, `radialSpread`,
+  `FiguresOfMerit.ReadsTheSequencedRun`, held to the source by a test) is a whole sequenced run
+  and flies the sequence's cloud; under space charge that is one packet, billed as the model's
+  lockstep cost and not as a thousand independent flights. Any other figure flies its own ions
+  outside the sequence - `flightTime` on a 2,000-ion sequenced cloud flies its three-rung ladder,
+  not the cloud, because `Single` integrates through the instrument and never walks the
+  sequence - and is billed those. A pilot that cannot be measured through the coarsened field is
+  flown again at the declared resolution before the gate refuses, and the basis says which; only
+  where that fails too is the cost unknown. A sequence's phases cover what was flown and charged
+  rather than every phase whole. The conductor scan refuses a shape it has no box for. A diffusive
+  leg is handed a density or a packet, never both, and the caller hands the packet over visibly.
+  The export's grid arrays stay with the allocator: a watch runs only in a measuring child or in
+  `Einzel.Fields.Tests`, neither of which exports, and an allocation on any other thread is counted
+  apart as off-thread rather than read as the build's.

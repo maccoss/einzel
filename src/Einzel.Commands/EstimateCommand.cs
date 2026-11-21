@@ -367,7 +367,9 @@ public static class EstimateCommand
     /// <remarks>
     /// Built for every run and kept only where a solved element's conductors are there to absorb:
     /// the drift tube with a bore reads 252.00 bytes a node where the bare one reads 248.00.
-    /// Charged wherever a solved element declares an electrode, which is the most it can be.
+    /// Charged by the test the run keeps it by - only where an electrode claims a node of the
+    /// density grid (<c>DiffusionRun.AnyElectrodeClaims</c>) - so a grid clear of every conductor
+    /// is charged nothing for it.
     /// </remarks>
     private const double AbsorberMapBytesPerNode = sizeof(int);
 
@@ -529,7 +531,7 @@ public static class EstimateCommand
     {
         try
         {
-            if (ForcedPilot.Value is { } forced)
+            if (ForcedPilot.Value?.Invoke(coarsening) is { } forced)
             {
                 return forced;
             }
@@ -644,8 +646,11 @@ public static class EstimateCommand
     /// </param>
     internal readonly record struct Pilot(double Seconds, string How, bool Measured, double CoveredSeconds);
 
-    /// <summary>Set within a test, through <see cref="PilotsForTest"/>, to what every pilot flight reports.</summary>
-    private static readonly AsyncLocal<Pilot?> ForcedPilot = new();
+    /// <summary>
+    /// Set within a test, through <see cref="PilotsForTestBy"/>, to what a pilot flight at a
+    /// coarsening reports - or null for that pilot to be flown.
+    /// </summary>
+    private static readonly AsyncLocal<Func<double, Pilot?>?> ForcedPilot = new();
 
     /// <summary>
     /// Makes every pilot flight in the calling flow fail until disposed, which is how a test
@@ -662,7 +667,15 @@ public static class EstimateCommand
     /// </summary>
     /// <param name="pilot">What each pilot reports.</param>
     /// <returns>What restores the pilots that were in force before, when disposed.</returns>
-    internal static IDisposable PilotsForTest(Pilot pilot)
+    internal static IDisposable PilotsForTest(Pilot pilot) => PilotsForTestBy(_ => pilot);
+
+    /// <summary>
+    /// Makes each pilot flight in the calling flow report what <paramref name="pilot"/> says for
+    /// its coarsening, or be flown where that is null, until disposed.
+    /// </summary>
+    /// <param name="pilot">What a pilot at a coarsening reports, or null to fly it.</param>
+    /// <returns>What restores the pilots that were in force before, when disposed.</returns>
+    internal static IDisposable PilotsForTestBy(Func<double, Pilot?> pilot)
     {
         var before = ForcedPilot.Value;
         ForcedPilot.Value = pilot;
@@ -671,7 +684,7 @@ public static class EstimateCommand
 
     /// <summary>Puts back the pilots that were in force when the override was taken, nested or not.</summary>
     /// <param name="before">What was in force.</param>
-    private sealed class Restore(Pilot? before) : IDisposable
+    private sealed class Restore(Func<double, Pilot?>? before) : IDisposable
     {
         /// <inheritdoc/>
         public void Dispose() => ForcedPilot.Value = before;
@@ -923,6 +936,25 @@ public static class EstimateCommand
         var trajectory = calibrate && spans.TrajectorySeconds > 0.0
             ? Pilots(model, spans)
             : new Pilot(0.0, string.Empty, Measured: true, CoveredSeconds: 0.0);
+
+        // A PILOT THAT FAILED COARSENED IS FLOWN AGAIN AS DECLARED before anything is refused:
+        // coarsening is this estimate's own economy, and a field solved at twice the cell can fail
+        // where the model's own does not - the gate would then refuse a run that takes
+        // milliseconds for a reason that is nothing to do with it. Still a pilot, a fraction of
+        // the flight, so bounded as the coarse one was; only if this fails too is the cost unknown.
+        if (!trajectory.Measured && calibrate && spans.TrajectorySeconds > 0.0)
+        {
+            var declared = Pilots(model, spans, coarsening: 1.0);
+
+            trajectory = declared with
+            {
+                How = declared.Measured
+                    ? $"the pilot at {PilotCoarsening:G2}x the cell size could not be measured "
+                    + $"({trajectory.How}), so it was flown at the declared resolution: {declared.How}"
+                    : $"NOT MEASURED at {PilotCoarsening:G2}x the cell size ({trajectory.How}), "
+                    + $"nor at the declared resolution ({declared.How})",
+            };
+        }
 
         // A CLOUD FLIES ONCE PER ION THROUGH ONE SOLVED FIELD, so the flight is paid as many
         // times as there are ions and the solve is paid once. Costing a single trajectory
@@ -1519,10 +1551,19 @@ public static class EstimateCommand
 
         var flown = validation.Model is { } compiledModel ? Flown(compiledModel, Spans(compiledModel)) : 1;
 
-        // The model's own figure carries its cloud's flights (`flown` of them); a study replaces
-        // them with the flights its figure of merit asks for (`members`), sequenced or not.
+        // WHAT ONE EVALUATION FLIES. The model's own figure carries its cloud's flights (`flown`
+        // of them, one packet under space charge, whose lockstep cost is already in that figure).
+        // A figure read off the sequenced run - a transit, a mobility resolving power - IS that
+        // run, so it flies the sequence's flights and a packet stays a packet. Any other figure
+        // flies its own `members` through the instrument outside the sequence, as unsequenced; a
+        // space-charge model's ensemble is a packet whatever asked for it, and is not
+        // re-billed as independent flights.
+        var runsTheSequence = sequencedFlights
+            && (validation.Model!.ModelsSpaceCharge || FiguresOfMerit.ReadsTheSequencedRun(study.FigureOfMerit));
+        var billed = runsTheSequence ? flown : members;
+
         var perEvaluation = sequencedFlights || !wholeRun
-            ? compile + model.Seconds - (flown * model.TrajectorySeconds) + (members * flight)
+            ? compile + model.Seconds - (flown * model.TrajectorySeconds) + (billed * flight)
             : compile + model.Seconds;
 
         var seconds = evaluations * perEvaluation;
@@ -1535,7 +1576,11 @@ public static class EstimateCommand
         var each = sequencedFlights
             ? "is one whole run of the model, its trajectory phases piloted phase by phase over "
             + "their own durations where the study goes rather than at the declared values alone, "
-            + $"for the {members} trajector{(members == 1 ? "y" : "ies")} its figure of merit flies"
+            + (runsTheSequence
+                ? $"for the {billed} trajector{(billed == 1 ? "y" : "ies")} the sequence flies"
+                + (validation.Model!.ModelsSpaceCharge ? ", advanced as one packet" : string.Empty)
+                : $"for the {billed} trajector{(billed == 1 ? "y" : "ies")} its figure of merit flies "
+                + "outside the sequence")
             : wholeRun
             ? "is one whole run of the model - a density stepped, or a packet advanced in "
             + "lockstep - so its flights are already inside the figure above and are not "
@@ -1615,7 +1660,7 @@ public static class EstimateCommand
                 Kind = kind,
                 Evaluations = evaluations,
                 EvaluationsAreACeiling = ceiling,
-                Members = members,
+                Members = sequencedFlights ? billed : members,
                 SecondsPerEvaluation = perEvaluation,
                 InFlight = inFlight,
                 MemoryMiBPerEvaluation = memoryPerEvaluation,
@@ -2384,16 +2429,18 @@ public static class EstimateCommand
         var dearest = 0.0;
         var anyMeasured = false;
         var unmeasured = 0.0;
+        var covered = 0.0;
         var lines = new List<string>();
 
         foreach (var i in indices.Where(piloted.Contains))
         {
             var phase = phases[i];
-            var (phaseSeconds, how, measured, covered) = fly(phase);
+            var (phaseSeconds, how, measured, flew) = fly(phase);
 
-            if (measured && covered > 0.0)
+            if (measured && flew > 0.0)
             {
                 seconds += phaseSeconds;
+                covered += flew;
                 anyMeasured = true;
 
                 // Per simulated second the pilot actually covered: one whose ion arrived early
@@ -2403,7 +2450,7 @@ public static class EstimateCommand
                 // charged at it, billed nanoseconds of flight as milliseconds of setup each.
                 dearest = Math.Max(
                     dearest,
-                    phaseSeconds / Math.Max(covered, phase.DurationSeconds * LeastCoveredFraction));
+                    phaseSeconds / Math.Max(flew, phase.DurationSeconds * LeastCoveredFraction));
                 lines.Add(string.Create(Inv, $"phase '{phase.Name}', {phaseSeconds:G3} s: {how}"));
             }
             else
@@ -2428,6 +2475,7 @@ public static class EstimateCommand
         if (unpiloted + unmeasured > 0.0)
         {
             seconds += dearest * (unpiloted + unmeasured);
+            covered += unpiloted + unmeasured;
             lines.Add(string.Create(
                 Inv,
                 $"{(unpiloted + unmeasured) * 1e6:G4} us of trajectory phases not piloted or not "
@@ -2440,7 +2488,10 @@ public static class EstimateCommand
             + $"flown from the source rather than from where the packet is when the phase begins - "
             + string.Join("; ", lines),
             true,
-            phases.Sum(phase => phase.DurationSeconds));
+
+            // What the seconds are the cost of: each measured phase as far as its pilot flew, and
+            // the phases charged at the dearest rate in whole.
+            covered);
     }
 
     /// <summary>How long a run flies trajectories and how long it steps a density.</summary>

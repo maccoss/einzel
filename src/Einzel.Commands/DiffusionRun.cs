@@ -772,7 +772,13 @@ public static class DiffusionRun
     /// <summary>An electrode's bounding box, or null for one with no interior to contain a node.</summary>
     /// <param name="electrode">The electrode.</param>
     /// <returns>Its extent in metres, or null for an edge profile.</returns>
-    private static (double MinX, double MinY, double MaxX, double MaxY)? Box(CompiledElectrode electrode) =>
+    /// <exception cref="InvalidOperationException">A shape this does not know.</exception>
+    /// <remarks>
+    /// A shape added to the format is refused here rather than given a box: the scan visits only
+    /// what is inside it, so a guessed box would drop conductor nodes and an unbounded one would
+    /// hide that the decision was never made.
+    /// </remarks>
+    internal static (double MinX, double MinY, double MaxX, double MaxY)? Box(CompiledElectrode electrode) =>
         electrode.Shape switch
         {
             ElectrodeShape.Rectangle => (electrode.MinX, electrode.MinY, electrode.MaxX, electrode.MaxY),
@@ -787,9 +793,8 @@ public static class DiffusionRun
                 electrode.Vertices.Max(v => v.X),
                 electrode.Vertices.Max(v => v.Y)),
             ElectrodeShape.EdgeProfile or ElectrodeShape.Polygon => null,
-
-            // A shape this does not know is scanned whole rather than guessed at.
-            _ => (double.NegativeInfinity, double.NegativeInfinity, double.PositiveInfinity, double.PositiveInfinity),
+            _ => throw new InvalidOperationException(
+                $"electrode '{electrode.Name}' is a {electrode.Shape}, which the conductor scan has no bounding box for"),
         };
 
     /// <summary>
