@@ -49,6 +49,9 @@ public static class Csv
             : "\"" + field.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 
+    // The line breaks string.ReplaceLineEndings recognises: CR, LF, NEL, LS, PS and FF.
+    private static readonly char[] LineBreaks = ['\r', '\n', '\u0085', '\u2028', '\u2029', '\f'];
+
     /// <summary>A comment line, every line of it a comment.</summary>
     /// <param name="text">The text, which may run over several lines.</param>
     /// <returns><c># </c> before each of its lines, ending in a line break.</returns>
@@ -61,8 +64,9 @@ public static class Csv
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        // A message ending in a line break would otherwise end in an empty "# " line.
-        return "# " + text.TrimEnd('\r', '\n').ReplaceLineEndings("\n# ") + "\n";
+        // A message ending in a line break would otherwise end in an empty "# " line - any line break
+        // ReplaceLineEndings recognises, so a trailing one of those is no "# " line either.
+        return "# " + text.TrimEnd(LineBreaks).ReplaceLineEndings("\n# ") + "\n";
     }
 
     /// <summary>A warning as comment lines: its severity, code and message, in the invariant culture.</summary>

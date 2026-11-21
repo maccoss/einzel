@@ -280,6 +280,7 @@ public static class TrajectoryIntegrator
                     ref state, ref time, field, settings, activeStop,
                     recorder, collisions, ref analyticDistance, out var stoppedOnDrift))
             {
+                members?.Forget();
                 derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
                 fieldEvaluations++;
 
@@ -322,13 +323,16 @@ public static class TrajectoryIntegrator
             // in space this needs no root-find - the time is known - so the step is
             // simply cut to land on it. The next step then starts in the new state,
             // with the derivative recomputed there.
+            var switchDue = false;
+
             if (driven is not null)
             {
                 var switchAt = driven.NextSwitchAfter(time.Total);
 
-                if (double.IsFinite(switchAt))
+                if (double.IsFinite(switchAt) && switchAt - time.Total <= step)
                 {
-                    step = Math.Min(step, switchAt - time.Total);
+                    step = switchAt - time.Total;
+                    switchDue = true;
                 }
             }
 
@@ -354,6 +358,7 @@ public static class TrajectoryIntegrator
 
                     if (collisions.Collide(time.Total, in at, ref here))
                     {
+                        members?.Forget();
                         state = new PhaseState(state.Position, here);
                         derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
                         fieldEvaluations++;
@@ -478,6 +483,13 @@ public static class TrajectoryIntegrator
             TrackEnergyDrift(
                 in state, species, field, initialEnergy, energyScale, ref maximumEnergyDrift, ref fieldEvaluations);
 
+            // A step that ended on a sequencer switch ends where the field changes state, so the
+            // measures read at its end are not the next step's start (MemberScratch).
+            if (switchDue)
+            {
+                members?.Forget();
+            }
+
             // Only on the plain full step. A step cut short by an electrode, a
             // detector or a field discontinuity did not reach the collision, and
             // applying it there would scatter an ion that had already stopped.
@@ -488,6 +500,7 @@ public static class TrajectoryIntegrator
 
                 if (collisions!.Collide(time.Total, in at, ref velocity))
                 {
+                    members?.Forget();
                     state = new PhaseState(state.Position, velocity);
 
                     // The velocity is discontinuous, so every cached derivative and
@@ -696,20 +709,27 @@ public static class TrajectoryIntegrator
             ref fieldEvaluations);
     }
 
-    // The members' measures at the start of a step, at its end, and at a bisection's probe.
+    // The members' measures at a step's start and end, and the start's marked copy the bisection
+    // tests against. A step's end is reused as the next step's start only while nothing but the
+    // integrator's own advance has happened between them: the measures are functions of position
+    // within a step (IElectrostaticField.MemberDistancesToDiscontinuity), and a landed sequencer
+    // switch, a collision or an analytic drift is something else, so each forgets the end.
     private sealed class MemberScratch(int count)
     {
+        // The start's measures; once a step's crossings are marked, the bisection's probe scratch.
         public double[] Start { get; set; } = new double[count];
 
         public double[] End { get; set; } = new double[count];
 
-        // A bisection's probes, apart from End, so a step's end stays readable as the next start.
-        public double[] Probe { get; } = new double[count];
+        // The start's measures for the members that change sign over the step, not a number for the
+        // rest: what the bisection compares each probe's signs with.
+        public double[] Marked { get; } = new double[count];
 
-        // Where End was read, if it still holds that point's measures: an accepted step that landed
-        // on nothing ends where the next one starts, and reading the same point twice is a query
-        // made for nothing.
+        // Where End was read, if it still holds that point's measures and nothing has happened since
+        // but the step that ended there.
         public Vec3? EndAt { get; set; }
+
+        public void Forget() => EndAt = null;
     }
 
     // A field tracking several discontinuity measures: a crossing is any one of them changing sign,
@@ -720,7 +740,8 @@ public static class TrajectoryIntegrator
     // changing in a step, the test is that member's sign, which changes exactly where the combined
     // sign did, so a flight crossing one surface per step lands where it always did. Every member is
     // read in one pass (MemberDistancesToDiscontinuity), counted as one evaluation, and a point read
-    // at the end of one step is not read again at the start of the next.
+    // at the end of one step is not read again at the start of the next unless something other than
+    // the step happened there (MemberScratch).
     private static double MemberLandingStep(
         in PhaseState state,
         in PhaseDerivative derivative,
@@ -751,13 +772,15 @@ public static class TrajectoryIntegrator
         var start = members.Start;
         var end = members.End;
 
-        // As the single measure: nothing to cross where no member is a finite distance from a
-        // surface it is not already on, and then no second pass.
+        // Nothing to cross where every member is not a number or is on its surface, and then no
+        // second pass.
+        // An infinity counts: it is a sign like any other, and plus infinity at the start and a
+        // finite negative measure at the end is a crossing.
         var any = false;
 
         foreach (var value in start)
         {
-            any |= double.IsFinite(value) && value != 0.0;
+            any |= !double.IsNaN(value) && value != 0.0;
         }
 
         if (!any)
@@ -769,10 +792,10 @@ public static class TrajectoryIntegrator
         fieldEvaluations++;
         members.EndAt = to;
 
-        // The start buffer is read for the bisection's test, so this step's crossings are marked in a
-        // copy of it - the probe buffer's start, reused - and the start itself is left whole.
+        // This step's crossings are marked in a copy of the start, which the bisection compares its
+        // probes with; the start buffer is then free to hold the probes.
         var crossing = false;
-        var marked = members.Probe;
+        var marked = members.Marked;
 
         for (var k = 0; k < start.Length; k++)
         {
@@ -794,7 +817,7 @@ public static class TrajectoryIntegrator
         // The bisection reads its probes into the start buffer, which this step no longer needs; the
         // end stays whole for the next step.
         return LandingStep(
-            in state, in derivative, step, field, chargeToMass, new Members(field, marked, start), timeSeconds,
+            in state, in derivative, step, field, chargeToMass, new Members(field, marked, probe: start), timeSeconds,
             ref fieldEvaluations);
     }
 
@@ -819,7 +842,7 @@ public static class TrajectoryIntegrator
     // exactly on its surface: a probe exactly on a later member's surface, with an earlier member
     // already past, is past - returned as on, it landed on the later surface and straddled the
     // earlier. An infinity reads by its sign.
-    private readonly struct Members(IElectrostaticField field, double[] start, double[] probe) : ILandingSurface
+    private readonly struct Members(IElectrostaticField field, double[] marked, double[] probe) : ILandingSurface
     {
         public int Side(in PhaseState state)
         {
@@ -828,9 +851,9 @@ public static class TrajectoryIntegrator
 
             var on = false;
 
-            for (var k = 0; k < start.Length; k++)
+            for (var k = 0; k < marked.Length; k++)
             {
-                if (double.IsNaN(start[k]) || double.IsNaN(probe[k]))
+                if (double.IsNaN(marked[k]) || double.IsNaN(probe[k]))
                 {
                     continue;
                 }
@@ -839,7 +862,7 @@ public static class TrajectoryIntegrator
                 {
                     on = true;
                 }
-                else if (Math.Sign(probe[k]) != Math.Sign(start[k]))
+                else if (Math.Sign(probe[k]) != Math.Sign(marked[k]))
                 {
                     return -1;
                 }

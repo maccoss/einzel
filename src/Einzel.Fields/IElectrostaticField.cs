@@ -104,6 +104,15 @@ public interface IElectrostaticField
     /// at one place are one landing, and a member's own forced change of sign costs at most a
     /// landing more, never one less.
     /// </para>
+    /// <para>
+    /// <b>A member's measure is a function of position alone within a step.</b> The integrator
+    /// reads every member at a step's end and uses those readings as the next step's start without
+    /// asking again. It reads afresh after anything other than its own advance - a landed sequencer
+    /// switch, a collision, an analytic drift - and a new leg of a sequenced run is a new
+    /// integration; between those, a measure that changed while the ion stood still would be read
+    /// stale. An infinity is a sign: plus infinity on one side of a step and a finite negative
+    /// measure on the other is a crossing. Not a number is no measure, and is never a crossing.
+    /// </para>
     /// </remarks>
     int DiscontinuityMembers => 1;
 

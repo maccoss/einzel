@@ -317,9 +317,10 @@ public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper ou
     /// plane, the earlier of the two.
     /// </summary>
     /// <remarks>
-    /// The inner field's member was infinite outside the box and a member whose end was infinite
+    /// The inner field's member is infinite outside the box. A member whose end was infinite once
     /// left the step's test, so the step from 9.9 to 10.6 mm - the plane at 10, the box's face at
-    /// 10.5 - landed on the face and crossed the plane with no landing.
+    /// 10.5 - landed on the face and crossed the plane with no landing; read by its sign, the
+    /// infinity is the far side of the plane.
     /// </remarks>
     [Fact]
     public void AnInnerPlaneCrossedOnTheWayOutOfItsBoxIsLandedOn()
@@ -334,14 +335,11 @@ public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper ou
 
         Assert.Equal(0.010, first, 9);
 
-        // The inner member is continuous across the box face - its own sign on both sides - so a
-        // probe that bows outside the box reads that sign, and not an infinity counted as a crossing.
-        var insideFace = new Vec3(0.0104, 0.0, 0.0);
-        var outsideFace = new Vec3(0.0106, 0.0, 0.0);
-        Assert.Equal(
-            Math.Sign(bounded.MemberDistanceToDiscontinuity(1, in insideFace)),
-            Math.Sign(bounded.MemberDistanceToDiscontinuity(1, in outsideFace)));
-        Assert.True(double.IsFinite(bounded.MemberDistanceToDiscontinuity(1, in outsideFace)));
+        // Outside the box the inner member is plus infinity - no surface there - and the step still
+        // lands on the plane, because an infinity is read by its sign: negative at the start, in
+        // front of the plane, and plus infinity at the end, outside the box, is a crossing.
+        Assert.Equal(double.PositiveInfinity, bounded.MemberDistanceToDiscontinuity(1, new Vec3(0.0106, 0.0, 0.0)));
+        Assert.True(bounded.MemberDistanceToDiscontinuity(1, new Vec3(0.0099, 0.0, 0.0)) < 0.0);
     }
 
     // Two planes, the second reading exactly zero over a band around it - so a probe there reads as
@@ -437,6 +435,103 @@ public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper ou
         var launch = new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
 
         Assert.Equal(0.5, FirstLandingX(launch, new InfinitePast(0.5), 1.0, 2.0), 9);
+    }
+
+    // A member plus infinity before a surface and finite and negative past it, beside a member that
+    // is plus infinity everywhere: no member finite at the start.
+    private sealed class InfiniteBefore(double surface) : IElectrostaticField
+    {
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public int DiscontinuityMembers => 2;
+
+        public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+            member == 1 || position.X < surface ? double.PositiveInfinity : surface - position.X;
+    }
+
+    /// <summary>
+    /// A step starting where every member is infinite still lands on a member that is finite and of
+    /// the other sign at its end.
+    /// </summary>
+    /// <remarks>
+    /// The test before the second pass asked for a finite member at the start, so a step starting
+    /// with every member at plus infinity was taken to cross nothing and the surface was not landed
+    /// on - an infinity was a sign everywhere but there.
+    /// </remarks>
+    [Fact]
+    public void AnInfiniteStartIsASign()
+    {
+        var launch = new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
+
+        Assert.Equal(0.5, FirstLandingX(launch, new InfiniteBefore(0.5), 1.0, 2.0), 9);
+    }
+
+    // Planes far ahead, measured afresh at every pass and recording where; a sequencer switch at
+    // one instant, and no field.
+    private sealed class SwitchedPlanes(double switchAt) : ITimeVaryingField
+    {
+        public List<double> ReadAt { get; } = [];
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => default;
+
+        public double PotentialAt(in Vec3 position, double timeSeconds) => 0.0;
+
+        public double ShortestPeriodSeconds => double.PositiveInfinity;
+
+        public double NextSwitchAfter(double timeSeconds) =>
+            timeSeconds < switchAt ? switchAt : double.PositiveInfinity;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position) => 100.0 - position.X;
+
+        public int DiscontinuityMembers => 2;
+
+        public double MemberDistanceToDiscontinuity(int member, in Vec3 position) => (100.0 * (member + 1)) - position.X;
+
+        public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+        {
+            ReadAt.Add(position.X);
+
+            for (var k = 0; k < distances.Length; k++)
+            {
+                distances[k] = MemberDistanceToDiscontinuity(k, in position);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A step that lands on a sequencer switch does not hand its end's measures to the next step:
+    /// the start is read again, after the switch.
+    /// </summary>
+    /// <remarks>
+    /// The measures are functions of position within a step, and a switch is the field changing
+    /// state where the ion stands, so the end read before it may not be the start after it. A plain
+    /// step's end, with nothing between it and the next start, is still reused.
+    /// </remarks>
+    [Fact]
+    public void AStepEndingOnASwitchReadsTheNextStartAfresh()
+    {
+        var launch = new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
+        var field = new SwitchedPlanes(0.3);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var settings = new IntegrationSettings { MaximumFlightTime = 100.0, InitialStep = 1.0, MaximumStep = 1.0 };
+        TrajectoryStopFunction detector = (in PhaseState s) => 2.5 - s.Position.X;
+
+        var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+
+        output.WriteLine($"read at {string.Join(", ", field.ReadAt.Select(x => x.ToString("R", System.Globalization.CultureInfo.InvariantCulture)))}");
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
+
+        // The switch's point, as the end of the step cut to it and again as the next start.
+        Assert.Equal(2, field.ReadAt.Count(x => Math.Abs(x - 0.3) < 1e-9));
+
+        // The next plain step's end, read once: reused as the start after it.
+        Assert.Equal(1, field.ReadAt.Count(x => Math.Abs(x - 1.3) < 1e-9));
     }
 
     /// <summary>

@@ -962,10 +962,9 @@ public sealed class MirrorPlaneTests
         // Far from any face, the same.
         Assert.Equal(1, MemberChanges(bounded, new Vec3(0.0495, 0.0, 0.0), new Vec3(0.0505, 0.0, 0.0)));
 
-        // The plane's continuation outside the box, where this element has no field: the inner
-        // member's own sign, continuous across the face, so a landing more - never a crossing of
-        // the box invented by an infinity read as a sign.
-        Assert.Equal(1, MemberChanges(bounded, new Vec3(0.0495, 0.02, 0.0), new Vec3(0.0505, 0.02, 0.0)));
+        // The plane's continuation outside the box, where this element has no field: no surface,
+        // and nothing to land on.
+        Assert.Equal(0, MemberChanges(bounded, new Vec3(0.0495, 0.02, 0.0), new Vec3(0.0505, 0.02, 0.0)));
 
         // A box face, on either side of the plane: the box alone.
         Assert.Equal(1, MemberChanges(bounded, new Vec3(0.02, 0.0095, 0.0), new Vec3(0.02, 0.0105, 0.0)));

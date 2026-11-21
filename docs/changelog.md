@@ -4031,5 +4031,22 @@ Two findings from Stage 1 that bear on the spec:
   destination, sharing their folders, so a frame that has become an input is refused at its stage;
   one predicate for what following a path may fail with; and a comment ends with its text.
 
+  **A thirty-eighth review, and the magnetic side.** A bounded element's inner members are plus
+  infinity outside its box again - the continuation of an inner plane outside the box is no surface
+  and is not landed on - and the 9.9-to-10.6 mm step still lands on the plane, because the integrator
+  reads an infinity by its sign. That rule now holds in the test made before the second pass too: a
+  step starting with every member infinite and ending with one finite and negative was taken to
+  cross nothing. **Magnets were folded through the sign product** - the shared face of two abutting
+  hard-edge magnets cancelled, and a magnet's box hid an inner surface wherever its own face was
+  nearer - and are tracked by member now, as electric fields are: `IMagneticField` carries the same
+  three member methods, the bounded magnet and the magnetic sum pass them through, and a magnetized
+  field's members are the electric ones then the magnetic ones. Two abutting magnets, 1 mT and 3 mT,
+  now land on their shared face. A step's end is reused as the next start only when nothing but the
+  step happened between them; a landed sequencer switch, a collision and an analytic drift each read
+  the start afresh, and the interface states that a member's measure is a function of position
+  within a step. Each tested, and each test checked by putting the fault back. Also: a CSV comment
+  trims every line break `ReplaceLineEndings` recognises, a layer's name in a refusal is built only
+  when one is raised, and a duplicated comment is gone.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.

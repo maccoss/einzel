@@ -643,8 +643,6 @@ public static class ArtifactFiles
 
             try
             {
-                // Resolved afresh for this call: a film is staged a frame at a time over the length of
-                // a run, and a folder that becomes a link between two frames must be seen.
                 // One resolver for this call, the destination and the inputs sharing its folders - a
                 // resolver lives for one call, and a link that changes between two frames must be
                 // seen at the frame it changed for, not only at the commit. The inputs are few, and

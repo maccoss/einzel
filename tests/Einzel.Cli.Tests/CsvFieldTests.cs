@@ -117,11 +117,19 @@ public sealed class CsvFieldTests
         Assert.Equal("# ValidityViolation: probe.test: a 1.5 V step\n# and more\n", Csv.Comment(warning));
     }
 
-    /// <summary>A message ending in a line break leaves no empty comment line behind it.</summary>
+    /// <summary>
+    /// A message ending in a line break - any of those ReplaceLineEndings recognises: CR, LF, NEL,
+    /// LS, PS and FF - leaves no empty comment line behind it.
+    /// </summary>
     [Theory]
     [InlineData("one\n", "# one\n")]
     [InlineData("one\r\n", "# one\n")]
     [InlineData("one\ntwo\n\n", "# one\n# two\n")]
+    [InlineData("one\u0085", "# one\n")]
+    [InlineData("one\u2028", "# one\n")]
+    [InlineData("one\u2029", "# one\n")]
+    [InlineData("one\f", "# one\n")]
+    [InlineData("one\ntwo\u2028\f\r\n", "# one\n# two\n")]
     public void ACommentEndsWithItsText(string text, string written) =>
         Assert.Equal(written, Csv.Comment(text));
 

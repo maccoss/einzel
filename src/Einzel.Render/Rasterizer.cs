@@ -243,15 +243,12 @@ public static class Rasterizer
         // constructor or `with` made it.
         for (var l = 0; l < layers.Count; l++)
         {
-            // What a refusal calls the layer: its name, or its place in the list.
-            var label = layers[l].Name is { } named ? $"'{named}'" : l.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
             for (var i = 0; i < layers[l].Meshes.Count; i++)
             {
                 if (layers[l].Meshes[i].ColorsProblem() is { } problem)
                 {
                     throw new ArgumentException(
-                        $"layer {label}, mesh {i}: {problem}",
+                        $"layer {LayerLabel(layers[l], l)}, mesh {i}: {problem}",
                         nameof(layers));
                 }
             }
@@ -267,21 +264,21 @@ public static class Rasterizer
             if (!double.IsFinite(layers[l].DepthBias) || layers[l].DepthBias < 0.0)
             {
                 throw new ArgumentException(
-                    $"layer {label}: a depth bias is a finite, non-negative depth, and this one is {layers[l].DepthBias.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    $"layer {LayerLabel(layers[l], l)}: a depth bias is a finite, non-negative depth, and this one is {layers[l].DepthBias.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                     nameof(layers));
             }
 
             if (!(layers[l].Alpha >= 0.0 && layers[l].Alpha <= 1.0))
             {
                 throw new ArgumentException(
-                    $"layer {label}: an opacity is from 0 to 1, and this one is {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    $"layer {LayerLabel(layers[l], l)}: an opacity is from 0 to 1, and this one is {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                     nameof(layers));
             }
 
             if (layers[l].DepthBias > 0.0 && !(layers[l].Alpha >= 1.0))
             {
                 throw new ArgumentException(
-                    $"layer {label}: a depth-biased layer must be opaque, and this one has an opacity of {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    $"layer {LayerLabel(layers[l], l)}: a depth-biased layer must be opaque, and this one has an opacity of {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                     nameof(layers));
             }
 
@@ -290,7 +287,7 @@ public static class Rasterizer
                 if (layers[l].Lines[i].SegmentColorsProblem() is { } problem)
                 {
                     throw new ArgumentException(
-                        $"layer {label}, line {i}: {problem}",
+                        $"layer {LayerLabel(layers[l], l)}, line {i}: {problem}",
                         nameof(layers));
                 }
             }
@@ -367,6 +364,11 @@ public static class Rasterizer
 
         return rgb;
     }
+
+    // What a refusal calls a layer: its name, or its place in the list. Built only when a refusal
+    // is raised, so a picture that is drawn spends nothing on it.
+    private static string LayerLabel(RasterLayer layer, int index) =>
+        layer.Name is { } named ? $"'{named}'" : index.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>An overlay's strokes and glyphs in canvas pixels, each with its color and width.</summary>
     private static List<(double[] Points, double R, double G, double B, double Width)> Annotations(

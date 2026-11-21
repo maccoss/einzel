@@ -103,27 +103,46 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
             _magnetic.SignedDistanceToMagneticDiscontinuity(in position));
 
     /// <inheritdoc/>
-    /// <remarks>The electric field's members, then the magnet's surfaces as one more.</remarks>
-    public int DiscontinuityMembers => Math.Max(1, _electric.DiscontinuityMembers) + 1;
+    /// <remarks>
+    /// The electric field's members, then the magnet's (<see cref="IMagneticField.MagneticDiscontinuityMembers"/>):
+    /// folded into one magnetic sign, the shared face of two abutting magnets cancelled and was
+    /// crossed with no landing.
+    /// </remarks>
+    public int DiscontinuityMembers =>
+        Math.Max(1, _electric.DiscontinuityMembers) + Math.Max(1, _magnetic.MagneticDiscontinuityMembers);
 
     /// <inheritdoc/>
-    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
-        member < Math.Max(1, _electric.DiscontinuityMembers)
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        var electric = Math.Max(1, _electric.DiscontinuityMembers);
+        return member < electric
             ? _electric.MemberDistanceToDiscontinuity(member, in position)
-            : _magnetic.SignedDistanceToMagneticDiscontinuity(in position);
+            : _magnetic.MagneticMemberDistanceToDiscontinuity(member - electric, in position);
+    }
 
     /// <inheritdoc/>
     public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
     {
         var electric = Math.Max(1, _electric.DiscontinuityMembers);
         _electric.MemberDistancesToDiscontinuity(in position, distances[..electric]);
-        distances[electric] = _magnetic.SignedDistanceToMagneticDiscontinuity(in position);
+        _magnetic.MagneticMemberDistancesToDiscontinuity(in position, distances[electric..]);
     }
 
     /// <inheritdoc />
     /// <remarks>The magnetic surfaces alone: the electric ones are not jumps in B.</remarks>
     public double SignedDistanceToMagneticDiscontinuity(in Vec3 position) =>
         _magnetic.SignedDistanceToMagneticDiscontinuity(in position);
+
+    /// <inheritdoc />
+    public int MagneticDiscontinuityMembers => Math.Max(1, _magnetic.MagneticDiscontinuityMembers);
+
+    /// <inheritdoc />
+    public double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        _magnetic.MagneticMemberDistanceToDiscontinuity(member, in position);
+
+    /// <inheritdoc />
+    public void MagneticMemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances) =>
+        _magnetic.MagneticMemberDistancesToDiscontinuity(in position, distances);
 
     /// <inheritdoc />
     public double ResolutionLength => _electric.ResolutionLength;
