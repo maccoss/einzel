@@ -119,8 +119,10 @@ public interface IMagneticField
     /// reason: combined, the signs of two surfaces at one place multiply and cancel - the shared
     /// face of two abutting magnets, a magnet's face on an inner field's own surface - and the ion
     /// crosses a jump in B with no landing. One for a field not composed of others; a sum's parts'
-    /// members and a wrapper's inner members otherwise. <see cref="SignedDistanceToMagneticDiscontinuity"/>
-    /// stays the members combined, for a step cap.
+    /// members and a wrapper's inner members otherwise; zero for a field that declares no surface at
+    /// all - a uniform magnet - so a field carrying it pays no member pass every step for a measure
+    /// that is infinite everywhere. <see cref="SignedDistanceToMagneticDiscontinuity"/> stays the
+    /// members combined, for a step cap.
     /// </remarks>
     int MagneticDiscontinuityMembers => 1;
 

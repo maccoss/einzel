@@ -54,55 +54,109 @@ public static class DiscontinuityDistance
     /// <summary>Where each element's members start in a sum's numbering, and how many there are in all.</summary>
     /// <param name="elements">The elements, in order.</param>
     /// <returns>The first member of each element, then the total, as one array one longer than the elements.</returns>
-    public static int[] MemberOffsets(IReadOnlyList<IElectrostaticField> elements)
+    public static int[] MemberOffsets(IReadOnlyList<IElectrostaticField> elements) =>
+        MemberOffsets(elements, static e => Math.Max(1, e.DiscontinuityMembers));
+
+    /// <summary>One member of a sum: the element it belongs to, asked for its own member.</summary>
+    /// <param name="elements">The elements.</param>
+    /// <param name="offsets">Their offsets (<see cref="MemberOffsets(IReadOnlyList{IElectrostaticField})"/>).</param>
+    /// <param name="member">The member, in the sum's numbering.</param>
+    /// <param name="position">The point.</param>
+    /// <returns>That member's measure.</returns>
+    public static double Member(IReadOnlyList<IElectrostaticField> elements, int[] offsets, int member, in Vec3 position) =>
+        Member(elements, offsets, member, in position, static (e, m, in p) => e.MemberDistanceToDiscontinuity(m, in p));
+
+    /// <summary>Every member of a sum, in one pass: each element fills its own slice.</summary>
+    /// <param name="elements">The elements.</param>
+    /// <param name="offsets">Their offsets (<see cref="MemberOffsets(IReadOnlyList{IElectrostaticField})"/>).</param>
+    /// <param name="position">The point.</param>
+    /// <param name="distances">Filled with every member's measure.</param>
+    public static void Members(IReadOnlyList<IElectrostaticField> elements, int[] offsets, in Vec3 position, Span<double> distances) =>
+        Members(elements, offsets, in position, distances, static (e, in p, d) => e.MemberDistancesToDiscontinuity(in p, d));
+
+    /// <summary>Reads one member of an element.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
+    /// <param name="element">The element.</param>
+    /// <param name="member">Its member, in its own numbering.</param>
+    /// <param name="position">The point.</param>
+    /// <returns>The measure.</returns>
+    public delegate double MemberReader<in T>(T element, int member, in Vec3 position);
+
+    /// <summary>Reads every member of an element into its slice.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
+    /// <param name="element">The element.</param>
+    /// <param name="position">The point.</param>
+    /// <param name="distances">Its slice of the sum's members.</param>
+    public delegate void MembersReader<in T>(T element, in Vec3 position, Span<double> distances);
+
+    /// <summary>
+    /// Where each element's members start in a sum's numbering, for any kind of element: the one
+    /// numbering an electric and a magnetic sum share.
+    /// </summary>
+    /// <typeparam name="T">The element type.</typeparam>
+    /// <param name="elements">The elements, in order.</param>
+    /// <param name="count">How many members an element contributes; zero is allowed.</param>
+    /// <returns>The first member of each element, then the total.</returns>
+    public static int[] MemberOffsets<T>(IReadOnlyList<T> elements, Func<T, int> count)
     {
         ArgumentNullException.ThrowIfNull(elements);
+        ArgumentNullException.ThrowIfNull(count);
 
         var offsets = new int[elements.Count + 1];
 
         for (var i = 0; i < elements.Count; i++)
         {
-            offsets[i + 1] = offsets[i] + Math.Max(1, elements[i].DiscontinuityMembers);
+            offsets[i + 1] = offsets[i] + count(elements[i]);
         }
 
         return offsets;
     }
 
-    /// <summary>One member of a sum: the element it belongs to, asked for its own member.</summary>
+    /// <summary>One member of a sum of any kind of element.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
     /// <param name="elements">The elements.</param>
-    /// <param name="offsets">Their offsets (<see cref="MemberOffsets"/>).</param>
+    /// <param name="offsets">Their offsets.</param>
     /// <param name="member">The member, in the sum's numbering.</param>
     /// <param name="position">The point.</param>
+    /// <param name="read">Reads an element's own member.</param>
     /// <returns>That member's measure.</returns>
-    public static double Member(IReadOnlyList<IElectrostaticField> elements, int[] offsets, int member, in Vec3 position)
+    /// <exception cref="ArgumentOutOfRangeException">The sum has no such member.</exception>
+    public static double Member<T>(IReadOnlyList<T> elements, int[] offsets, int member, in Vec3 position, MemberReader<T> read)
     {
         ArgumentNullException.ThrowIfNull(elements);
         ArgumentNullException.ThrowIfNull(offsets);
+        ArgumentNullException.ThrowIfNull(read);
 
-        for (var i = 0; i < elements.Count; i++)
+        if (member >= 0)
         {
-            if (member < offsets[i + 1])
+            for (var i = 0; i < elements.Count; i++)
             {
-                return elements[i].MemberDistanceToDiscontinuity(member - offsets[i], in position);
+                if (member < offsets[i + 1])
+                {
+                    return read(elements[i], member - offsets[i], in position);
+                }
             }
         }
 
         throw new ArgumentOutOfRangeException(nameof(member), member, $"a sum of {offsets[^1]} members has no member {member}");
     }
 
-    /// <summary>Every member of a sum, in one pass: each element fills its own slice.</summary>
+    /// <summary>Every member of a sum of any kind of element, in one pass.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
     /// <param name="elements">The elements.</param>
-    /// <param name="offsets">Their offsets (<see cref="MemberOffsets"/>).</param>
+    /// <param name="offsets">Their offsets.</param>
     /// <param name="position">The point.</param>
     /// <param name="distances">Filled with every member's measure.</param>
-    public static void Members(IReadOnlyList<IElectrostaticField> elements, int[] offsets, in Vec3 position, Span<double> distances)
+    /// <param name="read">Reads an element's members into its slice.</param>
+    public static void Members<T>(IReadOnlyList<T> elements, int[] offsets, in Vec3 position, Span<double> distances, MembersReader<T> read)
     {
         ArgumentNullException.ThrowIfNull(elements);
         ArgumentNullException.ThrowIfNull(offsets);
+        ArgumentNullException.ThrowIfNull(read);
 
         for (var i = 0; i < elements.Count; i++)
         {
-            elements[i].MemberDistancesToDiscontinuity(in position, distances[offsets[i]..offsets[i + 1]]);
+            read(elements[i], in position, distances[offsets[i]..offsets[i + 1]]);
         }
     }
 }

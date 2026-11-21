@@ -342,6 +342,77 @@ public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.True(bounded.MemberDistanceToDiscontinuity(1, new Vec3(0.0099, 0.0, 0.0)) < 0.0);
     }
 
+    /// <summary>
+    /// A step that starts on an inner surface's positive side, crosses it, and leaves the box in one
+    /// step lands on the inner surface first.
+    /// </summary>
+    /// <remarks>
+    /// With the inner member plus infinity outside the box, the step read positive at both ends - via
+    /// negative between - so only the box face was landed on and the inner jump was straddled. The
+    /// member's changed sign is there at the inner side of the box landing's bracket, which the
+    /// integrator now asks.
+    /// </remarks>
+    [Fact]
+    public void AnInnerPlaneCrossedFromItsPositiveSideOnTheWayOutIsLandedOn()
+    {
+        var region = new FieldRegion(0.0, 0.0105, -0.01, 0.01, -0.01, 0.01);
+
+        // The half-space faces back along x, so its depth is positive before the plane at 10 mm.
+        var inner = HalfSpaceUniformField.Create(new Vec3(0.010, 0.0, 0.0), new Vec3(-1.0, 0.0, 0.0), Quantity.From(0.0, "V/m"));
+        var bounded = Einzel.Fields.Analytic.BoundedField.Around(inner, region);
+
+        Assert.True(bounded.MemberDistanceToDiscontinuity(1, new Vec3(0.0099, 0.0, 0.0)) > 0.0);
+        Assert.True(bounded.MemberDistanceToDiscontinuity(1, new Vec3(0.0102, 0.0, 0.0)) < 0.0);
+        Assert.Equal(double.PositiveInfinity, bounded.MemberDistanceToDiscontinuity(1, new Vec3(0.0106, 0.0, 0.0)));
+
+        // 1000 m/s, one step of 0.7 us: 9.9 mm to 10.6 mm.
+        var launch = new PhaseState(new Vec3(0.0099, 0.0, 0.0), new Vec3(1000.0, 0.0, 0.0));
+
+        Assert.Equal(0.010, FirstLandingX(launch, bounded, 7e-7, 0.02), 9);
+    }
+
+    /// <summary>
+    /// A step starting exactly on a box face - where a landing whose probe fell exactly on the face
+    /// leaves the ion - is followed by no second landing a hair beyond it, leaving the box or entering
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// On the face the inner member is the inner field's own - the box is closed - and a hair outside
+    /// it is plus infinity. Where the inner measure on the face is negative, the step leaving the face
+    /// read negative to plus infinity, a crossing, and bisected onto a second landing a few parts in
+    /// 10^24 of a step past the face. A member whose change happened at the face the step starts on
+    /// is no crossing of its own. A landing that falls just past the face, as most do, starts the next
+    /// step outside, where the inner member is already infinite.
+    /// </remarks>
+    [Fact]
+    public void ALandingOnABoxFaceIsFollowedByNoSecondLanding()
+    {
+        var region = new FieldRegion(0.0, 0.0105, -0.01, 0.01, -0.01, 0.01);
+        var inner = HalfSpaceUniformField.Create(new Vec3(0.010, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0), Quantity.From(0.0, "V/m"));
+        var bounded = Einzel.Fields.Analytic.BoundedField.Around(inner, region);
+
+        // On the face at x = 0 the inner member is the inner field's, negative.
+        Assert.True(bounded.MemberDistanceToDiscontinuity(1, new Vec3(0.0, 0.0, 0.0)) < 0.0);
+
+        foreach (var (start, velocity, detector) in new[] { (0.0, -1000.0, -0.003), (0.0, 1000.0, 0.003), (-0.0003, 1000.0, 0.003) })
+        {
+            var species = IonSpecies.FromMassToCharge(500.0, 1);
+            var recorder = new TrajectoryRecorder(1e9);
+            var settings = new IntegrationSettings { MaximumFlightTime = 100.0, InitialStep = 7e-7, MaximumStep = 7e-7 };
+            var stop = detector;
+            TrajectoryStopFunction reached = (in PhaseState s) => velocity < 0 ? s.Position.X - stop : stop - s.Position.X;
+
+            var result = TrajectoryIntegrator.Integrate(
+                new PhaseState(new Vec3(start, 0.0, 0.0), new Vec3(velocity, 0.0, 0.0)), species, bounded, settings, reached, recorder);
+
+            var xs = recorder.Samples.Select(sample => sample.Position.X).ToList();
+            output.WriteLine($"from {start * 1e3} mm at {velocity} m/s: {string.Join(", ", xs.Select(x => x.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)))}");
+
+            Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
+            Assert.Single(xs, x => Math.Abs(x) < 1e-9);
+        }
+    }
+
     // Two planes, the second reading exactly zero over a band around it - so a probe there reads as
     // on it - and no field.
     private sealed class TwoPlanes(double first, double second) : IElectrostaticField

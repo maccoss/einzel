@@ -44,13 +44,20 @@ public static class Csv
             return "\"'" + field.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
         }
 
-        return field.AsSpan().IndexOfAny(",\"\r\n") < 0
+        // Quoted wherever it holds a comma, a quote, or any line break ReplaceLineEndings
+        // recognises - the set a comment is broken at - so a reader that splits rows at NEL, LS, PS
+        // or FF does not split one inside a field.
+        return field.AsSpan().IndexOfAny(Quoted) < 0
             ? field
             : "\"" + field.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 
     // The line breaks string.ReplaceLineEndings recognises: CR, LF, NEL, LS, PS and FF.
     private static readonly char[] LineBreaks = ['\r', '\n', '\u0085', '\u2028', '\u2029', '\f'];
+
+    // What makes a field quoted: a comma, a quote, or one of those line breaks.
+    private static readonly System.Buffers.SearchValues<char> Quoted =
+        System.Buffers.SearchValues.Create(",\"\r\n\u0085\u2028\u2029\f");
 
     /// <summary>A comment line, every line of it a comment.</summary>
     /// <param name="text">The text, which may run over several lines.</param>

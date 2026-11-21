@@ -148,17 +148,24 @@ public class BoundedField : IElectrostaticField
     public int DiscontinuityMembers => 1 + Math.Max(1, _inner.DiscontinuityMembers);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The inner members are gated by the box member's own sign: inside, and on the face, where the
+    /// box member is zero, they are the inner field's; only strictly outside are they infinite. So the
+    /// member set at a point is one reading, and a face is closed for the inner members as it is for
+    /// the box.
+    /// </remarks>
     public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
         member == 0 ? Region.SignedDistance(in position)
-            : Region.Contains(in position) ? _inner.MemberDistanceToDiscontinuity(member - 1, in position)
+            : Region.SignedDistance(in position) <= 0.0 ? _inner.MemberDistanceToDiscontinuity(member - 1, in position)
             : double.PositiveInfinity;
 
     /// <inheritdoc />
     public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
     {
-        distances[0] = Region.SignedDistance(in position);
+        var box = Region.SignedDistance(in position);
+        distances[0] = box;
 
-        if (Region.Contains(in position))
+        if (box <= 0.0)
         {
             _inner.MemberDistancesToDiscontinuity(in position, distances[1..]);
         }

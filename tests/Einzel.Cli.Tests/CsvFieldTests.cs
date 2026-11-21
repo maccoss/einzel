@@ -118,6 +118,20 @@ public sealed class CsvFieldTests
     }
 
     /// <summary>
+    /// A field holding any line break ReplaceLineEndings recognises is quoted, as one holding CR or
+    /// LF is: the same set a comment is broken at.
+    /// </summary>
+    [Theory]
+    [InlineData("a\u0085b")]
+    [InlineData("a\u2028b")]
+    [InlineData("a\u2029b")]
+    [InlineData("a\fb")]
+    [InlineData("a\rb")]
+    [InlineData("a\nb")]
+    public void AFieldHoldingALineBreakIsQuoted(string text) =>
+        Assert.Equal("\"" + text + "\"", Csv.Field(text));
+
+    /// <summary>
     /// A message ending in a line break - any of those ReplaceLineEndings recognises: CR, LF, NEL,
     /// LS, PS and FF - leaves no empty comment line behind it.
     /// </summary>

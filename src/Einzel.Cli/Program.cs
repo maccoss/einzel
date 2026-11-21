@@ -311,7 +311,7 @@ public static class Program
                     Constraint = emptied
                         ? $"--{flag} takes a value, and the one given is empty"
                         : $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
-                    Suggestion = $"give --{flag} its value, as --{flag} <value>",
+                    Suggestion = ValueSuggestion(key, flag, options),
                 };
                 break;
             }
@@ -581,6 +581,14 @@ public static class Program
             Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [.. errors] }));
         }
     }
+
+    // What to do about a value flag given no value. Usually: give it one. A study records no
+    // instants, so a bare --snapshots on one is told to leave the flag out, as every other refusal
+    // of it on a study is - giving it a value would only be refused next.
+    private static string ValueSuggestion(string key, string flag, CommandLine options) =>
+        key == "estimate" && flag == "snapshots" && options.Positional.Count > 0 && IsStudy(options.Positional[0])
+            ? "leave out --snapshots: a study records no instants"
+            : $"give --{flag} its value, as --{flag} <value>";
 
     private static int Unknown(string verb)
     {
@@ -1391,17 +1399,9 @@ public static class Program
 
         if (options.Has("snapshots"))
         {
-            var instants = options.Value("snapshots");
-
-            // Named but given no number - `--snapshots` alone, or followed by another flag - is
-            // refused rather than read as none: an estimate that silently billed zero instants
-            // for a flag somebody typed would be the under-bill the gate exists to prevent.
-            if (instants is null)
-            {
-                return RefuseSnapshots(
-                    "--snapshots takes a whole number of instants, and none was given",
-                    isStudy ? "leave out --snapshots: a study records no instants" : "give one, as in --snapshots 60");
-            }
+            // A bare --snapshots never reaches here: the command line's reader refuses a value
+            // flag given no value, at the flag, with a study told to leave it out.
+            var instants = options.Value("snapshots")!;
 
             if (!TryWhole(instants, 0, int.MaxValue, out snapshots))
             {

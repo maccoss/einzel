@@ -4048,6 +4048,25 @@ Two findings from Stage 1 that bear on the spec:
   trims every line break `ReplaceLineEndings` recognises, a layer's name in a refusal is built only
   when one is raised, and a duplicated comment is gone.
 
+  **A thirty-ninth review, and the crossing behind a box face.** An ion starting on an inner
+  surface's positive side, crossing it and leaving the box in one step read positive at both ends -
+  negative between, plus infinity outside - so only the box face was landed on and the inner jump was
+  straddled, for an electric region and a magnet alike. Fixed in the integrator and for any member:
+  after the bisection lands, the members read at the inner side of its bracket are asked again, and
+  any that is finite there and of the other sign from the start joins the marked set and the
+  bisection is repeated as far as that landing. No member is read for it but the bisection's own
+  probes. A step that starts exactly on a box face no longer bisects onto a second landing 10^-24 of
+  a step past it: a member that is finite at one end and infinite at the other, and already what it
+  is at the end a hair along the step, changed at the face the step starts on. The inner members of a
+  bounded element or magnet are gated by the box member's own sign, so a face is closed for them as
+  for the box. A test walks every shipped cross-section and analytic field - 59, 27 of them
+  time-varying - and checks that asking it anything at any instant leaves every member at a fixed
+  point unchanged, the invariant the start-of-step reuse rests on; a volume solve is left out for
+  its cost. A uniform magnet declares no surface, so an unbounded one costs no member pass a step;
+  the magnetic sum uses the electric sum's numbering, one generic copy. A bare `--snapshots` on a
+  study is told to leave it out again, where the command line's reader had told it to give a value;
+  and a CSV field holding NEL, LS, PS or FF is quoted.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.
 

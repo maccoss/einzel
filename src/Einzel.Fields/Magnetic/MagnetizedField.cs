@@ -109,7 +109,7 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
     /// crossed with no landing.
     /// </remarks>
     public int DiscontinuityMembers =>
-        Math.Max(1, _electric.DiscontinuityMembers) + Math.Max(1, _magnetic.MagneticDiscontinuityMembers);
+        Math.Max(1, _electric.DiscontinuityMembers) + _magnetic.MagneticDiscontinuityMembers;
 
     /// <inheritdoc/>
     public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
@@ -134,7 +134,7 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
         _magnetic.SignedDistanceToMagneticDiscontinuity(in position);
 
     /// <inheritdoc />
-    public int MagneticDiscontinuityMembers => Math.Max(1, _magnetic.MagneticDiscontinuityMembers);
+    public int MagneticDiscontinuityMembers => _magnetic.MagneticDiscontinuityMembers;
 
     /// <inheritdoc />
     public double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position) =>
