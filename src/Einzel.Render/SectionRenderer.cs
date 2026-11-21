@@ -229,6 +229,13 @@ public static class SectionRenderer
             ? (prebuilt, plan.FieldWarnings)
             : FieldAssembly.BuildReported(model);
 
+        // A figure's instant, whether it came from --at-us or the spec, must be one the drive's
+        // phase can be placed at. An animation's frames are instants along the run itself.
+        if (plan?.AtSeconds is null)
+        {
+            FieldInstants.CheckResolution(spec.AtSeconds, field, spec.InstantFromFlag ? FlagPath.Of("at-us") : "/atSeconds");
+        }
+
         var plane = PlaneFor(model, spec);
 
         // Flown before the extent is chosen, not after, because an analytic model has

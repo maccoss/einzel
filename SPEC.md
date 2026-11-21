@@ -24,15 +24,15 @@ that has drifted is worse than none, because it is trusted.
 
 | | Requirements |
 | --- | --- |
-| **Met**, with evidence | 83 |
-| **Partial**, with a stated gap | 13 |
+| **Met**, with evidence | 82 |
+| **Partial**, with a stated gap | 14 |
 | **Not built** | 20 |
 | **Unverified** — plausible but unmeasured | 2 |
 | Total tagged in r06 | 118 |
 
 A count is a weak summary and it flatters the project: **fourteen of the 20 not
 built are the update mechanism and distribution**, which is one assembly that does
-not exist, while the 83 met are spread across the parts that carry numbers. The
+not exist, while the 82 met are spread across the parts that carry numbers. The
 useful reading is the register, not the total.
 
 **This table had drifted badly, and a test now counts it.** It read 64 / 14 / 37 / 3
@@ -2329,6 +2329,10 @@ Every view §16 requires:
 | Journal with agent and human attribution | **Built** | `SessionJournal` in `Einzel.Commands`, rendered by the window beside the model tree, with the same entries an MCP client writes. A person sees what an agent did to their model, by name, and can undo it - which is MCP-1 and GRD-9 arriving where they were always aimed. Beneath it the same actions as `einzel` command lines (Amendment 25) |
 | Update notice with UPD-3's deferral options | Not built | Needs the whole of §18 |
 
+**One view now exists on the CLI and not in the window**: `einzel render surface`, the
+potential-energy surface (2026-11-14). That is the direction AGT-2 allows - nothing exists *only*
+in the shell - and it is the order the project prefers, the command first and the view over it.
+
 **The pattern in that table is the interesting part.** Almost every row is
 "presentation over something that already works" — which is what AGT-2 is supposed
 to produce, and is weak evidence that it has. The rows that needed genuinely new
@@ -2440,7 +2444,7 @@ in a table.
 | `CLI-1` | Every command emits structured output. A --json flag on every verb produces machine-readable output including the full | **Met** | `--json` on every verb. |
 | `CLI-2` | Results on stdout, progress and diagnostics on stderr. | **Met** | Results on stdout, diagnostics on stderr, driven through `Program.Main` in the end-to-end tests. |
 | `CLI-3` | Exit codes are meaningful and documented. Distinct codes for validation failure, regime violation, cost-gate refusal, convergence failure, engine-pin ... | **Met** | Distinct exit codes per failure class, including a regime violation getting its own code rather than a convergence one. A volume mesh past the node limit exits 1 as the validation failure it is, where it exited 6 as an internal error. |
-| `CLI-4` | Every mutating command supports --dry-run . | **Met** | `--dry-run` on every mutating command, asserted to write nothing. |
+| `CLI-4` | Every mutating command supports --dry-run . | **Partial** | `--dry-run` on every mutating command but `run`, asserted to write nothing. `run` has none: it was accepted and ignored (the model ran and wrote its results) until the flag registry, which now refuses it naming `einzel preview` and `einzel estimate`. Recorded as an open item in `docs/cli.md`. |
 | `CLI-5` | Output ordering is deterministic. | **Met** | Deterministic output ordering. |
 | `CLI-6` | Startup is fast and offline. No command touches the network unless the user explicitly asks it to. Verb Purpose einzel init Create a project; --vcs git ... | **Met** | Cold start 73-147 ms against PERF-8 500 ms, with no network call in that path. |
 
@@ -2581,7 +2585,7 @@ in a table.
 | `RND-1` | Rendering is an engine capability, not a shell feature. Einzel.Render sits below the shell; the figure composer and einzel render are peer consumers of ... | **Met** | `Einzel.Render` sits below any shell and draws headlessly on the Linux CI runner with no display, window manager or font server. **And the conductor surfaces now leave the program**: the surface-nets extraction was headless, tested on Linux, and consumed only by the Windows viewport, so the artifact that lets an external renderer draw a three-dimensional geometry needed the shell - invariant 1 pointing the wrong way. `einzel export --mesh` writes them as OBJ, one named object per electrode. Building it found the sub-cell failure returning through the *electrode's own aspect ratio*: a 4 x 635 mm stripe meshes to nothing at 48 cells across its longest span, and resolving by the thinnest instead gives 1.16 M triangles and a 77 MB file. Per-axis now; bit-identical on an isotropic shape. |
 | `RND-2` | A render spec is text , lives in figures/ , and is versioned with the model. The figure in a paper is regenerable from the repository rather than being a ... | **Met** | A render spec is text in `figures/`, versioned with the model. |
 | `RND-3` | 2D sections and orthographic projections emit SVG and PDF , through a geometric projection pipeline that produces paths rather than pixels. This is a ... | **Met** | SVG and PDF from a path pipeline. Both writers are hand-authored; a test walks every PDF cross-reference offset. |
-| `RND-4` | Shaded 3D perspective is raster. Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added ... | **Met, orthographic** | `einzel render still` draws a shaded 3D raster to PNG, headlessly, and it is **the viewport's picture**: the scene, colors, layers, translucency, lighting and camera come from the same `ViewportPicture` and `Framing` the window draws from, and only the rasterization differs - a managed rasterizer with a depth buffer and supersampling, no GPU, no dependency. Orthographic rather than perspective, because the viewport is, for the reason recorded against it. Provenance and every warning ride in the PNG's text chunks; a validity violation hatches the bottom of the picture. Checked on the Linux runner: both mirrors of the planar pair land at the pixels the camera predicts. **Every still carries a scale** - a ruler in whichever corner the drawn instrument covers least (over it only when all four are covered, and left out when the picture is too small to hold it) with one arm along each model axis, all the same round length, projected with the picture's own matrix so each arm is foreshortened exactly as the instrument is; in a straight-on view it is an L-shaped scale bar, and the arm pointing at the viewer is left out. Its length and corner are in the `--json` result and in the file's text chunks, and the Avalonia viewport draws the same ruler from the same layout, stroke for stroke: the arms, label and letters come out of the command layer as one list of polylines in the still's line font, which both draw. Checked in a live window on five models and every named view, where it matches a still of the window's own size in length, corner, arms and every glyph to a pixel - which it did not while the window set its text in a font of its own, at two thirds the still's size. Section 23 still leaves open whether hidden-line vector output is worth building. See Amendment 54. |
+| `RND-4` | Shaded 3D perspective is raster. Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added ... | **Met, orthographic** | `einzel render still` draws a shaded 3D raster to PNG, headlessly, and it is **the viewport's picture**: the scene, colors, layers, translucency, lighting and camera come from the same `ViewportPicture` and `Framing` the window draws from, and only the rasterization differs - a managed rasterizer with a depth buffer and supersampling, no GPU, no dependency. Orthographic rather than perspective, because the viewport is, for the reason recorded against it. Provenance and every warning ride in the PNG's text chunks; a validity violation hatches the bottom of the picture. Checked on the Linux runner: both mirrors of the planar pair land at the pixels the camera predicts. **Every still carries a scale** - a ruler in whichever corner the drawn instrument covers least (over it only when all four are covered, and left out when the picture is too small to hold it) with one arm along each model axis, all the same round length, projected with the picture's own matrix so each arm is foreshortened exactly as the instrument is; in a straight-on view it is an L-shaped scale bar, and the arm pointing at the viewer is left out. Its length and corner are in the `--json` result and in the file's text chunks, and the Avalonia viewport draws the same ruler from the same layout, stroke for stroke: the arms, label and letters come out of the command layer as one list of polylines in the still's line font, which both draw. Checked in a live window on five models and every named view, where it matches a still of the window's own size in length, corner, arms and every glyph to a pixel - which it did not while the window set its text in a font of its own, at two thirds the still's size. Section 23 still leaves open whether hidden-line vector output is worth building. See Amendment 54. **Since 2026-11-14** `einzel render surface` draws the potential over a plane as height - SIMION's potential-energy view - raster, with its color scale on the picture and `--csv` for the numbers (`PotentialSurfaceTests`: a uniform field is a plane of the right tilt, an ideal quadrupole a saddle with its symmetries, a conductor a flat plateau at its potential, a negative ion's surface the mirror image; `docs/rendering.md`) |
 | `RND-5` | Trajectories are decimated with a stated geometric tolerance ( | **Met** | Stated and measured, and the point-to-segment distance is clamped - a reflectron is why. |
 | `RND-6` | Text stays text. Labels, dimensions, and axis annotations are selectable and editable in the output, so a figure can be relabelled for a different venue ... | **Met** | Labels are text runs in both SVG and PDF, asserted in both. |
 | `RND-7` | ), scrubbing, and frame export. Model tree with parameter editing, live validation, units on every field, template instantiation. Sequence editor : the ... | **Met** | Both halves, and neither is optional in the interface either. A mapping is declared as phases in a render spec, each naming the simulated time it runs to and the rate it plays at - and an animation can only be asked for through a spec, with no `--rate` flag, so **there is no command line that produces one without a declared mapping**. The rate is stamped on every frame in two readings (`500 ns of flight per second of playback - 2,000,000x slower than real time`), written by the renderer rather than offered as a styling option. On the shipped reflectron the turn-around is a fifth of the flight and 69% of the film. |
@@ -2848,8 +2852,12 @@ published numbers.
   instance of this; the general fix is one check in `TryQuantity` and one for derived values.
 - **The 2-D solve has no mesh limit and counts nodes in `int`** (reported; already recorded as
   open when the 3-D refusal landed).
-- **A static-field run in gas reports an ACC-4 energy-drift violation** (reported), because
-  collisions change the energy and only a driven field returns the not-measured value.
+- **A static-field run in gas reports an ACC-4 energy-drift violation** (reproduced on a real
+  model, 2026-11-14), because collisions change the energy and only a driven field returns the
+  not-measured value. The einzel-lens gallery's gas series printed `ENERGY_DRIFT_EXCEEDS_BUDGET`
+  as a ValidityViolation on every hard-sphere run and on Langevin at 1e-3 and 2e-3 Torr, relative
+  drift of order 0.5 (`docs/gallery-einzel-lens.md`): a non-suppressible violation that cannot
+  mean what it says, which is the kind readers learn to skim.
 - **An ion at rest at zero potential has no resolution step cap** (reported; the consequence,
   stepping through an electrode one cell thick, is suspected and untested).
 - **Mean-field space charge has no dielectric-relaxation step limit** (suspected). At the TIMS
@@ -2864,8 +2872,20 @@ published numbers.
   apertures are where ions pass that close.
 - **The CLI accepts any unknown `--flag`** (confirmed): `--vtuu` runs with defaults and exits
   0. The model format refuses an unknown key for exactly this reason (Amendment 14).
-- **The viewport and stills sample a driven field at t = 0 with no warning** (confirmed,
-  `ViewportCommand.cs:1693`) - `render.field-at-instant` exists for sections only.
+- ~~**The viewport and stills sample a driven field at t = 0 with no warning**~~ - **done,
+  2026-11-14**: both now carry `render.field-at-instant` naming the instant their contours are
+  drawn at (`ProbeTests.AStillAndTheViewportOfADrivenFieldSayWhichInstantTheContoursAre`).
+- **The viewport and `render still` fly a gas model's bundle in vacuum** (confirmed,
+  2026-11-14; not fixed). `ViewportCommand.Fly` hands `TrajectoryIntegrator.Integrate` no
+  collision sampler, so a picture of a model in gas shows vacuum rays while `einzel run` on the
+  same model collides. Found by the einzel-lens gallery, whose pressure figures came out almost
+  identical to its vacuum one; the page says so beside them. The same shape as the figure of
+  merit path flying in vacuum (changelog, "A declared gas took no part in any figure of merit"),
+  in a third consumer.
+- **The detector plane has no aperture** (reported, 2026-11-14). An ion scattered out through a
+  gap between electrodes leaves the solve domain, flies straight on, and is counted as arrived when
+  it crosses the plane - at radii of tens of millimetres in the lens gallery's gas runs (rms radii
+  of 57 to 134 mm before the gallery cut them by hand). Transmission includes those escapees.
 - **The shell's journal breaks Amendment 25 as implemented** (confirmed): an edit is recorded
   as `einzel validate <model>` and undo as `einzel undo`, which is not a verb. The spelling
   that reproduces an edit, `einzel outline <model> --set name=value`, exists.
@@ -2930,10 +2950,16 @@ union and subtraction of primitives, placing and rotating a solved element the w
 workbench places an array, an ideal transparent grid as an electrode kind, and more than one
 detector - the last already a recorded LIB-1 signal from the dual-slot trap.
 
-**R4. Seeing and asking about a field.** No verb returns the potential or field at a point or
-along a line; the viewport draws twelve equipotentials on z = 0 and nothing else; no color
-map, cutting plane or potential-energy surface; an electrode cannot be picked for its name and
-potential; `export` writes basis channels and not the field an ion sees, and no E.
+**R4. Seeing and asking about a field.** **First parts done, 2026-11-14.** ~~No verb returns the
+potential or field at a point or along a line~~ - `einzel probe` does, for the composite field at
+an instant, with a status per row (`probe.*` codes in `docs/warning-codes.md`). ~~`export` writes
+basis channels and not the field an ion sees, and no E~~ - `einzel export --composite` writes the
+summed potential and E on a grid, checked against the probe node by node. ~~No potential-energy
+surface~~ - `einzel render surface`, on the CLI only so far (on the linear ion trap it reads the
+axial well off the data, about 3.85 V deep at the end sections' middles, `docs/rendering.md`).
+The viewport and stills now name a driven field's instant. **Still open**: a cutting plane and a
+color map of the field in the window, the surface view in the window, and picking an electrode for
+its name and potential.
 
 **R5. Interactive speed.** Every edit re-validates, re-solves, re-extracts and re-flies, where
 basis superposition makes a voltage change a re-weighting; the smoother is single-threaded

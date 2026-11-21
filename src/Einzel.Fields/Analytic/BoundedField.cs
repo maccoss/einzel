@@ -115,25 +115,57 @@ public class BoundedField : IElectrostaticField
 
     /// <inheritdoc />
     /// <remarks>
-    /// The box surface, so the integrator brackets its zero and lands exactly on it — the
-    /// same first-class event a declared field discontinuity already is (spec section 11).
-    /// The inner field's own discontinuity, if it has one, is reported only inside: outside
-    /// the box this element is not there, so it has no surfaces out there either.
+    /// The box and the inner field's measure inside it, combined
+    /// (<see cref="DiscontinuityDistance.Combine"/>): the distance to the nearer, for a step cap.
+    /// Landing is by member (<see cref="DiscontinuityMembers"/>).
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
         var toBoundary = Region.SignedDistance(in position);
+        return Region.Contains(in position)
+            ? DiscontinuityDistance.Combine(toBoundary, _inner.SignedDistanceToDiscontinuity(in position))
+            : toBoundary;
+    }
 
-        if (!Region.Contains(in position))
+    /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// The box surface, so the integrator lands exactly on it - the same first-class event a
+    /// declared field discontinuity already is (spec section 11) - and the inner field's own
+    /// members inside the box, positive infinity outside it: outside the box this element is not
+    /// there, so it has no surfaces there either, and the continuation of an inner plane outside
+    /// the box is never landed on. The integrator reads an infinity by its sign, so a step that
+    /// crosses an inner plane and leaves the box together - finite and negative at one end, plus
+    /// infinity at the other - is a sign change and is landed on, at the plane, where the member is
+    /// finite. <see cref="SignedDistanceToDiscontinuity"/> is gated the same way.
+    /// </para>
+    /// <para>
+    /// Combined into one measure by the nearer surface's sign, as it was, a half-space plane inside
+    /// the box went undeclared wherever a box face was nearer than the plane: its sign was the
+    /// box's on both sides.
+    /// </para>
+    /// </remarks>
+    public int DiscontinuityMembers => 1 + Math.Max(1, _inner.DiscontinuityMembers);
+
+    /// <inheritdoc />
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        member == 0 ? Region.SignedDistance(in position)
+            : Region.Contains(in position) ? _inner.MemberDistanceToDiscontinuity(member - 1, in position)
+            : double.PositiveInfinity;
+
+    /// <inheritdoc />
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        distances[0] = Region.SignedDistance(in position);
+
+        if (Region.Contains(in position))
         {
-            return toBoundary;
+            _inner.MemberDistancesToDiscontinuity(in position, distances[1..]);
         }
-
-        var inner = _inner.SignedDistanceToDiscontinuity(in position);
-
-        return double.IsPositiveInfinity(inner)
-            ? toBoundary
-            : Math.Abs(inner) < Math.Abs(toBoundary) ? inner : toBoundary;
+        else
+        {
+            distances[1..].Fill(double.PositiveInfinity);
+        }
     }
 
     /// <inheritdoc />

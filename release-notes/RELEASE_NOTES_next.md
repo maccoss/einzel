@@ -127,6 +127,169 @@ become a feature release without being renamed twice.
   and there is no periodic re-check, so an agent running `einzel` sees one version throughout. The
   command line, the MCP server, the portable archives and a source build never check. See
   `docs/install.md`.
+- **`einzel render surface`** draws the potential over a plane as a height - SIMION's
+  potential-energy view - to a PNG with its color scale on the picture: conductors are flat
+  plateaus at their potential, a trap's well is a valley. `--cycle-mean` shows a driven field's
+  cycle average rather than one instant, `--height energy` the potential energy of the model's
+  ion, and `--csv` writes the numbers. `--cycle-mean` is refused for a field with no drive to
+  average over, the vertical scale is left off (and reported absent) in the top view and in a
+  picture too small for its labels, and conductors of one name in two field elements are separate
+  plateaus. The picture is a rotation of the model (the top view of `xy` has x right and y up, as
+  a section does), a plane whose range is rounding noise is drawn flat and says so, and the CSV is
+  reported beside the picture. Coordinate planes at an offset only, and not yet a view in the
+  window. See `docs/rendering.md`.
+- **A flag that takes a value and is given none is refused**, naming the flag, by `render
+  surface`, `render still`, `probe` and `export`. `--at-us --cycle-mean` or `--csv --json` used to
+  drop the flag and exit 0.
+- **A switch no longer swallows the argument after it**, in every verb: `einzel run --json
+  model.json` and `render surface --cycle-mean model.json` used to read the model as the switch's
+  value.
+- **Every verb refuses a malformed command line before doing anything**, naming what is wrong: a
+  flag the verb does not read (`unknown flag --no-scales for render surface`), a flag that takes a
+  value and was given none (`--out --json`), and an argument the verb does not
+  take (`--no-trajectory out.svg`, `validate a.json b.json`). Under `--json` the refusal is JSON on
+  stdout as well. These used to be accepted and ignored, exit 0. `--help` and `--json` behave
+  exactly as before on every verb, and every flag a verb documents is unchanged. **What changes:**
+  a flag a verb never read is now an error - `--dry-run` on `validate`, `project`, `estimate`,
+  `solve`, `run`, `preview`, `test`, `verify`, `compare`, `schema`, `templates`, `examples` and
+  `doctor`; `--project` on `init`, `new`, `validate`, `outline`, `estimate`, `solve`, `probe`,
+  `preview`, `compare`, `schema`, `templates`, `examples` and `agents`; and any other flag a verb
+  does not read. `docs/cli.md` lists each verb's flags. A bare `--progress` is still the default
+  interval; every other flag that takes a value was read as though absent when given bare, and is
+  now refused.
+- **A flag's value is checked where it is typed, on every verb.** `render animation --fps 30fps`,
+  `--width-mm wide` and `compare --ions many` were internal errors, exit 6; they are exit 1 naming
+  the flag. A whole-number flag is digits alone within its range (`--width-px +64`, `--samples
+  2.5` and `--equipotentials -3` are refused). A flag that names one of a few words refuses any
+  other, where it used to fall back silently: `--format pfd` drew an SVG, `ext register --kind
+  objectiv` registered an objective, `init --vcs hg` made no repository. `--height` takes
+  `potential` or `energy` only. `ext test --input` given a file that is not JSON is exit 1, not
+  6. Every such refusal is located at `/args/--flag` and is JSON on stdout under `--json`.
+- **`render surface` draws each conductor at what it holds**, not at what the summed field reads
+  inside it, and says so where the two disagree (`render.plateau-disagrees`); a long thin box is
+  sampled across its width, `--samples NxM` sets both counts, `--out` and `--csv` may not be one
+  file, and a negative or unplaceably late `--at-us` is refused (also by `probe` and `render
+  section`).
+- **`render surface` on a reflected solve stops a conductor at its image.** A conductor declared
+  running past the mirror plane is metal only up to the plane and in its reflection; the part
+  beyond was drawn as a plateau and `probe` called it inside-conductor. The instant on a driven
+  field's picture is written finely enough to tell phases apart (`t=100.25 µs`, where both it and
+  `t=100 µs` were captioned alike), and the scale no longer stands on the surface's edge in
+  `--view front`.
+- **`render surface` states the range its conductors hold.** `lowest`, `highest`, the height
+  scale and the scale bar no longer follow interpolant overshoot, which changed with `--samples`
+  (the shipped einzel lens read -25, -32 or -14.8 V for its 0 V floor); the raw extremes are
+  `sampledLowest` and `sampledHighest`, the conductors' range `appliedLowest` and
+  `appliedHighest`, and `render.interpolant-overshoot` says how far past and where. Earth is
+  always labelled on the bar. `--relief` is at most 10 and is refused together with an explicit
+  scale; a scale that makes the heights infinite is refused where it drew a picture.
+- **A reflected solve is no longer doubled on its mirror plane.** A point exactly on the plane
+  of a `reflectAboutX` solve read twice the potential and twice the field along the plane, in a
+  run as in `probe`; either side of it was right. A flight is unchanged unless a step lands
+  exactly on the plane.
+- **`render surface` is drawn no further than its scale**: heights and colors are held to the
+  range the conductors hold, as the bar already was; the CSV keeps the raw samples.
+- **Under `--json` every refusal is JSON on stdout**, whichever layer raised it. `ext` and
+  `agents` flags are checked per sub-verb (`ext list --kind y` is refused). A destination that is
+  the model itself, or another destination, is refused; a failed write restores the file that
+  was there.
+- **`einzel run --progress ./models/r.json`** reads the path as the model, not the interval.
+  `einzel run --dry-run` is refused (it was ignored, and the model ran), pointing at `einzel
+  preview` and `einzel estimate`.
+- **A bare `--progress` takes the next word as its interval only if the whole word is a number**:
+  `einzel run --progress 2026-lens.json` runs that model at the default interval, `--progress 5`
+  is still five seconds, and `einzel run m.json --progress often` is refused for the stray 'often'
+  (write `--progress=often` to have the interval itself refused by name). `--progress 1e400` is
+  refused as an interval rather than opened as a model, and a word read as a model after a bare
+  `--progress` (`einzel run --progress 5s`) is named in the refusal. A negative `--progress` is
+  refused (only `--progress 0` turns reporting off), and a surface label or caption never writes a
+  nonzero value as 0, nor a narrow scale near a large value as "1.23e+3"; the labels on one scale
+  share one notation. An empty argument (`einzel run ""`) is refused rather than exiting 6. An empty value after `=`
+  (`--out=`) is refused at the flag rather than exiting 6; `einzel render --dry-run m.json` is held
+  to the section's flags, so a typo there is refused rather than ignored; and an unknown `ext`,
+  `agents` or `render` sub-verb is refused naming the known ones. Every flag error is located at `/args/--flag`,
+  whichever verb raised it (`probe` and `render section` had their own pointers). The probe's
+  `--csv` quotes a conductor name holding a comma or a quote. `einzel export` of several solved
+  elements holds one element's solve at a time.
+- **A reflected solve's metal is where its field is, on both sides of the mirror**: an electrode
+  declared past the plane no longer stops ions in the image's half. A surface's bound on what the
+  field can be is taken at each node.
+- **Under `--json` every failure is a JSON document on stdout** - a missing model and an internal
+  error included - and `--json=true` counts. A word that follows a bare `--progress` and is not a
+  number is refused at `--progress` whenever there is a positional too many, whatever the order.
+- **`--box-mm` whose corners are finite but whose width is not** (`-1e308,0,1e308,1`) is
+  refused at the flag. Two CLI calls running in one process no longer share the "has written"
+  flag that decides whether a refusal is written as JSON.
+- **A reflected solve whose mirror plane lies inside its own box is symmetric about it**: the
+  half and its image overlap there and are summed on both sides, where only the half answered
+  below the plane. The image's conductors stop ions only where its field answers. An animation
+  is written whole or not at all, and two conductors whose surface labels would read alike are
+  two plateaus.
+- **A point in a conductor's declared shape past the edge of its solve is `outside-domain`**, with
+  a note naming the shape, even where another element covers it; it was `ok` there. This changes
+  `probe` rows, the `probe.outside-domain` count of `export --composite`, and where `render surface`
+  counts outside points.
+- **A reflected solve is counted once on its mirror plane to the last bit**: one ulp below a
+  power-of-two plane the image's reflected coordinate rounded back onto the plane and the sum
+  doubled there. The plane and the declared side are the declared half's, the other side the
+  image's, judged on the point itself.
+- **A field made of parts lands on each part's surfaces separately.** A crossing is any part's
+  discontinuity changing sign, so two surfaces at one place - two abutting solve domains, the two
+  halves of a reflection meeting at their plane - are one landing, where combined into one sign
+  they cancelled and the ion crossed a real jump with no landing. Every shipped model's flight is
+  unchanged to the last digit. This holds through every field that wraps another - a driven or
+  sequenced solve, a bounded analytic element - and a bounded element's own plane (a half-space
+  inside its region) is now landed on even where a face of the region is nearer than it. Magnets
+  are tracked the same way: the shared face of two abutting hard-edge magnets is landed on, where
+  their combined sign cancelled.
+- **A reflected solve's mirror plane is a surface the integrator lands on unless its edge is a
+  mirror**: a grounded (Dirichlet) edge or face on the plane makes the plane a surface of its own,
+  carried by the declared half, wherever an ion crosses it - over the box, where the field jumps,
+  and beyond it, where it costs a landing and nothing more. Apart from the plane, a reflected
+  solve declares exactly the mirror image of what its declared side declares. Decided by the plane edge's own condition
+  alone, when the solve is built: a volume solve gets it on a grounded face, and so does a
+  cross-section whatever its `boundaryIsDiscontinuous`, which speaks for its far edges. **A
+  reflected cross-section with a grounded plane edge now lands on the plane, and its flights may
+  move in their last digits.** A Neumann edge, or a box stopping short of the plane by more than a
+  rounding, gets none; both shipped reflected templates have a Neumann edge, and their flights are
+  unchanged. A reflected cross-section declaring its edges keeps both top edges as surfaces, which
+  it lost at the rim before.
+- **A cross-section both tilted and reflected runs** again: every command reading one exited 6 with
+  an invalid cast while turning its conductors.
+- **A CSV text cell beginning with `=`, `+`, `-`, `@`, a tab or a carriage return** - a conductor's
+  name in `probe --csv` or `render surface --csv` - is written as `"'=..."`, so a spreadsheet shows
+  it as text rather than running it, as OWASP's guidance on CSV injection has it. Numbers are never
+  altered, and `--json` carries every name exactly. A warning running over several lines stays all
+  comments in `probe --csv`, as it already did in `render surface --csv`.
+- **The window draws its layers in the order a still does**: opaque, then depth-biased, then
+  translucent, by one rule.
+- **The note that a word after a bare `--progress` may have been its value** is given for a unit
+  after a number in any case (`2.MS`, `5.MM`), and not for a word naming something on disk or a
+  name with a unit-like extension (`trap.ps`, `fit.m`).
+- **A destination reached through a linked folder is the file it is**: an input there is refused
+  as that input, where only a link that was the file itself was followed before. A destination
+  reached through a loop of links, or below a folder that cannot be read, is refused at its flag
+  rather than ending the command as an internal error; a destination named like an input that
+  cannot be followed is refused, since it may be that input; and a set of files whose link was
+  pointed elsewhere while they were made is refused at the commit, with nothing placed.
+- **Files are replaced in one rename**, written through a symbolic link, and a read-only
+  destination is refused; every destination - including the render spec a figure was drawn from -
+  is checked before the work, `--dry-run` included. A file no flag named is refused with its own
+  path rather than at `--project` or `--out`.
+- **Flags may come before a sub-verb** again: `einzel ext --json list`, `einzel agents --json
+  tasks`; and a bare `--progress` before the model is the default interval again (`einzel run
+  --progress models/reflectron.json`) rather than an interval called the model's path. A
+  destination that is a symbolic link to the model, or to another destination, is refused as that
+  file. `render surface --cycle-mean` no longer refuses an `--at-us` too late to place in the
+  drive cycle, since no instant of the drive is drawn.
+- **`einzel schema --units`** lists every unit symbol with its dimension and SI factor - the
+  command an unknown unit's error has always named.
+- **A file that cannot be written is exit 1 at its flag**, not an internal error: `--out` or
+  `--csv` naming a directory, on `render surface`, `render still`, `render section`, `render
+  animation`, `probe` and `report`. `render surface` writes its picture and its table together or
+  neither.
+- **A gallery page** reproducing an einzel lens's published voltage and pressure series
+  (`docs/gallery-einzel-lens.md`), with every choice the source leaves open listed.
 - **The `paul-trap` template has endcap holes and a stretch.** Three new parameters, all zero by
   default, and at zero the template solves to the field it always had, to the bit:
   `endcapEntranceHoleFraction` and `endcapExitHoleFraction` cut a bore on the axis of each endcap,
@@ -325,6 +488,9 @@ Carried forward from v26.1.0 until they change:
 - **The shell is partial**: nine of the eleven views in the specification exist. The
   figure composer and scrubbing on the animation timeline are not built. There is one
   shell now - the Windows-only one has been removed - and it runs where the engine runs.
+- **A still or the viewport of a model in gas shows vacuum rays.** `render still` and the window
+  fly the drawn bundle with no collisions, whatever gas the model declares; `einzel run` on the
+  same model collides. The numbers are right and the picture is not.
 - **A still cannot check the window's own GPU path**, and it does not draw the name of a
   validity violation as text: the codes are in the file's text chunks and on stderr.
 - **No installer and no updater.** The assets are portable: unpack and run.

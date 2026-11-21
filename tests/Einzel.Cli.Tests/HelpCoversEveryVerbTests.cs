@@ -88,10 +88,12 @@ public sealed class HelpCoversEveryVerbTests(ITestOutputHelper output)
             // The first name is the one a reader must be able to find; the rest are
             // spellings kept working on purpose and deliberately not advertised, since
             // listing both would suggest they differ.
-            var arms = Regex.Matches(
-                source,
-                """^\s*"(?<primary>[a-z-]+)"(?<aliases>(?:\s+or\s+"[a-z-]+")*)\s*=>""",
-                RegexOptions.Multiline);
+            //
+            // An arm dispatches a verb only where what follows the arrow is a call to a
+            // handler - Run(options). A switch that maps a word to a value ("pdf" =>
+            // FigureFormat.Pdf) is a flag's vocabulary and not a verb; reading every arm made
+            // the CLI spell such a switch as a dictionary to stay out of this test's way.
+            var arms = Arms(source);
 
             var primary = new List<string>();
             var all = new List<string>();
@@ -113,6 +115,39 @@ public sealed class HelpCoversEveryVerbTests(ITestOutputHelper output)
         }
 
         return ([], []);
+    }
+
+    /// <summary>The switch arms that dispatch to a handler, in source text.</summary>
+    private static MatchCollection Arms(string source) => Regex.Matches(
+        source,
+        """^\s*"(?<primary>[a-z-]+)"(?<aliases>(?:\s+or\s+"[a-z-]+")*)\s*=>\s*[A-Z]\w*\(""",
+        RegexOptions.Multiline);
+
+    /// <summary>
+    /// A switch arm that maps a word to a value is not read as a verb; one that calls a handler
+    /// is.
+    /// </summary>
+    [Fact]
+    public void OnlyAnArmThatCallsAHandlerIsAVerb()
+    {
+        const string Source = """
+            return args[0] switch
+            {
+                "run" => Run(options),
+                "optimise" or "optimize" => Optimise(options),
+                _ => Unknown(args[0]),
+            };
+
+            var format = named switch
+            {
+                "pdf" => FigureFormat.Pdf,
+                "energy" => SurfaceHeight.Energy,
+                "none" => null,
+                _ => FigureFormat.Svg,
+            };
+            """;
+
+        Assert.Equal(["run", "optimise"], Arms(Source).Select(m => m.Groups["primary"].Value));
     }
 
     /// <summary>Whether the help lists a verb, as itself or under a parent.</summary>

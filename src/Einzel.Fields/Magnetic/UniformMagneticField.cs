@@ -178,6 +178,43 @@ public sealed class BoundedMagneticField : IMagneticField
             toBoundary, _inner.SignedDistanceToMagneticDiscontinuity(in position));
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// The box surface and the inner field's own members inside the box, positive infinity outside
+    /// it, as <see cref="Analytic.BoundedField"/> tracks an electric region: combined into one sign,
+    /// an inner surface inside the box went undeclared wherever the box face was nearer. All
+    /// infinite where the inner field is zero, which jumps nowhere.
+    /// </remarks>
+    public int MagneticDiscontinuityMembers => 1 + Math.Max(1, _inner.MagneticDiscontinuityMembers);
+
+    /// <inheritdoc />
+    public double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        _inner.MaximumFluxDensity == 0.0 ? double.PositiveInfinity
+            : member == 0 ? Region.SignedDistance(in position)
+            : Region.Contains(in position) ? _inner.MagneticMemberDistanceToDiscontinuity(member - 1, in position)
+            : double.PositiveInfinity;
+
+    /// <inheritdoc />
+    public void MagneticMemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        if (_inner.MaximumFluxDensity == 0.0)
+        {
+            distances.Fill(double.PositiveInfinity);
+            return;
+        }
+
+        distances[0] = Region.SignedDistance(in position);
+
+        if (Region.Contains(in position))
+        {
+            _inner.MagneticMemberDistancesToDiscontinuity(in position, distances[1..]);
+        }
+        else
+        {
+            distances[1..].Fill(double.PositiveInfinity);
+        }
+    }
+
     private static bool Slab(
         double origin, double direction, double min, double max, ref double entry, ref double exit)
     {
@@ -205,6 +242,9 @@ public sealed class SuperposedMagneticField : IMagneticField
 {
     private readonly IMagneticField[] _elements;
 
+    // Where each element's magnetic members start, and how many there are in all.
+    private readonly int[] _offsets;
+
     /// <summary>Superposes magnetic elements.</summary>
     /// <param name="elements">The elements; at least one.</param>
     /// <exception cref="ArgumentNullException"><paramref name="elements"/> is null.</exception>
@@ -217,6 +257,13 @@ public sealed class SuperposedMagneticField : IMagneticField
         if (_elements.Length == 0)
         {
             throw new ArgumentException("a superposition needs at least one element", nameof(elements));
+        }
+
+        _offsets = new int[_elements.Length + 1];
+
+        for (var i = 0; i < _elements.Length; i++)
+        {
+            _offsets[i + 1] = _offsets[i] + Math.Max(1, _elements[i].MagneticDiscontinuityMembers);
         }
     }
 
@@ -287,5 +334,34 @@ public sealed class SuperposedMagneticField : IMagneticField
         }
 
         return composed;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Each element's members, in order: two abutting magnets are two members whose surfaces
+    /// coincide at the shared face, so the face is landed on where the combined sign cancelled.
+    /// </remarks>
+    public int MagneticDiscontinuityMembers => _offsets[^1];
+
+    /// <inheritdoc />
+    public double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        var element = 0;
+
+        while (_offsets[element + 1] <= member)
+        {
+            element++;
+        }
+
+        return _elements[element].MagneticMemberDistanceToDiscontinuity(member - _offsets[element], in position);
+    }
+
+    /// <inheritdoc />
+    public void MagneticMemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        for (var i = 0; i < _elements.Length; i++)
+        {
+            _elements[i].MagneticMemberDistancesToDiscontinuity(in position, distances[_offsets[i].._offsets[i + 1]]);
+        }
     }
 }

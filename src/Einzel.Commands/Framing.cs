@@ -72,41 +72,97 @@ public sealed record Framing(
     /// <param name="elevation">Tilt above the horizontal, in degrees.</param>
     /// <returns>The smallest framing, at those angles, that holds every point.</returns>
     public static Framing Around(
-        IEnumerable<(double X, double Y, double Z)> pointsMm, double azimuth, double elevation)
+        IEnumerable<(double X, double Y, double Z)> pointsMm, double azimuth, double elevation) =>
+        Extent.Of(pointsMm, azimuth, elevation).Frame();
+
+    /// <summary>
+    /// How far a set of points reaches in one view's own coordinates: what a framing is made
+    /// from, kept so that a few more points can be added without walking the first set again.
+    /// </summary>
+    /// <remarks>
+    /// A framing is the box of its points seen from the camera, and a box takes in a new point
+    /// by a minimum and a maximum. A caller that fits a frame, adds a label, and fits again -
+    /// the potential surface does, up to twelve times - walked every vertex of the picture on
+    /// each pass, a million of them at the largest sampling. Measured once and extended, the
+    /// frame is the same to the bit: a minimum does not depend on the order it was taken in.
+    /// </remarks>
+    public sealed class Extent
     {
-        ArgumentNullException.ThrowIfNull(pointsMm);
+        private readonly double[] _rotation;
+        private readonly double _azimuth;
+        private readonly double _elevation;
+        private double _lowU = double.MaxValue, _lowV = double.MaxValue, _lowW = double.MaxValue;
+        private double _highU = double.MinValue, _highV = double.MinValue, _highW = double.MinValue;
+        private bool _seen;
 
-        var r = Rotation(azimuth, elevation);
-
-        double lowU = double.MaxValue, lowV = double.MaxValue, lowW = double.MaxValue;
-        double highU = double.MinValue, highV = double.MinValue, highW = double.MinValue;
-        var seen = false;
-
-        foreach (var (x, y, z) in pointsMm)
+        private Extent(double azimuth, double elevation)
         {
-            var (u, v, w) = Apply(r, x, y, z);
-
-            seen = true;
-            lowU = Math.Min(lowU, u); highU = Math.Max(highU, u);
-            lowV = Math.Min(lowV, v); highV = Math.Max(highV, v);
-            lowW = Math.Min(lowW, w); highW = Math.Max(highW, w);
+            _rotation = Rotation(azimuth, elevation);
+            _azimuth = azimuth;
+            _elevation = elevation;
         }
 
-        // Nothing to hold: a millimetre about the origin, so the projection is finite and a
-        // viewport opened on a scene still being computed draws an empty frame, not NaN.
-        if (!seen)
+        /// <summary>Measures a set of points for one view.</summary>
+        /// <param name="pointsMm">Positions in millimetres, in the model's frame.</param>
+        /// <param name="azimuth">Turn about the vertical, in degrees.</param>
+        /// <param name="elevation">Tilt above the horizontal, in degrees.</param>
+        /// <returns>Their extent at those angles.</returns>
+        public static Extent Of(IEnumerable<(double X, double Y, double Z)> pointsMm, double azimuth, double elevation)
         {
-            return new Framing((0.0, 0.0, 0.0), 1.0, 1.0, 1.0, azimuth, elevation);
+            ArgumentNullException.ThrowIfNull(pointsMm);
+
+            var extent = new Extent(azimuth, elevation);
+            extent.Take(pointsMm);
+
+            return extent;
         }
 
-        return FromView(
-            r,
-            ((lowU + highU) / 2.0, (lowV + highV) / 2.0, (lowW + highW) / 2.0),
-            (highU - lowU) / 2.0,
-            (highV - lowV) / 2.0,
-            (highW - lowW) / 2.0,
-            azimuth,
-            elevation);
+        /// <summary>This extent and some more points, leaving this one as it was.</summary>
+        /// <param name="pointsMm">The further points.</param>
+        /// <returns>The extent of both.</returns>
+        public Extent Including(IEnumerable<(double X, double Y, double Z)> pointsMm)
+        {
+            ArgumentNullException.ThrowIfNull(pointsMm);
+
+            var both = (Extent)MemberwiseClone();
+            both.Take(pointsMm);
+
+            return both;
+        }
+
+        /// <summary>The smallest framing, at this extent's angles, that holds every point taken.</summary>
+        /// <returns>The framing.</returns>
+        public Framing Frame()
+        {
+            // Nothing to hold: a millimetre about the origin, so the projection is finite and a
+            // viewport opened on a scene still being computed draws an empty frame, not NaN.
+            if (!_seen)
+            {
+                return new Framing((0.0, 0.0, 0.0), 1.0, 1.0, 1.0, _azimuth, _elevation);
+            }
+
+            return FromView(
+                _rotation,
+                ((_lowU + _highU) / 2.0, (_lowV + _highV) / 2.0, (_lowW + _highW) / 2.0),
+                (_highU - _lowU) / 2.0,
+                (_highV - _lowV) / 2.0,
+                (_highW - _lowW) / 2.0,
+                _azimuth,
+                _elevation);
+        }
+
+        private void Take(IEnumerable<(double X, double Y, double Z)> pointsMm)
+        {
+            foreach (var (x, y, z) in pointsMm)
+            {
+                var (u, v, w) = Apply(_rotation, x, y, z);
+
+                _seen = true;
+                _lowU = Math.Min(_lowU, u); _highU = Math.Max(_highU, u);
+                _lowV = Math.Min(_lowV, v); _highV = Math.Max(_highV, v);
+                _lowW = Math.Min(_lowW, w); _highW = Math.Max(_highW, w);
+            }
+        }
     }
 
     /// <summary>A framing that holds this one and another, at this one's camera angles.</summary>

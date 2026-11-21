@@ -862,7 +862,7 @@ Details, the closed-form checks and what is not built: [Magnetic fields](magneti
 | `cellSize` | Requested node spacing. Each axis rounds its interval count **up** to a power of two independently, so the spacing is never coarser than asked in either direction and the grid spans exactly the declared box. Cells need not be square; the worst ratio is two to one |
 | `leftEdge`, `rightEdge`, `bottomEdge`, `topEdge` | `dirichlet` (default) or `neumann`, a symmetry plane |
 | `boundaryIsDiscontinuous` | Whether the field genuinely jumps at the domain edge. **Set false when the domain was drawn wide enough that the field has decayed** — see below |
-| `reflectAboutX` | Reflect the solved field through a plane and superpose, for a symmetric pair |
+| `reflectAboutX` | Reflect the solved field through a plane and superpose, for a symmetric pair. With the plane on a face of the box (usually `maxX`) the half and its image are a union, the plane the half's; with the plane inside the box they overlap and are summed on both sides |
 | `tolerance` | Relative residual for the solve, default 1e-12 |
 
 `boundaryIsDiscontinuous` is worth understanding before setting it. Declaring a

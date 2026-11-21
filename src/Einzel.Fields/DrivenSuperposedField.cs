@@ -32,6 +32,7 @@ namespace Einzel.Fields;
 public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 {
     private readonly IElectrostaticField[] _elements;
+    private readonly int[] _members;
 
     /// <summary>Creates a driven superposition.</summary>
     /// <param name="elements">The elements to sum, at least one of them driven.</param>
@@ -45,6 +46,7 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
         ArgumentNullException.ThrowIfNull(elements);
 
         _elements = [.. elements];
+        _members = DiscontinuityDistance.MemberOffsets(_elements);
 
         if (!Array.Exists(_elements, e => e is ITimeVaryingField))
         {
@@ -58,6 +60,17 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 
     /// <summary>The elements being summed.</summary>
     public IReadOnlyList<IElectrostaticField> Elements => _elements;
+
+    /// <inheritdoc/>
+    public int DiscontinuityMembers => _members[^1];
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        DiscontinuityDistance.Member(_elements, _members, member, in position);
+
+    /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances) =>
+        DiscontinuityDistance.Members(_elements, _members, in position, distances);
 
     /// <inheritdoc/>
     public double MonochromaticPeriodSeconds
@@ -300,10 +313,9 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The same sign-product tracking <see cref="SuperposedField"/> uses, and for
-    /// the same reason: the magnitude is the distance to the nearest declared jump
-    /// and the sign says which side of the whole arrangement the point is on, so a
-    /// step that crosses two surfaces is correctly seen as crossing neither.
+    /// Combined as <see cref="SuperposedField"/> combines them: the magnitude is the distance to
+    /// the nearest declared jump, for a step cap; landing is by member
+    /// (<see cref="DiscontinuityMembers"/>).
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
@@ -319,6 +331,11 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The first member whose conductor contains the point, as it always has been: this names
+    /// the surface an ion strikes in a loss itemisation (ACC-5), so it is not changed under a
+    /// drawing. The surface and the probe pick a conductor by their own rule.
+    /// </remarks>
     public string? ConductorAt(in Vec3 position)
     {
         foreach (var element in _elements)

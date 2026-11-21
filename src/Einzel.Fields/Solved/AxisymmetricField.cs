@@ -98,6 +98,23 @@ public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded
     }
 
     /// <inheritdoc/>
+    public int DiscontinuityMembers => _halfPlane.DiscontinuityMembers;
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        var sample = Sample(in position);
+        return _halfPlane.MemberDistanceToDiscontinuity(member, in sample);
+    }
+
+    /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        var sample = Sample(in position);
+        _halfPlane.MemberDistancesToDiscontinuity(in sample, distances);
+    }
+
+    /// <inheritdoc/>
     /// <remarks>
     /// An electrode drawn as a rectangle in the half-plane is a ring in space, so
     /// the distance to it is measured from the ion's radius. This is what makes an
@@ -124,6 +141,20 @@ public sealed class AxisymmetricField : IElectrostaticField, IConductorBounded
 
         var sample = Sample(in position);
         return bounded.ConductorAt(in sample);
+    }
+
+    /// <inheritdoc/>
+    public double NearestConductor(in Vec3 position, out string? name)
+    {
+        name = null;
+
+        if (_halfPlane is not IConductorBounded bounded)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var sample = Sample(in position);
+        return bounded.NearestConductor(in sample, out name);
     }
 
     private static Vec3 Sample(in Vec3 position) =>

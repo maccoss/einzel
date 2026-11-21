@@ -7,28 +7,85 @@ namespace Einzel.Render;
 /// <param name="R">Red, zero to one.</param>
 /// <param name="G">Green, zero to one.</param>
 /// <param name="B">Blue, zero to one.</param>
+/// <param name="Colors">
+/// Per-vertex red, green and blue triples, zero to one, interpolated across each triangle; null
+/// colors the whole mesh <paramref name="R"/>, <paramref name="G"/>, <paramref name="B"/>.
+/// </param>
 public sealed record RasterMesh(
     IReadOnlyList<double> VerticesMm,
     IReadOnlyList<double> Normals,
     IReadOnlyList<int> Triangles,
     double R,
     double G,
-    double B);
+    double B,
+    IReadOnlyList<double>? Colors = null)
+{
+    /// <summary>What is wrong with the mesh's per-vertex colors, or null where they fit its vertices.</summary>
+    /// <returns>A sentence naming both counts, or null.</returns>
+    /// <remarks>
+    /// The same rule as <see cref="RasterLine.SegmentColorsProblem"/>, three numbers for each
+    /// vertex, asked by <see cref="Rasterizer.Draw"/> of every mesh before anything is drawn: the
+    /// colors were indexed by vertex unchecked, so a short list was an index out of range part
+    /// way through a picture, reported as a defect in the engine.
+    /// </remarks>
+    public string? ColorsProblem() =>
+        Colors is { } colors && colors.Count != VerticesMm.Count - (VerticesMm.Count % 3)
+            ? $"{colors.Count} vertex color values for {VerticesMm.Count / 3} vertices; a mesh needs three for each"
+            : null;
+}
 
 /// <summary>A polyline to rasterize, already colored.</summary>
 /// <param name="PointsMm">Consecutive x, y, z triples, in millimetres.</param>
 /// <param name="R">Red, zero to one.</param>
 /// <param name="G">Green, zero to one.</param>
 /// <param name="B">Blue, zero to one.</param>
-public sealed record RasterLine(IReadOnlyList<double> PointsMm, double R, double G, double B);
+/// <param name="SegmentColors">
+/// A color for each segment, three numbers each, in place of the line's one color; null for one
+/// color throughout. Each segment is drawn exactly as a line of that segment alone would be.
+/// </param>
+public sealed record RasterLine(
+    IReadOnlyList<double> PointsMm, double R, double G, double B, IReadOnlyList<double>? SegmentColors = null)
+{
+    /// <summary>What is wrong with the line's segment colors, or null where they fit its segments.</summary>
+    /// <returns>A sentence naming both counts, or null.</returns>
+    /// <remarks>
+    /// The one statement of the rule - three numbers for each segment - asked once, by
+    /// <see cref="Rasterizer.Draw"/> of every line it is handed. A check in a constructor is
+    /// skipped by a <c>with</c> copy, which runs no initializer, and every line that is drawn
+    /// passes through <c>Draw</c> however it was made.
+    /// </remarks>
+    public string? SegmentColorsProblem()
+    {
+        var segments = Math.Max(0, (PointsMm.Count / 3) - 1);
+
+        return SegmentColors is { } colors && colors.Count != 3 * segments
+            ? $"{colors.Count} segment color values for {segments} segments; a line needs three for each"
+            : null;
+    }
+}
 
 /// <summary>One layer, drawn whole before the next.</summary>
 /// <param name="Meshes">Its surfaces.</param>
 /// <param name="Lines">Its polylines.</param>
 /// <param name="Alpha">How opaque it is, from zero to one.</param>
 /// <param name="WritesDepth">Whether it hides what is drawn after it.</param>
+/// <param name="DepthBias">
+/// How much nearer than its geometry the layer is depth-tested, in clip-space depth units: a
+/// wire mesh drawn exactly on a surface has the surface's depth, and without a bias whether a
+/// line pixel survives the test is a coin toss on rounding. A biased layer must be opaque. Biased
+/// layers are resolved together,
+/// after every opaque layer and before every translucent one: each is tested against the opaque
+/// depth up to its bias, the nearest passing fragment of a sample is drawn, and one that writes
+/// depth stores its true depth - so the order layers are listed in does not change the picture.
+/// </param>
+/// <param name="Name">What the layer is, for a refusal to name; null where it has no name.</param>
 public sealed record RasterLayer(
-    IReadOnlyList<RasterMesh> Meshes, IReadOnlyList<RasterLine> Lines, double Alpha, bool WritesDepth);
+    IReadOnlyList<RasterMesh> Meshes,
+    IReadOnlyList<RasterLine> Lines,
+    double Alpha,
+    bool WritesDepth,
+    double DepthBias = 0.0,
+    string? Name = null);
 
 /// <summary>A flat polyline drawn over the picture, in output pixels.</summary>
 /// <param name="PointsPx">Consecutive x, y pairs, in pixels from the top left.</param>
@@ -93,6 +150,36 @@ public sealed record RasterLighting(Func<double, double, double, double> Surface
 /// </remarks>
 public static class Rasterizer
 {
+    /// <summary>The pass a layer is drawn in: one rule, which the still and the window both draw by.</summary>
+    /// <param name="alpha">How opaque the layer is.</param>
+    /// <param name="depthBias">Its depth bias.</param>
+    /// <returns>Biased where it has a bias, otherwise opaque or translucent by its alpha.</returns>
+    /// <remarks>
+    /// The rasterizer draws every opaque layer, then the biased ones, then the translucent ones,
+    /// whatever order they are listed in. A window drawing layers in list order agrees with it only
+    /// where the list is already in this order, so the command layer emits it so
+    /// (<see cref="DrawOrder{T}"/>), and a still and the window cannot disagree about what veils what.
+    /// </remarks>
+    public static RasterPass PassOf(double alpha, double depthBias) =>
+        depthBias > 0.0 ? RasterPass.Biased
+            : alpha >= 1.0 ? RasterPass.Opaque
+            : RasterPass.Translucent;
+
+    /// <summary>Layers in the order the rasterizer draws them: by pass, list order kept within one.</summary>
+    /// <typeparam name="T">The layer type.</typeparam>
+    /// <param name="layers">The layers.</param>
+    /// <param name="alpha">A layer's opacity.</param>
+    /// <param name="depthBias">A layer's depth bias.</param>
+    /// <returns>Them, opaque first, then biased, then translucent.</returns>
+    public static IReadOnlyList<T> DrawOrder<T>(IEnumerable<T> layers, Func<T, double> alpha, Func<T, double> depthBias)
+    {
+        ArgumentNullException.ThrowIfNull(layers);
+        ArgumentNullException.ThrowIfNull(alpha);
+        ArgumentNullException.ThrowIfNull(depthBias);
+
+        return [.. layers.OrderBy(l => PassOf(alpha(l), depthBias(l)))];
+    }
+
     /// <summary>Draws layers, in order, into an RGB image.</summary>
     /// <param name="layers">What to draw, in the order to draw it.</param>
     /// <param name="matrix">Column-major 4x4 from millimetres to clip space.</param>
@@ -151,13 +238,85 @@ public static class Rasterizer
             throw new ArgumentException("a projection is a 4x4 matrix", nameof(matrix));
         }
 
+        // Before anything is drawn, and naming the layer, rather than an index out of range part
+        // way through a picture. Here because every line drawn comes through here, whichever
+        // constructor or `with` made it.
+        for (var l = 0; l < layers.Count; l++)
+        {
+            for (var i = 0; i < layers[l].Meshes.Count; i++)
+            {
+                if (layers[l].Meshes[i].ColorsProblem() is { } problem)
+                {
+                    throw new ArgumentException(
+                        $"layer {LayerLabel(layers[l], l)}, mesh {i}: {problem}",
+                        nameof(layers));
+                }
+            }
+
+            // A biased layer is a mark on an opaque surface - a wire mesh on the surface it
+            // outlines - and is resolved as one fragment a sample. A translucent one would fully
+            // hide another biased layer behind it, which is not what translucent means; refused by
+            // name rather than drawn wrong.
+
+            // A bias is a non-negative distance and an opacity a fraction: a NaN or a negative bias
+            // drew nothing or everything with no word, and an opacity past one blended outside the
+            // colours the layer has.
+            if (!double.IsFinite(layers[l].DepthBias) || layers[l].DepthBias < 0.0)
+            {
+                throw new ArgumentException(
+                    $"layer {LayerLabel(layers[l], l)}: a depth bias is a finite, non-negative depth, and this one is {layers[l].DepthBias.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    nameof(layers));
+            }
+
+            if (!(layers[l].Alpha >= 0.0 && layers[l].Alpha <= 1.0))
+            {
+                throw new ArgumentException(
+                    $"layer {LayerLabel(layers[l], l)}: an opacity is from 0 to 1, and this one is {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    nameof(layers));
+            }
+
+            if (layers[l].DepthBias > 0.0 && !(layers[l].Alpha >= 1.0))
+            {
+                throw new ArgumentException(
+                    $"layer {LayerLabel(layers[l], l)}: a depth-biased layer must be opaque, and this one has an opacity of {layers[l].Alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    nameof(layers));
+            }
+
+            for (var i = 0; i < layers[l].Lines.Count; i++)
+            {
+                if (layers[l].Lines[i].SegmentColorsProblem() is { } problem)
+                {
+                    throw new ArgumentException(
+                        $"layer {LayerLabel(layers[l], l)}, line {i}: {problem}",
+                        nameof(layers));
+                }
+            }
+        }
+
         // Whole output rows to a band, and at least one however small the budget.
         var samplesPerRow = (long)width * supersample * supersample;
         var rowsPerBand = (int)Math.Clamp(samplesPerBand / samplesPerRow, 1L, height);
 
         var rgb = new byte[3 * width * height];
+        var biased = layers.Where(l => PassOf(l.Alpha, l.DepthBias) == RasterPass.Biased).ToList();
+        var opaque = layers.Where(l => PassOf(l.Alpha, l.DepthBias) == RasterPass.Opaque).ToList();
+        var translucent = layers.Where(l => PassOf(l.Alpha, l.DepthBias) == RasterPass.Translucent).ToList();
+
         var canvas = new Canvas(
-            width * supersample, rowsPerBand * supersample, matrix, height * supersample);
+            width * supersample, rowsPerBand * supersample, matrix, height * supersample, biased.Count > 0);
+
+        void Draw(Canvas on, RasterLayer layer)
+        {
+            foreach (var line in layer.Lines)
+            {
+                on.Polyline(line, layer.Alpha, layer.WritesDepth, lighting.Line, lineWidth * supersample, layer.DepthBias);
+            }
+
+            foreach (var mesh in layer.Meshes)
+            {
+                on.Mesh(mesh, layer.Alpha, layer.WritesDepth, lighting.Surface, layer.DepthBias);
+            }
+        }
         var annotations = Annotations(overlay, supersample);
 
         for (var top = 0; top < height; top += rowsPerBand)
@@ -165,17 +324,31 @@ public static class Rasterizer
             var rows = Math.Min(rowsPerBand, height - top);
             canvas.Begin(top * supersample, rows * supersample, ground);
 
-            foreach (var layer in layers)
+            // In three passes, whatever order the layers were listed in: every opaque layer; then
+            // the biased layers resolved together against the opaque depth, the nearest passing
+            // fragment of each sample composited; then the translucent layers, which veil a biased
+            // mark as they veil the surface it lies on. Within a pass the list order is kept, so
+            // two translucent layers still blend in the order given.
+            foreach (var layer in opaque)
             {
-                foreach (var line in layer.Lines)
+                Draw(canvas, layer);
+            }
+
+            if (biased.Count > 0)
+            {
+                canvas.BeginBiased();
+
+                foreach (var layer in biased)
                 {
-                    canvas.Polyline(line, layer.Alpha, layer.WritesDepth, lighting.Line, lineWidth * supersample);
+                    Draw(canvas, layer);
                 }
 
-                foreach (var mesh in layer.Meshes)
-                {
-                    canvas.Mesh(mesh, layer.Alpha, layer.WritesDepth, lighting.Surface);
-                }
+                canvas.ResolveBiased();
+            }
+
+            foreach (var layer in translucent)
+            {
+                Draw(canvas, layer);
             }
 
             // Over everything and tested against nothing: an annotation is not in the scene,
@@ -191,6 +364,11 @@ public static class Rasterizer
 
         return rgb;
     }
+
+    // What a refusal calls a layer: its name, or its place in the list. Built only when a refusal
+    // is raised, so a picture that is drawn spends nothing on it.
+    private static string LayerLabel(RasterLayer layer, int index) =>
+        layer.Name is { } named ? $"'{named}'" : index.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>An overlay's strokes and glyphs in canvas pixels, each with its color and width.</summary>
     private static List<(double[] Points, double R, double G, double B, double Width)> Annotations(
@@ -277,6 +455,14 @@ public static class Rasterizer
         private readonly int _height;
         private readonly double[] _color;
         private readonly double[] _depth;
+
+        // The nearest biased fragment of each sample that passes against the opaque depth: its
+        // true depth (infinity for none), colour and whether its layer writes depth - a biased
+        // layer is opaque, so there is no opacity to keep. Held
+        // only when a picture has a biased layer at all.
+        private readonly double[]? _biased;
+        private readonly double[]? _biasedColor;
+        private readonly bool[]? _biasedWrites;
         private readonly IReadOnlyList<double> _m;
 
         private int _top;
@@ -287,13 +473,55 @@ public static class Rasterizer
         /// <param name="capacity">The most sample rows one band holds.</param>
         /// <param name="matrix">Millimeters to clip space.</param>
         /// <param name="height">Sample rows in the whole picture, which the projection spans.</param>
-        public Canvas(int width, int capacity, IReadOnlyList<double> matrix, int height)
+        /// <param name="biased">Whether any layer is depth-biased, so the biased owners are tracked.</param>
+        public Canvas(int width, int capacity, IReadOnlyList<double> matrix, int height, bool biased = false)
         {
             _width = width;
             _height = height;
             _m = matrix;
             _color = new double[3 * width * capacity];
             _depth = new double[width * capacity];
+            _biased = biased ? new double[width * capacity] : null;
+            _biasedColor = biased ? new double[3 * width * capacity] : null;
+            _biasedWrites = biased ? new bool[width * capacity] : null;
+        }
+
+        /// <summary>Clears the biased fragments before the biased layers are drawn.</summary>
+        public void BeginBiased()
+        {
+            if (_biased is not null)
+            {
+                Array.Fill(_biased, double.PositiveInfinity, 0, _width * _rows);
+            }
+        }
+
+        /// <summary>
+        /// Composites each sample's nearest biased fragment over the opaque picture, and writes its
+        /// depth where its layer writes depth and it is nearer than what is stored.
+        /// </summary>
+        public void ResolveBiased()
+        {
+            if (_biased is null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < _width * _rows; i++)
+            {
+                var depth = _biased[i];
+
+                if (double.IsPositiveInfinity(depth))
+                {
+                    continue;
+                }
+
+                Put(i, _biasedColor![3 * i], _biasedColor[(3 * i) + 1], _biasedColor[(3 * i) + 2], 1.0);
+
+                if (_biasedWrites![i] && depth < _depth[i])
+                {
+                    _depth[i] = depth;
+                }
+            }
         }
 
         /// <summary>Clears the buffer for the band starting at a sample row.</summary>
@@ -329,11 +557,60 @@ public static class Rasterizer
             return ((cx + 1.0) * 0.5 * _width, (1.0 - cy) * 0.5 * _height, cz);
         }
 
+        /// <summary>Whether a fragment of a layer is drawn, or kept as its sample's biased fragment.</summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A biased layer is resolved apart, so the picture does not depend on the order of the
+        /// layers.</b> A bias lets a layer through a surface it lies on or just behind - a wire mesh
+        /// on the surface it outlines - so it is tested against the opaque depth up to the bias
+        /// nearer than it is, and of every biased fragment at a sample that passes, the nearest is
+        /// kept. Those are composited once, after every opaque layer and before every translucent
+        /// one (<see cref="Draw"/>). Per-sample bookkeeping inside one pass had kept growing
+        /// exceptions - a translucent layer reset the owner; a bias only reached a surface drawn
+        /// before it - and each was another way for two orders to give two pictures.
+        /// </para>
+        /// <para>
+        /// Fragments at exactly one depth keep the first drawn, which is the one order dependence
+        /// left, and only where two layers coincide.
+        /// </para>
+        /// </remarks>
+        private bool Passes(int index, double depth, double bias) =>
+            bias > 0.0
+                ? depth - bias < _depth[index] && depth < _biased![index]
+                : depth < _depth[index];
+
+        // A fragment that passed: kept as the sample's biased fragment, or drawn and its depth
+        // written, as the nearer of its own and what was stored.
+        private void Emit(int index, double depth, double bias, double r, double g, double b, double alpha, bool writesDepth)
+        {
+            if (bias > 0.0)
+            {
+                _biased![index] = depth;
+                _biasedColor![3 * index] = r;
+                _biasedColor[(3 * index) + 1] = g;
+                _biasedColor[(3 * index) + 2] = b;
+                _biasedWrites![index] = writesDepth;
+                return;
+            }
+
+            Put(index, r, g, b, alpha);
+
+            if (writesDepth && depth < _depth[index])
+            {
+                _depth[index] = depth;
+            }
+        }
+
         public void Mesh(
-            RasterMesh mesh, double alpha, bool writesDepth, Func<double, double, double, double> brightness)
+            RasterMesh mesh,
+            double alpha,
+            bool writesDepth,
+            Func<double, double, double, double> brightness,
+            double bias = 0.0)
         {
             var v = mesh.VerticesMm;
             var n = mesh.Normals;
+            var colors = mesh.Colors;
             var count = v.Count / 3;
             var screen = new (double X, double Y, double Z)[count];
 
@@ -378,10 +655,13 @@ public static class Rasterizer
                             continue;
                         }
 
+                        // The bias moves the test, not the surface: what is stored is the true
+                        // depth, so a biased layer that writes depth hides what is behind its
+                        // geometry and not what lies between its geometry and the bias.
                         var depth = (w0 * p0.Z) + (w1 * p1.Z) + (w2 * p2.Z);
                         var index = ((py - _top) * _width) + px;
 
-                        if (!(depth < _depth[index]))
+                        if (!Passes(index, depth, bias))
                         {
                             continue;
                         }
@@ -394,18 +674,25 @@ public static class Rasterizer
 
                         var shade = brightness(nx, ny, nz);
 
-                        Put(index, mesh.R * shade, mesh.G * shade, mesh.B * shade, alpha);
-
-                        if (writesDepth)
+                        if (colors is null)
                         {
-                            _depth[index] = depth;
+                            Emit(index, depth, bias, mesh.R * shade, mesh.G * shade, mesh.B * shade, alpha, writesDepth);
+                        }
+                        else
+                        {
+                            var cr = (w0 * colors[3 * a]) + (w1 * colors[3 * b]) + (w2 * colors[3 * c]);
+                            var cg = (w0 * colors[(3 * a) + 1]) + (w1 * colors[(3 * b) + 1]) + (w2 * colors[(3 * c) + 1]);
+                            var cb = (w0 * colors[(3 * a) + 2]) + (w1 * colors[(3 * b) + 2]) + (w2 * colors[(3 * c) + 2]);
+
+                            Emit(index, depth, bias, cr * shade, cg * shade, cb * shade, alpha, writesDepth);
                         }
                     }
                 }
             }
         }
 
-        public void Polyline(RasterLine line, double alpha, bool writesDepth, double shade, double width)
+        public void Polyline(
+            RasterLine line, double alpha, bool writesDepth, double shade, double width, double bias = 0.0)
         {
             var p = line.PointsMm;
             var half = 0.5 * width;
@@ -445,20 +732,20 @@ public static class Rasterizer
                             continue;
                         }
 
+                        // Tested biased, stored true, as a mesh is.
                         var depth = a.Z + (t * (b.Z - a.Z));
                         var index = ((py - _top) * _width) + px;
 
-                        if (!(depth < _depth[index]))
+                        if (!Passes(index, depth, bias))
                         {
                             continue;
                         }
 
-                        Put(index, line.R * shade, line.G * shade, line.B * shade, alpha);
+                        var (lr, lg, lb) = line.SegmentColors is { } colors
+                            ? (colors[i], colors[i + 1], colors[i + 2])
+                            : (line.R, line.G, line.B);
 
-                        if (writesDepth)
-                        {
-                            _depth[index] = depth;
-                        }
+                        Emit(index, depth, bias, lr * shade, lg * shade, lb * shade, alpha, writesDepth);
                     }
                 }
             }
@@ -563,4 +850,17 @@ public static class Rasterizer
         private static double Edge(double ax, double ay, double bx, double by, double px, double py) =>
             ((bx - ax) * (py - ay)) - ((by - ay) * (px - ax));
     }
+}
+
+/// <summary>The pass a raster layer is drawn in, in the order the passes run.</summary>
+public enum RasterPass
+{
+    /// <summary>Opaque, unbiased: drawn first, into depth.</summary>
+    Opaque,
+
+    /// <summary>Depth-biased: resolved together against the opaque depth.</summary>
+    Biased,
+
+    /// <summary>Translucent: drawn last, over both.</summary>
+    Translucent,
 }

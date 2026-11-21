@@ -33,7 +33,7 @@ Two things to know first.
 | Charge repulsion (beam, Coulomb, factor), Poisson space charge | `direct` pairwise sum or `pic` for a packet; `meanField` for a density | No continuous-beam mode; no image charges in the electrodes |
 | Magnetic arrays | A `uniformMagnetic` field element, optionally bounded to a hard-edge box | Uniform B only, single-ion trajectories only: no magnetic potential arrays, no imported B maps, no fringe fields |
 | Dielectrics | None | Conductors in vacuum or gas only |
-| PE view, contours | `einzel render section` (SVG/PDF), `render still` (PNG), the shell's viewport | Vector figures; no potential-energy surface view |
+| PE view, contours | `einzel render surface` (PNG), `render section` (SVG/PDF), `render still` (PNG), the shell's viewport | The PE surface is headless and static (named views, coordinate planes); not yet in the window |
 | Trajectory quality (T.Qual) | Adaptive Dormand-Prince 5(4), tolerance ladder, energy drift | Tolerance-controlled, with the interval reported |
 | Simplex optimiser, batch mode | Study files: `scan`, `sweep`, `boundary`, `optimise` (Nelder-Mead, CMA-ES) | Every verb is batch; studies are declarative files |
 | STL / CAD import | None | Geometry is declared primitives only |
@@ -290,11 +290,16 @@ Einzel's figures come from the model, not from a screenshot:
   PDF**: conductors, equipotentials, the trajectory or density contours, a scale
   bar, provenance, and any warning stamped on the figure.
 - `einzel render still` draws the 3-D viewport's picture as a PNG.
+- `einzel render surface` is the **potential-energy view**: the potential on a plane drawn as
+  height in a wire mesh, conductors as flat plateaus at their own potential, the height scale on
+  the picture. `--height energy` draws q·phi for the model's ion; `--cycle-mean` draws only the
+  DC of a driven trap, which is what a picture of axial trapping needs.
 - `einzel render animation` writes frames on a declared playback-rate mapping.
 - The desktop shell (`einzel-shell`) shows the same viewport interactively, with a
   parameter tree you can edit and undo.
 
-What differs: there is **no potential-energy surface view**, no interactive
+What differs: the potential-energy surface is a PNG from the command line, not yet a mode
+of the window, and is drawn on coordinate planes from named views; there is no interactive
 geometry editing, and the window is young. ParaView, through `--vtu` and
 `einzel export`, is the general-purpose 3-D viewer. See [Rendering](rendering.md)
 and [Shell](shell.md).

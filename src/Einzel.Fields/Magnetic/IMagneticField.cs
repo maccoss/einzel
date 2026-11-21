@@ -112,6 +112,35 @@ public interface IMagneticField
     /// <param name="position">Position, in metres.</param>
     /// <returns>The signed distance; the sign changes on crossing.</returns>
     double SignedDistanceToMagneticDiscontinuity(in Vec3 position) => double.PositiveInfinity;
+
+    /// <summary>How many magnetic discontinuity measures this field tracks separately.</summary>
+    /// <remarks>
+    /// The magnetic side of <see cref="IElectrostaticField.DiscontinuityMembers"/>, for the same
+    /// reason: combined, the signs of two surfaces at one place multiply and cancel - the shared
+    /// face of two abutting magnets, a magnet's face on an inner field's own surface - and the ion
+    /// crosses a jump in B with no landing. One for a field not composed of others; a sum's parts'
+    /// members and a wrapper's inner members otherwise. <see cref="SignedDistanceToMagneticDiscontinuity"/>
+    /// stays the members combined, for a step cap.
+    /// </remarks>
+    int MagneticDiscontinuityMembers => 1;
+
+    /// <summary>One magnetic member's measure (<see cref="MagneticDiscontinuityMembers"/>).</summary>
+    /// <param name="member">Which, from zero.</param>
+    /// <param name="position">The point, in metres.</param>
+    /// <returns>Its signed distance, in metres, or positive infinity.</returns>
+    double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        SignedDistanceToMagneticDiscontinuity(in position);
+
+    /// <summary>Every magnetic member's measure at once, in member order.</summary>
+    /// <param name="position">The point, in metres.</param>
+    /// <param name="distances">Filled with one measure per member; as long as <see cref="MagneticDiscontinuityMembers"/>.</param>
+    void MagneticMemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        for (var k = 0; k < distances.Length; k++)
+        {
+            distances[k] = MagneticMemberDistanceToDiscontinuity(k, in position);
+        }
+    }
 }
 
 /// <summary>The refusal every path that cannot honour a magnetic field raises.</summary>

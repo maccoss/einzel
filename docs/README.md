@@ -23,7 +23,8 @@ states the intent and these pages state the reality; both are noted.
 | [Device templates](device-templates.md) | Writing a new device as data, and the shipped templates, each with what solving it bought |
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
 | [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
-| [Rendering](rendering.md) | Vector sections in SVG and PDF, conductor surfaces for the viewport, decimation bounds, and how a figure carries its own caveats |
+| [Rendering](rendering.md) | Vector sections in SVG and PDF, conductor surfaces for the viewport, decimation bounds, and how a figure carries its own caveats, and `render surface`, the potential drawn as height |
+| [Gallery: an einzel lens](gallery-einzel-lens.md) | A published voltage series and pressure series reproduced qualitatively, with every choice listed and the defects it found |
 | [Pressure](pressure.md) | Collision models, regime validity, and what gas does to a funnel |
 | [Magnetic fields](magnetic-fields.md) | The uniform B element, the v x B force in the integrator, its closed-form checks, and every path that refuses a magnet |
 | [Extensions](extensions.md) | The Python extension surface, what the sandbox contains, and what it does not |

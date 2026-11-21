@@ -28,9 +28,32 @@ public static class Program
     /// <returns>A process exit code (CLI-3).</returns>
     public static int Main(string[] args)
     {
+        // Whether this call has written anything to stdout, so that a refusal raised after a verb
+        // wrote its own result does not add a second document to it. The console's writer is
+        // swapped for a counting one - once, by the first call in the process to enter, shared by
+        // every call running, and put back by the last to leave - and each write through it marks
+        // the call running on the writing flow, so the flag is this call's own (StdoutTally).
+        using var tally = StdoutTally.Enter();
+
+        // Under --json every way a call can fail ends in one JSON document on stdout. Asked of
+        // the parsed command line, as every verb asks it, so --json=true is --json here too - and
+        // parsed once, inside the try below, so a failure in the parse is caught like any other.
+        // Until it has parsed, the raw words are all there is to ask: a parse that throws still
+        // ends in one document for a caller who asked for one.
+        var json = args is not null && args.Any(a => a is "--json" || (a?.StartsWith("--json=", StringComparison.Ordinal) ?? false));
+
+        void Refuse(string code, string constraint, string? suggestion = null) =>
+            WriteRefusal(json, [new EinzelError { Code = code, Path = "/", Constraint = constraint, Suggestion = suggestion }]);
+
+        // Kept outside the try, so a refusal raised later can say where a word stood on the line.
+        CommandLine? options = null;
+
         try
         {
-            return Dispatch(args);
+            options = args is { Length: > 0 } ? CommandLine.Parse(args) : null;
+            json = options?.Has("json") ?? json;
+
+            return Dispatch(args!, options);
         }
         catch (EinzelException failure)
         {
@@ -42,6 +65,12 @@ public static class Program
                 Console.Error.WriteLine(error.ToString());
             }
 
+            // And under --json the same errors on stdout (AGT-3), whichever layer raised them.
+            // A refusal made here in the command line was already JSON; one thrown from a command
+            // - a relief of zero, a box written backwards, a destination that cannot be written -
+            // left an agent an empty stream and an exit code.
+            WriteRefusal(json, failure.Errors);
+
             // CLI-3 wants a distinct exit code per failure class, and the class is
             // in the error rather than in how it reached here. A regime violation
             // raised as a refusal is the same finding as one raised as a warning on
@@ -51,22 +80,33 @@ public static class Program
         }
         catch (FileNotFoundException failure)
         {
-            Console.Error.WriteLine(failure.Message);
+            // A file that is not there because a word meant as --progress's value was read as the
+            // model - `run --progress 5s` - says it may have been, rather than only that 5s does
+            // not exist. Only for a word that could be a mistyped number: a model path with a
+            // typo in it after a bare --progress is just a model path with a typo.
+            var note = options is null ? null : BareFollowerNote(options, f => SamePath(f.Word, failure.FileName) && LooksNumeric(f.Word));
+            var message = note is null ? failure.Message : $"{failure.Message.TrimEnd('.')}; {note}";
+
+            Console.Error.WriteLine(message);
+            Refuse(ErrorCodes.SchemaInvalid, message, "check the path; it is read relative to the directory the command is run from");
             return (int)ExitCode.ValidationFailure;
         }
         catch (DirectoryNotFoundException failure)
         {
             Console.Error.WriteLine(failure.Message);
+            Refuse(ErrorCodes.SchemaInvalid, failure.Message, "check the path; it is read relative to the directory the command is run from");
             return (int)ExitCode.ValidationFailure;
         }
         catch (IOException failure)
         {
             Console.Error.WriteLine(failure.Message);
+            Refuse(ErrorCodes.InternalError, failure.Message);
             return (int)ExitCode.InternalError;
         }
         catch (UnauthorizedAccessException failure)
         {
             Console.Error.WriteLine(failure.Message);
+            Refuse(ErrorCodes.InternalError, failure.Message);
             return (int)ExitCode.InternalError;
         }
 #pragma warning disable CA1031 // The process boundary is exactly where a catch-all belongs.
@@ -84,11 +124,15 @@ public static class Program
             Console.Error.WriteLine($"command you ran and this trace, against engine {EngineBuild.Version}:");
             Console.Error.WriteLine();
             Console.Error.WriteLine(failure.StackTrace);
+            Refuse(
+                ErrorCodes.InternalError,
+                $"{failure.GetType().Name}: {failure.Message}",
+                $"this is a defect in einzel, not in your model; please report it with the command and the trace on stderr, against engine {EngineBuild.Version}");
             return (int)ExitCode.InternalError;
         }
     }
 
-    private static int Dispatch(string[] args)
+    private static int Dispatch(string[] args, CommandLine? parsed)
     {
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
         {
@@ -102,7 +146,14 @@ public static class Program
             return (int)ExitCode.Success;
         }
 
-        var options = CommandLine.Parse(args);
+        // Parsed once, by Main, inside its catch: parsed again here, a failure in the parse
+        // would have escaped the catch-all the first time and never reached here.
+        var options = parsed!;
+
+        if (Malformed(args, options))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
 
         return args[0] switch
         {
@@ -135,6 +186,400 @@ public static class Program
             "doctor" => Doctor(options),
             _ => Unknown(args[0]),
         };
+    }
+
+    /// <summary>
+    /// Refuses, before a known verb does anything, a flag it does not read, a value-taking flag
+    /// given no value, and more positional arguments than it takes - naming each.
+    /// </summary>
+    /// <param name="args">The raw arguments, verb first.</param>
+    /// <param name="options">The parsed command line.</param>
+    /// <returns>True when the command line was refused; the reason is on stderr, and on stdout as JSON under --json.</returns>
+    /// <remarks>
+    /// Asked of the verb's own flags (<see cref="VerbFlags.ByVerb"/>), so a flag is called
+    /// "unknown" only where that verb does not read it and "takes a value" only where it is one
+    /// that verb reads as a value. A verb this does not know - an unknown command, <c>render</c>
+    /// with no sub-verb - and any command line asking for <c>--help</c> are left to the verb, as
+    /// they always were.
+    /// </remarks>
+    private static bool Malformed(string[] args, CommandLine options) =>
+        CommandLineProblem(args, options) is { } refusal && !Refuse(options, refusal);
+
+    /// <summary>
+    /// What is wrong with a command line before its verb runs, or null where nothing is: a flag
+    /// the verb does not read, a flag that takes a value given none, an argument too many.
+    /// </summary>
+    /// <param name="args">The raw arguments, verb first.</param>
+    /// <returns>The refusal, located at the flag or the argument; null for a command line the verb is handed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="args"/> is null.</exception>
+    /// <remarks>
+    /// Public so that a command line written down somewhere - in a suggestion, a usage line, a
+    /// page of the documentation - can be held to what the CLI accepts: an error that said "see
+    /// 'einzel schema --units'" named a flag nothing read.
+    /// </remarks>
+    public static EinzelError? CommandLineProblem(string[] args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        return CommandLineProblem(args, CommandLine.Parse(args));
+    }
+
+    private static EinzelError? CommandLineProblem(string[] args, CommandLine options)
+    {
+        if (options.Has("help"))
+        {
+            return null;
+        }
+
+        // A sub-verb its verb does not have, refused naming those it has: with no flag table to
+        // check against, the flags after it went unchecked.
+        if (VerbFlags.UnknownSubVerb(args) is { } unknown)
+        {
+            var (article, noun) = args[0] == "render" ? ("a", "kind") : ("an", "action");
+            var whose = args[0].EndsWith('s') ? args[0] + "'" : args[0] + "'s";
+
+            return new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/args/0",
+                Constraint = $"'{unknown}' is not {article} {noun} {args[0]} has",
+                Suggestion = $"{whose} {noun}s are {string.Join(", ", VerbFlags.SubVerbsOf(args[0]))}"
+                    + (args[0] == "render" ? "; a model given after the flags is drawn as a section, as in 'einzel render --dry-run <model.json>'" : string.Empty),
+            };
+        }
+
+        if (VerbFlags.For(args) is not var (key, flags))
+        {
+            return null;
+        }
+
+        EinzelError? refusal = null;
+
+        foreach (var flag in options.Flags)
+        {
+            if (!flags.Knows(flag))
+            {
+                var reads = $"the flags {key} reads are {Listed(flags.Switches.Concat(flags.Values).Concat(flags.Optional).Concat(VerbFlags.Global))}";
+
+                refusal = new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = FlagPath.Of(flag),
+                    Constraint = flag == "dry-run"
+                        ? $"unknown flag --dry-run for {key}: {key} has no --dry-run, and a dry run of it is not built"
+                        : $"unknown flag --{flag} for {key}",
+                    Suggestion = flag == "dry-run"
+                        ? $"to see what {key} would do without writing anything, 'einzel preview <model.json>' evaluates the model and 'einzel estimate <model.json>' states what it would cost; {reads}"
+                        : reads,
+                };
+                break;
+            }
+
+            // Every occurrence, not the last: `--set --set r=7` gave the first --set no value and
+            // only the second was asked. And an empty value is no value: `--out=` (or `--out ""`)
+            // handed the empty string to a reader that made a path of it, and Path.GetFullPath("")
+            // came out as an internal error, exit 6. A flag whose value may be left off may be
+            // bare, but given a value, an empty one is none. Empty only: a single space is a value
+            // somebody may mean - a caption, a label - and a reader that cannot take one refuses
+            // it itself.
+            var values = options.Values(flag);
+
+            // A file named by nothing but spaces names no file: refused at its flag, where the
+            // path reader would have made one of it and failed inside the engine.
+            var path = VerbFlags.IsPath(flag) ? values.FirstOrDefault(v => v is { Length: > 0 } && string.IsNullOrWhiteSpace(v)) : null;
+
+            if (path is not null)
+            {
+                refusal = new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = FlagPath.Of(flag),
+                    Constraint = $"--{flag} takes a path, and '{path}' is only spaces",
+                    Suggestion = $"give --{flag} a file or folder by name",
+                };
+                break;
+            }
+
+            var emptied = values.Any(v => v is { Length: 0 });
+
+            if ((flags.Values.Contains(flag) && values.Any(v => v is null)) || ((flags.Values.Contains(flag) || flags.Optional.Contains(flag)) && emptied))
+            {
+                refusal = new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = FlagPath.Of(flag),
+                    Constraint = emptied
+                        ? $"--{flag} takes a value, and the one given is empty"
+                        : $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
+                    Suggestion = $"give --{flag} its value, as --{flag} <value>",
+                };
+                break;
+            }
+        }
+
+        // An argument of nothing, or only spaces, is no model, file or name: `run ""` reached
+        // Path.GetFullPath("") and exited 6. Refused at its place among the arguments.
+        if (refusal is null && options.Positional.Select((p, i) => (p, i)).FirstOrDefault(a => string.IsNullOrWhiteSpace(a.p)) is { p: not null } blank)
+        {
+            refusal = new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/args/" + blank.i.ToString(CultureInfo.InvariantCulture),
+                Constraint = blank.p.Length == 0
+                    ? $"argument {blank.i} to {key} is empty"
+                    : $"argument {blank.i} to {key} is only spaces",
+                Suggestion = "give the file or the name the argument stands for",
+            };
+        }
+
+        if (refusal is null && options.Positional.Count > flags.Positionals)
+        {
+            // Where a word read as an argument followed a bare flag whose value may be left off,
+            // the refusal says it may have been meant as the value: `run --progress 5s m.json`
+            // blamed m.json alone, where the word to fix is 5s. Only where that can be right - the
+            // word is itself one of the surplus, or could be a mistyped number - so `run
+            // --progress m.json extra` says nothing about m.json, which was the model. Nothing is
+            // reassigned; the line is refused either way.
+            var surplus = flags.Positionals;
+            var note = BareFollowerNote(options, f => f.Positional >= surplus || LooksNumeric(f.Word));
+
+            refusal = new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"/args/{flags.Positionals}",
+                Constraint = $"{key} was given {string.Join(", ", options.Positional.Skip(flags.Positionals).Select(p => $"'{p}'"))}, which it does not take"
+                    + (note is null ? string.Empty : $"; {note}"),
+                Suggestion = PositionalSuggestion(key, flags),
+            };
+        }
+
+        return refusal;
+    }
+
+    /// <summary>
+    /// What to do about an argument a verb does not take, said in that verb's own flags.
+    /// </summary>
+    /// <remarks>
+    /// One sentence for every verb named <c>--out</c> and <c>--no-scale</c>, which most verbs do
+    /// not have: <c>einzel run m.json --vtu out.vtu</c> was told to use <c>--out</c>, which
+    /// <c>run</c> then refused. The stray argument is nearly always a value given to a switch
+    /// or a file given without its flag, so the suggestion names the verb's own switches and
+    /// its own flags that take a value.
+    /// </remarks>
+    // The flags that name a file, from the one declaration of path flags.
+    private static IReadOnlyList<string> FileFlags => VerbFlags.FileNames;
+
+    /// <summary>
+    /// What a refusal says about words read as arguments because they followed a bare flag whose
+    /// value may be left off and did not parse as a number; null where there were none.
+    /// </summary>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="mentioned">Which such words the refusal could be right about.</param>
+    /// <returns>The sentence, conditional - the word may have been meant as either - or null.</returns>
+    internal static string? BareFollowerNote(CommandLine options, Func<(string Flag, string Word, int Positional), bool> mentioned)
+    {
+        var words = options.BareFollowers
+            .Where(mentioned)
+            .Select(f =>
+                $"if '{f.Word}' was meant as --{f.Flag}'s value, it is not a number and was read as an argument instead: "
+                + $"write --{f.Flag}=<{(f.Flag == "progress" ? "seconds" : "value")}> or --{f.Flag} <number>")
+            .ToList();
+
+        return words.Count == 0 ? null : string.Join("; ", words);
+    }
+
+    // Units a number on this command line is written in, which after a number and a point mark a
+    // typo rather than a file extension: '2.ms' is two milliseconds mistyped, not a file called 2
+    // of type ms. Compared ignoring case, which here costs nothing: a typo has no case to get
+    // right, 'MS' is no unit a command line would mean, and 2.MS is the same slip as 2.ms. That
+    // some of these are also real extensions - .ps, .s, .m - is settled by the rules below, not
+    // by leaving them out.
+    private static readonly HashSet<string> UnitSuffixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "s", "ms", "us", "µs", "ns", "ps", "m", "mm", "um", "µm", "nm", "V", "kV", "mV", "Hz", "kHz", "MHz", "eV", "keV",
+    };
+
+    private static readonly System.Buffers.SearchValues<char> Letters =
+        System.Buffers.SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+    // A number as the part of a word before its unit: a sign, then digits with at most one point.
+    private static readonly System.Text.RegularExpressions.Regex Numeral =
+        new(@"^[+-]?(\d+\.?\d*|\.\d+)$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Whether a word could be a mistyped number, so a refusal may say it was perhaps meant as a
+    /// flag's value - and is not a path.
+    /// </summary>
+    /// <param name="word">The word.</param>
+    /// <param name="exists">
+    /// Whether a file or folder of that name is there; by default asked of the disk, relative to
+    /// the directory the command is run from, as the word would be read.
+    /// </param>
+    /// <returns>
+    /// False for anything that is there on disk, has a separator in it, or ends in an extension of
+    /// two letters or more that is not a unit after a number; otherwise whether it leads like a
+    /// number - a digit first, or a sign or a point and then a digit: '5s', '0,5', '-2x', '1.e5x'.
+    /// </returns>
+    /// <remarks>
+    /// A unit after a point makes a typo only where what comes before the point is a number:
+    /// '2.ms', '5.MM', '1.kV' - but 'trap.ps' is a PostScript file and 'fit.m' a script. And a
+    /// word that names something on disk is that thing, whatever it looks like: '1.ps' beside a
+    /// file called 1.ps is the file. A note about a model name that happens to start with a digit
+    /// would send somebody to fix a word that was right.
+    /// </remarks>
+    internal static bool LooksNumeric(string word, Func<string, bool>? exists = null)
+    {
+        if (word.IndexOfAny(['/', '\\']) >= 0)
+        {
+            return false;
+        }
+
+        exists ??= OnDisk;
+
+        if (exists(word))
+        {
+            return false;
+        }
+
+        // A number, a point and a unit - '2.ms', '5.MM', '1.kV' - is a number with a typo in it:
+        // checked before the extension rule, which would take any two letters for a file.
+        var extension = Path.GetExtension(word);
+
+        if (UnitSuffixes.Contains(extension.TrimStart('.')) && Numeral.IsMatch(word[..^extension.Length]))
+        {
+            return true;
+        }
+
+        // An extension of two letters or more, all letters - .json, .txt, .msh, .py, .ps after a
+        // name - makes it a file name. Not one letter, nor one with a digit in it: '2.s' and
+        // '1.e5x' are a unit typo and an exponent. A named list of extensions missed the files
+        // people actually have.
+        if (extension.Length > 2 && extension.AsSpan(1).IndexOfAnyExcept(Letters) < 0)
+        {
+            return false;
+        }
+
+        return LeadsLikeANumber(word);
+    }
+
+    // Relative to the working directory on purpose: that is where the command itself resolves a
+    // relative path, so the hint says what the command will do with the word. Reviewed and kept.
+    private static bool OnDisk(string word)
+    {
+        try
+        {
+            return File.Exists(word) || Directory.Exists(word);
+        }
+        catch (Exception failure) when (failure is ArgumentException or NotSupportedException or PathTooLongException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    // A digit first, or a sign or a point and then a digit.
+    private static bool LeadsLikeANumber(string word)
+    {
+        var body = word.Length > 0 && word[0] is '+' or '-' ? word[1..] : word;
+        body = body.Length > 0 && body[0] == '.' ? body[1..] : body;
+        return body.Length > 0 && char.IsAsciiDigit(body[0]);
+    }
+
+    private static bool SamePath(string word, string? missing)
+    {
+        if (missing is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(word),
+                Path.GetFullPath(missing),
+                OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch (Exception failure) when (failure is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    // Flag names as a refusal lists them: sorted, each with its dashes.
+    private static string Listed(IEnumerable<string> names) =>
+        string.Join(", ", names.Order(StringComparer.Ordinal).Select(n => "--" + n));
+
+    internal static string PositionalSuggestion(string key, VerbFlags flags)
+    {
+
+        var switches = flags.Switches.Concat(VerbFlags.Global).ToList();
+        var valued = flags.Values.Concat(flags.Optional).ToList();
+        var file = FileFlags.FirstOrDefault(flags.Values.Contains);
+
+        var text = $"{key}'s switches take no value ({Listed(switches)}), so an argument after one is a stray";
+
+        if (valued.Count > 0)
+        {
+            text += $"; its flags that take a value are {Listed(valued)}";
+        }
+
+        if (file is not null)
+        {
+            text += $", and a file to write is --{file} <file>";
+        }
+
+        return text;
+    }
+
+    /// <summary>
+    /// Refuses a command line for what one of its flags says, naming the flag.
+    /// </summary>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="flag">The flag at fault, without its dashes.</param>
+    /// <param name="constraint">What the flag takes, and what it was given, in the user's own text.</param>
+    /// <param name="suggestion">What to type instead, where there is something to say.</param>
+    /// <returns>Always false, so a reader can return it.</returns>
+    /// <remarks>
+    /// The one way a flag's value is refused, so every such refusal exits 1, is located at
+    /// <c>/args/--flag</c>, and under <c>--json</c> is on stdout as JSON as well (AGT-3) - a
+    /// reader that wrote its own sentence to stderr left an agent an empty stream to parse.
+    /// </remarks>
+    private static bool Refuse(CommandLine options, string flag, string constraint, string? suggestion = null) =>
+        Refuse(
+            options,
+            new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = FlagPath.Of(flag),
+                Constraint = constraint,
+                Suggestion = suggestion,
+            });
+
+    internal static bool Refuse(CommandLine options, EinzelError refusal)
+    {
+        // CLI-2's split, and AGT-3's: the reason on stderr, and under --json the same error as
+        // JSON on stdout, so an agent gets a machine-readable refusal and not an empty stream.
+        Console.Error.WriteLine(refusal.ToString());
+        WriteRefusal(options.Has("json"), [refusal]);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Writes a refusal as JSON on stdout under <c>--json</c>, unless this call has already
+    /// written to stdout: the one place a refusal document is written, so there is one rule for
+    /// when.
+    /// </summary>
+    /// <remarks>
+    /// Main had its own copy that asked the call's tally, and the flag readers' copy did not ask
+    /// it, so a reader refusing after the verb had written its result added a second document
+    /// to stdout - which no JSON reader can parse.
+    /// </remarks>
+    private static void WriteRefusal(bool json, IReadOnlyList<EinzelError> errors)
+    {
+        if (json && !StdoutTally.WrittenByThisCall)
+        {
+            Console.Out.Write(CommandJson.Write(new CommandLineRefusal { Errors = [.. errors] }));
+        }
     }
 
     private static int Unknown(string verb)
@@ -196,6 +641,35 @@ public static class Program
             return (int)ExitCode.Success;
         }
 
+        // The unit symbols a document may use, from the registry that reads them. An unknown
+        // unit's error has always said "see the unit list from 'einzel schema --units'", and
+        // there was no such list: the flag was read by nothing.
+        if (options.Has("units"))
+        {
+            var units = Einzel.Core.Units.UnitRegistry.All
+                .OrderBy(u => u.Dimension.ToString(), StringComparer.Ordinal)
+                .ThenBy(u => u.SiFactor)
+                .ThenBy(u => u.Symbol, StringComparer.Ordinal)
+                .Select(u => new UnitJson { Symbol = u.Symbol, Dimension = u.Dimension.ToString(), SiFactor = u.SiFactor })
+                .ToList();
+
+            if (options.Has("json"))
+            {
+                return Emit(new UnitsOutcome { Units = units });
+            }
+
+            Console.Out.WriteLine($"{"symbol",-12} {"dimension (SI base units)",-28} one of it in SI");
+
+            foreach (var unit in units)
+            {
+                Console.Out.WriteLine(string.Create(
+                    CultureInfo.InvariantCulture, $"{unit.Symbol,-12} {unit.Dimension,-28} {unit.SiFactor}"));
+            }
+
+            Console.Out.WriteLine("symbols are case-sensitive; the micro sign may be written µ or μ");
+            return (int)ExitCode.Success;
+        }
+
         Console.Out.Write(CatalogCommand.Schema());
         return (int)ExitCode.Success;
     }
@@ -210,7 +684,7 @@ public static class Program
         }
 
         var studyPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(studyPath);
         var outcome = StudyCommand.Sweep(studyPath, new ProjectLayout(root), options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -300,7 +774,7 @@ public static class Program
         }
 
         var studyPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(studyPath);
         var outcome = StudyCommand.Scan(studyPath, new ProjectLayout(root), options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -388,7 +862,7 @@ public static class Program
         }
 
         var studyPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(studyPath);
         var outcome = StudyCommand.Boundary(studyPath, new ProjectLayout(root), options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -479,7 +953,7 @@ public static class Program
         }
 
         var studyPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(studyPath);
         var outcome = StudyCommand.Optimise(studyPath, new ProjectLayout(root), options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -572,7 +1046,7 @@ public static class Program
         // With a name, emit that artifact; without, list what there is.
         if (options.Positional.Count > 0)
         {
-            Console.Out.Write(CatalogCommand.Read(kind, options.Positional[0]));
+            Console.Out.Write(CatalogCommand.Read(kind, options.Positional[0], "/args/0"));
             return (int)ExitCode.Success;
         }
 
@@ -632,7 +1106,8 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        var outcome = ProjectCommands.New(options.Positional[0], kind, name, options.Has("dry-run"));
+        // Located at the flag that named it, as every other flag error is (FlagPath).
+        var outcome = ProjectCommands.New(options.Positional[0], kind, name, options.Has("dry-run"), FlagPath.Of("from-" + kind));
 
         if (options.Has("json"))
         {
@@ -667,9 +1142,9 @@ public static class Program
     /// </remarks>
     private static int Agents(string[] args, CommandLine options)
     {
-        var action = args.Length > 1 && !args[1].StartsWith("--", StringComparison.Ordinal)
-            ? args[1]
-            : "tasks";
+        // The sub-verb is the first word that is not a flag or a flag's value, wherever the
+        // flags are: `agents --json tasks` is `agents tasks`, as VerbFlags.For reads it.
+        var action = VerbFlags.SubVerb(args) ?? "tasks";
 
         return action switch
         {
@@ -792,7 +1267,7 @@ public static class Program
 
     private static int AgentsMd(CommandLine options)
     {
-        var root = options.Value("project") ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
+        var root = options.PathValue(PathOption.Project) ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
         var outcome = ProjectCommands.AgentsMd(root, options.Has("dry-run"));
 
         if (options.Has("json"))
@@ -809,7 +1284,7 @@ public static class Program
 
     private static int Doctor(CommandLine options)
     {
-        var root = options.Value("project") ?? (options.Positional.Count > 0 ? options.Positional[0] : null);
+        var root = options.PathValue(PathOption.Project) ?? (options.Positional.Count > 0 ? options.Positional[0] : null);
 
         if (root is null && Directory.Exists("models"))
         {
@@ -874,19 +1349,20 @@ public static class Program
         // observed response was to make the study smaller.
         var threshold = EstimateCommand.ThresholdSeconds;
 
-        if (options.Value("threshold") is { } declared)
+        if (!TryNumberFlag(options, "threshold", "a positive number of seconds", out var seconds))
         {
-            if (!double.TryParse(
-                    declared, System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
-                || seconds <= 0.0)
-            {
-                Console.Error.WriteLine(
-                    $"'{declared}' is not a positive number of seconds");
+            return (int)ExitCode.ValidationFailure;
+        }
 
+        if (seconds is { } declared)
+        {
+            if (declared <= 0.0)
+            {
+                Refuse(options, "threshold", $"--threshold takes a positive number of seconds, and '{options.Value("threshold")}' is not a positive number of seconds");
                 return (int)ExitCode.ValidationFailure;
             }
 
-            threshold = seconds;
+            threshold = declared;
         }
 
         // Calibration is on unless refused: an estimate is worth having about the
@@ -905,15 +1381,13 @@ public static class Program
         var snapshots = 0;
         var json = options.Has("json");
 
-        // Every refusal of the flag is an AGT-3 error located at it, the spelling the estimate's
-        // own refusals of it use, and comes out as JSON under --json like the outcome would.
-        int Refuse(string constraint, string suggestion) => RefuseEstimate(json, new EinzelError
+        // Every refusal of the flag is an AGT-3 error located at it, refused as every flag reader
+        // refuses: the reason on stderr, and under --json the same error as JSON on stdout.
+        int RefuseSnapshots(string constraint, string suggestion)
         {
-            Code = ErrorCodes.SchemaInvalid,
-            Path = "/args/--snapshots",
-            Constraint = constraint,
-            Suggestion = suggestion,
-        });
+            Refuse(options, "snapshots", constraint, suggestion);
+            return (int)ExitCode.ValidationFailure;
+        }
 
         if (options.Has("snapshots"))
         {
@@ -924,14 +1398,14 @@ public static class Program
             // for a flag somebody typed would be the under-bill the gate exists to prevent.
             if (instants is null)
             {
-                return Refuse(
+                return RefuseSnapshots(
                     "--snapshots takes a whole number of instants, and none was given",
                     isStudy ? "leave out --snapshots: a study records no instants" : "give one, as in --snapshots 60");
             }
 
-            if (!int.TryParse(instants, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out snapshots))
+            if (!TryWhole(instants, 0, int.MaxValue, out snapshots))
             {
-                return Refuse(
+                return RefuseSnapshots(
                     $"--snapshots takes a whole number of instants, and '{instants}' is not one",
                     isStudy ? "leave out --snapshots: a study records no instants" : "give a whole number, as in --snapshots 60");
             }
@@ -941,7 +1415,7 @@ public static class Program
             // text: `00` is none as well as `0` is.
             if (isStudy && snapshots > 0)
             {
-                return Refuse(
+                return RefuseSnapshots(
                     "--snapshots is about one diffusive run's recorded instants, and a study records none",
                     "leave out --snapshots, or estimate the model the study names");
             }
@@ -1140,6 +1614,21 @@ public static class Program
     {
         value = default;
 
+        if (!TryNumbers(text, 3, out var v))
+        {
+            return false;
+        }
+
+        value = new Core.Geometry.Vec3(v[0], v[1], v[2]);
+        return true;
+    }
+
+    /// <summary>Reads exactly <paramref name="count"/> comma-separated numbers, in the invariant culture.</summary>
+    /// <remarks>One parser for a point, a rectangle and a box, so the three cannot come to read a number differently.</remarks>
+    private static bool TryNumbers(string? text, int count, out double[] values)
+    {
+        values = [];
+
         if (text is null)
         {
             return false;
@@ -1147,16 +1636,199 @@ public static class Program
 
         var parts = text.Split(',', StringSplitOptions.TrimEntries);
 
-        if (parts.Length != 3
-            || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
-            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y)
-            || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var z))
+        if (parts.Length != count)
         {
             return false;
         }
 
-        value = new Core.Geometry.Vec3(x, y, z);
+        var parsed = new double[count];
+
+        for (var i = 0; i < count; i++)
+        {
+            if (!TryNumber(parts[i], out parsed[i]))
+            {
+                return false;
+            }
+        }
+
+        values = parsed;
         return true;
+    }
+
+    /// <summary>
+    /// One number as a command line writes it: the invariant culture, and finite.
+    /// </summary>
+    /// <remarks>
+    /// Through <see cref="CommandNumber.Parses(string, out double)"/>, the one rule for what parses
+    /// as a number, then finite; <see cref="TryWhole"/> is the only place this file parses a whole one (<c>FlagValuesAreReadByTheReadersTests</c> holds it to that): a
+    /// <c>Parse</c> beside them throws a typo through to the handler for defects in the engine,
+    /// exit 6, and a second <c>TryParse</c> is a second rule for what a number looks like.
+    /// "NaN" and "Infinity" parse and are no measurement, so they are refused with the typos.
+    /// </remarks>
+    private static bool TryNumber(string text, out double value) =>
+        CommandNumber.Parses(text, out value) && double.IsFinite(value);
+
+    /// <summary>
+    /// One whole number as a command line writes it: digits and nothing else, within a range.
+    /// </summary>
+    /// <remarks>
+    /// Digits alone - no sign, no space, no exponent, no separator. No whole-number flag here has
+    /// a negative in its domain (each is a count or a size), so a sign is a typo; and "+241" or
+    /// " 1600" accepted is a second spelling of a number nobody documented.
+    /// </remarks>
+    private static bool TryWhole(string text, int minimum, int maximum, out int value) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value)
+        && value >= minimum
+        && value <= maximum;
+
+    private static string WholeRange(int minimum, int maximum) =>
+        maximum == int.MaxValue
+            ? string.Create(CultureInfo.InvariantCulture, $"{minimum} or more")
+            : string.Create(CultureInfo.InvariantCulture, $"from {minimum} to {maximum}");
+
+    /// <summary>
+    /// Reads an optional numeric flag. False, with the reason on stderr, when it was given and
+    /// is not a number, or given with no value; true with a null value when it was not given.
+    /// </summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="flag">The flag, without its dashes.</param>
+    /// <param name="what">What it takes, as the message says it: "a number", "a time in microseconds".</param>
+    /// <param name="value">The number, or null when the flag is absent.</param>
+    /// <param name="suggestion">What to type instead, where there is something to say.</param>
+    private static bool TryNumberFlag(CommandLine options, string flag, string what, out double? value, string? suggestion = null)
+    {
+        value = null;
+
+        if (options.Value(flag) is not { } text)
+        {
+            return true;
+        }
+
+        if (TryNumber(text, out var parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        return Refuse(options, flag, $"--{flag} takes {what}, and '{text}' is not one.", suggestion);
+    }
+
+    /// <summary>
+    /// Reads an optional whole-number flag: digits alone, within the flag's own range.
+    /// </summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="flag">The flag, without its dashes.</param>
+    /// <param name="otherwise">The value when the flag is absent.</param>
+    /// <param name="minimum">The least it may be: 0 for a count that may be none, 1 for one that may not.</param>
+    /// <param name="maximum">The most it may be.</param>
+    /// <param name="value">The number, or <paramref name="otherwise"/>.</param>
+    /// <param name="what">What it counts, as the message says it: "a whole number of pixels".</param>
+    private static bool TryWholeFlag(
+        CommandLine options, string flag, int otherwise, int minimum, int maximum, out int value, string what = "a whole number")
+    {
+        value = otherwise;
+
+        if (options.Value(flag) is not { } text)
+        {
+            return true;
+        }
+
+        if (TryWhole(text, minimum, maximum, out var parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        return Refuse(
+            options,
+            flag,
+            $"--{flag} takes {what} {WholeRange(minimum, maximum)}, written as digits alone, and '{text}' is not one.");
+    }
+
+    /// <summary>
+    /// Reads a flag that is one of a few words. False, refused by name with the words it takes,
+    /// when it was given anything else; true with a null value when it was not given.
+    /// </summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="flag">The flag, without its dashes.</param>
+    /// <param name="choices">The words it takes, as documented.</param>
+    /// <param name="value">The word as documented, whatever case it was typed in; null when absent.</param>
+    /// <param name="exact">True where case matters, as it does for a view or a plane.</param>
+    /// <remarks>
+    /// A flag that fell back to a default on an unknown word - <c>--format pfd</c> drew an SVG,
+    /// <c>--kind objectiv</c> registered an objective, <c>--vcs hg</c> made no repository - said
+    /// nothing about having ignored what was typed.
+    /// </remarks>
+    private static bool TryChoiceFlag(
+        CommandLine options, string flag, IEnumerable<string> choices, out string? value, bool exact = false)
+    {
+        value = null;
+
+        if (options.Value(flag) is not { } text)
+        {
+            return true;
+        }
+
+        var comparison = exact ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        value = choices.FirstOrDefault(c => string.Equals(c, text, comparison));
+
+        return value is not null
+            || Refuse(options, flag, $"--{flag} is one of {string.Join(", ", choices)}, and '{text}' is none of them.");
+    }
+
+    /// <summary>
+    /// <c>--samples N</c> along the longer side, or <c>--samples NxM</c> for the longer side and
+    /// then the shorter.
+    /// </summary>
+    private static bool TrySurfaceSamples(CommandLine options, out int samples, out int? deep)
+    {
+        samples = SurfaceCommand.DefaultSamples;
+        deep = null;
+
+        if (options.Value("samples") is not { } text)
+        {
+            return true;
+        }
+
+        var parts = text.Split('x');
+
+        // How it is written, and no more: how many samples a surface may have is the surface's
+        // own rule (SurfaceCommand.Check), stated there once.
+        if (parts.Length is 1 or 2
+            && TryWhole(parts[0], 0, int.MaxValue, out var longer))
+        {
+            samples = longer;
+
+            if (parts.Length == 1)
+            {
+                return true;
+            }
+
+            if (TryWhole(parts[1], 0, int.MaxValue, out var shorter))
+            {
+                deep = shorter;
+                return true;
+            }
+        }
+
+        return Refuse(
+            options,
+            "samples",
+            $"--samples takes a whole number, or NxM for the longer side and then the shorter, written as digits alone, and '{text}' is neither.");
+    }
+
+    /// <summary>The pixel size of a raster picture, from <c>--width-px</c> and <c>--height-px</c>.</summary>
+    /// <param name="options">The command line.</param>
+    /// <param name="what">What is being drawn, for the message: "a still", "a surface picture".</param>
+    /// <param name="width">Width in pixels, 1600 unless given.</param>
+    /// <param name="height">Height in pixels, 1000 unless given.</param>
+    private static bool TryPictureSize(CommandLine options, string what, out int width, out int height)
+    {
+        height = 0;
+        var pixels = $"a whole number of pixels ({what} is between 16 and 8192 pixels on each side)";
+
+        return TryWholeFlag(options, "width-px", 1600, 16, 8192, out width, pixels)
+            && TryWholeFlag(options, "height-px", 1000, 16, 8192, out height, pixels);
     }
 
     private static int Probe(CommandLine options)
@@ -1168,8 +1840,7 @@ public static class Program
         {
             if (options.Has(bare))
             {
-                Console.Error.WriteLine(
-                    $"--{bare} has no unit. Say it in the flag's name: --{bare}-mm x,y,z (millimetres).");
+                Refuse(options, bare, $"--{bare} has no unit.", $"Say it in the flag's name: --{bare}-mm x,y,z (millimetres).");
                 return (int)ExitCode.ValidationFailure;
             }
         }
@@ -1184,10 +1855,11 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        if (!TryVec3(options.Value(hasPoint ? "at-mm" : "line-mm"), out var from))
+        var fromFlag = hasPoint ? "at-mm" : "line-mm";
+
+        if (!TryVec3(options.Value(fromFlag), out var from))
         {
-            Console.Error.WriteLine(
-                $"--{(hasPoint ? "at-mm" : "line-mm")} takes three numbers, x,y,z, in millimetres (no spaces).");
+            Refuse(options, fromFlag, $"--{fromFlag} takes three numbers, x,y,z, in millimetres (no spaces), and '{options.Value(fromFlag)}' is not that.");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -1198,47 +1870,49 @@ public static class Program
         {
             if (!TryVec3(options.Value("to-mm"), out var end))
             {
-                Console.Error.WriteLine("--line-mm needs --to-mm x,y,z, the other end, in millimetres.");
+                Refuse(
+                    options,
+                    "to-mm",
+                    options.Value("to-mm") is { } given
+                        ? $"--to-mm takes three numbers, x,y,z, in millimetres (no spaces), and '{given}' is not that."
+                        : "--line-mm needs --to-mm x,y,z, the other end, in millimetres.");
                 return (int)ExitCode.ValidationFailure;
             }
 
             to = end;
 
-            if (options.Value("samples") is { } asked
-                && !int.TryParse(asked, NumberStyles.Integer, invariant, out samples))
+            if (!TryWholeFlag(options, "samples", samples, 2, ProbeCommand.MaximumSamples, out samples, "a whole number of samples, both ends included,"))
             {
-                Console.Error.WriteLine($"--samples takes a whole number, and '{asked}' is not one.");
                 return (int)ExitCode.ValidationFailure;
             }
         }
         else if (options.Has("to-mm") || options.Has("samples"))
         {
-            Console.Error.WriteLine("--to-mm and --samples describe a line; a point takes only --at-mm.");
+            Refuse(options, options.Has("to-mm") ? "to-mm" : "samples", "--to-mm and --samples describe a line; a point takes only --at-mm.");
             return (int)ExitCode.ValidationFailure;
         }
 
-        double? at = null;
-
-        if (options.Value("at-us") is { } instant)
+        if (!TryNumberFlag(options, "at-us", "a time in microseconds", out var at))
         {
-            if (!double.TryParse(instant, NumberStyles.Float, invariant, out var parsed))
-            {
-                Console.Error.WriteLine($"--at-us takes a time in microseconds, and '{instant}' is not one.");
-                return (int)ExitCode.ValidationFailure;
-            }
+            return (int)ExitCode.ValidationFailure;
+        }
 
-            at = parsed;
+        // The table's destination before the field is built: a directory, or the model itself, is
+        // known without solving anything.
+        if (options.PathValue(PathOption.Csv) is { } csvFirst)
+        {
+            ArtifactFiles.CheckAll([("csv", csvFirst)], options.Positional[0]);
         }
 
         var outcome = ProbeCommand.Execute(options.Positional[0], new ProbeRequest(from, to, samples, at));
 
-        if (options.Value("csv") is { } csv)
+        if (options.PathValue(PathOption.Csv) is { } csv)
         {
             var target = Path.GetFullPath(csv);
 
             if (!options.Has("dry-run"))
             {
-                File.WriteAllText(target, ProbeCommand.ToCsv(outcome));
+                ArtifactFiles.WriteText("csv", target, ProbeCommand.ToCsv(outcome), options.Positional[0]);
             }
 
             Console.Error.WriteLine(options.Has("dry-run") ? $"would write {target}" : $"wrote {target}");
@@ -1334,7 +2008,7 @@ public static class Program
 
     private static int Test(CommandLine options)
     {
-        var root = options.Value("project")
+        var root = options.PathValue(PathOption.Project)
             ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
 
         var outcome = TestCommand.Execute(root);
@@ -1416,7 +2090,7 @@ public static class Program
     /// </remarks>
     private static int Project(CommandLine options)
     {
-        var root = options.Value("project")
+        var root = options.PathValue(PathOption.Project)
             ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
 
         var outcome = ProjectCommand.Execute(root);
@@ -1537,7 +2211,7 @@ public static class Program
 
     private static int Verify(CommandLine options)
     {
-        var root = options.Value("project")
+        var root = options.PathValue(PathOption.Project)
             ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
 
         var outcome = VerifyCommand.Execute(root);
@@ -1594,7 +2268,7 @@ public static class Program
     /// </remarks>
     private static int Report(CommandLine options)
     {
-        var root = options.Value("project")
+        var root = options.PathValue(PathOption.Project)
             ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
 
         var outcome = ReportCommand.Execute(root);
@@ -1607,7 +2281,7 @@ public static class Program
         // The page goes at the project root rather than into results/, and that is not
         // cosmetic: results/ is what `verify` walks and what this reads, so a report
         // written there would become an input to the next one.
-        var target = options.Value("out")
+        var target = options.PathValue(PathOption.Out)
             ?? Path.Combine(outcome.Root, "report.html");
 
         var page = ReportPage.Write(outcome, Path.GetFileName(outcome.Root.TrimEnd(
@@ -1624,12 +2298,7 @@ public static class Program
         // A named directory is created rather than refused, since `--out reports/tonight.html`
         // is the obvious way to keep a series of them and failing on the first is a poor
         // answer. The default target's directory is the project root and always exists.
-        if (Path.GetDirectoryName(Path.GetFullPath(target)) is { } directory)
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        File.WriteAllText(target, page);
+        ArtifactFiles.WriteText(options.PathValue(PathOption.Out) is null ? null : "out", target, page);
 
         foreach (var run in outcome.Runs)
         {
@@ -1697,7 +2366,7 @@ public static class Program
         }
 
         var modelPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(modelPath);
         var layout = new ProjectLayout(root);
         var dryRun = options.Has("dry-run");
 
@@ -1713,46 +2382,20 @@ public static class Program
 
             if (options.Value("box-mm") is { } box)
             {
-                var parts = box.Split(',', StringSplitOptions.TrimEntries);
-
-                if (parts.Length != 6
-                    || parts.Any(p => !double.TryParse(
-                        p, NumberStyles.Float, CultureInfo.InvariantCulture, out _)))
+                if (!TryNumbers(box, 6, out var v))
                 {
-                    Console.Error.WriteLine(
-                        "--box-mm takes six numbers, x0,y0,z0,x1,y1,z1, in millimetres (no spaces).");
+                    Refuse(options, "box-mm", $"--box-mm takes six numbers, x0,y0,z0,x1,y1,z1, in millimetres (no spaces), and '{box}' is not that.");
                     return (int)ExitCode.ValidationFailure;
                 }
 
-                var v = parts.Select(p => double.Parse(p, CultureInfo.InvariantCulture)).ToArray();
                 boxMin = new Core.Geometry.Vec3(v[0], v[1], v[2]);
                 boxMax = new Core.Geometry.Vec3(v[3], v[4], v[5]);
             }
 
-            double? step = null;
-            double? instant = null;
-
-            foreach (var (flag, unit) in new[] { ("step-mm", "millimetres"), ("at-us", "microseconds") })
+            if (!TryNumberFlag(options, "step-mm", "a number of millimetres", out var step)
+                || !TryNumberFlag(options, "at-us", "a number of microseconds", out var instant))
             {
-                if (options.Value(flag) is not { } asked)
-                {
-                    continue;
-                }
-
-                if (!double.TryParse(asked, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
-                {
-                    Console.Error.WriteLine($"--{flag} takes a number of {unit}, and '{asked}' is not one.");
-                    return (int)ExitCode.ValidationFailure;
-                }
-
-                if (flag == "step-mm")
-                {
-                    step = parsed;
-                }
-                else
-                {
-                    instant = parsed;
-                }
+                return (int)ExitCode.ValidationFailure;
             }
 
             outcome = ExportCommand.Composite(modelPath, layout, boxMin, boxMax, step, instant, dryRun);
@@ -1796,7 +2439,13 @@ public static class Program
     /// </remarks>
     private static int Render(string[] args, CommandLine options)
     {
-        var kind = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : null;
+        // The kind wherever the flags are (`render --dry-run surface m.json`), as VerbFlags.For
+        // reads it. A first word that is no kind, after flags, is the model of an implicit
+        // section, as it always was: `render --out x.svg m.json`.
+        var kind = VerbFlags.SubVerb(args) is { } word
+            && (word is "section" or "still" or "animation" or "surface" || !args[1].StartsWith('-'))
+            ? word
+            : null;
 
         if (kind is "still")
         {
@@ -1806,6 +2455,11 @@ public static class Program
         if (kind is "animation")
         {
             return Animation(options);
+        }
+
+        if (kind is "surface")
+        {
+            return Surface(options);
         }
 
         var positional = kind is null ? options.Positional : options.Positional.Skip(1).ToList();
@@ -1828,6 +2482,16 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
+        // TryParse rather than Parse: "5us" is the caller's mistake, and Parse threw it through
+        // to the handler for defects in the engine, exit 6.
+        if (!TryNumberFlag(options, "at-us", "a time in microseconds", out var sectionAt)
+            || !TryNumberFlag(options, "width-mm", "a width in millimetres", out var sectionWidth)
+            || !TryWholeFlag(options, "equipotentials", 0, 0, 1000, out var sectionLevels, "a whole number of contour levels")
+            || !TryChoiceFlag(options, "format", FormatNames, out var sectionFormat))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var given = Path.GetFullPath(positional[0]);
 
         // A render spec names its own model (RND-2), so either may be handed in and
@@ -1840,17 +2504,9 @@ public static class Program
 
         spec = spec with
         {
-            Format = (options.Value("format") ?? spec.Format.ToString()).ToUpperInvariant() switch
-            {
-                "PDF" => FigureFormat.Pdf,
-                _ => FigureFormat.Svg,
-            },
-            WidthMm = options.Value("width-mm") is { } width
-                ? double.Parse(width, CultureInfo.InvariantCulture)
-                : spec.WidthMm,
-            Equipotentials = options.Value("equipotentials") is { } count
-                ? int.Parse(count, CultureInfo.InvariantCulture)
-                : spec.Equipotentials,
+            Format = FormatOf(sectionFormat, spec.Format),
+            WidthMm = sectionWidth ?? spec.WidthMm,
+            Equipotentials = options.Has("equipotentials") ? sectionLevels : spec.Equipotentials,
             Trajectory = !options.Has("no-trajectory") && spec.Trajectory,
             Caption = options.Value("caption") ?? spec.Caption,
 
@@ -1858,21 +2514,20 @@ public static class Program
             // A bare --at would be ambiguous between microseconds and seconds by a
             // factor of a million, and this is the same rule that makes {"energy": 4000}
             // a validation error in a model document.
-            AtSeconds = options.Value("at-us") is { } at
-                ? double.Parse(at, CultureInfo.InvariantCulture) * 1e-6
-                : spec.AtSeconds,
+            AtSeconds = sectionAt is { } at ? at * 1e-6 : spec.AtSeconds,
+            InstantFromFlag = sectionAt is not null,
         };
 
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(modelPath);
 
-        if (!RenderProgress(options, out var sectionProgress))
+        if (!TryProgress(options, out var sectionProgress))
         {
             return (int)ExitCode.ValidationFailure;
         }
 
         var outcome = RenderCommand.Section(
-            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
-            sectionProgress);
+            modelPath, new ProjectLayout(root), spec, options.PathValue(PathOption.Out), options.Has("dry-run"),
+            sectionProgress, isSpec ? given : null);
 
         if (options.Has("json"))
         {
@@ -1929,49 +2584,19 @@ public static class Program
         }
 
         var modelPath = positional[0];
-        var view = options.Value("view") ?? "iso";
-
-        if (!ViewportPicture.Views.ContainsKey(view))
-        {
-            Console.Error.WriteLine(
-                $"no view named '{view}'; the named views are "
-                + string.Join(", ", ViewportPicture.Views.Keys));
-
-            return (int)ExitCode.ValidationFailure;
-        }
-
-        // TryParse rather than Parse: a typo such as "1600px" is the caller's mistake, and
-        // Parse would throw it through to the handler for defects in the engine, exit 6.
-        int? Pixels(string flag, int otherwise)
-        {
-            if (options.Value(flag) is not { } given)
-            {
-                return otherwise;
-            }
-
-            if (int.TryParse(given, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out var pixels))
-            {
-                return pixels;
-            }
-
-            Console.Error.WriteLine($"--{flag} '{given}' is not a whole number of pixels; a still is between 16 and 8192 pixels on each side");
-
-            return null;
-        }
-
-        if (Pixels("width-px", 1600) is not { } width || Pixels("height-px", 1000) is not { } height)
+        if (!TryChoiceFlag(options, "view", ViewportPicture.Views.Keys, out var named, exact: true))
         {
             return (int)ExitCode.ValidationFailure;
         }
 
-        if (width is < 16 or > 8192 || height is < 16 or > 8192)
-        {
-            Console.Error.WriteLine("a still is between 16 and 8192 pixels on each side");
+        var view = named ?? "iso";
 
+        if (!TryPictureSize(options, "a still", out var width, out var height))
+        {
             return (int)ExitCode.ValidationFailure;
         }
 
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(modelPath);
 
         var outcome = StillCommand.Execute(
             modelPath,
@@ -1980,7 +2605,7 @@ public static class Program
             width,
             height,
             options.Has("see-through"),
-            options.Value("out"),
+            options.PathValue(PathOption.Out),
             options.Has("dry-run"),
             scale: !options.Has("no-scale"));
 
@@ -2010,9 +2635,189 @@ public static class Program
         return (int)ExitCode.Success;
     }
 
-    /// <summary>
-    /// Draws a flight as a numbered sequence of vector frames (RND-7).
-    /// </summary>
+    /// <summary>The usage of <c>einzel render surface</c>.</summary>
+    private const string SurfaceUsage =
+        """
+        usage: einzel render surface <model.json> [--plane xy|xz|yz] [--offset-mm d]
+               [--box-mm a0,b0,a1,b1] [--samples N|NxM] [--mesh-lines N]
+               [--height potential|energy] [--relief F] [--height-mm-per-v X | --height-mm-per-ev X]
+               [--at-us t] [--cycle-mean] [--view iso|side|front|top]
+               [--width-px N] [--height-px N] [--out <file.png>] [--csv <file>] [--no-scale] [--dry-run] [--json]
+        draws the potential on a plane as height above it (SIMION's potential-energy view)
+          --plane        the plane; a cross-section or axisymmetric model defaults to its own (xy),
+                         a volume to the plane through its middle normal to its thinnest side
+          --offset-mm    how far along the plane's normal; by default the middle of the domain
+                         (z = 0 for a 2-D model's own xy plane)
+          --box-mm       the rectangle sampled, in the plane's own axis order (for xz: x0,z0,x1,z1)
+          --samples      along the longer side (241), or NxM for the longer side and then the
+                         shorter; by default the shorter gets square cells, and never fewer than 61
+          --height       potential (volts, the default) or energy: q*phi for the model's ion, in eV
+          --relief       the drawn height of the whole range as a fraction of the longer side (0.35)
+          --at-us        the instant to draw a driven or sequenced field at
+          --cycle-mean   the potential averaged over one drive cycle: for a sinusoidal drive, the DC;
+                         refused for a field with no drive, which has no cycle to average
+          --no-scale     leave the vertical scale off the picture (it is also left off, and
+                         reported absent, in --view top and where a small picture has no room)
+          --csv          also write the sampled values, one row per node
+
+        """;
+
+    /// <summary>Draws a model's potential on a plane as a height field, to a PNG.</summary>
+    /// <remarks>
+    /// Every number carries its unit in the flag's name, as <c>probe</c> does; the height scale
+    /// is in the PNG's text, in <c>--json</c>, and on the picture.
+    /// </remarks>
+    private static int Surface(CommandLine options)
+    {
+        var positional = options.Positional.Skip(1).ToList();
+
+        if (positional.Count == 0)
+        {
+            Console.Error.Write(SurfaceUsage);
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        foreach (var bare in new[] { "offset", "box", "at", "height-mm" })
+        {
+            if (options.Has(bare))
+            {
+                Refuse(options, bare, $"--{bare} has no unit; see the usage for the spelling with the unit in its name.");
+                Console.Error.Write(SurfaceUsage);
+                return (int)ExitCode.ValidationFailure;
+            }
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (!TryNumberFlag(options, "offset-mm", "a number of millimetres", out var offset)
+            || !TryNumberFlag(options, "relief", "a number", out var relief)
+            || !TryNumberFlag(options, "height-mm-per-v", "a number of millimetres per volt", out var perVolt)
+            || !TryNumberFlag(options, "height-mm-per-ev", "a number of millimetres per electronvolt", out var perEv)
+            || !TryNumberFlag(options, "at-us", "a time in microseconds", out var at)
+            || !TrySurfaceSamples(options, out var samples, out var deepSamples)
+            || !TryWholeFlag(options, "mesh-lines", SurfaceCommand.DefaultMeshLines, SurfaceCommand.MinimumMeshLines, int.MaxValue, out var meshLines, "a whole number of mesh lines")
+            || !TryPictureSize(options, "a surface picture", out var width, out var height)
+            || !TryChoiceFlag(options, "height", SurfaceHeight.Spellings, out var heightGiven, exact: true)
+            || !TryChoiceFlag(options, "view", SurfaceCommand.Views.Keys, out var named, exact: true))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var heightKind = SurfaceHeight.Parse(heightGiven ?? SurfaceHeight.Spellings[0]);
+
+        // Two ways of saying how tall, and the usage offers them as alternatives: with an
+        // explicit scale the relief changed nothing and said nothing.
+        if (relief is not null && (perVolt ?? perEv) is not null)
+        {
+            var scaleFlag = perVolt is not null ? "height-mm-per-v" : "height-mm-per-ev";
+
+            Refuse(
+                options,
+                "relief",
+                $"--relief and --{scaleFlag} both say how tall the surface is drawn, and only one can: with --{scaleFlag} the relief would be ignored.",
+                $"give --relief, a fraction of the longer side, or --{scaleFlag}, an explicit scale - not both");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        // The unit of an explicit scale must match what the height is, or it is the ambiguity
+        // a unit in the flag's name exists to prevent.
+        if ((perVolt is not null && heightKind == SurfaceHeight.Energy)
+            || (perEv is not null && heightKind == SurfaceHeight.Potential))
+        {
+            Refuse(
+                options,
+                perVolt is not null ? "height-mm-per-v" : "height-mm-per-ev",
+                "--height-mm-per-v goes with --height potential and --height-mm-per-ev with --height energy.");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        IReadOnlyList<double>? box = null;
+
+        if (options.Value("box-mm") is { } boxText)
+        {
+            if (!TryNumbers(boxText, 4, out var numbers))
+            {
+                Refuse(options, "box-mm", $"--box-mm takes four numbers, a0,b0,a1,b1, in millimetres in the plane's own axis order (no spaces), and '{boxText}' is not that.");
+                return (int)ExitCode.ValidationFailure;
+            }
+
+            box = numbers;
+        }
+
+        var view = named ?? "iso";
+
+        var request = new SurfaceRequest(
+            options.Value("plane"),
+            offset,
+            box,
+            samples,
+            meshLines,
+            heightKind,
+            relief ?? SurfaceCommand.DefaultRelief,
+            perVolt ?? perEv,
+            at,
+            options.Has("cycle-mean"),
+            deepSamples);
+
+        var modelPath = positional[0];
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(modelPath);
+
+        // Every flag error the command raises is located at its flag already (FlagPath), as every
+        // other verb's is: this verb alone used to translate pointers of its own.
+        var outcome = SurfaceCommand.Execute(
+            modelPath,
+            new ProjectLayout(root),
+            request,
+            view,
+            width,
+            height,
+            options.PathValue(PathOption.Out),
+            options.Has("dry-run"),
+            scale: !options.Has("no-scale"),
+            csvPath: options.PathValue(PathOption.Csv));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(outcome.Written ? $"wrote {outcome.Artifact}" : $"would write {outcome.Artifact}");
+
+        if (outcome.Csv is { } csvWritten)
+        {
+            Console.Out.WriteLine(outcome.Written ? $"wrote {csvWritten}" : $"would write {csvWritten}");
+        }
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"{outcome.Height} on the {outcome.Plane} plane at {outcome.OffsetMm:G6} mm: {outcome.AcrossAxis} {outcome.AcrossMm[0]:G6} to {outcome.AcrossMm[1]:G6} mm across, {outcome.DeepAxis} {outcome.DeepMm[0]:G6} to {outcome.DeepMm[1]:G6} mm deep, {outcome.Samples[0]} by {outcome.Samples[1]} samples ({outcome.StepsMm[0]:G4} by {outcome.StepsMm[1]:G4} mm)"));
+        var when = outcome.CycleMean
+            ? string.Create(invariant, $"; cycle mean over {outcome.CycleMeanWindowUs:G6} us")
+            : outcome.InstantUs is { } t ? string.Create(invariant, $"; at t = {t:G6} us") : string.Empty;
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"height {outcome.HeightMmPerUnit:G4} mm per {outcome.Unit} ({outcome.UnitsPerMm:G4} {outcome.Unit} per drawn mm); values {outcome.Lowest:G6} to {outcome.Highest:G6} {outcome.Unit}{when}"));
+
+        if (!outcome.ScaleDrawn && !options.Has("no-scale"))
+        {
+            Console.Out.WriteLine(
+                "the vertical scale is not on the picture: it does not show in this view or does not fit at this size; "
+                + "the scale above is in the PNG's text");
+        }
+
+        foreach (var plateau in outcome.Plateaus)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant, $"  plateau {plateau.Conductor}: {plateau.PotentialV:G6} V ({plateau.Samples} samples)"));
+        }
+
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
 
     /// <summary>
     /// Draws a flight as a numbered sequence of vector frames (RND-7).
@@ -2053,6 +2858,17 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
+        // Before the file is opened, as the section reads its own: a typo in a flag is the
+        // caller's mistake whatever the file holds, and Parse threw it through to the handler
+        // for defects in the engine, exit 6.
+        if (!TryNumberFlag(options, "width-mm", "a width in millimetres", out var width)
+            || !TryWholeFlag(options, "fps", 0, 1, 1000, out var fps, "a whole number of frames per second")
+            || !TryChoiceFlag(options, "format", FormatNames, out var format)
+            || !TryProgress(options, out var animationProgress))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var given = Path.GetFullPath(positional[0]);
 
         if (!ReadsAsSpec(given))
@@ -2073,30 +2889,19 @@ public static class Program
 
         spec = spec with
         {
-            Format = (options.Value("format") ?? spec.Format.ToString()).ToUpperInvariant() switch
-            {
-                "PDF" => FigureFormat.Pdf,
-                _ => FigureFormat.Svg,
-            },
-            WidthMm = options.Value("width-mm") is { } width
-                ? double.Parse(width, CultureInfo.InvariantCulture)
-                : spec.WidthMm,
+            Format = FormatOf(format, spec.Format),
+            WidthMm = width ?? spec.WidthMm,
             Caption = options.Value("caption") ?? spec.Caption,
-            Animation = options.Value("fps") is { } fps && spec.Animation is { } declared
-                ? declared with { FramesPerSecond = int.Parse(fps, CultureInfo.InvariantCulture) }
+            Animation = options.Has("fps") && spec.Animation is { } declared
+                ? declared with { FramesPerSecond = fps }
                 : spec.Animation,
         };
 
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
-
-        if (!RenderProgress(options, out var animationProgress))
-        {
-            return (int)ExitCode.ValidationFailure;
-        }
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(modelPath);
 
         var outcome = RenderCommand.Animation(
-            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
-            animationProgress);
+            modelPath, new ProjectLayout(root), spec, options.PathValue(PathOption.Out), options.Has("dry-run"),
+            animationProgress, given);
 
         if (options.Has("json"))
         {
@@ -2150,125 +2955,167 @@ public static class Program
     /// <summary>The extension authoring loop: list, test, register.</summary>
     private static int Ext(string[] args, CommandLine options)
     {
-        var action = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : "list";
+        // The sub-verb wherever the flags are: `ext --json list` and `ext --project p list` are
+        // `ext list`, as VerbFlags.For reads them.
+        var action = VerbFlags.SubVerb(args) ?? "list";
+
+        // Each action is a handler of its own, as each of render's kinds is: the flags one reads
+        // are its own, and the registry is keyed by the action.
+        if (action == "list")
+        {
+            return ExtList(options);
+        }
+
+        if (action == "test")
+        {
+            return ExtTest(options);
+        }
+
+        if (action == "register")
+        {
+            return ExtRegister(options);
+        }
+
+        Console.Error.WriteLine($"unknown 'ext' action '{action}'");
+        Console.Error.WriteLine("usage: einzel ext list | test <name> | register <name>");
+        return (int)ExitCode.ValidationFailure;
+    }
+
+    private static ProjectLayout ExtProject(CommandLine options) =>
+        new(options.PathValue(PathOption.Project) ?? InferProjectRoot(Directory.GetCurrentDirectory()));
+
+    private static int ExtList(CommandLine options)
+    {
+        var project = ExtProject(options);
+
+        var outcome = ExtensionCommand.List(project);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(
+            $"engine {outcome.EngineVersion}, interpreter {outcome.Interpreter ?? "NOT FOUND"}");
+
+        if (outcome.Extensions.Count == 0)
+        {
+            Console.Out.WriteLine("no extensions installed");
+        }
+
+        foreach (var entry in outcome.Extensions)
+        {
+            // LIC-2. An extension is third-party code run against this engine,
+            // and a missing licence is printed as MISSING rather than left off the
+            // line: the one extension worth asking about must not look like the
+            // ones that answered.
+            Console.Out.WriteLine(
+                $"  {entry.Name} {entry.Version}  {entry.Kind}/{entry.Trust}"
+                + $"  licence {entry.Licence ?? "NOT DECLARED"}"
+                + $"{(entry.Incompatibility is null ? string.Empty : "  INCOMPATIBLE: " + entry.Incompatibility)}");
+        }
+
+        // EXT-3 asks for OS-level isolation this build does not apply, and
+        // somebody deciding whether to run agent-authored code needs to know
+        // that before they run it rather than after.
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("the subprocess runner does NOT enforce:");
+
+        foreach (var gap in outcome.UnenforcedContainment)
+        {
+            Console.Error.WriteLine($"  - {gap}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int ExtTest(CommandLine options)
+    {
+        var project = ExtProject(options);
         var rest = options.Positional.Skip(1).ToList();
 
-        var root = options.Value("project") ?? InferProjectRoot(Directory.GetCurrentDirectory());
-        var project = new ProjectLayout(root);
-
-        switch (action)
+        if (rest.Count == 0)
         {
-            case "list":
-            {
-                var outcome = ExtensionCommand.List(project);
-
-                if (options.Has("json"))
-                {
-                    return Emit(outcome);
-                }
-
-                Console.Out.WriteLine(
-                    $"engine {outcome.EngineVersion}, interpreter {outcome.Interpreter ?? "NOT FOUND"}");
-
-                if (outcome.Extensions.Count == 0)
-                {
-                    Console.Out.WriteLine("no extensions installed");
-                }
-
-                foreach (var entry in outcome.Extensions)
-                {
-                    // LIC-2. An extension is third-party code run against this engine,
-                    // and a missing licence is printed as MISSING rather than left off the
-                    // line: the one extension worth asking about must not look like the
-                    // ones that answered.
-                    Console.Out.WriteLine(
-                        $"  {entry.Name} {entry.Version}  {entry.Kind}/{entry.Trust}"
-                        + $"  licence {entry.Licence ?? "NOT DECLARED"}"
-                        + $"{(entry.Incompatibility is null ? string.Empty : "  INCOMPATIBLE: " + entry.Incompatibility)}");
-                }
-
-                // EXT-3 asks for OS-level isolation this build does not apply, and
-                // somebody deciding whether to run agent-authored code needs to know
-                // that before they run it rather than after.
-                Console.Error.WriteLine();
-                Console.Error.WriteLine("the subprocess runner does NOT enforce:");
-
-                foreach (var gap in outcome.UnenforcedContainment)
-                {
-                    Console.Error.WriteLine($"  - {gap}");
-                }
-
-                return (int)ExitCode.Success;
-            }
-
-            case "test":
-            {
-                if (rest.Count == 0)
-                {
-                    Console.Error.WriteLine(
-                        "usage: einzel ext test <name> [--input <file.json>] [--project <dir>] [--json]");
-                    return (int)ExitCode.ValidationFailure;
-                }
-
-                var payload = options.Value("input") is { } file
-                    ? System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.GetFullPath(file)))
-                    : new System.Text.Json.Nodes.JsonObject();
-
-                var outcome = ExtensionCommand.Test(project, rest[0], payload);
-
-                if (options.Has("json"))
-                {
-                    return Emit(outcome);
-                }
-
-                Console.Out.WriteLine(
-                    $"{outcome.Name} {outcome.Version} returned in {outcome.ElapsedMs:F0} ms:");
-
-                Console.Out.WriteLine(outcome.Output?.ToJsonString() ?? "null");
-
-                if (outcome.Diagnostics is { } diagnostics)
-                {
-                    Console.Error.Write(diagnostics);
-                }
-
-                foreach (var warning in outcome.Warnings)
-                {
-                    Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
-                }
-
-                return (int)ExitCode.Success;
-            }
-
-            case "register":
-            {
-                if (rest.Count == 0)
-                {
-                    Console.Error.WriteLine(
-                        "usage: einzel ext register <name> [--kind objective|analysis|geometry|"
-                        + "sequence|interchange] [--project <dir>] [--dry-run] [--json]");
-                    return (int)ExitCode.ValidationFailure;
-                }
-
-                var kind = Enum.TryParse<Einzel.Extensions.ExtensionKind>(
-                    options.Value("kind") ?? "objective", ignoreCase: true, out var parsed)
-                    ? parsed
-                    : Einzel.Extensions.ExtensionKind.Objective;
-
-                var created = ExtensionCommand.Register(project, rest[0], kind, options.Has("dry-run"));
-
-                foreach (var file in created)
-                {
-                    Console.Out.WriteLine(options.Has("dry-run") ? $"would write {file}" : $"wrote {file}");
-                }
-
-                return (int)ExitCode.Success;
-            }
-
-            default:
-                Console.Error.WriteLine($"unknown 'ext' action '{action}'");
-                Console.Error.WriteLine("usage: einzel ext list | test <name> | register <name>");
-                return (int)ExitCode.ValidationFailure;
+            Console.Error.WriteLine(
+                "usage: einzel ext test <name> [--input <file.json>] [--project <dir>] [--json]");
+            return (int)ExitCode.ValidationFailure;
         }
+
+        System.Text.Json.Nodes.JsonNode? payload = new System.Text.Json.Nodes.JsonObject();
+
+        if (options.PathValue(PathOption.Input) is { } file)
+        {
+            var text = File.ReadAllText(Path.GetFullPath(file));
+
+            try
+            {
+                payload = System.Text.Json.Nodes.JsonNode.Parse(text);
+            }
+            catch (System.Text.Json.JsonException malformed)
+            {
+                // The caller's file, not a defect in the engine: it was exit 6.
+                Refuse(options, "input", $"--input takes a JSON file, and '{file}' does not read as JSON: {malformed.Message}");
+                return (int)ExitCode.ValidationFailure;
+            }
+        }
+
+        var outcome = ExtensionCommand.Test(project, rest[0], payload);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(
+            $"{outcome.Name} {outcome.Version} returned in {outcome.ElapsedMs:F0} ms:");
+
+        Console.Out.WriteLine(outcome.Output?.ToJsonString() ?? "null");
+
+        if (outcome.Diagnostics is { } diagnostics)
+        {
+            Console.Error.Write(diagnostics);
+        }
+
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int ExtRegister(CommandLine options)
+    {
+        var project = ExtProject(options);
+        var rest = options.Positional.Skip(1).ToList();
+
+        if (rest.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel ext register <name> [--kind objective|analysis|geometry|"
+                + "sequence|interchange] [--project <dir>] [--dry-run] [--json]");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var kinds = Enum.GetValues<Einzel.Extensions.ExtensionKind>();
+
+        if (!TryChoiceFlag(options, "kind", kinds.Select(k => k.ToString().ToLowerInvariant()), out var kindName))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var kind = kindName is null
+            ? Einzel.Extensions.ExtensionKind.Objective
+            : kinds.First(k => string.Equals(k.ToString(), kindName, StringComparison.OrdinalIgnoreCase));
+
+        var created = ExtensionCommand.Register(project, rest[0], kind, options.Has("dry-run"));
+
+        foreach (var file in created)
+        {
+            Console.Out.WriteLine(options.Has("dry-run") ? $"would write {file}" : $"wrote {file}");
+        }
+
+        return (int)ExitCode.Success;
     }
 
     /// <summary>
@@ -2290,9 +3137,10 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        var ions = options.Value("ions") is { } count
-            ? int.Parse(count, CultureInfo.InvariantCulture)
-            : 60;
+        if (!TryWholeFlag(options, "ions", 60, 1, 1_000_000, out var ions, "a whole number of ions"))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
 
         var outcome = ModeComparison.Execute(Path.GetFullPath(options.Positional[0]), ions);
 
@@ -2338,13 +3186,18 @@ public static class Program
     {
         var root = options.Positional.Count > 0 ? options.Positional[0] : ".";
 
+        if (!TryChoiceFlag(options, "vcs", VcsNames, out var vcs, exact: true))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         if (options.Has("dry-run"))
         {
             Console.Out.WriteLine($"would create a project at {Path.GetFullPath(root)}");
             return (int)ExitCode.Success;
         }
 
-        var outcome = InitCommand.Execute(root, withGit: options.Value("vcs") == "git");
+        var outcome = InitCommand.Execute(root, withGit: vcs == "git");
 
         if (options.Has("json"))
         {
@@ -2398,17 +3251,8 @@ public static class Program
         // same conversation. The value is in the parameter's own declared unit: a person
         // editing a 5 mm radius types 7, and demanding 0.007 would ask them to do the
         // conversion the format exists to make unnecessary.
-        // `--set` with nothing after it is a mistake, not a request to do nothing. The
-        // malformed `--set name` case below is already refused, so silently listing the
-        // outline here would make one kind of malformed set loud and the other silent.
-        if (options.Has("set") && options.Value("set") is null)
-        {
-            Console.Error.WriteLine(
-                "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
-
-            return (int)ExitCode.ValidationFailure;
-        }
-
+        // `--set` with nothing after it never reaches here: it is a flag that takes a value
+        // given none, which the command line refuses for every verb before the verb runs.
         // Every occurrence, not the last. `--set a=1 --set b=2` under a last-wins read
         // applies b, drops a, exits 0 and says nothing - which is how an agent that
         // batched two edits lost one and believed both had landed.
@@ -2425,21 +3269,17 @@ public static class Program
 
                 if (assignment is null || split <= 0)
                 {
-                    Console.Error.WriteLine(
-                        "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
-
+                    Refuse(options, "set", $"--set takes <parameter>=<value>, for example --set inscribedRadius=7, and '{assignment}' is not that");
                     return (int)ExitCode.ValidationFailure;
                 }
 
                 var name = assignment[..split];
 
-                if (!double.TryParse(
-                    assignment[(split + 1)..],
-                    System.Globalization.NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out var value))
+                if (!TryNumber(assignment[(split + 1)..], out var value))
                 {
-                    Console.Error.WriteLine(
+                    Refuse(
+                        options,
+                        "set",
                         $"'{assignment[(split + 1)..]}' is not a number. The value is in the "
                         + "parameter's own declared unit, so write the magnitude alone");
 
@@ -2572,7 +3412,7 @@ public static class Program
         }
 
         var modelPath = Path.GetFullPath(options.Positional[0]);
-        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var root = options.PathValue(PathOption.Project) ?? InferProjectRoot(modelPath);
         var project = new ProjectLayout(root);
 
         // WATCHED BY DEFAULT, and that is the decision rather than the plumbing. A flag
@@ -2581,19 +3421,9 @@ public static class Program
         // to say how far they had got, the last of them to a Windows update. Thirty
         // seconds, so a run of a few seconds says one thing and an eight-hour run says a
         // thousand; `--progress 0` asks for silence.
-        var interval = 30.0;
-
-        if (options.Value("progress") is { } asked)
+        if (!TryProgress(options, out var progress))
         {
-            if (!double.TryParse(
-                    asked, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out interval))
-            {
-                Console.Error.WriteLine(
-                    $"--progress takes an interval in seconds, and '{asked}' is not one. "
-                    + "Use 0 to turn it off.");
-                return (int)ExitCode.ValidationFailure;
-            }
+            return (int)ExitCode.ValidationFailure;
         }
 
         var (run, validation) = RunCommand.Execute(
@@ -2604,7 +3434,7 @@ public static class Program
 
             // Diagnostics on stderr (CLI-2), so a caller piping `--json` gets the result
             // document and nothing else however long the run took to produce it.
-            progress: new RunProgress(interval, Console.Error.WriteLine));
+            progress: progress);
 
         if (run is null)
         {
@@ -3045,7 +3875,7 @@ public static class Program
 
         starting out:
           doctor [dir]                  check the installation, and a project if given
-          schema [--study]              the model format, or the study format, as JSON Schema
+          schema [--study | --units]    the model format, or the study format, as JSON Schema; or the unit symbols
           templates [name]              list device templates, or print one
           examples [name]               list example models, or print one
 
@@ -3075,6 +3905,7 @@ public static class Program
           compare <model.json>          run both transport modes and report the disagreement
           render section <model.json>   draw a plane through the instrument as SVG or PDF
           render animation <spec.json>  frames on a declared playback mapping (RND-7)
+          render surface <model.json>   the potential on a plane drawn as height, as a PNG
           ext list | test | register    the extension authoring loop
           agents-md [dir]               regenerate the platform layer of AGENTS.md
 
@@ -3106,23 +3937,42 @@ public static class Program
     /// <param name="options">The parsed command line.</param>
     /// <param name="progress">The interval and where to send it.</param>
     /// <returns>True where the flag parsed, false where it did not and was complained about.</returns>
-    private static bool RenderProgress(CommandLine options, out RunProgress? progress)
+    private static bool TryProgress(CommandLine options, out RunProgress? progress)
     {
-        var interval = 30.0;
         progress = null;
 
-        if (options.Value("progress") is { } asked
-            && !double.TryParse(
-                asked, NumberStyles.Float, CultureInfo.InvariantCulture, out interval))
+        // Bare, --progress is the default interval, as it is when absent: reporting is on
+        // unless turned off, so the flag alone says nothing new and is not a mistake. That it
+        // may be bare is the registry's statement (VerbFlags.Optional), which is what lets the
+        // command line through; read here, a flag with no value is simply absent.
+        if (!TryNumberFlag(options, "progress", "an interval in seconds", out var interval, "Use 0 to turn it off."))
         {
-            Console.Error.WriteLine(
-                $"--progress takes an interval in seconds, and '{asked}' is not one. "
-                + "Use 0 to turn it off.");
             return false;
         }
 
-        progress = new RunProgress(interval, Console.Error.WriteLine);
+        // Zero is the documented silence; a negative interval is not a second spelling of it. It
+        // was accepted and meant off, so `--progress -5` - a typo for 5 as often as anything -
+        // ran an eight-hour job with no checkpoint and nothing said.
+        if (interval < 0.0)
+        {
+            return Refuse(
+                options,
+                "progress",
+                string.Create(CultureInfo.InvariantCulture, $"--progress takes an interval in seconds, and {interval:G} is negative."),
+                "Use 0 to turn it off, or a positive number of seconds.");
+        }
+
+        progress = new RunProgress(interval ?? 30.0, Console.Error.WriteLine);
         return true;
     }
+
+    /// <summary>The figure formats <c>--format</c> names.</summary>
+    private static readonly string[] FormatNames = ["svg", "pdf"];
+
+    /// <summary>What <c>init --vcs</c> names: a repository, or none, which is also the default.</summary>
+    private static readonly string[] VcsNames = ["git", "none"];
+
+    private static FigureFormat FormatOf(string? named, FigureFormat otherwise) =>
+        named is null ? otherwise : named == "pdf" ? FigureFormat.Pdf : FigureFormat.Svg;
 
 }

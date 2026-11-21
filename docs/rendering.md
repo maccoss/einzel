@@ -804,6 +804,329 @@ because the lines are only as good as the pixels they survive being resized into
   is every vertex, and neither window shades a zero normal as a facet. It gets the area-weighted
   normal of its facets now, and only where the gradient really vanished.
 
+## `render surface` - the potential as height above a plane
+
+```bash
+einzel render surface models/trap.json [--plane xy|xz|yz] [--offset-mm d] [--box-mm a0,b0,a1,b1]
+       [--height potential|energy] [--at-us t | --cycle-mean] [--relief F | --height-mm-per-v X]
+       [--samples N] [--mesh-lines N] [--view iso|side|front|top] [--csv f.csv] [--out f.png] [--json]
+```
+
+SIMION's potential-energy view: one plane through the instrument, with the potential on it
+drawn as **height** above the plane - a wire mesh over a lightly shaded surface, colored by
+the potential with the same diverging ramp, centered on earth, that the viewport colors
+electrodes and equipotentials with. A conductor the plane cuts is a **flat dark plateau at its
+own potential**, and the free-space surface climbs to meet its edge, so a well between two
+higher electrodes is a valley and a quadrupole is a saddle between four plateaus.
+
+![The linear ion trap's DC on a plane through its axis](figures/gallery-surface-lit-z-trapping.png)
+
+*`linear-ion-trap-3d`, the plane x = 0.3 mm through the trap axis, cycle mean (DC only),
+z from -31.5 to 31.5 mm to the rods' ends:*
+`einzel render surface linear-ion-trap-3d.json --plane yz --offset-mm 0.3 --box-mm -14.25,-31.5,14.25,31.5 --cycle-mean`
+
+The picture is the template's axial well, read off the data (`--csv`) along the row nearest the
+axis (y = ±0.13 mm). The centre section's rods are plateaus at **0 V** and the end sections' at
+**3 V** (`endOffset`), each the median of over a thousand samples inside the rod. Along the axis
+the potential is **0.0005 V** at the trap's centre and stays under 0.04 V for |z| < 10 mm - the flat
+floor the ions sit on - then rises through 0.34 V at |z| = 15 mm and 1.4 V across the 1 mm gap
+between sections (|z| = 18.5 to 19.5 mm) to **3.85 V** at the middle of each end section
+(|z| = 25.5 mm). That is more than the end rods' 3 V because the 20 V end lenses reach in through
+their 2 mm apertures; at the rods' ends (|z| = 31.5 mm) the axis is at 15.2 V, the hump at each end
+of the picture. So the well an ion trapped on axis sees is about **3.85 V deep** at the end
+sections' middles and 3 V at their rods. The RF is 257 V zero to peak; drawn at any instant it would
+fill the picture and the 3 V would not be visible, which is what `--cycle-mean` is for.
+
+![The einzel lens's centre tube](figures/gallery-surface-einzel-lens.png)
+
+*`einzel-lens`, its own half-plane drawn whole (y is the radius, mirrored), x from 14 to 82 mm:*
+`einzel render surface einzel-lens.json --box-mm 14,-10,82,10`. The 500 V centre tube is a block
+whose top is its plateau; the bore between its walls is the saddle a beam crosses, rising to
+499 V on the axis at the tube's middle - which is why a 1 keV beam is slowed but not stopped.
+
+![A quadrupole cross-section](figures/gallery-surface-quadrupole.png)
+
+*`quadrupole`, the static ±100 V cross-section:* `einzel render surface quadrupole.json`. Two
+warm plateaus at +100 V, two cool ones at -100 V, and the saddle between them through zero at
+the axis.
+
+**Sampled by the probe, so it is the field a run flies through.** Every height is
+`FieldProbe.At`, which assembles the field with `FieldAssembly.BuildReported` as every run does:
+superposition, regions, mirrors, tilts and the axisymmetric mapping are honored, the assembly's
+warnings come along (`mesh.node-on-shared-face`, an unconverged solve, a region's step), and a
+point the field refuses is a hole in the surface counted by `probe.refused`. A conductor is
+detected the probe's way, by the composite field's signed distance.
+
+**A plateau is drawn at what the conductor holds, not at what the field reads inside it**
+(`FieldProbe.HeldPotentialAt`, from `IHeldConductors`, which only the solves implement). A static solve holds each electrode at its
+declared potential; a driven or staged one holds it at the sum over channels of its coefficient in
+that channel's pattern times the channel's weight at the instant - the same weights the field is
+summed with, so every generator it taps, every stage and every ramp is in it, and under
+`--cycle-mean` the mean of that over the window. It used to be the median of the deeper half of the
+samples inside the conductor, and that is wrong two ways. **Inside metal the sum carries every
+other element's potential too**: an analytic element has no conductors and fills all space, so on
+`tims-analyzer` the analytic RF quadrupole summed inside the DC rings read 150 to 1250 V and
+`ring-0`, which holds 0.018 V at t = 0, was drawn and reported at 657 V. And **an interpolant
+overshoots inside a thin conductor**: `linear-ion-trap-3d`'s 20 V lenses read 20.13 V. The outcome
+keeps the readings beside the held value - `lowestV`, `highestV`, and `sampledV`, the old median -
+and where the median strays from the held value by more than `PlateauTolerance` (2 %) of the
+potentials the model deals in, `render.plateau-disagrees` names the conductor, the spread and the
+held value. The surface beside such a plateau is the sum, so it steps at the conductor's edge; that
+is the honest picture of a model that sums an analytic field over metal, and the warning says so
+rather than either number being reported silently. **An edge-profiled board is not a plateau**: its
+potential varies along it, so there is no one height to draw it at, and it is drawn as the field
+sampled there. **And a conductor counts only where its element was solved**: a declared shape runs
+on past the edge of its solve - carried past a face, as `mesh.node-on-shared-face` advises, or
+reached by a `--box-mm` wider than the domain - and a point out there is in no conductor, so no
+plateau is drawn and the probe does not call it inside. The test is the probe's own domain test.
+The held value is asked of the conductor's element by name (`IHeldConductors.HeldPotentialOf`)
+once the probe has decided which conductor and which element, so the conductor list is walked
+once per sample, not three times. **Which conductor a point is in is the probe's own rule**, the
+same whether the model is static or driven: of the conductors whose element was solved at the
+point, the one it is deepest inside. Only those compete - a shape declared past its solve would
+otherwise win wherever it was deepest and hide a conductor another solve really has there. The
+field sums keep their own `ConductorAt` exactly as it was, because that names the surface an ion
+strikes in a loss itemisation (ACC-5): a static sum names the nearest member's conductor and a
+driven one the first member containing the point, and a drawing is no place to change that.
+
+**The range a surface states is what its conductors hold**, where every field element is a solved
+geometry (`FieldProbe.AppliedRange`). A solve has no charge in it, so its potential is nowhere above
+the highest potential on its boundary or below the lowest, and the boundary is the conductors and
+the earthed edge; a reading outside that is the cubic interpolant overshooting beside a step, by an
+amount that moves with the sampling. The shipped einzel lens, 0 and 500 V, read -25 to 500 V at 61
+samples, -32 to 500 at 241 and -14.8 to 537 at 1001, and the relief and the scale bar followed. Two
+layers fix it. **A sample on the face of a conductor carried to the edge of its solve is the
+conductor's**: the face lies on the last row of nodes, which hold what it holds, and at distance
+zero the sample was "not inside" and drawn at whatever the interpolant read (the 537 V). **And what
+the samples still read past the conductors' range is reported, not stated**: `lowest` and
+`highest` in the outcome, the height scale and the scale bar are the sampled range held to the
+conductors' (`appliedLowest`, `appliedHighest`); `sampledLowest` and `sampledHighest` carry the raw
+extremes; and `render.interpolant-overshoot` says how far past and where. **The drawing is held
+to the same range** (`PotentialSurface.Drawn`): heights and colors are the samples clamped to
+what the conductors hold, so the surface ends where its bar does - drawn from the raw samples the
+einzel lens dipped 32 V below the earth its own bar stopped at. The CSV carries the raw samples.
+**The mirror plane of a reflected solve is counted once**: a point on it is its own image, and
+the declared half and its image both answered there, so a half lens with a 500 V electrode read
+999.5 V on the plane; the plane belongs to the declared half (`ReflectedField`). Where
+an element is analytic there is no such bound (it fills all space), the applied range is absent,
+and the range is the sampled one as before. **Earth is always labelled on the bar**, an end that
+would sit on it giving way. **`--relief` is more than 0 and at most 10**, it and an explicit
+`--height-mm-per-v` are alternatives and are refused together, and a scale that would draw the
+surface more than a thousand times taller than the plane is long is refused by its flag.
+**`--out` and `--csv` are checked before anything is solved and written together or not at all**
+(`ArtifactFiles`): a destination that is a directory is exit 1 at the flag, where it was an
+internal error, and a picture is never left without its table.
+
+**A reflected solve is one element with two halves, and each half is metal only on its own side
+of the mirror.** The assembly hands out the field's conductor-bearing leaves as it builds it
+(`FieldAssembly.BuildMapped` returns a `FieldLeaf` for each: where the metal is, the solve that
+says what it holds, its element, and whether it is the declared half or the image), and the probe
+asks each leaf about its own half - the declared solve box for the declared half, that box's
+reflection for the image. The probe used to take the assembled field apart afterwards, which got
+it wrong three ways in turn. Mapping the pieces by position left the mirror image with no element,
+so every point in it read as free space and no plateau was drawn there - the planar mirror pair
+and both Astral analysers among the shipped templates. And asking whether a conductor's *element*
+was solved at a point counted the declared half's shape as metal in the image's half: a conductor
+declared from 18 mm to 40 mm against a mirror at 20 mm is metal from 18 to 22 - the near side and
+its image - and was drawn as a plateau out to 40. No wrapper forwards "what does this conductor
+hold" any more, and a sum is never asked. Sampling runs across the processors, a row at a time, and
+is byte for byte what a serial pass gives.
+
+What the sweep of every shipped template and example found with the held value: `tims-analyzer`,
+`tims-front-end` and `tims-tandem` warn on every ring (the analytic RF, as above); `astral-3d` and
+`compact-astral-3d` warn on the two end walls, which hold 0 V while the summed field inside them
+reads about 5930 V, because the two mirror solves' domains overlap there and each adds its own
+potential inside the other's wall. Elsewhere the held value differs from the old median only by the
+interpolant's overshoot - a per cent or less on the funnels' rings, 0.6 V on the linear traps'
+housing walls - and nothing warns.
+
+**A plateau is one conductor of one element.**
+A name is unique within one solve and no further, so where two elements each have a `plate` on the
+plane they are two plateaus, labelled `plate (element 0)` and `plate (element 1)`, each at its own
+potential; keyed by name alone they were one plateau at one median, a conductor drawn at a potential
+it does not hold. Each plateau carries its `element` and its `name` as written.
+
+**The plane** is a coordinate plane at an offset. A cross-section or axisymmetric model defaults
+to its own plane (`xy`: for an axisymmetric solve that is the half-plane drawn whole, y the
+radius); a volume defaults to the plane through its middle normal to its thinnest side. **With no
+`--offset-mm` the plane passes through the middle of the model's domain along its normal** - for a
+2-D model's own plane, `xy`, that is z = 0, the plane the solve is declared in. Any other plane of a
+2-D model is cut through the domain's middle like a volume's (the planar mirror pair's `yz` at
+x = 383.5 mm, not at x = 0, which is 90 mm inside one end); such a cut is legitimate and seldom
+interesting, since a cross-section does not vary along z. The box
+defaults to the solve domain's extent in the plane; `--box-mm` takes four numbers in the plane's
+own axis order (for `yz`: y0, z0, y1, z1). The longer side runs across the picture.
+
+**Each axis is sampled enough to resolve it.** `--samples N` is the count along the longer side
+(241 by default); the shorter gets square cells, but never fewer than 61 samples
+(`SurfaceCommand.MinimumDeepSamples`, or N if that is fewer), and `--samples NxM` sets both. With
+square cells alone the planar mirror pair's 947 by 30 mm domain got nine rows across at the
+default and four at `--samples 81`, so a board or the gap was a facet or two and no `--samples`
+could fix it, the long side being capped at 1001. The cells may now be longer than they are wide;
+the vertices are at the true positions, so the drawn plane is the box and not a stretched one, and
+the mesh lines are a fixed distance apart on both axes. The outcome reports both counts
+(`samples`) and both spacings (`stepsMm`).
+
+**The picture is a rotation of the model, never its mirror image.** The frame the surface is drawn
+in is (across, height, depth) with the plane's own positive normal as the height, and depth runs
+along or against the other in-plane axis, whichever makes that frame right-handed
+(`PotentialSurface.DeepSign`). So `--view top` on the `xy` plane has x to the right and y up the
+screen, as `render section` draws the same plane, and every other view is that turned. It was
+first built with depth always along the deep axis, which for `xy` is a left-handed frame: the top
+view had y running down the screen and an asymmetric instrument was drawn with the opposite
+chirality in every view. The test finds three conductors that no reflection maps onto themselves
+by their plateaus' colors and asks which way round they go, with no projection of its own. A plane
+whose axes are an odd permutation - `xz`, or `xy` with y the longer side - was already the right
+way round and is unchanged.
+
+**Where to put the plane is a modelling decision and can matter.** The linear ion trap's rods are
+written as halves meeting on the rod's own symmetry line, and its centre x rods carry a 0.25 mm
+slot with a relief behind it. A plane exactly through the axis lies on those seams: a point on a
+seam is on both halves' surfaces and inside neither, so the rods appeared as thin stripes rather
+than plateaus. The figure above uses x = 0.3 mm, off the y rods' seam, and the y rods carry no
+slot; it is also inside the end lenses' 2 mm aperture, which is why the lenses show a notch.
+
+**A height with no scale is a shape, not a measurement.** The scale is stated three ways: in
+`--json` (`heightMmPerUnit`, `unitsPerMm`, `lowest`, `highest`, the unit), in the PNG's `Scale`
+text chunk, and on the picture as a vertical bar labelled in volts at the top and bottom of the
+drawn range, at earth, and at each plateau's level where there is room. By default the whole range
+- from earth, or from the lowest value if lower, to the highest - is drawn at `--relief` (0.35)
+of the box's longer side; `--height-mm-per-v` (or `--height-mm-per-ev`) gives an explicit scale,
+for pictures meant to be compared. Earth is always drawn at the plane itself, so a height reads as
+a potential rather than as a difference from an arbitrary floor. The orthographic camera gives
+every vertical the same screen length per millimetre wherever it stands, which is what lets the
+bar stand beside the surface and be read against any part of it.
+
+**The bar is left out where it cannot be read, and the outcome says so** (`scaleDrawn: false`), as
+the still's ruler leaves out an arm that points at the viewer. Two cases. In `--view top` the height
+runs straight at the camera, so the bar is a point with every label on top of the last: it is not
+drawn, and from above the color is the only encoding of the potential the picture has - the range is
+`lowest` and `highest` and the `Scale` text chunk. A flat color key for that view would be the better
+answer and is not built. And in a small picture the labels' room is reserved in pixels and fitted
+until the frame stops moving (it used to be reserved once, in millimetres at the first framing's
+scale, which the refit then shrank under the labels); if the labels would take more than half the
+surface's size, or still not sit inside the picture, the scale is left off and the surface is drawn
+at full size - at 200 by 150 pixels the einzel lens is drawn without it, at 320 by 200 with it. The
+picture is then exactly the one `--no-scale` draws.
+
+**Potential or potential energy.** `--height energy` draws q·phi for the model's ion, in
+electronvolts: a positive ion's hills are a negative ion's valleys, so for a negative ion the
+picture is the potential upside down, and a ball rolling on it goes where the ion goes. A model with
+several species uses the first and says so (`render.first-species`).
+
+**A driven field is drawn at an instant, or as its cycle mean.** At `--at-us` the surface is the
+field at that instant, stated on the picture (`t=... µs` above the bar) and in the outcome; with
+neither flag it is t = 0 and `render.field-at-instant` says so, because the top of an RF cycle is a
+field no instrument holds. **`--cycle-mean` draws the DC part**, which is what a
+"Z trapping" picture needs: a trap's RF is hundreds of volts and its axial DC a few, so any instant
+shows the RF. It is the potential averaged over one period of the fastest drive, held at the
+operating point `--at-us` for a sequenced or ramped model, and it is taken in closed form where it
+can be - a solved field's potential is linear in its channel weights, so the mean is each channel's
+pattern times its weight's own cycle mean (`ITimeVaryingField.CycleMeanPotentialAt`, the machinery
+the diffusive mode's pseudopotential already uses). For a sinusoidal drive that is exactly the
+part that does not oscillate. Two limits, both stated by `render.cycle-mean` on every such picture:
+a rectangular wave's mean is not zero (it is `2*duty - 1` of its amplitude, and it is included,
+which is right - it is DC); and a field carrying two frequencies is averaged over the faster one's
+period, so the slower drive's contribution is not its cycle mean unless its amplitude is zero. A
+drive at zero amplitude is not a second frequency: `linear-ion-trap-3d` declares its
+resonance-excitation drive at zero amplitude, so its field oscillates at the RF alone,
+`render.cycle-mean` is Provenance on its picture, and the mean is exact.
+
+**A field with no drive has no cycle mean, and `--cycle-mean` is refused for it** - located at
+`/surface/cycle-mean`, exit 1, with what to do instead. That is a static model, and also a
+sequenced one whose state at the chosen instant is static (`sequenced-extraction`,
+`sequenced-uniform`): it varies with time and has no period to average over there. **The window
+and whether there is one frequency are asked of the field held at the operating point**
+(`FieldProbe.CycleMeanWindowSecondsAt`, `MonochromaticAt`), which is the field the mean is taken
+on. A sequence that is not held has no one state to take a spectrum of and says so, and read
+unheld that put "this field carries more than one frequency" on every sequenced model driven at
+one. The second used to dereference the absent window and
+exit 6, after sampling the instantaneous field under the mean's name; the first accepted the flag
+and ignored it. Refused rather than drawn as the instant with a warning, because the caption and
+the outcome would otherwise say "cycle mean" over a picture that is not one. **An instant must be one
+the field can be drawn at**: a negative one is refused, as `probe` and now `render section` refuse it
+(a model's clock starts at zero, and a sequence would answer with its first phase under a time it
+never reaches), and so is one so late that neighbouring doubles there are more than a thousandth of
+the fastest drive period apart (`FieldInstants.CheckResolution`, shared with `probe` and `render
+section`, which checks the instant it draws at whether it came from `--at-us` or the spec's
+`atSeconds`) - at
+1e300 us on a 1 MHz drive the phase drawn was whichever the rounding gave, under a 300-digit
+caption. The caption is compact at any size (`t=15 ms`, `t=1e+294 s`), and **on a driven field
+it names the phase drawn**: the instant is written to a thousandth of the fastest drive period -
+the same fraction an instant must be placeable to - and then shortened, so `--at-us 100` and
+`--at-us 100.25` on a 1 MHz drive are `t=100 µs` and `t=100.25 µs`. At three figures both were
+`t=100 µs`, over surfaces a quarter of a cycle apart. **The scale stands clear of the surface in
+every view**: it is set out from the leftmost base corner along whichever base axis shows on
+screen (from the front the across axis points at the viewer, and a gap along it was no pixels),
+and of two corners equally far left the choice no longer hangs on the last bit of a cosine.
+**`--at-us` on a static
+field is the other way round**: the picture is right at every instant, so it is drawn and
+`render.instant-ignored` (advisory) says the flag changed nothing - which is also what lets one
+command line be used across static and driven models.
+
+**The CSV is RFC 4180.** A conductor's label is whatever the model's author wrote, so one holding a
+comma, a quote or a line break is quoted, and a warning that runs over several lines stays inside
+`#` comment lines above the table. The file is in the outcome (`csv`), on the terminal beside the
+picture, and announced by `--dry-run`; it used to be written and mentioned nowhere. **The two must
+be different files**, refused before anything is sampled: `--out a.png --csv a.png` wrote the table
+over the picture and exited 0.
+
+**A conductor's name is text, not a keyword.** The PNG lists each plateau as `Plateau 1`,
+`Plateau 2`, ... with the label and its potential in the chunk's text, which is UTF-8 of any
+length. The label used to be the keyword, and a PNG keyword is at most 79 characters of printable
+Latin-1 - so a conductor called `électrode` or `plate µ1`, or given a long name, made a valid model
+an internal error with no picture.
+
+**A range that is rounding is drawn flat.** The automatic scale stretches the range on the plane to
+`--relief` of the longer side, and a plane through a field-free drift has a "range" that is the
+last bits of the solve: the planar mirror pair's `yz` plane spans 7.9e-15 V and was drawn at
+1.3e15 mm per volt. Below `SurfaceCommand.NoiseFloor`, 1e-9 of the potentials the model deals in (an analytic element's declared ones included: an ideal
+quadrupole's DC plus drive, a half-space's cap, a bounded uniform field across its region) -
+the largest of what any electrode holds, the ion's acceleration potential and the largest value on
+the plane - the scale is the one that floor would get, the surface is flat, and
+`render.surface-flat` says so with both numbers. An explicit `--height-mm-per-v` is honoured as
+given.
+
+**One read of the model (PRJ-3).** `Execute` reads the document once and builds the field from that
+text; the hash in the outcome and in the PNG is `FieldProbe.ModelHash`, of the same text. It used to
+hash its own read and then let the probe read again, so an edit between the two named one revision
+beside a surface of another.
+
+**Composed in the command layer, rasterized in `Einzel.Render`**, the split `render still` makes:
+the mesh, its colors, the plateaus, the edge curtains, the camera and the scale are
+`SurfaceCommand.Compose` and its neighbours, and `Rasterizer` is handed triangles and lines. Two
+small capabilities were added to the rasterizer for it, both general: a mesh may carry a color per
+vertex, interpolated across each triangle, and a layer may carry a depth bias, so a wire mesh lying
+on its own surface survives the depth test against it while lines on the far side of a hill are
+hidden. **The bias is two pixels' worth of depth** (`SurfaceCommand.MeshDepthBias`, set once the
+frame is settled): a line lies on the surface's own triangle edges, so all the bias has to cover is
+the line's width on a slope. It was a fixed 4e-3 of clip depth, which is a fraction of the scene's
+depth - about six pixels in the iso view, two millimetres on a 600 mm box, and hundreds of pixels
+looking along a long one - enough to draw the mesh on the far side of a thin ridge through it.
+**That is checked by arithmetic, not by pixels**: the test recomputes the bias in pixels from the
+framing for four scenes. A pixel test was tried on a 600 by 80 mm box with a 12 mm ridge at
+100 V and does not discriminate cleanly - the old bias drew 3 to 10 per cent more mesh-coloured
+pixels than the new, with no region where one shows a line the other hides - so it is not claimed.
+The mesh is one polyline per mesh line, broken only where a segment is left out, each segment
+with its own color (`PictureLine.SegmentColors`); a test rasterizes it against the same mesh as one
+line per segment and asserts the pixels identical. The surface has its own camera (`SurfaceCommand.Views`) and its own softer light: the
+viewport's quarter of ambient light painted dark bands across every slope that faced sideways to
+the lamp, which read as a feature of the potential. The stroke font gained the letters the scale
+needs (`V`, `eV`, signs, `t=`, `s`, `cycle mean`). `--csv` writes the sampled grid, one row per node
+with the conductor named, so a number read off the picture can be read off the data instead.
+
+**What drawing it found.** The shared `Framing` with a positive elevation puts the camera
+*below* the plane - a point higher in y is farther from it. For closed conductors in the viewport
+that is invisible; for a height field it hid every hill behind the surface and showed the pits as
+plateaus, which is how it was noticed. The surface's views use a negative elevation; whether the
+viewport's iso is meant to look from below is not settled here.
+
+**Not built.** The view in the interactive window - the composition is a list of `PictureLayer`s
+and the window already uploads those, so it is a matter of the shell taking per-vertex colors and
+the depth bias and adding a mode; nothing in `src/Einzel.Shell` was touched. Arbitrary planes
+(only the three coordinate planes, at an offset). Free camera angles (only the named views). A
+color key beyond the bar.
+
 ## Not built
 
 - **Filled density bands, and a color scale.** Contour lines carry the levels in the

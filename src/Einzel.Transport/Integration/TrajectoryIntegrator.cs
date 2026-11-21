@@ -97,6 +97,10 @@ public static class TrajectoryIntegrator
         // spec section 11 forbids.
         var boundarySurface = BoundarySurfaceFor(field);
 
+        // Where a field tracks several discontinuity members, the buffers their measures are read
+        // into, made once per flight so the step loop allocates nothing.
+        var members = field.DiscontinuityMembers > 1 ? new MemberScratch(field.DiscontinuityMembers) : null;
+
         // Conductors, when the field has any. Expressed as a stopping surface
         // because that is exactly what an electrode is - the ion stops on it - and
         // reusing the machinery means it lands on the surface rather than a step
@@ -276,6 +280,7 @@ public static class TrajectoryIntegrator
                     ref state, ref time, field, settings, activeStop,
                     recorder, collisions, ref analyticDistance, out var stoppedOnDrift))
             {
+                members?.Forget();
                 derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
                 fieldEvaluations++;
 
@@ -318,13 +323,16 @@ public static class TrajectoryIntegrator
             // in space this needs no root-find - the time is known - so the step is
             // simply cut to land on it. The next step then starts in the new state,
             // with the derivative recomputed there.
+            var switchDue = false;
+
             if (driven is not null)
             {
                 var switchAt = driven.NextSwitchAfter(time.Total);
 
-                if (double.IsFinite(switchAt))
+                if (double.IsFinite(switchAt) && switchAt - time.Total <= step)
                 {
-                    step = Math.Min(step, switchAt - time.Total);
+                    step = switchAt - time.Total;
+                    switchDue = true;
                 }
             }
 
@@ -350,6 +358,7 @@ public static class TrajectoryIntegrator
 
                     if (collisions.Collide(time.Total, in at, ref here))
                     {
+                        members?.Forget();
                         state = new PhaseState(state.Position, here);
                         derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
                         fieldEvaluations++;
@@ -394,7 +403,7 @@ public static class TrajectoryIntegrator
             // absorbs it; and the stopping surface, which ends the flight.
             var boundaryStep = BoundaryLandingStep(
                 in state, in derivative, in candidate, step, field, chargeToMass, time.Total,
-                boundarySurface, ref fieldEvaluations);
+                boundarySurface, members, ref fieldEvaluations);
 
             var stopStep = StopLandingStep(
                 in state, in derivative, in candidate, step, field, chargeToMass, time.Total,
@@ -474,6 +483,13 @@ public static class TrajectoryIntegrator
             TrackEnergyDrift(
                 in state, species, field, initialEnergy, energyScale, ref maximumEnergyDrift, ref fieldEvaluations);
 
+            // A step that ended on a sequencer switch ends where the field changes state, so the
+            // measures read at its end are not the next step's start (MemberScratch).
+            if (switchDue)
+            {
+                members?.Forget();
+            }
+
             // Only on the plain full step. A step cut short by an electrode, a
             // detector or a field discontinuity did not reach the collision, and
             // applying it there would scatter an ion that had already stopped.
@@ -484,6 +500,7 @@ public static class TrajectoryIntegrator
 
                 if (collisions!.Collide(time.Total, in at, ref velocity))
                 {
+                    members?.Forget();
                     state = new PhaseState(state.Position, velocity);
 
                     // The velocity is discontinuous, so every cached derivative and
@@ -658,8 +675,16 @@ public static class TrajectoryIntegrator
         double chargeToMass,
         double timeSeconds,
         TrajectoryStopFunction boundarySurface,
+        MemberScratch? members,
         ref long fieldEvaluations)
     {
+        if (members is not null)
+        {
+            return MemberLandingStep(
+                in state, in derivative, in candidate, step, field, chargeToMass, timeSeconds, members,
+                ref fieldEvaluations);
+        }
+
         var before = boundarySurface(in state);
         fieldEvaluations++;
 
@@ -680,8 +705,171 @@ public static class TrajectoryIntegrator
         }
 
         return LandingStep(
-            in state, in derivative, step, field, chargeToMass, boundarySurface, before, timeSeconds,
+            in state, in derivative, step, field, chargeToMass, new Delegated(boundarySurface, Math.Sign(before)), timeSeconds,
             ref fieldEvaluations);
+    }
+
+    // The members' measures at a step's start and end, and the start's marked copy the bisection
+    // tests against. A step's end is reused as the next step's start only while nothing but the
+    // integrator's own advance has happened between them: the measures are functions of position
+    // within a step (IElectrostaticField.MemberDistancesToDiscontinuity), and a landed sequencer
+    // switch, a collision or an analytic drift is something else, so each forgets the end.
+    private sealed class MemberScratch(int count)
+    {
+        // The start's measures; once a step's crossings are marked, the bisection's probe scratch.
+        public double[] Start { get; set; } = new double[count];
+
+        public double[] End { get; set; } = new double[count];
+
+        // The start's measures for the members that change sign over the step, not a number for the
+        // rest: what the bisection compares each probe's signs with.
+        public double[] Marked { get; } = new double[count];
+
+        // Where End was read, if it still holds that point's measures and nothing has happened since
+        // but the step that ended there.
+        public Vec3? EndAt { get; set; }
+
+        public void Forget() => EndAt = null;
+    }
+
+    // A field tracking several discontinuity measures: a crossing is any one of them changing sign,
+    // and the earliest is landed on, by one bisection whose test is whether any member that changed
+    // sign over the step has changed sign yet. Combined into one sign instead, two members changing
+    // sign at one place cancel - two abutting solve domains, two halves of a reflection meeting at
+    // their plane - and a real surface is crossed with no landing (Stage 4's rule 1). With one member
+    // changing in a step, the test is that member's sign, which changes exactly where the combined
+    // sign did, so a flight crossing one surface per step lands where it always did. Every member is
+    // read in one pass (MemberDistancesToDiscontinuity), counted as one evaluation, and a point read
+    // at the end of one step is not read again at the start of the next unless something other than
+    // the step happened there (MemberScratch).
+    private static double MemberLandingStep(
+        in PhaseState state,
+        in PhaseDerivative derivative,
+        in PhaseState candidate,
+        double step,
+        IElectrostaticField field,
+        double chargeToMass,
+        double timeSeconds,
+        MemberScratch members,
+        ref long fieldEvaluations)
+    {
+        var from = state.Position;
+        var to = candidate.Position;
+
+        if (members.EndAt is { } known && known == from)
+        {
+            // The last step's end is this one's start: its buffer becomes the start, and the start's
+            // becomes the end the next read goes into.
+            (members.Start, members.End) = (members.End, members.Start);
+        }
+        else
+        {
+            field.MemberDistancesToDiscontinuity(in from, members.Start);
+            fieldEvaluations++;
+        }
+
+        members.EndAt = null;
+        var start = members.Start;
+        var end = members.End;
+
+        // Nothing to cross where every member is not a number or is on its surface, and then no
+        // second pass.
+        // An infinity counts: it is a sign like any other, and plus infinity at the start and a
+        // finite negative measure at the end is a crossing.
+        var any = false;
+
+        foreach (var value in start)
+        {
+            any |= !double.IsNaN(value) && value != 0.0;
+        }
+
+        if (!any)
+        {
+            return double.PositiveInfinity;
+        }
+
+        field.MemberDistancesToDiscontinuity(in to, end);
+        fieldEvaluations++;
+        members.EndAt = to;
+
+        // This step's crossings are marked in a copy of the start, which the bisection compares its
+        // probes with; the start buffer is then free to hold the probes.
+        var crossing = false;
+        var marked = members.Marked;
+
+        for (var k = 0; k < start.Length; k++)
+        {
+            // Sitting on this member's surface having just landed there, or not changing sign over
+            // the step: left out of the bisection's test, marked as not a number. An infinity is a
+            // sign like any other: a member infinite at one end and finite at the other has changed
+            // sign or not by the signs alone.
+            marked[k] = double.IsNaN(start[k]) || start[k] == 0.0 || double.IsNaN(end[k]) || Math.Sign(end[k]) == Math.Sign(start[k])
+                ? double.NaN
+                : start[k];
+            crossing |= !double.IsNaN(marked[k]);
+        }
+
+        if (!crossing)
+        {
+            return double.PositiveInfinity;
+        }
+
+        // The bisection reads its probes into the start buffer, which this step no longer needs; the
+        // end stays whole for the next step.
+        return LandingStep(
+            in state, in derivative, step, field, chargeToMass, new Members(field, marked, probe: start), timeSeconds,
+            ref fieldEvaluations);
+    }
+
+    // What a landing bisects on: which side of the crossing a probe is - zero exactly on it, one on
+    // the side the step started, minus one past it - without allocating per crossing.
+    private interface ILandingSurface
+    {
+        int Side(in PhaseState state);
+    }
+
+    private readonly struct Delegated(TrajectoryStopFunction surface, int startSign) : ILandingSurface
+    {
+        public int Side(in PhaseState state)
+        {
+            var value = surface(in state);
+            return value == 0.0 ? 0 : Math.Sign(value) == startSign ? 1 : -1;
+        }
+    }
+
+    // Past the crossing as soon as any member that changes sign over the step has changed it: the
+    // earliest of them. Every member is asked whether it is past before any is asked whether it is
+    // exactly on its surface: a probe exactly on a later member's surface, with an earlier member
+    // already past, is past - returned as on, it landed on the later surface and straddled the
+    // earlier. An infinity reads by its sign.
+    private readonly struct Members(IElectrostaticField field, double[] marked, double[] probe) : ILandingSurface
+    {
+        public int Side(in PhaseState state)
+        {
+            var position = state.Position;
+            field.MemberDistancesToDiscontinuity(in position, probe);
+
+            var on = false;
+
+            for (var k = 0; k < marked.Length; k++)
+            {
+                if (double.IsNaN(marked[k]) || double.IsNaN(probe[k]))
+                {
+                    continue;
+                }
+
+                if (probe[k] == 0.0)
+                {
+                    on = true;
+                }
+                else if (Math.Sign(probe[k]) != Math.Sign(marked[k]))
+                {
+                    return -1;
+                }
+            }
+
+            return on ? 0 : 1;
+        }
     }
 
     private static double StopLandingStep(
@@ -708,7 +896,7 @@ public static class TrajectoryIntegrator
         }
 
         return LandingStep(
-            in state, in derivative, step, field, chargeToMass, stopWhenNegative, before, timeSeconds,
+            in state, in derivative, step, field, chargeToMass, new Delegated(stopWhenNegative, Math.Sign(before)), timeSeconds,
             ref fieldEvaluations);
     }
 
@@ -723,20 +911,19 @@ public static class TrajectoryIntegrator
     /// curvature near a turning point. It costs about fifty probes per landing,
     /// which against two landings per flight is not worth optimising.
     /// </remarks>
-    private static double LandingStep(
+    private static double LandingStep<TSurface>(
         in PhaseState start,
         in PhaseDerivative startDerivative,
         double bracketingStep,
         IElectrostaticField field,
         double chargeToMass,
-        TrajectoryStopFunction surface,
-        double valueAtStart,
+        TSurface surface,
         double timeSeconds,
         ref long fieldEvaluations)
+        where TSurface : struct, ILandingSurface
     {
         var low = 0.0;
         var high = bracketingStep;
-        var startSign = Math.Sign(valueAtStart);
 
         for (var i = 0; i < 80; i++)
         {
@@ -752,14 +939,14 @@ public static class TrajectoryIntegrator
                 out var probe, out _, out _, out _, timeSeconds);
             fieldEvaluations += 6;
 
-            var value = surface(in probe);
+            var side = surface.Side(in probe);
 
-            if (value == 0.0)
+            if (side == 0)
             {
                 return mid;
             }
 
-            if (Math.Sign(value) == startSign)
+            if (side > 0)
             {
                 low = mid;
             }

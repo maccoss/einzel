@@ -127,8 +127,11 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
 
         output.WriteLine($"exit {exit}: {said.Trim()}");
 
+        // The command line's own reader refuses a value flag given no value, at the flag, before
+        // the estimate reads it.
         Assert.Equal(1, exit);
-        Assert.Contains("--snapshots takes a whole number", said, StringComparison.Ordinal);
+        Assert.Contains("--snapshots takes a value, and none was given", said, StringComparison.Ordinal);
+        Assert.Contains("/args/--snapshots", said, StringComparison.Ordinal);
     }
 
     /// <summary>A mixture's run records no instants, so recorded instants are refused for it.</summary>

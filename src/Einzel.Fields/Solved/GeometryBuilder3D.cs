@@ -291,9 +291,34 @@ public static class GeometryBuilder3D
 
     /// <summary>Mirrors a solved half about the declared plane, or returns it unchanged.</summary>
     private static IElectrostaticField Reflected(IElectrostaticField field, Geometry3D geometry) =>
-        geometry.ReflectAboutX is { } plane
-            ? new SuperposedField([field, new ReflectedField(field, plane)])
-            : field;
+        ReflectionOf(geometry) is { } mirror ? mirror.Sum(field) : field;
+
+    /// <summary>The geometry's reflection: its plane and how the halves meet, decided once.</summary>
+    /// <remarks>
+    /// Continuous where the face on the plane is Neumann or the box stops short of it, and a surface
+    /// otherwise. A volume solve has no
+    /// <c>boundaryIsDiscontinuous</c> to say otherwise. A volume solve
+    /// declares no discontinuity surfaces of its own (<see cref="SolvedField3D"/>), so the plane is
+    /// declared by the reflection itself (<see cref="Reflection.DeclaresPlane"/>): with a grounded face on the plane
+    /// the union's normal field goes from E to -E there, and nothing else would say so.
+    /// </remarks>
+    private static Reflection? ReflectionOf(Geometry3D geometry)
+    {
+        if (geometry.ReflectAboutX is not { } plane)
+        {
+            return null;
+        }
+
+        var side = Reflection.SideOf(geometry.MinX, geometry.MaxX, plane);
+        var face = geometry.Faces.Count == 6 ? geometry.Faces[side == true ? 1 : 0] : EdgeCondition.Dirichlet;
+
+        // A box stopping short of the plane - by more than a billionth of the cell, so an edge meant
+        // to lie on it is on it - leaves a gap with no field on either side.
+        var tolerance = 1e-9 * geometry.CellSize;
+        var gap = side == true ? plane - geometry.MaxX > tolerance : side == false && geometry.MinX - plane > tolerance;
+
+        return Reflection.Of(plane, geometry.MinX, geometry.MaxX, face == EdgeCondition.Neumann || gap);
+    }
 
     private static DirichletMask3D Assemble(
         Geometry3D geometry,
@@ -850,6 +875,21 @@ public static class GeometryBuilder3D
     /// </remarks>
     public static (IElectrostaticField Field, SolveReport Report) BuildField(Geometry3D geometry)
     {
+        var (field, report, _) = BuildLeaved(geometry);
+
+        return (field, report);
+    }
+
+    /// <summary>
+    /// Builds as <see cref="BuildField"/> does, and hands out the field's conductor-bearing
+    /// leaves: the declared half, and its image where the solve is reflected.
+    /// </summary>
+    /// <param name="geometry">The geometry, with its drives and stages.</param>
+    /// <returns>The field, how the solve went, and its leaves.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
+    public static (IElectrostaticField Field, SolveReport Report, IReadOnlyList<ConductorLeaf> Leaves) BuildLeaved(
+        Geometry3D geometry)
+    {
         ArgumentNullException.ThrowIfNull(geometry);
 
         // At the entry, not only in the allocators. Each per-node allocator also refuses, but
@@ -861,7 +901,7 @@ public static class GeometryBuilder3D
         if (geometry.Drives.Count == 0 && geometry.Stages.Count == 0)
         {
             var (statik, staticReport) = Build(geometry);
-            return (Reflected(statik, geometry), staticReport);
+            return (Reflected(statik, geometry), staticReport, ConductorLeaf.Of(statik, ReflectionOf(geometry), StaticHeldConductors.Of(geometry.Electrodes)));
         }
 
         var groups = Groups(geometry);
@@ -877,14 +917,18 @@ public static class GeometryBuilder3D
         var harmonics = new List<IReadOnlyList<WeightTerm>>(groups.Count);
 
         SolveReport worst = new(true, 0, 0.0, 0.0, 0.0);
+        SolvedField3D? metal = null;
 
         for (var index = 0; index < groups.Count; index++)
         {
             // Reflected per channel rather than once over the composition, matching the
             // plane path: superposition is linear either way, and mirroring each basis
             // field keeps the drive weights attached to the thing they weight.
-            channels.Add(Reflected(
-                new SolvedField3D(solves[index].Potential, geometry.Electrodes), geometry));
+            var basis = new SolvedField3D(solves[index].Potential, geometry.Electrodes);
+
+            // Every channel is the same metal, so the first one's declared half says where it is.
+            metal ??= basis;
+            channels.Add(Reflected(basis, geometry));
             direct.Add(groups[index].Direct);
             harmonics.Add(groups[index].Harmonics);
 
@@ -898,10 +942,24 @@ public static class GeometryBuilder3D
 
         worst = worst with { Warnings = meshWarnings };
 
+        // There is always a channel: a geometry with nothing on any electrode is given one of
+        // zero weight (DriveChannels.DecomposeStates), so there is a field object to return.
+        if (metal is null)
+        {
+            throw new InvalidOperationException("a driven geometry decomposed into no channel at all");
+        }
+
+        // What each conductor holds in each channel's pattern, said once for both fields below.
+        var coefficients = DriveChannels.Coefficients(groups, geometry.Electrodes.Select(e => e.Name));
+
         if (geometry.Stages.Count == 0)
         {
-            return (
-                new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms), worst);
+            var driven = new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms)
+            {
+                ConductorCoefficients = coefficients,
+            };
+
+            return (driven, worst, ConductorLeaf.Of(metal, ReflectionOf(geometry), driven));
         }
 
         var boundaries = new List<double>(geometry.Stages.Count);
@@ -954,9 +1012,12 @@ public static class GeometryBuilder3D
         var sequenced = new DrivenSolvedField(
             channels, direct, harmonics, frequencies, waveforms,
             boundaries, stageDirect, stageHarmonics,
-            anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null);
+            anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null)
+        {
+            ConductorCoefficients = coefficients,
+        };
 
-        return (sequenced, worst);
+        return (sequenced, worst, ConductorLeaf.Of(metal, ReflectionOf(geometry), sequenced));
     }
 
     /// <summary>One basis channel of a solve, with the evidence that solve produced.</summary>
