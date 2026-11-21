@@ -143,7 +143,7 @@ public static class EngineBuild
     /// Bumped only when numerical behaviour changes. Part of the field-cache key
     /// (FLD-3) and recorded in every manifest.
     /// </summary>
-    public const int SolverBehaviourVersion = 2;
+    public const int SolverBehaviourVersion = 3;
 
     /// <summary>The engine version string.</summary>
     public static string Version { get; } =

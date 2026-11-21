@@ -70,6 +70,48 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
 
     /// <inheritdoc/>
     /// <remarks>
+    /// Onto the instrument's clock, and onto its boundary exactly where the leg's instant is one:
+    /// a switch this leg reported as its own time maps back within a few ulps of the
+    /// instrument's, possibly past it, and asked from before at an instant past a boundary the
+    /// inner field would answer with the phase already started.
+    /// </remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds) =>
+        _inner.ElectricFieldBefore(position, OnTheInstrument(timeSeconds));
+
+    /// <inheritdoc/>
+    public double PotentialBefore(in Vec3 position, double timeSeconds) =>
+        _inner.PotentialBefore(position, OnTheInstrument(timeSeconds));
+
+    /// <summary>A leg's instant on the instrument's clock, put on a switch it rounded beside.</summary>
+    /// <param name="timeSeconds">The instant on this leg's clock.</param>
+    /// <returns>The instant on the instrument's, the switch itself where it is within a few ulps of one.</returns>
+    private double OnTheInstrument(double timeSeconds)
+    {
+        var instrument = timeSeconds + _offsetSeconds;
+        var near = instrument;
+
+        for (var k = 0; k < Ulps; k++)
+        {
+            near = Math.BitDecrement(near);
+        }
+
+        var boundary = _inner.NextSwitchAfter(near);
+
+        if (!double.IsFinite(boundary))
+        {
+            return instrument;
+        }
+
+        var ulp = Math.BitIncrement(Math.Abs(boundary)) - Math.Abs(boundary);
+
+        return Math.Abs(boundary - instrument) <= Ulps * ulp ? boundary : instrument;
+    }
+
+    /// <summary>How far, in units in the last place, a mapped instant may sit from the switch it means.</summary>
+    private const int Ulps = 4;
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// The instant this leg starts, which is a stated instant rather than an accidental
     /// one — unlike a driven field answering the time-free interface at whatever t = 0
     /// happens to mean, which is the defect this project has found four times.

@@ -228,4 +228,31 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
         var scale = Region.Scale(in position);
         return scale <= 0.0 ? 0.0 : scale * _driven.PotentialAt(in position, timeSeconds);
     }
+
+    /// <inheritdoc />
+    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds)
+    {
+        var scale = Region.Scale(in position);
+
+        if (scale <= 0.0)
+        {
+            return Vec3.Zero;
+        }
+
+        var field = _driven.ElectricFieldBefore(in position, timeSeconds);
+
+        if (scale >= 1.0)
+        {
+            return field;
+        }
+
+        return (field * scale) - (Region.ScaleGradient(in position) * _driven.PotentialBefore(in position, timeSeconds));
+    }
+
+    /// <inheritdoc />
+    public double PotentialBefore(in Vec3 position, double timeSeconds)
+    {
+        var scale = Region.Scale(in position);
+        return scale <= 0.0 ? 0.0 : scale * _driven.PotentialBefore(in position, timeSeconds);
+    }
 }

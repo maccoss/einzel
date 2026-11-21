@@ -126,10 +126,13 @@ public sealed class SwitchCrossingTests(ITestOutputHelper output)
         // It crosses the switch and is then pushed into the upper plate, which is what a
         // pair at plus and minus a hundred volts does to an ion on the axis between them.
         // What is asserted is the crossing, not the ending: this test exists to eliminate
-        // the facing pair as the cause of the underflow, and StruckElectrode after 112
-        // steps eliminates it as thoroughly as reaching the ceiling would.
+        // the facing pair as the cause of the underflow, and StruckElectrode after the
+        // switch eliminates it as thoroughly as reaching the ceiling would. Asked as a time
+        // past the switch rather than as a step count: the count was 112 while the step that
+        // lands on the switch sampled the push at its end and was refused into a run of
+        // ever-shorter steps toward it, and is 47 now that it is not.
         Assert.NotEqual(TrajectoryOutcome.StepSizeUnderflow, run.Outcome);
-        Assert.True(run.AcceptedSteps > 50, $"only {run.AcceptedSteps} steps");
+        Assert.True(run.FlightTimeSeconds > 1e-6, $"stopped at {run.FlightTimeSeconds:G6} s, before the switch");
     }
 
     private static CompiledElectrode Pair(double volts, string name) => new()

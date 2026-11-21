@@ -157,6 +157,14 @@ public sealed class DrivenMagnetizedField : MagnetizedField, ITimeVaryingField
         _driven.ElectricFieldAt(in position, timeSeconds);
 
     /// <inheritdoc />
+    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds) =>
+        _driven.ElectricFieldBefore(in position, timeSeconds);
+
+    /// <inheritdoc />
+    public double PotentialBefore(in Vec3 position, double timeSeconds) =>
+        _driven.PotentialBefore(in position, timeSeconds);
+
+    /// <inheritdoc />
     public double PotentialAt(in Vec3 position, double timeSeconds) =>
         _driven.PotentialAt(in position, timeSeconds);
 

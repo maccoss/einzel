@@ -100,6 +100,11 @@ internal static class DormandPrince54
     /// The instant the step starts at. Ignored by a static field; every stage of a
     /// driven one samples a different point in the cycle.
     /// </param>
+    /// <param name="endsOnSwitch">
+    /// Whether the step was cut to end on a switch of a sequenced field. Its stages at the end
+    /// then sample the phase that is ending (<see cref="ITimeVaryingField.ElectricFieldBefore"/>),
+    /// to which the whole step belongs, and the derivative handed on is the next phase's.
+    /// </param>
     public static void Step(
         in PhaseState state,
         in PhaseDerivative k1,
@@ -110,7 +115,8 @@ internal static class DormandPrince54
         out Vec3 errorPosition,
         out Vec3 errorVelocity,
         out PhaseDerivative derivativeAtResult,
-        double timeSeconds = 0.0)
+        double timeSeconds = 0.0,
+        bool endsOnSwitch = false)
     {
         var h = stepSize;
 
@@ -128,19 +134,24 @@ internal static class DormandPrince54
         var k5 = Derivative(
             Offset(state, h, (A51, k1), (A52, k2), (A53, k3), (A54, k4)),
             field, chargeToMass, timeSeconds + (C5 * h), in side);
+        // C6 and C7 are one: these two stages sit at the step's end, which on a switch is the
+        // next phase's first instant. The step belongs to the phase ending, so there they ask it.
         var k6 = Derivative(
             Offset(state, h, (A61, k1), (A62, k2), (A63, k3), (A64, k4), (A65, k5)),
-            field, chargeToMass, timeSeconds + (C6 * h), in side);
+            field, chargeToMass, timeSeconds + (C6 * h), in side, endsOnSwitch);
 
         result = Offset(state, h, (B1, k1), (B3, k3), (B4, k4), (B5, k5), (B6, k6));
 
-        var k7 = Derivative(result, field, chargeToMass, timeSeconds + (C7 * h), in side);
+        var k7 = Derivative(result, field, chargeToMass, timeSeconds + (C7 * h), in side, endsOnSwitch);
 
         // The error estimate uses the start's side, but the next step starts at the result
         // and must see the field there: identical unless the step ended across a magnet face,
         // which the integrator lands on and recomputes anyway - or unless two faces were
         // crossed at once, which the sign product cannot see.
-        derivativeAtResult = field is Einzel.Fields.Magnetic.IMagneticField
+        //
+        // And a step that ended on a switch hands on the derivative of the phase now starting,
+        // where the next step begins: the k7 above is the ending phase's, for the estimate.
+        derivativeAtResult = field is Einzel.Fields.Magnetic.IMagneticField || endsOnSwitch
             ? Derivative(in result, field, chargeToMass, timeSeconds + (C7 * h))
             : k7;
 
@@ -209,14 +220,31 @@ internal static class DormandPrince54
     /// <param name="magneticSide">The point whose side of each magnetic jump applies.</param>
     /// <returns>The derivative.</returns>
     public static PhaseDerivative Derivative(
-        in PhaseState state, IElectrostaticField field, double chargeToMass, double timeSeconds, in Vec3 magneticSide)
+        in PhaseState state, IElectrostaticField field, double chargeToMass, double timeSeconds, in Vec3 magneticSide) =>
+        Derivative(in state, field, chargeToMass, timeSeconds, in magneticSide, before: false);
+
+    /// <summary>The derivative, with a driven field sampled at or just before an instant.</summary>
+    /// <param name="state">The state to evaluate at.</param>
+    /// <param name="field">The field.</param>
+    /// <param name="chargeToMass">Charge divided by mass, in coulombs per kilogram.</param>
+    /// <param name="timeSeconds">The instant to sample a driven field at.</param>
+    /// <param name="magneticSide">The point whose side of each magnetic jump applies.</param>
+    /// <param name="before">Whether a driven field is asked as the instant is approached from before.</param>
+    /// <returns>The derivative.</returns>
+    private static PhaseDerivative Derivative(
+        in PhaseState state,
+        IElectrostaticField field,
+        double chargeToMass,
+        double timeSeconds,
+        in Vec3 magneticSide,
+        bool before)
     {
         var position = state.Position;
 
         // One branch, predictable, and outside nothing: a static field is by far
         // the common case and pays a type test it will always fail the same way.
         var acceleration = field is ITimeVaryingField driven
-            ? driven.ElectricFieldAt(in position, timeSeconds)
+            ? before ? driven.ElectricFieldBefore(in position, timeSeconds) : driven.ElectricFieldAt(in position, timeSeconds)
             : field.ElectricFieldAt(in position);
 
         // The velocity-dependent half of the Lorentz force, F = q (E + v x B). A second

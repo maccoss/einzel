@@ -317,7 +317,14 @@ become a feature release without being renamed twice.
 - **A diffusive run no longer allocates in its stepping loop.** Reading the face offsets built
   a new array four times a node a step - 224 bytes of garbage a node a step, a generation
   collected every step on a large grid. No number changes.
-- **The solver-behaviour version is advanced to 2**, so older numerical results are not
+- **A trajectory leg that ends where the field switches runs to the switch.** A sequenced run
+  whose trajectory phase was followed by one that changes the field, with ions still in flight,
+  stopped with a step-size underflow about an attosecond before the switch and refused the
+  run. The step that lands on a switch now samples the phase it belongs to at its end, rather
+  than the one starting; a sequenced flight that lands on a switch moves in its last digits
+  (the analytic sequenced example now agrees with its closed form to 3e-16, from 4.6e-13), and
+  every flight that meets no switch is bit-identical.
+- **The solver-behaviour version is advanced to 3**, so older numerical results are not
   reported current after these corrections. The package version is unchanged.
 
 ## Known limits

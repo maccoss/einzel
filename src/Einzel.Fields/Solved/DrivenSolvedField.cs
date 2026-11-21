@@ -256,6 +256,22 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     /// the end of the declared sequence would make every ion still in flight
     /// suddenly coast, which is a physics change disguised as a bookkeeping one.
     /// </remarks>
+    /// <summary>The stage ending at an instant on a boundary, or holding at any other.</summary>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <returns>The stage index.</returns>
+    private int StageBefore(double timeSeconds)
+    {
+        for (var k = 0; k < _boundaries.Length; k++)
+        {
+            if (timeSeconds <= _boundaries[k])
+            {
+                return k;
+            }
+        }
+
+        return _boundaries.Length - 1;
+    }
+
     private int StageAt(double timeSeconds)
     {
         for (var k = 0; k < _boundaries.Length; k++)
@@ -363,7 +379,14 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         return Weight(channel, timeSeconds);
     }
 
-    private double Weight(int channel, double timeSeconds)
+    private double Weight(int channel, double timeSeconds) => Weight(channel, timeSeconds, before: false);
+
+    /// <summary>A channel's weight at an instant, or as the instant is approached from before.</summary>
+    /// <param name="channel">The channel.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a time on a stage boundary is given the stage ending there.</param>
+    /// <returns>The weight.</returns>
+    private double Weight(int channel, double timeSeconds, bool before)
     {
         // WHICH state the geometry is in, as against WHERE IN THE CYCLE the drive is.
         // Those are the same instant for an integrator and must not be for a cycle
@@ -371,7 +394,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         // on `timeSeconds`.
         var setting = _operatingPoint ?? timeSeconds;
 
-        var stage = _boundaries.Length == 0 ? -1 : StageAt(setting);
+        var stage = _boundaries.Length == 0 ? -1 : before ? StageBefore(setting) : StageAt(setting);
 
         var direct = stage < 0 ? _direct[channel] : _stageDirect[stage][channel];
         var harmonics = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];
@@ -432,6 +455,25 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         for (var k = 0; k < _channels.Length; k++)
         {
             var weight = Weight(k, timeSeconds);
+
+            if (weight != 0.0)
+            {
+                total += _channels[k].ElectricFieldAt(in position) * weight;
+            }
+        }
+
+        return total;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>On a stage boundary, the stage that is ending: a ramp at its end, a hold as held.</remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds)
+    {
+        var total = Vec3.Zero;
+
+        for (var k = 0; k < _channels.Length; k++)
+        {
+            var weight = Weight(k, timeSeconds, before: true);
 
             if (weight != 0.0)
             {
@@ -551,6 +593,24 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         for (var k = 0; k < _channels.Length; k++)
         {
             var weight = Weight(k, timeSeconds);
+
+            if (weight != 0.0)
+            {
+                total += _channels[k].PotentialAt(in position) * weight;
+            }
+        }
+
+        return total;
+    }
+
+    /// <inheritdoc/>
+    public double PotentialBefore(in Vec3 position, double timeSeconds)
+    {
+        var total = 0.0;
+
+        for (var k = 0; k < _channels.Length; k++)
+        {
+            var weight = Weight(k, timeSeconds, before: true);
 
             if (weight != 0.0)
             {

@@ -318,9 +318,11 @@ public static class TrajectoryIntegrator
             // in space this needs no root-find - the time is known - so the step is
             // simply cut to land on it. The next step then starts in the new state,
             // with the derivative recomputed there.
+            var switchAt = double.PositiveInfinity;
+
             if (driven is not null)
             {
-                var switchAt = driven.NextSwitchAfter(time.Total);
+                switchAt = driven.NextSwitchAfter(time.Total);
 
                 if (double.IsFinite(switchAt))
                 {
@@ -373,10 +375,17 @@ public static class TrajectoryIntegrator
                 break;
             }
 
+            // A step cut to end exactly on a switch belongs to the phase ending there. Its last
+            // stages are asked that phase, not the one starting: sampled across the jump, the
+            // error estimate read it as error and refused the step, and the next and the next,
+            // each shorter, until one underflowed an attosecond short of the switch - which is
+            // where a trajectory leg ending at a field change with its ions still in flight
+            // stopped. Any other step is untouched.
             DormandPrince54.Step(
                 in state, in derivative, step, field, chargeToMass,
                 out var candidate, out var errorPosition, out var errorVelocity, out var candidateDerivative,
-                time.Total);
+                time.Total,
+                endsOnSwitch: step == switchAt - time.Total);
             fieldEvaluations += 6;
 
             var error = ErrorNorm(in state, in candidate, in errorPosition, in errorVelocity, settings);

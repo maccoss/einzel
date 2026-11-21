@@ -4002,3 +4002,34 @@ Two findings from Stage 1 that bear on the spec:
   The export's grid arrays stay with the allocator: a watch runs only in a measuring child or in
   `Einzel.Fields.Tests`, neither of which exports, and an allocation on any other thread is counted
   apart as off-thread rather than read as the build's.
+
+- **A step that lands on a switch belongs to the phase ending there, and a trajectory leg now
+  reaches its switch.** A sequenced run whose trajectory phase was followed by one that changes
+  the field, with ions still in flight, stopped with `StepSizeUnderflow` about an attosecond
+  short of the switch - `9.99999999992e-8 s of 1e-7 s` - and refused the whole run. Traced, not
+  guessed: the integrator cuts a step to end exactly on a switch, and Dormand-Prince's last two
+  stages sit at the step's end (`C6 = C7 = 1`), where a time on a boundary belongs to the phase
+  starting. So the step that wholly belongs to the phase ending sampled the next one at its end,
+  the error estimate read the jump as error and refused it, and each retry approached the
+  switch by a shorter accepted step - seventy-seven accepted and twenty-eight refused in the last
+  nanosecond - until one underflowed. A field that meets no switch never sees this. A staged
+  single-mode run usually came through it, by the same run of refusals: a facing pair crossing a
+  switch in `SwitchCrossingTests` took 112 accepted steps and takes 47, and that test now asks for
+  a time past the switch instead of a step count that was counting the defect.
+
+  `ITimeVaryingField.ElectricFieldBefore` asks a field for the left limit at an instant: the
+  phase ending, on a boundary. It defaults to the field at the instant (right for anything
+  continuous in time); the sequenced field and the staged solved field answer by side, and the
+  composites forward it. **By side, not by an instant a hair earlier**: on a shifted leg an ulp of
+  the leg's clock is far smaller than an ulp of the instrument's and rounds back onto the switch -
+  a leg from 1.40141743e-6 to 3.00152224e-5 s maps its own end an ulp *past* the instrument's -
+  so `TimeShiftedField` puts a mapped instant within four ulps of a switch onto the switch. The
+  step cut to a switch asks its end stages from before, and hands on the next phase's derivative.
+
+  **The reference flights and the corpus are bit-identical except where a step lands on a
+  switch.** The scaffolded reflectron, the planar mirror pair, the einzel lens and the rectilinear
+  trap fly the same digits and step counts, and 40 of the 42 corpus examples give identical
+  `run --json`; the two that differ are the two that switch. `sequenced-uniform` moved from
+  5.2193585800816775 to 5.219358580084054 µs against a closed form of 5.2193585800840523 - from
+  4.6e-13 to 3e-16 - and `sequenced-extraction` by 6e-12 relative, inside its plates' 1e-7
+  fringe. The solver-behaviour version goes to 3, since a staged flight's numbers moved.

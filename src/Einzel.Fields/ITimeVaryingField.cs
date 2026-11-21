@@ -43,6 +43,38 @@ public interface ITimeVaryingField : IElectrostaticField
     double PotentialAt(in Vec3 position, double timeSeconds);
 
     /// <summary>
+    /// The electric field at a point as an instant is approached from before it: at a switch,
+    /// the state that is ending rather than the one starting.
+    /// </summary>
+    /// <param name="position">The point, in metres.</param>
+    /// <param name="timeSeconds">The instant, in seconds from the launch.</param>
+    /// <returns>The field vector, in volts per metre.</returns>
+    /// <remarks>
+    /// <para>
+    /// What a step that ends on a switch samples at its end. The integrator lands on a switch
+    /// exactly, and a time on a boundary belongs to the phase that is starting - so the stages of
+    /// the step that lands there, which belong wholly to the phase ending, sampled the next one
+    /// at the step's end. Their error estimate then read the jump between the two as error,
+    /// rejected the step, and approached the switch in ever shorter steps until one underflowed
+    /// an attosecond short of it. A field continuous in time is the same from either side, which
+    /// is the default; only a field that switches answers differently.
+    /// </para>
+    /// <para>
+    /// Asked by side rather than by an instant a hair earlier, because no instant is reliably a
+    /// hair earlier once a leg's clock is shifted onto the instrument's: an ulp of a leg's time
+    /// is far smaller than an ulp of the instrument's, and rounds back onto the switch.
+    /// </para>
+    /// </remarks>
+    Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds) => ElectricFieldAt(in position, timeSeconds);
+
+    /// <summary>The potential at a point as an instant is approached from before it.</summary>
+    /// <param name="position">The point, in metres.</param>
+    /// <param name="timeSeconds">The instant, in seconds from the launch.</param>
+    /// <returns>The potential, in volts.</returns>
+    /// <remarks>As <see cref="ElectricFieldBefore"/>, for a field whose E is built from its potential.</remarks>
+    double PotentialBefore(in Vec3 position, double timeSeconds) => PotentialAt(in position, timeSeconds);
+
+    /// <summary>
     /// The shortest period in the drive, in seconds.
     /// </summary>
     /// <remarks>

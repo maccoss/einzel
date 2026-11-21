@@ -131,19 +131,46 @@ public sealed class SequencedField : ITimeVaryingField
     /// </remarks>
     /// <param name="timeSeconds">The instant, on the instrument's timeline.</param>
     /// <returns>The state in force there.</returns>
-    private IElectrostaticField At(double timeSeconds)
+    private IElectrostaticField At(double timeSeconds) => At(timeSeconds, before: false);
+
+    /// <summary>The state that holds at an instant, or that is ending there.</summary>
+    /// <param name="timeSeconds">The instant, on the instrument's timeline.</param>
+    /// <param name="before">Whether a time on a boundary is given the phase ending there.</param>
+    /// <returns>The state.</returns>
+    private IElectrostaticField At(double timeSeconds, bool before)
     {
         timeSeconds = _operatingPoint ?? timeSeconds;
 
         for (var i = 0; i < _boundaries.Count; i++)
         {
-            if (timeSeconds < _boundaries[i])
+            if (timeSeconds < _boundaries[i] || (before && timeSeconds == _boundaries[i]))
             {
                 return _states[i];
             }
         }
 
         return _states[^1];
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>On a boundary, the state that is ending, sampled from its own side.</remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds)
+    {
+        var state = At(timeSeconds, before: true);
+
+        return state is ITimeVaryingField driven
+            ? driven.ElectricFieldBefore(in position, timeSeconds)
+            : state.ElectricFieldAt(in position);
+    }
+
+    /// <inheritdoc/>
+    public double PotentialBefore(in Vec3 position, double timeSeconds)
+    {
+        var state = At(timeSeconds, before: true);
+
+        return state is ITimeVaryingField driven
+            ? driven.PotentialBefore(in position, timeSeconds)
+            : state.PotentialAt(in position);
     }
 
     /// <inheritdoc/>
