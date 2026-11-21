@@ -43,6 +43,18 @@ public struct CompensatedSum : IEquatable<CompensatedSum>
         _sum = updated;
     }
 
+    /// <summary>Discards the running state and starts again from a value.</summary>
+    /// <param name="value">What the sum now is, exactly, with no correction pending.</param>
+    /// <remarks>
+    /// For an instant known exactly that an accumulation was meant to reach - a step cut to end
+    /// on a switch - where the sum of the steps may miss it by an ulp.
+    /// </remarks>
+    public void Restart(double value)
+    {
+        _sum = value;
+        _compensation = 0.0;
+    }
+
     /// <summary>
     /// The sum, with the accumulated correction applied. Reading this does not
     /// disturb the running state, so it is safe to sample mid-loop.

@@ -244,6 +244,14 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     }
 
     /// <inheritdoc/>
+    /// <remarks>Continuous in time, so the same from either side of any instant.</remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => ElectricFieldAt(in position, switchSeconds);
+
+    /// <inheritdoc/>
+    /// <remarks>Continuous in time, so the same from either side of any instant.</remarks>
+    public double PotentialBefore(in Vec3 position, double switchSeconds) => PotentialAt(in position, switchSeconds);
+
+    /// <inheritdoc/>
     public double PotentialAt(in Vec3 position, double timeSeconds)
     {
         var (u, v) = Transverse(in position);

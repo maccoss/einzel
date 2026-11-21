@@ -61,54 +61,89 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     public double OffsetSeconds => _offsetSeconds;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// On a switch this leg reported, the instrument's own boundary - the starting phase - and
+    /// otherwise the leg's instant plus the offset, bit-identical to what it always was.
+    /// </remarks>
     public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) =>
-        _inner.ElectricFieldAt(position, timeSeconds + _offsetSeconds);
+        _inner.ElectricFieldAt(position, OnTheInstrument(timeSeconds));
 
     /// <inheritdoc/>
     public double PotentialAt(in Vec3 position, double timeSeconds) =>
-        _inner.PotentialAt(position, timeSeconds + _offsetSeconds);
+        _inner.PotentialAt(position, OnTheInstrument(timeSeconds));
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Onto the instrument's clock, and onto its boundary exactly where the leg's instant is one:
-    /// a switch this leg reported as its own time maps back within a few ulps of the
-    /// instrument's, possibly past it, and asked from before at an instant past a boundary the
-    /// inner field would answer with the phase already started.
+    /// The switch is handed on as the instrument's own boundary, so the inner field compares it
+    /// by identity rather than receiving a sum that may round to either side of it.
     /// </remarks>
-    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds) =>
-        _inner.ElectricFieldBefore(position, OnTheInstrument(timeSeconds));
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) =>
+        _inner.ElectricFieldBefore(position, OnTheInstrument(switchSeconds));
 
     /// <inheritdoc/>
-    public double PotentialBefore(in Vec3 position, double timeSeconds) =>
-        _inner.PotentialBefore(position, OnTheInstrument(timeSeconds));
+    public double PotentialBefore(in Vec3 position, double switchSeconds) =>
+        _inner.PotentialBefore(position, OnTheInstrument(switchSeconds));
 
-    /// <summary>A leg's instant on the instrument's clock, put on a switch it rounded beside.</summary>
+    /// <summary>
+    /// A leg's instant on the instrument's clock: the instrument's boundary itself where the
+    /// instant is a switch this leg reported, the instant plus the offset anywhere else.
+    /// </summary>
     /// <param name="timeSeconds">The instant on this leg's clock.</param>
-    /// <returns>The instant on the instrument's, the switch itself where it is within a few ulps of one.</returns>
+    /// <returns>The instant on the instrument's.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>By identity, not by distance.</b> This leg reports a switch as <c>boundary - offset</c>,
+    /// so a leg's instant is a switch exactly when it equals that expression for some boundary -
+    /// an equality, which picks the right one of two boundaries however close together they lie.
+    /// Adding the offset back instead lands an ulp past the boundary for some pairs (a leg from
+    /// 1.40141743e-6 to 3.00152224e-5 s), which the inner field reads as the next phase.
+    /// </para>
+    /// <para>
+    /// The boundaries looked at start a few ulps before the instant, which is as far as a
+    /// subtraction and an addition can move it; past the instant's own value there is nothing to
+    /// find.
+    /// </para>
+    /// </remarks>
     private double OnTheInstrument(double timeSeconds)
     {
         var instrument = timeSeconds + _offsetSeconds;
-        var near = instrument;
+        var boundary = _inner.NextSwitchAfter(Before(instrument));
 
-        for (var k = 0; k < Ulps; k++)
+        while (double.IsFinite(boundary))
         {
-            near = Math.BitDecrement(near);
+            var reported = boundary - _offsetSeconds;
+
+            if (reported == timeSeconds)
+            {
+                return boundary;
+            }
+
+            if (reported > timeSeconds)
+            {
+                break;
+            }
+
+            boundary = _inner.NextSwitchAfter(boundary);
         }
 
-        var boundary = _inner.NextSwitchAfter(near);
-
-        if (!double.IsFinite(boundary))
-        {
-            return instrument;
-        }
-
-        var ulp = Math.BitIncrement(Math.Abs(boundary)) - Math.Abs(boundary);
-
-        return Math.Abs(boundary - instrument) <= Ulps * ulp ? boundary : instrument;
+        return instrument;
     }
 
-    /// <summary>How far, in units in the last place, a mapped instant may sit from the switch it means.</summary>
-    private const int Ulps = 4;
+    /// <summary>A few ulps before an instant: as far as a leg's instant can sit from the boundary it means.</summary>
+    /// <param name="instant">The instant on the instrument's clock.</param>
+    /// <returns>The instant moved back that far.</returns>
+    private static double Before(double instant)
+    {
+        for (var k = 0; k < Ulps; k++)
+        {
+            instant = Math.BitDecrement(instant);
+        }
+
+        return instant;
+    }
+
+    /// <summary>How many ulps before an instant the boundaries are looked for.</summary>
+    private const int Ulps = 16;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -184,12 +219,23 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// Shifted back into this leg's own clock, and never negative: a switch already
     /// behind the offset is not a switch this leg will meet. The integrator refuses to
     /// step past what this returns, so reporting a past instant would stall it.
+    /// <para>
+    /// Strictly after the leg's instant on the leg's own clock, the same arithmetic it is reported
+    /// in: a boundary whose reported value is not past the instant - the one just landed on,
+    /// whatever adding the offset back makes of it - is not the next one, so landing on a switch
+    /// moves the leg on to the one after rather than stalling at the one it is on.
+    /// </para>
     /// </remarks>
     public double NextSwitchAfter(double timeSeconds)
     {
-        var next = _inner.NextSwitchAfter(timeSeconds + _offsetSeconds);
+        var boundary = _inner.NextSwitchAfter(Before(timeSeconds + _offsetSeconds));
 
-        return double.IsPositiveInfinity(next) ? next : next - _offsetSeconds;
+        while (double.IsFinite(boundary) && boundary - _offsetSeconds <= timeSeconds)
+        {
+            boundary = _inner.NextSwitchAfter(boundary);
+        }
+
+        return double.IsFinite(boundary) ? boundary - _offsetSeconds : double.PositiveInfinity;
     }
 
     /// <inheritdoc/>

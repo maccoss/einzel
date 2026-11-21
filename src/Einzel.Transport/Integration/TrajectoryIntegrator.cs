@@ -381,12 +381,23 @@ public static class TrajectoryIntegrator
             // each shorter, until one underflowed an attosecond short of the switch - which is
             // where a trajectory leg ending at a field change with its ions still in flight
             // stopped. Any other step is untouched.
+            //
+            // Which step that is, is structural: the one whose length is the cut to the switch,
+            // compared with the very expression it was cut to - and the switch is handed on as
+            // the field reported it, so nothing downstream asks whether a sum landed on it.
+            var endsOnSwitch = double.IsFinite(switchAt) && step == switchAt - time.Total;
+
+            // And the same for the ceiling, which a step is cut to in the same way: the sum of the
+            // steps need not land on it either, and an ulp short of it the flight is offered a step
+            // of an ulp, below the smallest, and ends as an underflow rather than at the ceiling.
+            var endsOnCeiling = step == settings.MaximumFlightTime - time.Total;
+
             DormandPrince54.Step(
                 in state, in derivative, step, field, chargeToMass,
                 out var candidate, out var errorPosition, out var errorVelocity, out var candidateDerivative,
                 time.Total,
-                endsOnSwitch: step == switchAt - time.Total);
-            fieldEvaluations += 6;
+                endsOnSwitch ? switchAt : double.NaN);
+            fieldEvaluations += DormandPrince54.Evaluations(field, endsOnSwitch);
 
             var error = ErrorNorm(in state, in candidate, in errorPosition, in errorVelocity, settings);
 
@@ -423,7 +434,7 @@ public static class TrajectoryIntegrator
                 DormandPrince54.Step(
                     in state, in derivative, conductorStep, field, chargeToMass,
                     out var absorbed, out _, out _, out _, time.Total);
-                fieldEvaluations += 6;
+                fieldEvaluations += DormandPrince54.Evaluations(field);
 
                 time.Add(conductorStep);
                 state = absorbed;
@@ -441,7 +452,7 @@ public static class TrajectoryIntegrator
                 DormandPrince54.Step(
                     in state, in derivative, stopStep, field, chargeToMass,
                     out var landed, out _, out _, out _, time.Total);
-                fieldEvaluations += 6;
+                fieldEvaluations += DormandPrince54.Evaluations(field);
 
                 time.Add(stopStep);
                 state = landed;
@@ -458,7 +469,7 @@ public static class TrajectoryIntegrator
                 DormandPrince54.Step(
                     in state, in derivative, boundaryStep, field, chargeToMass,
                     out var onBoundary, out _, out _, out _, time.Total);
-                fieldEvaluations += 6;
+                fieldEvaluations += DormandPrince54.Evaluations(field);
 
                 time.Add(boundaryStep);
                 state = onBoundary;
@@ -475,6 +486,23 @@ public static class TrajectoryIntegrator
             }
 
             time.Add(step);
+
+            // ON THE SWITCH, EXACTLY: the step was its length, but adding it need not give the
+            // switch back to the bit, and a clock an ulp short of it is asked for the same switch
+            // again next and offered a step of an ulp. The time is set to the instant the field
+            // reported, so the next switch asked for is the one after.
+            //
+            // Only where the sum missed: where it landed, the running sum is left exactly as it
+            // was, so every flight that never needed this is bit-identical.
+            if (endsOnSwitch && time.Total != switchAt)
+            {
+                time.Restart(switchAt);
+            }
+            else if (endsOnCeiling && time.Total < settings.MaximumFlightTime)
+            {
+                time.Restart(settings.MaximumFlightTime);
+            }
+
             state = candidate;
             derivative = candidateDerivative;
             accepted++;
@@ -759,7 +787,7 @@ public static class TrajectoryIntegrator
             DormandPrince54.Step(
                 in start, in startDerivative, mid, field, chargeToMass,
                 out var probe, out _, out _, out _, timeSeconds);
-            fieldEvaluations += 6;
+            fieldEvaluations += DormandPrince54.Evaluations(field);
 
             var value = surface(in probe);
 

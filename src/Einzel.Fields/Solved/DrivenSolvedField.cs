@@ -246,17 +246,11 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     /// <summary>When the sequence finishes, in seconds. Infinity when there is none.</summary>
     public double SequenceEndsAt => _boundaries.Length == 0 ? double.PositiveInfinity : _boundaries[^1];
 
-    /// <summary>
-    /// Which stage is running at an instant.
-    /// </summary>
+    /// <summary>The stage ending at a switch this field reported, or holding at any other instant.</summary>
     /// <remarks>
-    /// After the last one ends the last one continues to hold, rather than the
-    /// field switching off. A sequence describes what the instrument does, and an
-    /// instrument left alone stays where it was put - and a field that vanished at
-    /// the end of the declared sequence would make every ion still in flight
-    /// suddenly coast, which is a physics change disguised as a bookkeeping one.
+    /// Asked with the switch itself - the value <see cref="NextSwitchAfter"/> returned - so on a
+    /// boundary the equality below is identity, not arithmetic landing on it.
     /// </remarks>
-    /// <summary>The stage ending at an instant on a boundary, or holding at any other.</summary>
     /// <param name="timeSeconds">The instant.</param>
     /// <returns>The stage index.</returns>
     private int StageBefore(double timeSeconds)
@@ -272,6 +266,16 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         return _boundaries.Length - 1;
     }
 
+    /// <summary>
+    /// Which stage is running at an instant.
+    /// </summary>
+    /// <remarks>
+    /// After the last one ends the last one continues to hold, rather than the
+    /// field switching off. A sequence describes what the instrument does, and an
+    /// instrument left alone stays where it was put - and a field that vanished at
+    /// the end of the declared sequence would make every ion still in flight
+    /// suddenly coast, which is a physics change disguised as a bookkeeping one.
+    /// </remarks>
     private int StageAt(double timeSeconds)
     {
         for (var k = 0; k < _boundaries.Length; k++)
@@ -448,32 +452,24 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     }
 
     /// <inheritdoc/>
-    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
-    {
-        var total = Vec3.Zero;
-
-        for (var k = 0; k < _channels.Length; k++)
-        {
-            var weight = Weight(k, timeSeconds);
-
-            if (weight != 0.0)
-            {
-                total += _channels[k].ElectricFieldAt(in position) * weight;
-            }
-        }
-
-        return total;
-    }
+    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => Field(in position, timeSeconds, before: false);
 
     /// <inheritdoc/>
     /// <remarks>On a stage boundary, the stage that is ending: a ramp at its end, a hold as held.</remarks>
-    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds)
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => Field(in position, switchSeconds, before: true);
+
+    /// <summary>The field at an instant, or at a switch from before it.</summary>
+    /// <param name="position">The point.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a switch is approached from before.</param>
+    /// <returns>The field.</returns>
+    private Vec3 Field(in Vec3 position, double timeSeconds, bool before)
     {
         var total = Vec3.Zero;
 
         for (var k = 0; k < _channels.Length; k++)
         {
-            var weight = Weight(k, timeSeconds, before: true);
+            var weight = Weight(k, timeSeconds, before);
 
             if (weight != 0.0)
             {
@@ -586,31 +582,23 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     }
 
     /// <inheritdoc/>
-    public double PotentialAt(in Vec3 position, double timeSeconds)
-    {
-        var total = 0.0;
-
-        for (var k = 0; k < _channels.Length; k++)
-        {
-            var weight = Weight(k, timeSeconds);
-
-            if (weight != 0.0)
-            {
-                total += _channels[k].PotentialAt(in position) * weight;
-            }
-        }
-
-        return total;
-    }
+    public double PotentialAt(in Vec3 position, double timeSeconds) => Potential(in position, timeSeconds, before: false);
 
     /// <inheritdoc/>
-    public double PotentialBefore(in Vec3 position, double timeSeconds)
+    public double PotentialBefore(in Vec3 position, double switchSeconds) => Potential(in position, switchSeconds, before: true);
+
+    /// <summary>The potential at an instant, or at a switch from before it.</summary>
+    /// <param name="position">The point.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a switch is approached from before.</param>
+    /// <returns>The potential.</returns>
+    private double Potential(in Vec3 position, double timeSeconds, bool before)
     {
         var total = 0.0;
 
         for (var k = 0; k < _channels.Length; k++)
         {
-            var weight = Weight(k, timeSeconds, before: true);
+            var weight = Weight(k, timeSeconds, before);
 
             if (weight != 0.0)
             {

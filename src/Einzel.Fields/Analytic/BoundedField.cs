@@ -203,7 +203,23 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
     }
 
     /// <inheritdoc />
-    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
+    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => Field(in position, timeSeconds, before: false);
+
+    /// <inheritdoc />
+    public double PotentialAt(in Vec3 position, double timeSeconds) => Potential(in position, timeSeconds, before: false);
+
+    /// <inheritdoc />
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => Field(in position, switchSeconds, before: true);
+
+    /// <inheritdoc />
+    public double PotentialBefore(in Vec3 position, double switchSeconds) => Potential(in position, switchSeconds, before: true);
+
+    /// <summary>The bounded field at an instant, or at a switch from before it.</summary>
+    /// <param name="position">The point.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a switch is approached from before.</param>
+    /// <returns>The field.</returns>
+    private Vec3 Field(in Vec3 position, double timeSeconds, bool before)
     {
         var scale = Region.Scale(in position);
 
@@ -212,47 +228,38 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
             return Vec3.Zero;
         }
 
-        var field = _driven.ElectricFieldAt(in position, timeSeconds);
+        var field = before
+            ? _driven.ElectricFieldBefore(in position, timeSeconds)
+            : _driven.ElectricFieldAt(in position, timeSeconds);
 
         if (scale >= 1.0)
         {
             return field;
         }
 
-        return (field * scale) - (Region.ScaleGradient(in position) * _driven.PotentialAt(in position, timeSeconds));
+        var potential = before
+            ? _driven.PotentialBefore(in position, timeSeconds)
+            : _driven.PotentialAt(in position, timeSeconds);
+
+        return (field * scale) - (Region.ScaleGradient(in position) * potential);
     }
 
-    /// <inheritdoc />
-    public double PotentialAt(in Vec3 position, double timeSeconds)
-    {
-        var scale = Region.Scale(in position);
-        return scale <= 0.0 ? 0.0 : scale * _driven.PotentialAt(in position, timeSeconds);
-    }
-
-    /// <inheritdoc />
-    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds)
+    /// <summary>The bounded potential at an instant, or at a switch from before it.</summary>
+    /// <param name="position">The point.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a switch is approached from before.</param>
+    /// <returns>The potential.</returns>
+    private double Potential(in Vec3 position, double timeSeconds, bool before)
     {
         var scale = Region.Scale(in position);
 
         if (scale <= 0.0)
         {
-            return Vec3.Zero;
+            return 0.0;
         }
 
-        var field = _driven.ElectricFieldBefore(in position, timeSeconds);
-
-        if (scale >= 1.0)
-        {
-            return field;
-        }
-
-        return (field * scale) - (Region.ScaleGradient(in position) * _driven.PotentialBefore(in position, timeSeconds));
-    }
-
-    /// <inheritdoc />
-    public double PotentialBefore(in Vec3 position, double timeSeconds)
-    {
-        var scale = Region.Scale(in position);
-        return scale <= 0.0 ? 0.0 : scale * _driven.PotentialBefore(in position, timeSeconds);
+        return scale * (before
+            ? _driven.PotentialBefore(in position, timeSeconds)
+            : _driven.PotentialAt(in position, timeSeconds));
     }
 }

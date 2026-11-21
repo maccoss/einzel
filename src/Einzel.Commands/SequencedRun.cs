@@ -452,20 +452,12 @@ public static class SequencedRun
                             : at - started)
                         .ToList();
 
-                // Entering the density description from trajectories, the packet is handed to the
-                // leg here and is no longer this loop's: the leg converts it and lets it go, so it
-                // is held for exactly as long as the conversion needs it. From a density, or from
-                // nothing, there is no packet to hand.
-                PhaseState[]? handed = null;
-
-                if (density is null)
-                {
-                    handed = states;
-                    states = null;
-                }
-
+                // The packet goes in by reference: where there is no density yet the leg converts it
+                // and clears this loop's reference to it, so it is held only as long as the
+                // conversion needs it. Where there is a density the packet is already gone - a
+                // density is only ever made by clearing it - so there is never both.
                 var diffused = Diffuse(
-                    density, ref handed, perTrajectory, model, field, gas, species, started, phase, warnings,
+                    density, ref states, perTrajectory, model, field, gas, species, started, phase, warnings,
                     progress, out var entered, mine is { Count: > 0 } ? mine : null);
                 density = diffused.Density;
                 producedBy = i;
@@ -949,13 +941,14 @@ public static class SequencedRun
     /// than by asking the phase whether it declares a ramp: the field is what the solver
     /// steps through, and a phase could in principle change it some other way.
     /// <para>
-    /// It is handed the density to step on, or the packet to convert into one (cleared as it is
-    /// converted, so nothing holds it past the conversion), or neither, to seed one - never both.
+    /// It is handed the density to step on, or, where there is none, the caller's packet by
+    /// reference to convert into one - cleared as it is converted, so nothing holds it past the
+    /// conversion - or no packet, to seed one.
     /// </para>
     /// </remarks>
     private static DiffusionResult Diffuse(
         DensityField? density,
-        ref PhaseState[]? handed,
+        ref PhaseState[]? states,
         double perTrajectory,
         CompiledModel model,
         IElectrostaticField field,
@@ -971,19 +964,13 @@ public static class SequencedRun
         var grid = DiffusionRun.GridFor(model);
         converted = false;
 
-        if (density is not null && handed is not null)
-        {
-            throw new InvalidOperationException(
-                "a diffusive leg is handed a density or a packet to convert, never both");
-        }
-
         // Entering the density description, the density is made here, in this leg's frame,
         // so that it is held for as long as this leg runs and no longer: converted from the
-        // packet the caller handed over, or seeded where there was none. The conversion's
-        // warnings are added before anything this leg adds of its own.
+        // caller's packet, which `Enter` clears, or seeded where there was none. The
+        // conversion's warnings are added before anything this leg adds of its own.
         if (density is null)
         {
-            density = Enter(model, grid, ref handed, perTrajectory, warnings, out converted);
+            density = Enter(model, grid, ref states, perTrajectory, warnings, out converted);
         }
 
         // The electrodes absorb during a diffusive phase exactly as they do in a wholly

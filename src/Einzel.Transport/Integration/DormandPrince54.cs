@@ -82,6 +82,16 @@ internal static class DormandPrince54
     internal const double E6 = 187.0 / 2100.0;
     internal const double E7 = 1.0 / 40.0;
 
+    /// <summary>How many times <see cref="Step"/> evaluates the field, for the integrator's count.</summary>
+    /// <param name="field">The field stepped through.</param>
+    /// <param name="endsOnSwitch">Whether the step ends on a switch.</param>
+    /// <returns>
+    /// Six stages after the first, and one more where the derivative handed on is evaluated apart
+    /// from the last stage: across a magnet face, or on a switch.
+    /// </returns>
+    public static int Evaluations(IElectrostaticField field, bool endsOnSwitch = false) =>
+        field is Einzel.Fields.Magnetic.IMagneticField || endsOnSwitch ? 7 : 6;
+
     /// <summary>
     /// Takes one step, producing the fifth-order state, the difference between
     /// the fifth- and fourth-order solutions, and the derivative at the new state
@@ -100,10 +110,12 @@ internal static class DormandPrince54
     /// The instant the step starts at. Ignored by a static field; every stage of a
     /// driven one samples a different point in the cycle.
     /// </param>
-    /// <param name="endsOnSwitch">
-    /// Whether the step was cut to end on a switch of a sequenced field. Its stages at the end
-    /// then sample the phase that is ending (<see cref="ITimeVaryingField.ElectricFieldBefore"/>),
-    /// to which the whole step belongs, and the derivative handed on is the next phase's.
+    /// <param name="switchSeconds">
+    /// The switch the step was cut to end on, exactly as the field reported it, or NaN for a step
+    /// that does not end on one. The stages at the end then ask the field for the phase ending
+    /// there (<see cref="ITimeVaryingField.ElectricFieldBefore"/>), to which the whole step
+    /// belongs, at the switch itself rather than at <c>t + h</c>, which is a sum that need not
+    /// equal it; and the derivative handed on is the starting phase's, at the switch.
     /// </param>
     public static void Step(
         in PhaseState state,
@@ -116,9 +128,10 @@ internal static class DormandPrince54
         out Vec3 errorVelocity,
         out PhaseDerivative derivativeAtResult,
         double timeSeconds = 0.0,
-        bool endsOnSwitch = false)
+        double switchSeconds = double.NaN)
     {
         var h = stepSize;
+        var endsOnSwitch = !double.IsNaN(switchSeconds);
 
         // Every stage takes B from the side of each magnet face the step STARTED on (see
         // IMagneticField.MagneticFieldAt(position, side)), so a step straddling a hard edge
@@ -138,11 +151,12 @@ internal static class DormandPrince54
         // next phase's first instant. The step belongs to the phase ending, so there they ask it.
         var k6 = Derivative(
             Offset(state, h, (A61, k1), (A62, k2), (A63, k3), (A64, k4), (A65, k5)),
-            field, chargeToMass, timeSeconds + (C6 * h), in side, endsOnSwitch);
+            field, chargeToMass, endsOnSwitch ? switchSeconds : timeSeconds + (C6 * h), in side, endsOnSwitch);
 
         result = Offset(state, h, (B1, k1), (B3, k3), (B4, k4), (B5, k5), (B6, k6));
 
-        var k7 = Derivative(result, field, chargeToMass, timeSeconds + (C7 * h), in side, endsOnSwitch);
+        var k7 = Derivative(
+            result, field, chargeToMass, endsOnSwitch ? switchSeconds : timeSeconds + (C7 * h), in side, endsOnSwitch);
 
         // The error estimate uses the start's side, but the next step starts at the result
         // and must see the field there: identical unless the step ended across a magnet face,
@@ -152,7 +166,7 @@ internal static class DormandPrince54
         // And a step that ended on a switch hands on the derivative of the phase now starting,
         // where the next step begins: the k7 above is the ending phase's, for the estimate.
         derivativeAtResult = field is Einzel.Fields.Magnetic.IMagneticField || endsOnSwitch
-            ? Derivative(in result, field, chargeToMass, timeSeconds + (C7 * h))
+            ? Derivative(in result, field, chargeToMass, endsOnSwitch ? switchSeconds : timeSeconds + (C7 * h))
             : k7;
 
         var fourth = Offset(state, h, (E1, k1), (E3, k3), (E4, k4), (E5, k5), (E6, k6), (E7, k7));

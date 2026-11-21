@@ -67,20 +67,23 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>
-    /// A phase too short to move the timeline on - its end, added up as the run adds it, equal to
-    /// its start - is refused as a model error at its duration, where it used to pass validation
-    /// and fail in the field as an internal error. A zero duration is refused at the same path.
+    /// A phase the run cannot resolve - its end, added up as the run adds it, equal to its start,
+    /// or after it by less than the integrator's smallest step - is refused as a model error at its
+    /// duration, where it used to pass validation and fail in the field as an internal error, or
+    /// reach the run as a leg that underflows at once. A zero duration is refused at the same path.
     /// </summary>
+    /// <param name="before">Each of the two phases before it, in microseconds.</param>
     /// <param name="duration">The third phase's duration, in microseconds.</param>
     /// <param name="says">What the refusal says.</param>
     [Theory]
-    [InlineData("1e-30", "vanishes")]
-    [InlineData("0", "positive time")]
-    public void APhaseThatEndsWhereItBeginsIsRefusedAtItsDuration(string duration, string says)
+    [InlineData("3", "1e-30", "its end is its start")]
+    [InlineData("0.5", "1e-13", "smallest step")]
+    [InlineData("3", "0", "positive time")]
+    public void APhaseThatEndsWhereItBeginsIsRefusedAtItsDuration(string before, string duration, string says)
     {
         var path = Model($$"""
-            [ { "name": "hold", "duration": { "value": 3, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
-              { "name": "push", "duration": { "value": 3, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 100, "unit": "V/m" } } },
+            [ { "name": "hold", "duration": { "value": {{before}}, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "push", "duration": { "value": {{before}}, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 100, "unit": "V/m" } } },
               { "name": "blip", "duration": { "value": {{duration}}, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
             """);
 

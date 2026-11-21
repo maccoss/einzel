@@ -352,6 +352,12 @@ internal static class PaulTrapHoles
         public double PotentialAt(in Vec3 position, double timeSeconds) =>
             inner.PotentialAt(position, timeSeconds) * factor;
 
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) =>
+            inner.ElectricFieldBefore(position, switchSeconds) * factor;
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds) =>
+            inner.PotentialBefore(position, switchSeconds) * factor;
+
         public Vec3 ElectricFieldAt(in Vec3 position) => inner.ElectricFieldAt(position) * factor;
 
         public double PotentialAt(in Vec3 position) => inner.PotentialAt(position) * factor;

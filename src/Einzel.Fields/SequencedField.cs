@@ -154,22 +154,22 @@ public sealed class SequencedField : ITimeVaryingField
 
     /// <inheritdoc/>
     /// <remarks>On a boundary, the state that is ending, sampled from its own side.</remarks>
-    public Vec3 ElectricFieldBefore(in Vec3 position, double timeSeconds)
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds)
     {
-        var state = At(timeSeconds, before: true);
+        var state = At(switchSeconds, before: true);
 
         return state is ITimeVaryingField driven
-            ? driven.ElectricFieldBefore(in position, timeSeconds)
+            ? driven.ElectricFieldBefore(in position, switchSeconds)
             : state.ElectricFieldAt(in position);
     }
 
     /// <inheritdoc/>
-    public double PotentialBefore(in Vec3 position, double timeSeconds)
+    public double PotentialBefore(in Vec3 position, double switchSeconds)
     {
-        var state = At(timeSeconds, before: true);
+        var state = At(switchSeconds, before: true);
 
         return state is ITimeVaryingField driven
-            ? driven.PotentialBefore(in position, timeSeconds)
+            ? driven.PotentialBefore(in position, switchSeconds)
             : state.PotentialAt(in position);
     }
 

@@ -4044,3 +4044,29 @@ Two findings from Stage 1 that bear on the spec:
   (AGT-3), exit 1, from `validate` and `run` alike. A zero duration was already refused at the same
   path ("a stage must last a positive time") and is pinned beside it. The field's own check stays,
   as the backstop for a caller that builds one without validating.
+
+  **The first review of that fix, and why it was still arithmetic.** It asked the field "from
+  before" at the step's end time - `x + (b - x)`, a sum that misses `b` in about one draw in twenty
+  - so whether the ending phase was asked still depended on the sum landing. The switch is now
+  carried by identity: the integrator hands the end stages and the handed-on derivative the switch
+  exactly as the field reported it, the field compares it with its own boundaries by equality, and
+  where the sum of the steps missed the switch the clock is set to it, so the next switch asked for
+  is the one after. A shifted leg reports a switch as `boundary - offset` and recognises it by that
+  same expression, which picks the right one of two boundaries three ulps apart, where snapping by
+  distance could not. Four hundred random switch instants on a sequenced field and twelve random
+  stage lengths on a solved one now take no more steps than the same flights stitched from their
+  phases; the two ways the review predicted it could fail - the sum, and the clock left an ulp short -
+  each fail that random test when restored. **A third came out of writing it**: the ceiling has the
+  same defect. A flight cut to its `MaximumFlightTime` that the steps' sum leaves an ulp short is
+  offered a step of an ulp and ends as an underflow - 1 of the first 11 random ceilings did - and
+  the clock is set to the ceiling in that case too. Both snaps happen only where the sum missed, so
+  every flight that landed is untouched: the four reference flights and all 42 corpus examples are
+  identical to the commit before.
+
+  `ElectricFieldBefore` and `PotentialBefore` have no default now, so a wrapper cannot forget them:
+  the compiler named the four test wrappers that had. A phase shorter than the integrator's
+  smallest step (`IntegrationLimits.MinimumStepSeconds`, 1e-18 s, now one constant for both) is
+  refused at its duration as well as one that rounds to nothing - a 1e-19 s phase after a
+  microsecond. The extra field evaluation a landing step makes, and the one a magnetic step always
+  made, are counted (`DormandPrince54.Evaluations`), checked against a field that counts what it
+  is asked. The diffusive leg takes the caller's packet by reference again, with no second variable.

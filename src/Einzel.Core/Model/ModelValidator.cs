@@ -1713,14 +1713,18 @@ public static class ModelValidator
                 continue;
             }
 
-            // ITS END MUST COME AFTER ITS START, by the arithmetic the run itself uses: the
-            // schedule and both sequenced fields add durations up from zero, so a phase short
-            // enough to vanish in that sum - a femtosecond after a microsecond - has an end equal
-            // to its start, which the field refuses as two boundaries at one instant. That came
-            // out as an internal error, exit 6, for a document whose mistake is a duration.
+            // ITS LENGTH MUST BE ONE THE RUN CAN RESOLVE, measured by the arithmetic the run itself
+            // uses: the schedule and both sequenced fields add durations up from zero, and the
+            // integrator's leg is the difference of two of those sums. A phase short enough to
+            // vanish in the sum - a femtosecond after a microsecond - has an end equal to its
+            // start, which the field refused as two boundaries at one instant, an internal error,
+            // exit 6. And one that survives the sum but is shorter than the integrator's smallest
+            // step reaches the run as a leg that underflows at once. Both are the document's
+            // mistake, so both are refused here, at the duration.
             var ends = elapsed + duration.Value.SiValue;
+            var length = ends - elapsed;
 
-            if (!(ends > elapsed))
+            if (!(length >= Core.Numerics.IntegrationLimits.MinimumStepSeconds))
             {
                 errors.Add(new EinzelError
                 {
@@ -1728,8 +1732,10 @@ public static class ModelValidator
                     Path = $"{stagePath}/duration",
                     Constraint = string.Create(
                         System.Globalization.CultureInfo.InvariantCulture,
-                        $"a phase must end after it begins, and this one's duration vanishes in the "
-                        + $"{elapsed:G6} s elapsed before it: in double precision its end is its start"),
+                        $"a phase must last at least the integrator's smallest step, "
+                        + $"{Core.Numerics.IntegrationLimits.MinimumStepSeconds:G3} s, after the "
+                        + $"{elapsed:G6} s before it; added up as the run adds it, this one lasts "
+                        + $"{length:G3} s{(length == 0.0 ? " - its end is its start" : string.Empty)}"),
                     Observed = new ObservedValue(duration.Value.SiValue, "s"),
                     Suggestion = "make the phase long enough to be resolved against the time before "
                         + "it, or remove it",

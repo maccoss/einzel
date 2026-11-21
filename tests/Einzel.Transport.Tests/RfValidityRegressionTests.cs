@@ -96,6 +96,8 @@ public sealed class RfValidityRegressionTests
         public Vec3 ElectricFieldAt(in Vec3 p, double t) => default;
         public double PotentialAt(in Vec3 p) => 0;
         public double PotentialAt(in Vec3 p, double t) => 0;
+        public Vec3 ElectricFieldBefore(in Vec3 p, double switchSeconds) => default;
+        public double PotentialBefore(in Vec3 p, double switchSeconds) => 0;
         public double FieldFreeRunLength(in Vec3 p, in Vec3 d) => 0;
         public double SignedDistanceToDiscontinuity(in Vec3 p) => double.PositiveInfinity;
         public double SignedDistanceToConductor(in Vec3 p) => -p.X;
