@@ -324,6 +324,8 @@ become a feature release without being renamed twice.
   than the one starting; a sequenced flight that lands on a switch moves in its last digits
   (the analytic sequenced example now agrees with its closed form to 3e-16, from 4.6e-13), and
   every flight that meets no switch is bit-identical.
+- **A phase too short to move the timeline on is refused as a model error** at its duration
+  (`VALUE_OUT_OF_BOUNDS`, exit 1), where it passed validation and ended in an internal error.
 - **The solver-behaviour version is advanced to 3**, so older numerical results are not
   reported current after these corrections. The package version is unchanged.
 

@@ -1534,6 +1534,7 @@ public static class ModelValidator
         out string path)
     {
         var phases = new List<PhaseSurface>();
+        var elapsed = 0.0;
         var declared = Declared(document, errors, out path);
 
         if (declared is null)
@@ -1711,6 +1712,33 @@ public static class ModelValidator
 
                 continue;
             }
+
+            // ITS END MUST COME AFTER ITS START, by the arithmetic the run itself uses: the
+            // schedule and both sequenced fields add durations up from zero, so a phase short
+            // enough to vanish in that sum - a femtosecond after a microsecond - has an end equal
+            // to its start, which the field refuses as two boundaries at one instant. That came
+            // out as an internal error, exit 6, for a document whose mistake is a duration.
+            var ends = elapsed + duration.Value.SiValue;
+
+            if (!(ends > elapsed))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{stagePath}/duration",
+                    Constraint = string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $"a phase must end after it begins, and this one's duration vanishes in the "
+                        + $"{elapsed:G6} s elapsed before it: in double precision its end is its start"),
+                    Observed = new ObservedValue(duration.Value.SiValue, "s"),
+                    Suggestion = "make the phase long enough to be resolved against the time before "
+                        + "it, or remove it",
+                });
+
+                continue;
+            }
+
+            elapsed = ends;
 
             phases.Add(new PhaseSurface(
                 name, duration.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface, ramps));

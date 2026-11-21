@@ -4033,3 +4033,14 @@ Two findings from Stage 1 that bear on the spec:
   5.2193585800816775 to 5.219358580084054 µs against a closed form of 5.2193585800840523 - from
   4.6e-13 to 3e-16 - and `sequenced-extraction` by 6e-12 relative, inside its plates' 1e-7
   fringe. The solver-behaviour version goes to 3, since a staged flight's numbers moved.
+
+- **A phase that ends where it begins is refused as a model error, at its duration.** A phase
+  short enough to vanish in the sum of the ones before it - a 1e-30 µs phase after 6 µs - has a
+  positive duration and an end equal to its start, so it passed validation and the sequenced
+  field then refused two boundaries at one instant with an `ArgumentException`: `INTERNAL_ERROR`,
+  exit 6, "a defect in einzel" for a document whose mistake is a duration. Validation now adds the
+  durations up from zero exactly as the schedule and both sequenced fields do, and refuses a
+  phase whose end does not exceed its start as `VALUE_OUT_OF_BOUNDS` at `/sequence/<index>/duration`
+  (AGT-3), exit 1, from `validate` and `run` alike. A zero duration was already refused at the same
+  path ("a stage must last a positive time") and is pinned beside it. The field's own check stays,
+  as the backstop for a caller that builds one without validating.

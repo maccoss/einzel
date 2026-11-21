@@ -65,4 +65,59 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
 
         Assert.Equal(3, run.Phases.Count);
     }
+
+    /// <summary>
+    /// A phase too short to move the timeline on - its end, added up as the run adds it, equal to
+    /// its start - is refused as a model error at its duration, where it used to pass validation
+    /// and fail in the field as an internal error. A zero duration is refused at the same path.
+    /// </summary>
+    /// <param name="duration">The third phase's duration, in microseconds.</param>
+    /// <param name="says">What the refusal says.</param>
+    [Theory]
+    [InlineData("1e-30", "vanishes")]
+    [InlineData("0", "positive time")]
+    public void APhaseThatEndsWhereItBeginsIsRefusedAtItsDuration(string duration, string says)
+    {
+        var path = Model($$"""
+            [ { "name": "hold", "duration": { "value": 3, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "push", "duration": { "value": 3, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 100, "unit": "V/m" } } },
+              { "name": "blip", "duration": { "value": {{duration}}, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+            """);
+
+        foreach (var verb in new[] { "validate", "run" })
+        {
+            var (exit, stdout, stderr) = Run(verb, path, "--json");
+
+            output.WriteLine($"{verb}: exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+            Assert.Equal(1, exit);
+
+            var error = JsonNode.Parse(stdout)!["errors"]![0]!;
+
+            Assert.Equal("VALUE_OUT_OF_BOUNDS", error["code"]!.GetValue<string>());
+            Assert.Equal("/sequence/2/duration", error["path"]!.GetValue<string>());
+            Assert.Contains(says, error["constraint"]!.GetValue<string>(), StringComparison.Ordinal);
+        }
+    }
+
+    private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var previousOut = Console.Out;
+        var previousError = Console.Error;
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            var exitCode = Program.Main(args);
+            return (exitCode, stdout.ToString(), stderr.ToString());
+        }
+        finally
+        {
+            Console.SetOut(previousOut);
+            Console.SetError(previousError);
+        }
+    }
 }
