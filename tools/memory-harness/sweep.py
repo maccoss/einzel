@@ -125,7 +125,7 @@ def table(match=""):
             def per(mebibytes):
                 return "-" if mebibytes is None else f"{mebibytes * MEBI / nodes:.1f}"
 
-            # A live run's working set is held down by its own sampler, so it is not shown.
+            # A live run's working set is held down by its own collections, so it is not shown.
             live = row.get("quantity") == "live"
 
             print(
@@ -135,6 +135,17 @@ def table(match=""):
                 f"{per(row.get('polledHeapPeakMiB')):>7} {per(row.get('liveSetPeakMiB')):>7} "
                 f"{per(row['allocatedMiB']):>7} {per(row['retainedMiB']):>6} {per(row['estimateMiB']):>6}"
             )
+
+            # A live figure is an interval with a verdict. Say so wherever it is not simply
+            # inside what the estimate states: wide, disturbed, not covering the work, or past
+            # an edge.
+            verdict = row.get("liveVerdict")
+
+            if live and verdict and not verdict.startswith("within"):
+                print(
+                    f"{'':40} live {per(row.get('liveSetPeakMiB'))} to {per(row.get('liveSetBoundMiB'))}, "
+                    f"stated {per(row.get('statedMiB'))}: {verdict}"
+                )
 
 
 def sweep(which):

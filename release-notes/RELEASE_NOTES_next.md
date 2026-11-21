@@ -225,6 +225,10 @@ become a feature release without being renamed twice.
   extruded electrodes: 5.5 kB a node on `c-trap`, 260 bytes on `linear-ion-trap-3d`, against
   the 105 the mask keeps. It now allocates only what it keeps, and the masks are bit-identical.
   `c-trap`'s build at 0.5 mm takes 14 s where it took 16; `linear-ion-trap-3d`'s is unchanged.
+- **Building a cross-section's conductor mask allocated per stencil arm**: an enumerator for
+  each of a free node's four arms, 101 bytes a node of garbage, 27 MB on a quarter-million-node
+  plane. It allocates what it keeps now; the masks are unchanged. A Debug build allocated a
+  further 18 bytes a node while zeroing each coarse mask's cut potentials, and no longer does.
 - **`einzel export` wrote an RF cross-section as a grounded box.** A two-dimensional geometry
   whose electrodes hold their potential as drive rather than DC exported every node at zero -
   `quadrupole-rf`, `linear-ion-trap`, `stellar-ion-trap`, `multipole-guide`, `paul-trap` and
@@ -282,6 +286,35 @@ become a feature release without being renamed twice.
 - **Unsupported RF spectra in the diffusive effective-field path are rejected** instead of
   applying one frequency to all components. Inactive generators no longer set the averaging
   period; trajectory RF support is unchanged.
+- **`einzel estimate` states less memory for a diffusive run: 248 bytes a density node and
+  species where it stated 263**, and 4 more, once, for the map of which conductor owns each
+  node where a solved element has electrodes. 248 is exactly the run's arrays; 263 was a
+  sampled figure that had read garbage as held. A diffusive estimate is 5.7 percent lower
+  without conductors and 4.2 percent lower with them.
+- **`einzel estimate --snapshots <n>`** bills the instants a diffusive run is to record its
+  density at - 8 bytes a density node each, kept to the end. A run records none; a render at an
+  instant asks for one and an animation for one a frame. It is refused for a model that steps
+  no density in any phase, for a mixture, whose run records none, and when given no number,
+  rather than accepted and billed for copies nothing makes; under `--json` the refusal is JSON.
+- **A diffusive hold beside a strong extraction is no longer billed at the extraction's pace**:
+  the drift limit is read at the diffusive phases' own instants, by the run's own shift. A
+  trajectory phase whose pilot fails is never billed nothing, and a study over a model none of
+  whose pilots could be flown is gated rather than billed without its flights
+  (`trajectoryMeasured: false`). `--snapshots 00` is accepted for a study, as `0` is, and a
+  refusal of the flag is located at `/args/--snapshots`. A study over a sequenced model bills
+  the flights its figure of merit asks for rather than the model's cloud.
+- **A sequenced run is estimated phase by phase**: each trajectory phase by a pilot flown
+  through its own field over its own duration, diffusive phases by density steps over theirs, and the basis says both. A
+  trajectory model entering a diffusive phase was billed nothing for its density, and a
+  diffusive model leaving its density was stepped through its trajectory phases.
+- **A mixture's self-field no longer makes a grid of garbage at every step**: its summed charge
+  is refilled in place.
+- **A density that is not a number is refused where it is handed to a trajectory phase**, naming
+  the cell and the phase that produced it (`CONVERGENCE_FAILED` at `/sequence/<index>`), instead of being drawn from: every ion was
+  placed in an arbitrary cell with nothing said.
+- **A diffusive run no longer allocates in its stepping loop.** Reading the face offsets built
+  a new array four times a node a step - 224 bytes of garbage a node a step, a generation
+  collected every step on a large grid. No number changes.
 - **The solver-behaviour version is advanced to 2**, so older numerical results are not
   reported current after these corrections. The package version is unchanged.
 

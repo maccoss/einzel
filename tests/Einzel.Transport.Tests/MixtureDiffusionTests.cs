@@ -448,6 +448,68 @@ public sealed class MixtureDiffusionTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A mixture's self-field asked again of densities that have not moved allocates nothing:
+    /// its summed charge is refilled in place.
+    /// </summary>
+    /// <remarks>
+    /// The loop asks at every step and mostly gets "no change". A summed charge made fresh for
+    /// each question was a grid of garbage a step, which the memory tests' readings can catch
+    /// mid-refresh as one more array held.
+    /// </remarks>
+    [Fact]
+    public void AnUnchangedMixtureAsksAgainWithoutAllocating()
+    {
+        var grid = Grid2D.OverBox(-0.01, -0.01, 0.01, 0.01, 64, 64);
+        var charge = 1.602176634e-19;
+
+        var first = Blob(grid, 0.0, 1.5e-3, 1e8);
+        var second = Blob(grid, 1.0e-3, 1.5e-3, 1e8);
+        var field = new DensitySelfField(grid, false, AbsorbingCells.None, Bore, charge);
+
+        Assert.True(field.Refresh([first, second], [charge, charge]));
+        Assert.False(field.Refresh([first, second], [charge, charge]));
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var refreshed = field.Refresh([first, second], [charge, charge]);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        output.WriteLine($"{allocated} bytes allocated asking again, against a grid of {grid.NodeCount * sizeof(double)}");
+
+        Assert.False(refreshed);
+        Assert.True(
+            allocated < grid.NodeCount * sizeof(double) / 4,
+            $"asking an unchanged mixture again allocated {allocated} bytes, against a grid of "
+            + $"{grid.NodeCount * sizeof(double)}: the summed charge is being made afresh");
+    }
+
+    /// <summary>
+    /// A self-field solved again is handed the same source it was handed before, written over,
+    /// for one species and for a mixture alike: no grid is made for the source at each solve.
+    /// </summary>
+    [Fact]
+    public void ASolveAgainReusesItsSource()
+    {
+        var grid = Grid2D.OverBox(-0.01, -0.01, 0.01, 0.01, 64, 64);
+        var charge = 1.602176634e-19;
+
+        var single = new DensitySelfField(grid, false, AbsorbingCells.None, Bore, charge);
+        Assert.True(single.Refresh(Blob(grid, 0.0, 1.5e-3, 1e8)));
+        var first = single.Source;
+        Assert.True(single.Refresh(Blob(grid, 3.0e-3, 1.5e-3, 1e8)));
+
+        Assert.NotNull(first);
+        Assert.Same(first, single.Source);
+
+        var mixture = new DensitySelfField(grid, false, AbsorbingCells.None, Bore, charge);
+        Assert.True(mixture.Refresh([Blob(grid, 0.0, 1.5e-3, 1e8)], [charge]));
+        var before = mixture.Source;
+        Assert.True(mixture.Refresh([Blob(grid, 3.0e-3, 1.5e-3, 1e8)], [charge]));
+
+        Assert.NotNull(before);
+        Assert.Same(before, mixture.Source);
+    }
+
+    /// <summary>
     /// The shared step is the shortest any species needed, and the result names which one.
     /// </summary>
     /// <remarks>

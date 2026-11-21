@@ -1,0 +1,151 @@
+using System.Diagnostics;
+
+namespace Einzel.Testing;
+
+/// <summary>Which tier of JIT code a measuring child runs as, set by its parent and checked by it.</summary>
+/// <remarks>
+/// <para>
+/// What a solve holds depends on the tier: first-tier code keeps a local alive to the end of its
+/// method and optimized code to its last use. Which a method runs as is otherwise the machine's
+/// choice - how often it has been called, how busy the background compiler is - so each child is
+/// pinned to one end, and <b>checks which end it is at by what the code does</b> rather than by
+/// what the environment says: it drops the last use of an object and sees whether a collection
+/// takes it. A shell that exports <c>DOTNET_TieredCompilation=0</c> used to turn the first-tier
+/// child into an optimized one that passed for the wrong reason.
+/// </para>
+/// <para>
+/// A Debug build's code keeps its locals in every tier, so there the optimized child cannot be
+/// optimized and says so instead of refusing; the first-tier child's premise holds either way.
+/// </para>
+/// <para>
+/// <b>What "first-tier" covers is JIT-compiled code: the Einzel assemblies and this one.</b> The
+/// framework ships precompiled (ReadyToRun), and its precompiled methods run optimized whatever
+/// the tiering variables say - <c>DOTNET_ReadyToRun=0</c> would make them JIT too, at the price
+/// of compiling the whole framework the child touches at first tier, for no purpose: a hold
+/// these tests look for is a local in the solver's own frames, and the solver is never
+/// precompiled. That is checked rather than assumed - a first-tier child refuses if an assembly
+/// it measures, or the test assembly, carries a ReadyToRun header - and the behavioural probe
+/// is a method in the test assembly, compiled by the same JIT, in the same tier, as the solver.
+/// </para>
+/// <para>
+/// Linked as source into each test assembly that measures in a child, which names the
+/// assemblies it measures by a type from each.
+/// </para>
+/// </remarks>
+internal sealed class JitTier
+{
+    private readonly bool _optimized;
+
+    private JitTier(bool optimized) => _optimized = optimized;
+
+    /// <summary>Everything compiled fully optimized at its first call.</summary>
+    internal static JitTier Optimized { get; } = new(true);
+
+    /// <summary>Every JIT-compiled method compiled quickly and never promoted; see the remarks for what that covers.</summary>
+    internal static JitTier First { get; } = new(false);
+
+    /// <summary>The name a child is told its tier by.</summary>
+    internal string Name => _optimized ? "optimized" : "first";
+
+    /// <summary>The tier a name stands for, or null.</summary>
+    internal static JitTier? Named(string name) =>
+        name == Optimized.Name ? Optimized : name == First.Name ? First : null;
+
+    /// <summary>The variables that pin a child to this tier.</summary>
+    /// <remarks>
+    /// Set into an environment that holds nothing else of the kind: a measuring child is started
+    /// with only what a process needs to start (<c>MeasuringChild.Controlled</c>), so no tiering
+    /// variable of the parent's, under either prefix, is there to contradict these.
+    /// </remarks>
+    internal IEnumerable<(string Name, string Value)> Environment()
+    {
+        if (_optimized)
+        {
+            yield return ("DOTNET_TieredCompilation", "0");
+        }
+        else
+        {
+            // Nothing is counted, so nothing is promoted: every method stays first-tier.
+            yield return ("DOTNET_TieredCompilation", "1");
+            yield return ("DOTNET_TC_QuickJit", "1");
+            yield return ("DOTNET_TC_QuickJitForLoops", "1");
+            yield return ("DOTNET_TC_OnStackReplacement", "0");
+            yield return ("DOTNET_TC_CallCounting", "0");
+            yield return ("DOTNET_TieredPGO", "0");
+        }
+    }
+
+    /// <summary>
+    /// Why this process is not running as the tier asked for, or null if it is.
+    /// </summary>
+    /// <param name="wanted">The tier asked for.</param>
+    /// <param name="measured">A type from each assembly whose code is measured.</param>
+    internal static string? Refusal(JitTier wanted, IReadOnlyList<Type> measured)
+    {
+        Type[] code = [.. measured, typeof(JitTier)];
+
+        var keeps = ALocalOutlivesItsLastUse();
+        var unoptimizedBuild = code.Any(type => !IsOptimizedBuild(type));
+
+        if (wanted._optimized)
+        {
+            // A Debug build is unoptimized in every tier, and is measured as what it is.
+            return keeps && !unoptimizedBuild
+                ? "this process was to run fully optimized code and a local outlives its last use: "
+                    + "tiering is on, so what a build holds would depend on what has been promoted"
+                : null;
+        }
+
+        if (!keeps)
+        {
+            return "this process was to run first-tier code and a local dies at its last use: the code is optimized "
+                + "(DOTNET_TieredCompilation=0, or a tiering variable set outside), so a first-tier hold cannot show";
+        }
+
+        // Precompiled code runs optimized in every tier, so the solver must be JIT-compiled for its
+        // tier to be the one asked for.
+        if (code.FirstOrDefault(IsPrecompiled) is { } precompiled)
+        {
+            return $"{precompiled.Assembly.GetName().Name} is precompiled (ReadyToRun), so its code runs optimized in every "
+                + "tier and a first-tier hold in it cannot show";
+        }
+
+        // First-tier now is not first-tier after a warm-up build unless nothing is ever promoted,
+        // and that the code cannot show: it is the one thing taken from the environment.
+        return System.Environment.GetEnvironmentVariable("DOTNET_TC_CallCounting") == "0"
+            ? null
+            : "this process was to stay first-tier and DOTNET_TC_CallCounting is not 0, so methods are promoted as they are called";
+    }
+
+    /// <summary>Whether a type's assembly carries ReadyToRun code.</summary>
+    private static bool IsPrecompiled(Type type)
+    {
+        using var stream = File.OpenRead(type.Assembly.Location);
+        using var reader = new System.Reflection.PortableExecutable.PEReader(stream);
+
+        return reader.PEHeaders.CorHeader?.ManagedNativeHeaderDirectory.Size > 0;
+    }
+
+    private static bool IsOptimizedBuild(Type type) =>
+        type.Assembly.GetCustomAttributes(typeof(DebuggableAttribute), false) is not [DebuggableAttribute debuggable, ..]
+        || !debuggable.IsJITOptimizerDisabled;
+
+    /// <summary>Whether, in the code this process is running, an object survives its local's last use.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static bool ALocalOutlivesItsLastUse()
+    {
+        var held = new object();
+        var weak = new WeakReference(held);
+
+        Use(held);
+
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+
+        return weak.IsAlive;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void Use(object value) => GC.KeepAlive(value);
+}

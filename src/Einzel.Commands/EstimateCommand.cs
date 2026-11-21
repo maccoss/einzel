@@ -169,6 +169,13 @@ public sealed record EstimateOutcome
     /// </remarks>
     public double TrajectorySeconds { get; init; }
 
+    /// <summary>
+    /// Whether what the trajectories cost was measured. Where it was not - every pilot failed - the
+    /// seconds leave the flights out, and <see cref="AboveThreshold"/> is set so the gate refuses
+    /// rather than pass a figure that is missing a term.
+    /// </summary>
+    public bool TrajectoryMeasured { get; init; } = true;
+
     /// <summary>The study this costs, or null when a model was costed directly.</summary>
     public StudyEstimate? Study { get; init; }
 
@@ -301,20 +308,34 @@ public static class EstimateCommand
     /// </remarks>
     private const double MegaCellsPerSecond = 2.4;
 
-    /// <summary>What a diffusive run holds per density node, measured.</summary>
+    /// <summary>What a diffusive run holds per density node and per species: the arrays it keeps.</summary>
     /// <remarks>
     /// <para>
-    /// 248 and 259 bytes a node on the drift-tube example at 513 x 129 and 1025 x 257, a slope
-    /// of 263 between them, live-set sampled with the solved field excluded. This used to be
-    /// 16 - "two density fields, current and next" - which is a sixteenth of it.
+    /// <b>248 bytes a node, which is its arrays and nothing else.</b> The seed, the density and
+    /// the next step, 24; six coefficients, 48; the face operator, 176 - four faces of four
+    /// doubles, two flags and the name of whatever a leaving face is lost to, and one outward
+    /// rate. Read from inside the run at each of those arrays as it is allocated
+    /// (<c>DiffusiveMemoryTests</c>): 248.00 as a slope between 129 by 129 and 257 by 257 on a
+    /// drift tube, with under 6 kB of the run's whole live set outside them.
     /// </para>
     /// <para>
-    /// 216 bytes a node are named arrays: the seed, the density and the next step, 24; six
-    /// coefficients, 48; the face operator, four faces of four doubles and two flags plus an
-    /// outward rate, 144. The rest is not attributed, which is why the figure is the
-    /// measurement rather than that sum - an estimate that runs under is discovered by the run
-    /// failing. An explicit run with no self-field; a mean-field solve is
-    /// <see cref="SelfFieldBytesPerNode"/> on top.
+    /// This was 263, a slope between two readings of 248 and 259 taken by a thread sampling the
+    /// heap; 216 of it was attributed and the rest was not. The unattributed part was the face
+    /// names, 32, and the 15 over was the sampler: the stepping loop was then making 224 bytes
+    /// of garbage a node a step, and a reading taken while it did read some of that as held.
+    /// Before that it was 16 - "two density fields, current and next".
+    /// </para>
+    /// <para>
+    /// <b>Every configuration that changes what a run holds is a term, and every term is read.</b>
+    /// The implicit scheme solves in place and holds the same 248 (247.85 to 248.16). A phase
+    /// that ramps re-assembles its operator into the arrays it has and holds the same, through
+    /// the sequenced path (250.93 to 252.34 against 252 with its conductors' map). A run through
+    /// a cycle average adds <see cref="WellCacheBytesPerNode"/> a species (303.86 to 304.14
+    /// against 304). Each species of a mixture holds all of it again (495.91 to 496.09 against
+    /// 496). A mean-field solve is <see cref="SelfFieldBytesPerNode"/> on top, and
+    /// <see cref="MixtureChargeBytesPerNode"/> more for a mixture (565.19 to 565.35 against 566).
+    /// A run with conductors in it holds <see cref="AbsorberMapBytesPerNode"/>, and each
+    /// recorded instant <see cref="SnapshotBytesPerNode"/>.
     /// </para>
     /// <para>
     /// <b>Per species, all of it.</b> A mixture gives every species its own walker - its
@@ -324,7 +345,31 @@ public static class EstimateCommand
     /// count, a three-species run was billed a third of what it holds.
     /// </para>
     /// </remarks>
-    private const double DiffusiveBytesPerNode = 263.0;
+    private static double DiffusiveBytesPerNode => (3 * sizeof(double)) + (6 * sizeof(double)) + FaceOperatorBytesPerNode;
+
+    /// <summary>The face operator: four faces of four doubles, two flags and a name, and one outward rate.</summary>
+    /// <remarks>
+    /// The name is a reference, so its size is the pointer's: eight bytes on a 64-bit process,
+    /// four on a 32-bit one.
+    /// </remarks>
+    private static readonly double FaceOperatorBytesPerNode =
+        (4 * ((4 * sizeof(double)) + (2 * sizeof(bool)) + IntPtr.Size)) + sizeof(double);
+
+    /// <summary>One recorded instant: a copy of the density, kept until the run returns.</summary>
+    /// <remarks>
+    /// Read at 280.00 bytes a node with four instants recorded against 248.00 with none
+    /// (<c>DiffusiveMemoryTests</c>). A run records none; a render asks for one, an animation
+    /// for one a frame, and each is held to the end.
+    /// </remarks>
+    private const double SnapshotBytesPerNode = sizeof(double);
+
+    /// <summary>The map of which conductor owns each node, an integer a node, held once for the run.</summary>
+    /// <remarks>
+    /// Built for every run and kept only where a solved element's conductors are there to absorb:
+    /// the drift tube with a bore reads 252.00 bytes a node where the bare one reads 248.00.
+    /// Charged wherever a solved element declares an electrode, which is the most it can be.
+    /// </remarks>
+    private const double AbsorberMapBytesPerNode = sizeof(int);
 
     /// <summary>What mean-field space charge adds to a diffusive run, per density node, measured.</summary>
     /// <remarks>
@@ -454,21 +499,45 @@ public static class EstimateCommand
     /// which of the two limits binds depends on the model.
     /// </para>
     /// </remarks>
-    private static (double Seconds, string How) PilotFlight(
-        CompiledModel model, double coarsening, double? windowSeconds = null)
+    /// <param name="spanSeconds">
+    /// The simulated time the run spends as trajectories (<see cref="Spans"/>), which the pilot
+    /// is scaled to; the whole declared flight when omitted.
+    /// </param>
+    /// <param name="phase">
+    /// The phase of a sequenced run the pilot flies through, or null to fly from the start of
+    /// the flight. A sequenced run's trajectory leg starts at its phase's start, against the
+    /// instrument as it is then (<c>SequencedRun</c> shifts the field the same way), so a pilot
+    /// flown from zero would time the phases before it - a hold with nothing pushing, say -
+    /// and scale that to the extraction.
+    /// </param>
+    /// <param name="built">
+    /// The coarsened model and its field, solved once by the caller and shared by every phase it
+    /// pilots - the geometry cannot change between phases - or null to solve them here.
+    /// </param>
+    /// <param name="startsAt">
+    /// When that phase begins: the end of the phase before it, as the run takes it, and zero for
+    /// the first or for no phase.
+    /// </param>
+    private static Pilot PilotFlight(
+        CompiledModel model,
+        double coarsening,
+        double? windowSeconds = null,
+        double? spanSeconds = null,
+        CompiledPhase? phase = null,
+        (CompiledModel Model, Fields.IElectrostaticField Field)? built = null,
+        double startsAt = 0.0)
     {
         try
         {
-            var coarse = model with
+            if (ForcedPilot.Value is { } forced)
             {
-                Fields = [.. model.Fields.Select(f => f with
-                {
-                    Solve = f.Solve is null ? null : f.Solve with { CellSize = f.Solve.CellSize * coarsening },
-                    Solve3D = f.Solve3D is null ? null : f.Solve3D with { CellSize = f.Solve3D.CellSize * coarsening },
-                })],
-            };
+                return forced;
+            }
 
-            var (field, _) = Fields.FieldAssembly.BuildReported(coarse);
+            var (coarse, solved) = built ?? Coarsened(model, coarsening);
+
+            // The run's own shift, so the pilot and the leg see one instrument.
+            var field = SequencedRun.Instant(solved, startsAt);
 
             var species = Transport.IonSpecies.FromModel(coarse);
 
@@ -478,7 +547,12 @@ public static class EstimateCommand
             var point = coarse.DetectorPoint;
             var normal = coarse.DetectorNormal;
 
-            var window = windowSeconds ?? (coarse.MaximumFlightTimeSi * PilotFlightFraction);
+            var span = spanSeconds ?? coarse.MaximumFlightTimeSi;
+
+            // Inside the phase flown: past its end the field is the next phase's.
+            var window = Math.Min(
+                windowSeconds ?? (span * PilotFlightFraction),
+                phase?.DurationSeconds ?? double.PositiveInfinity);
 
             var settings = new Transport.Integration.IntegrationSettings
             {
@@ -519,34 +593,105 @@ public static class EstimateCommand
 
             // Arrived or absorbed inside the window: the flight is over, so this is not an
             // extrapolation at all - it is the measurement.
+            // Its cost is for the time it flew, which is less than the phase where the ion
+            // arrived early - the rate another phase is charged at is per simulated second covered.
             if (flown.Outcome is Transport.Integration.TrajectoryOutcome.StopConditionMet
                 or Transport.Integration.TrajectoryOutcome.StruckElectrode)
             {
-                return (
+                return new(
                     pilotSeconds,
                     $"the whole flight, measured: it ended as {flown.Outcome} after "
-                    + $"{covered * 1e6:G4} us and {flown.AcceptedSteps:N0} steps");
+                    + $"{covered * 1e6:G4} us and {flown.AcceptedSteps:N0} steps",
+                    true,
+                    covered);
             }
 
             if (covered <= 0.0)
             {
-                return (0.0, "not measured: the pilot flight covered no time at all");
+                return new(0.0, "not measured: the pilot flight covered no time at all", false, 0.0);
             }
 
-            var scale = coarse.MaximumFlightTimeSi / covered;
+            var scale = span / covered;
 
-            return (
+            return new(
                 pilotSeconds * scale,
                 $"{flown.AcceptedSteps:N0} steps over {covered * 1e6:G4} us took "
-                + $"{pilotSeconds * 1000.0:F0} ms, scaled to the declared "
-                + $"{coarse.MaximumFlightTimeSi * 1e6:G4} us. Flown through a field solved at "
+                + $"{pilotSeconds * 1000.0:F0} ms, scaled to "
+                + (phase is not null
+                    ? $"its {span * 1e6:G4} us, flown from the source through phase '{phase.Name}' as it is from {startsAt * 1e6:G4} us"
+                    : spanSeconds is null
+                        ? $"the declared {span * 1e6:G4} us"
+                        : $"the {span * 1e6:G4} us the run spends as trajectories")
+                + ". Flown through a field solved at "
                 + $"{coarsening:G2}x the cell size, so this is a FLOOR wherever the step is "
-                + "capped by resolution rather than by tolerance");
+                + "capped by resolution rather than by tolerance",
+                true,
+                span);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            return (0.0, $"not measured: a pilot flight could not be flown ({exception.GetType().Name})");
+            return new(0.0, $"not measured: a pilot flight could not be flown ({exception.GetType().Name})", false, 0.0);
         }
+    }
+
+    /// <summary>What a pilot found a stretch of trajectory flight costs.</summary>
+    /// <param name="Seconds">The cost, in seconds of this machine.</param>
+    /// <param name="How">How it was arrived at, for the basis.</param>
+    /// <param name="Measured">Whether anything was measured; where not, the cost is unknown rather than nothing.</param>
+    /// <param name="CoveredSeconds">
+    /// The simulated time <paramref name="Seconds"/> is the cost of: the span scaled to, or the
+    /// flight itself where the ion arrived or struck before the span was over.
+    /// </param>
+    internal readonly record struct Pilot(double Seconds, string How, bool Measured, double CoveredSeconds);
+
+    /// <summary>Set within a test, through <see cref="PilotsForTest"/>, to what every pilot flight reports.</summary>
+    private static readonly AsyncLocal<Pilot?> ForcedPilot = new();
+
+    /// <summary>
+    /// Makes every pilot flight in the calling flow fail until disposed, which is how a test
+    /// reaches what the estimate does with a cost it could not measure: no model fails to fly
+    /// that the run itself would fly.
+    /// </summary>
+    /// <returns>What restores pilots when disposed.</returns>
+    internal static IDisposable FailPilotsForTest() =>
+        PilotsForTest(new Pilot(0.0, "not measured: pilot flights are made to fail for a test", false, 0.0));
+
+    /// <summary>
+    /// Makes every pilot flight in the calling flow report <paramref name="pilot"/> until disposed,
+    /// so a test can hold the flight term at a known value and check the arithmetic around it.
+    /// </summary>
+    /// <param name="pilot">What each pilot reports.</param>
+    /// <returns>What restores the pilots that were in force before, when disposed.</returns>
+    internal static IDisposable PilotsForTest(Pilot pilot)
+    {
+        var before = ForcedPilot.Value;
+        ForcedPilot.Value = pilot;
+        return new Restore(before);
+    }
+
+    /// <summary>Puts back the pilots that were in force when the override was taken, nested or not.</summary>
+    /// <param name="before">What was in force.</param>
+    private sealed class Restore(Pilot? before) : IDisposable
+    {
+        /// <inheritdoc/>
+        public void Dispose() => ForcedPilot.Value = before;
+    }
+
+    /// <summary>The model with every solve coarsened, and its field solved once.</summary>
+    private static (CompiledModel Model, Fields.IElectrostaticField Field) Coarsened(CompiledModel model, double coarsening)
+    {
+        var coarse = model with
+        {
+            Fields = [.. model.Fields.Select(f => f with
+            {
+                Solve = f.Solve is null ? null : f.Solve with { CellSize = f.Solve.CellSize * coarsening },
+                Solve3D = f.Solve3D is null ? null : f.Solve3D with { CellSize = f.Solve3D.CellSize * coarsening },
+            })],
+        };
+
+        var (field, _) = Fields.FieldAssembly.BuildReported(coarse);
+
+        return (coarse, field);
     }
 
     /// <summary>How the documented rate describes itself when nothing was measured.</summary>
@@ -652,13 +797,21 @@ public static class EstimateCommand
     /// machine's when omitted. A parameter for the reason <paramref name="threshold"/> is one:
     /// so the comparison can be checked without a machine that is short of memory.
     /// </param>
+    /// <param name="snapshots">
+    /// How many instants a diffusive run is to record its density at, each a copy of the density
+    /// it holds to the end. None for <c>einzel run</c>; a render at an instant asks for one and
+    /// an animation for one a frame.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="snapshots"/> is negative.</exception>
     public static EstimateOutcome Execute(
         string modelPath,
         bool calibrate = true,
         double threshold = ThresholdSeconds,
-        long? availableMemoryBytes = null)
+        long? availableMemoryBytes = null,
+        int snapshots = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+        ArgumentOutOfRangeException.ThrowIfNegative(snapshots);
 
         var absolute = Path.GetFullPath(modelPath);
         var document = Io.ModelJson.Parse(File.ReadAllText(absolute));
@@ -671,6 +824,43 @@ public static class EstimateCommand
         }
 
         var model = validation.Model!;
+
+        // A recorded instant is a copy of a density, so a run that steps none records none. Asked
+        // of every mode the run uses, as the billing below is: a trajectory model whose sequence
+        // enters a diffusive phase records densities there.
+        var spans = Spans(model);
+
+        //
+        // Located at the flag, which is the mistake, in the spelling the command's other options
+        // are located by (an export's step and box are "/step" and "/box"): the model is fine.
+        if (snapshots > 0 && spans.DiffusiveSeconds <= 0.0)
+        {
+            throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
+            {
+                Code = Core.Errors.ErrorCodes.SchemaInvalid,
+                Path = "/args/--snapshots",
+                Constraint = string.Create(
+                    Inv,
+                    $"recorded instants are copies of a diffusive run's density, and this run uses no diffusive mode ({string.Join(", ", model.Modes.Order(StringComparer.Ordinal))}), so {snapshots} of them cannot apply"),
+                Suggestion = "leave out --snapshots, or estimate a model that steps a density",
+            });
+        }
+
+        // And a mixture records none either: its run takes no instants to record at, so an
+        // estimate billing them would bill copies nothing makes.
+        if (snapshots > 0 && model.IsMixture)
+        {
+            throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
+            {
+                Code = Core.Errors.ErrorCodes.SchemaInvalid,
+                Path = "/args/--snapshots",
+                Constraint = string.Create(
+                    Inv,
+                    $"a run of {model.Species.Count} species records its densities at no instant, so {snapshots} recorded instant(s) cannot apply"),
+                Suggestion = "leave out --snapshots: a mixture's densities are reported only as they end",
+            });
+        }
+
         var elements = new List<ElementEstimate>();
         var seconds = 0.0;
 
@@ -730,9 +920,9 @@ public static class EstimateCommand
         // The flight, measured rather than omitted. Only a trajectory run has one: a
         // diffusive run's cost is the density stepping, which is estimated below from the
         // stability limits and needs no pilot.
-        var trajectory = calibrate && model.TransportMode != "diffusion"
-            ? PilotFlight(model, PilotCoarsening)
-            : (Seconds: 0.0, How: string.Empty);
+        var trajectory = calibrate && spans.TrajectorySeconds > 0.0
+            ? Pilots(model, spans)
+            : new Pilot(0.0, string.Empty, Measured: true, CoveredSeconds: 0.0);
 
         // A CLOUD FLIES ONCE PER ION THROUGH ONE SOLVED FIELD, so the flight is paid as many
         // times as there are ions and the solve is paid once. Costing a single trajectory
@@ -744,10 +934,7 @@ public static class EstimateCommand
         // trajectories at all, nor for a space-charge run, which advances the whole packet
         // in lockstep so its members are not independent flights. In both the model's own
         // cost already IS the whole run.
-        var members = model.Cloud.IsCloud && !model.ModelsSpaceCharge
-            && model.TransportMode != "diffusion"
-                ? Math.Max(1, model.Cloud.Ions)
-                : 1;
+        var members = Flown(model, spans);
 
         seconds += members * trajectory.Seconds;
 
@@ -874,14 +1061,34 @@ public static class EstimateCommand
         double? diffusiveMemory = null;
         var cycleAveraged = false;
 
-        if (model.TransportMode == "diffusion")
+        // Whenever the run steps a density anywhere, not only when the model's own mode is
+        // diffusive: a trajectory model whose sequence enters a diffusive phase holds the same
+        // working set there, and was billed nothing for it - snapshots included.
+        //
+        // Over the diffusive phases alone where the run is walked phase by phase, and added to
+        // the basis rather than put in its place: the solve and trajectory lines above are
+        // still in the number.
+        if (spans.DiffusiveSeconds > 0.0)
         {
-            var diffusive = Diffusive(model, Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory());
+            var diffusive = Diffusive(
+                model,
+                Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory(),
+                spans.DiffusiveSeconds,
+                snapshots);
 
             seconds += diffusive.Seconds;
             diffusiveMemory = diffusive.MemoryMiB;
             cycleAveraged = diffusive.Averaged;
-            basis = diffusive.Basis;
+            basis = basis.Length > 0 ? basis + " " + diffusive.Basis : diffusive.Basis;
+        }
+
+        if (spans.TrajectorySeconds > 0.0 && spans.DiffusiveSeconds > 0.0)
+        {
+            basis = basis + string.Create(
+                Inv,
+                $" The sequence spends {spans.TrajectorySeconds * 1e6:G4} us as trajectories and "
+                + $"{spans.DiffusiveSeconds * 1e6:G4} us as a density, and each is costed over its "
+                + $"own phases.");
         }
 
         // The density is stepped over the solved fields, which stay live for the whole run.
@@ -942,10 +1149,14 @@ public static class EstimateCommand
             Elements = elements,
             Seconds = seconds,
             MemoryMiB = memory,
-            AboveThreshold = seconds > threshold,
+
+            // A trajectory cost that could not be measured is not a cost of nothing: the gate
+            // refuses rather than pass a number that leaves out the flights.
+            AboveThreshold = seconds > threshold || !trajectory.Measured,
             ThresholdSeconds = threshold,
             Basis = basis,
             TrajectorySeconds = trajectory.Seconds,
+            TrajectoryMeasured = trajectory.Measured,
             PilotSpread = Math.Max(planeRate.Item3, volumeRate.Item3),
             CycleAveraged = cycleAveraged,
         };
@@ -1092,7 +1303,7 @@ public static class EstimateCommand
     /// incurs. The spread is reported alongside, since a range that varies several-fold is
     /// something the reader should know about whatever the mean is.
     /// </remarks>
-    private static (double Flight, string Spread) SampledFlight(
+    private static (double Flight, string Spread, bool Measured) SampledFlight(
         Core.Model.ModelDocument document,
         string? directory,
         double nominal,
@@ -1125,9 +1336,17 @@ public static class EstimateCommand
                 // field takes a different number of steps - which is precisely the quantity
                 // being measured. Sampling is already gated on the study being long enough
                 // to absorb this.
-                var (seconds, _) = PilotFlight(compiled, 1.0, compiled.MaximumFlightTimeSi);
+                // A run walked phase by phase is flown phase by phase here too, each over its own
+                // whole duration, as the model's own estimate is - not from zero over the whole
+                // flight, which would fly whatever comes first and scale it to everything.
+                var spans = Spans(compiled);
+                var (seconds, _, measured, _) = spans.TrajectoryPhases.Count > 0
+                    ? Pilots(compiled, spans, coarsening: 1.0, whole: true)
+                    : PilotFlight(compiled, 1.0, compiled.MaximumFlightTimeSi);
 
-                if (seconds > 0.0)
+                // Measured is measured, whatever it cost: a flight cheap enough to round to nothing
+                // is a flight that costs nothing, not one nobody could fly.
+                if (measured)
                 {
                     flights.Add(seconds);
                 }
@@ -1137,8 +1356,9 @@ public static class EstimateCommand
         if (flights.Count == 0)
         {
             // Not even the nominal could be flown - fall back to what the model estimate
-            // measured, which says in its own basis how it was arrived at.
-            return (nominal, string.Empty);
+            // measured, which says in its own basis how it was arrived at, and say that this
+            // measured nothing: the model's own figure may be unmeasured too.
+            return (nominal, string.Empty, false);
         }
 
         var mean = flights.Average();
@@ -1147,7 +1367,7 @@ public static class EstimateCommand
         {
             // The nominal alone, measured the same way the sampled case measures it. There
             // is no range to report a spread across, and the caller says why.
-            return (mean, string.Empty);
+            return (mean, string.Empty, true);
         }
 
         var ratio = flights.Max() / Math.Max(flights.Min(), double.Epsilon);
@@ -1156,7 +1376,8 @@ public static class EstimateCommand
             mean,
             $" The flight was sampled at {flights.Count} points across the study's own range "
             + $"and averaged, because a study that varies the geometry varies its own cost: "
-            + $"here the dearest point was {ratio:F1}x the cheapest.");
+            + $"here the dearest point was {ratio:F1}x the cheapest.",
+            true);
     }
 
 
@@ -1255,8 +1476,8 @@ public static class EstimateCommand
         // `members x flight` on top of those double-counts the very work they describe -
         // and for a diffusive model the flights do not exist at all, since that mode
         // produces no trajectories (TRN-2, RND-8).
-        var wholeRun = validation.Model?.ModelsSpaceCharge == true
-            || validation.Model?.TransportMode == "diffusion";
+        var wholeRun = validation.Model is { } run
+            && (run.ModelsSpaceCharge || Spans(run).DiffusiveSeconds > 0.0);
 
         // SAMPLED WHERE THE STUDY WILL GO, not only at the nominal. A study that varies
         // the geometry varies its own cost, and on the shipped mirror pair a separation
@@ -1276,21 +1497,46 @@ public static class EstimateCommand
         // What the threshold still buys is the extremes: two extra pilots are worth spending
         // against hundreds of evaluations and not against a handful. The nominal costs one
         // evaluation's worth of measurement, which a study of any length can absorb.
-        var (flight, spread) = wholeRun
-            ? (0.0, string.Empty)
+        // A RUN WALKED PHASE BY PHASE flies its trajectory phases as part of the one whole run,
+        // so its flights are not `members` ions a figure of merit asks for - but they are still
+        // flights, piloted phase by phase in the model's figure at its declared values, and the
+        // study goes elsewhere. So they are re-flown the same way, phase by phase, across the
+        // study's own range, and the model's share of them replaced by that mean.
+        var sequencedFlights = wholeRun
+            && validation.Model is { } sequenced
+            && Spans(sequenced) is { TrajectoryPhases.Count: > 0 }
+            && calibrate;
+
+        // NOT "the model's pilot measured something": where it failed its trajectory figure is
+        // zero, and gating the re-flight on that left a study billing no flights at all.
+        var (flight, spread, sampled) = wholeRun && !sequencedFlights
+            ? (0.0, string.Empty, model.TrajectoryMeasured)
             : SampledFlight(
                 document,
                 directory,
                 model.TrajectorySeconds,
                 evaluations >= ExtremeSamplingThreshold ? Extremes(study) : []);
 
-        var perEvaluation = wholeRun
-            ? compile + model.Seconds
-            : compile + (model.Seconds - model.TrajectorySeconds) + (members * flight);
+        var flown = validation.Model is { } compiledModel ? Flown(compiledModel, Spans(compiledModel)) : 1;
+
+        // The model's own figure carries its cloud's flights (`flown` of them); a study replaces
+        // them with the flights its figure of merit asks for (`members`), sequenced or not.
+        var perEvaluation = sequencedFlights || !wholeRun
+            ? compile + model.Seconds - (flown * model.TrajectorySeconds) + (members * flight)
+            : compile + model.Seconds;
 
         var seconds = evaluations * perEvaluation;
 
-        var each = wholeRun
+        // Where the flights were sampled across the range, those are what the study bills, so a
+        // model whose own pilot failed is measured by them; where nothing could be flown at all,
+        // the cost leaves the flights out and says so, and the gate refuses it.
+        var trajectoryMeasured = sampled;
+
+        var each = sequencedFlights
+            ? "is one whole run of the model, its trajectory phases piloted phase by phase over "
+            + "their own durations where the study goes rather than at the declared values alone, "
+            + $"for the {members} trajector{(members == 1 ? "y" : "ies")} its figure of merit flies"
+            : wholeRun
             ? "is one whole run of the model - a density stepped, or a packet advanced in "
             + "lockstep - so its flights are already inside the figure above and are not "
             + "counted again"
@@ -1306,6 +1552,11 @@ public static class EstimateCommand
                 ? " That count is a ceiling the search may stop short of."
                 : " Every one of those evaluations is computed.")
             + Unsampled(wholeRun, spread, evaluations, Extremes(study).Count)
+            + (trajectoryMeasured
+                ? string.Empty
+                : " What the trajectories cost is NOT MEASURED - no pilot could be flown, at the "
+                + "declared values or across the study's range - so this leaves them out, and the "
+                + "gate refuses it rather than pass a study billed without its flights.")
             + " Process start and just-in-time compilation are not included - a fixed cost, "
             + "which is negligible for a long study and is not for a short one.";
 
@@ -1348,7 +1599,8 @@ public static class EstimateCommand
         {
             Seconds = seconds,
             MemoryMiB = memory,
-            AboveThreshold = seconds > threshold,
+            AboveThreshold = seconds > threshold || !trajectoryMeasured,
+            TrajectoryMeasured = trajectoryMeasured,
             Basis = basis,
 
             // The flight the arithmetic above actually used, not the nominal pilot it
@@ -1356,7 +1608,7 @@ public static class EstimateCommand
             // a caller deriving the solve term as Seconds/Evaluations - Members x this
             // got a number that did not reconcile, silently, because both fields look
             // equally authoritative.
-            TrajectorySeconds = wholeRun ? 0.0 : flight,
+            TrajectorySeconds = wholeRun && !sequencedFlights ? 0.0 : flight,
             Study = new StudyEstimate
             {
                 StudyPath = absolute,
@@ -1450,7 +1702,7 @@ public static class EstimateCommand
                 continue;
             }
 
-            double? density = compiled.TransportMode == "diffusion"
+            double? density = Spans(compiled).DiffusiveSeconds > 0.0
                 ? DiffusiveMemoryMiB(compiled, DiffusionRun.GridFor(compiled), averaged)
                 : null;
 
@@ -1778,7 +2030,7 @@ public static class EstimateCommand
     /// <para>
     /// <b>Asked of the model's peak, whatever holds it.</b> This was the tail of the solved-field
     /// explanation, so a model with nothing solved - a diffusive run through an analytic field,
-    /// which holds 263 bytes a density node and more for every species - never reached it, and
+    /// which holds 248 bytes a density node and more for every species - never reached it, and
     /// a run that would not fit was priced without a word.
     /// </para>
     /// </remarks>
@@ -1994,6 +2246,244 @@ public static class EstimateCommand
     /// </remarks>
     private const double EstimatedSteps = 1e4;
 
+    /// <summary>How many independent flights the trajectories the run flies are: a cloud's ions, or one.</summary>
+    /// <remarks>
+    /// One function for the model's estimate and a study's, so the trajectory share a study
+    /// takes out of the model's figure is the share the model put in.
+    /// </remarks>
+    private static int Flown(CompiledModel model, TransportSpans spans) =>
+        model.Cloud.IsCloud && !model.ModelsSpaceCharge && spans.TrajectorySeconds > 0.0
+            ? Math.Max(1, model.Cloud.Ions)
+            : 1;
+
+    /// <summary>The most trajectory phases of a sequence piloted one by one.</summary>
+    /// <remarks>
+    /// Each pilot is a short flight, a fraction of a second at most, so a handful keeps the estimate
+    /// cheap; past it the longest are piloted and the rest are charged at the dearest rate any
+    /// pilot measured, the direction that cannot under-bill what was piloted.
+    /// </remarks>
+    private const int MostPilotedPhases = 8;
+
+    /// <summary>The instants a run's drift limit is read at: each diffusive phase's start and its last instant.</summary>
+    /// <param name="phases">The timeline, or none for a run that is not sequenced.</param>
+    /// <returns>The instants, or zero alone where nothing is sequenced or no diffusive phase has a length.</returns>
+    /// <remarks>
+    /// A phase starts where the one before it ended, as the run takes it: recomputed as its end
+    /// less its duration it can land an ulp inside the phase before and read that one's field. And a
+    /// phase with no length has no instants: the last before an end that is also its start would
+    /// be in the phase before. With a length, the last instant before the end is never before
+    /// the start, so it needs no clamp.
+    /// </remarks>
+    internal static List<double> DiffusiveInstants(IReadOnlyList<CompiledPhase> phases) =>
+        phases.Count == 0
+            ? [0.0]
+            : Enumerable.Range(0, phases.Count)
+                .Where(i => phases[i].Mode == "diffusion"
+                    && phases[i].EndsAtSeconds > CompiledPhase.StartOf(phases, i))
+                .SelectMany(i => new[]
+                {
+                    CompiledPhase.StartOf(phases, i),
+                    Math.BitDecrement(phases[i].EndsAtSeconds),
+                })
+                .DefaultIfEmpty(0.0)
+                .ToList();
+
+    /// <summary>
+    /// The least fraction of its phase a pilot's rate is taken over, so one that ended at once is
+    /// not read as its setup cost per nanosecond of flight.
+    /// </summary>
+    private const double LeastCoveredFraction = 0.1;
+
+    /// <summary>
+    /// What a run's trajectories cost: one pilot over its whole flight, or for a sequence one pilot
+    /// through each trajectory phase over that phase's own duration, summed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Each phase by its own field.</b> A sequence's trajectory legs fly different instruments -
+    /// a hold with nothing pushing, then an extraction - and one pilot through the first, scaled
+    /// to all of them, billed the extraction at the hold's rate. Each is flown through its own
+    /// field, shifted to its start as the run's leg is, and costed over its own duration.
+    /// </para>
+    /// <para>
+    /// <b>Each flown from the source.</b> The run's leg starts wherever the packet is when the
+    /// phase begins, which no estimate knows without running the phases before it; the pilot
+    /// starts at the source, as declared. That is said in the basis rather than presented as the
+    /// packet's own flight.
+    /// </para>
+    /// </remarks>
+    /// <param name="model">The model.</param>
+    /// <param name="spans">Its time by transport mode.</param>
+    /// <param name="coarsening">How much coarser the pilots' field is solved than declared.</param>
+    /// <param name="whole">Fly each phase for its whole duration rather than a fraction of it.</param>
+    /// <returns>
+    /// What the trajectories cost, how that was arrived at, and whether any of it was measured:
+    /// where nothing could be flown the cost is unknown, which the caller must not read as nothing.
+    /// </returns>
+    private static Pilot Pilots(
+        CompiledModel model, TransportSpans spans, double coarsening = PilotCoarsening, bool whole = false)
+    {
+        (CompiledModel Model, Fields.IElectrostaticField Field) built;
+
+        // Solved once, whatever the phase count: a stage changes what electrodes hold and never
+        // where they are, so every phase flies the same geometry, shifted to its own start.
+        try
+        {
+            built = Coarsened(model, coarsening);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new(0.0, $"not measured: the pilots' field could not be solved ({exception.GetType().Name})", false, 0.0);
+        }
+
+        if (spans.TrajectoryPhases.Count == 0)
+        {
+            return PilotFlight(
+                model,
+                coarsening,
+                windowSeconds: whole ? spans.TrajectorySeconds : null,
+                spanSeconds: spans.TrajectorySeconds,
+                built: built);
+        }
+
+        return PhasePilots(
+            spans.TrajectoryPhases,
+            phase => PilotFlight(
+                model,
+                coarsening,
+                windowSeconds: whole ? phase.DurationSeconds : null,
+                spanSeconds: phase.DurationSeconds,
+                phase: phase,
+                built: built,
+                startsAt: CompiledPhase.StartOf(model.Phases, phase)));
+    }
+
+    /// <summary>
+    /// The trajectory phases' cost from a pilot through each of the longest of them, the rest and
+    /// any whose pilot failed charged at the dearest rate measured.
+    /// </summary>
+    /// <param name="phases">The trajectory phases, in timeline order.</param>
+    /// <param name="fly">Pilots one phase: its cost, how, and whether it was measured.</param>
+    /// <returns>The cost, how it was arrived at, and whether any of it was measured.</returns>
+    /// <remarks>
+    /// <b>Never nothing for what could not be flown.</b> A failed pilot used to bill its phase
+    /// nothing and leave the dearest rate where it was, so a sequence whose every pilot failed
+    /// was billed nothing for its trajectories. Where none measured anything the cost is reported
+    /// as unknown, for the gate to refuse rather than pass.
+    /// </remarks>
+    internal static Pilot PhasePilots(IReadOnlyList<CompiledPhase> phases, Func<CompiledPhase, Pilot> fly)
+    {
+        // By index, not by value: two phases declared alike are two phases and both are flown.
+        var indices = Enumerable.Range(0, phases.Count).ToList();
+        var piloted = indices
+            .OrderByDescending(i => phases[i].DurationSeconds)
+            .Take(MostPilotedPhases)
+            .ToHashSet();
+
+        var seconds = 0.0;
+        var dearest = 0.0;
+        var anyMeasured = false;
+        var unmeasured = 0.0;
+        var lines = new List<string>();
+
+        foreach (var i in indices.Where(piloted.Contains))
+        {
+            var phase = phases[i];
+            var (phaseSeconds, how, measured, covered) = fly(phase);
+
+            if (measured && covered > 0.0)
+            {
+                seconds += phaseSeconds;
+                anyMeasured = true;
+
+                // Per simulated second the pilot actually covered: one whose ion arrived early
+                // flew less than its phase, and dividing by the phase understated the rate. But
+                // not per less than a tenth of the phase: a pilot that struck at once timed its
+                // own setup over almost no flight, and that ratio, extrapolated to the phases
+                // charged at it, billed nanoseconds of flight as milliseconds of setup each.
+                dearest = Math.Max(
+                    dearest,
+                    phaseSeconds / Math.Max(covered, phase.DurationSeconds * LeastCoveredFraction));
+                lines.Add(string.Create(Inv, $"phase '{phase.Name}', {phaseSeconds:G3} s: {how}"));
+            }
+            else
+            {
+                unmeasured += phase.DurationSeconds;
+                lines.Add(string.Create(Inv, $"phase '{phase.Name}': {how}"));
+            }
+        }
+
+        var unpiloted = indices.Where(i => !piloted.Contains(i)).Sum(i => phases[i].DurationSeconds);
+
+        if (!anyMeasured)
+        {
+            return new(
+                0.0,
+                "NOT MEASURED: no trajectory phase's pilot could be flown, so what the trajectories "
+                + "cost is unknown, not zero - " + string.Join("; ", lines),
+                false,
+                0.0);
+        }
+
+        if (unpiloted + unmeasured > 0.0)
+        {
+            seconds += dearest * (unpiloted + unmeasured);
+            lines.Add(string.Create(
+                Inv,
+                $"{(unpiloted + unmeasured) * 1e6:G4} us of trajectory phases not piloted or not "
+                + $"measured, at the dearest rate piloted"));
+        }
+
+        return new(
+            seconds,
+            $"each trajectory phase piloted through its own field over its own duration, each "
+            + $"flown from the source rather than from where the packet is when the phase begins - "
+            + string.Join("; ", lines),
+            true,
+            phases.Sum(phase => phase.DurationSeconds));
+    }
+
+    /// <summary>How long a run flies trajectories and how long it steps a density.</summary>
+    /// <param name="TrajectorySeconds">Simulated time spent as trajectories.</param>
+    /// <param name="DiffusiveSeconds">Simulated time spent as a density.</param>
+    /// <param name="TrajectoryPhases">
+    /// For a run walked phase by phase, the phases flown as trajectories, each piloted through its
+    /// own field over its own duration; empty for a run flown whole, which is piloted from the
+    /// start of its flight.
+    /// </param>
+    private readonly record struct TransportSpans(
+        double TrajectorySeconds, double DiffusiveSeconds, IReadOnlyList<CompiledPhase> TrajectoryPhases);
+
+    /// <summary>
+    /// The one decomposition of a run's time by transport mode, which every part of an estimate
+    /// reads: the trajectory pilot, the density stepping, whether a study's evaluation is one
+    /// whole run, and the basis text.
+    /// </summary>
+    /// <remarks>
+    /// A run that is not walked phase by phase flies its whole declared flight in its own mode,
+    /// a sequence of trajectory phases included - the integrator asks the field for the instant
+    /// it is at. A run that is (<see cref="CompiledModel.NeedsSequencedTransport"/>) spends each
+    /// phase in that phase's mode for that phase's duration and stops at the end of the last,
+    /// so each mode is costed over its own phases and nothing over the other's: a trajectory
+    /// pilot scaled over the whole flight beside density steps over the diffusive phases paid
+    /// those phases twice, and a diffusive model whose sequence leaves the density was billed
+    /// density steps through its trajectory phases.
+    /// </remarks>
+    private static TransportSpans Spans(CompiledModel model)
+    {
+        if (!model.NeedsSequencedTransport)
+        {
+            return model.TransportMode == "diffusion"
+                ? new(0.0, model.MaximumFlightTimeSi, [])
+                : new(model.MaximumFlightTimeSi, 0.0, []);
+        }
+
+        var diffusive = model.Phases.Where(p => p.Mode == "diffusion").Sum(p => p.DurationSeconds);
+        var trajectory = model.Phases.Where(p => p.Mode != "diffusion").Sum(p => p.DurationSeconds);
+
+        return new(trajectory, diffusive, [.. model.Phases.Where(p => p.Mode != "diffusion")]);
+    }
+
     /// <summary>
     /// What a diffusive run will cost, from the mesh and the mobility alone.
     /// </summary>
@@ -2013,8 +2503,12 @@ public static class EstimateCommand
     /// intuition about which regime is expensive.
     /// </para>
     /// </remarks>
+    /// <param name="model">The model.</param>
+    /// <param name="modelDirectory">Where its referenced files are.</param>
+    /// <param name="spanSeconds">How long the density is stepped for (<see cref="Spans"/>).</param>
+    /// <param name="snapshots">How many instants the density is recorded at.</param>
     private static (double Seconds, double MemoryMiB, string Basis, bool Averaged) Diffusive(
-        CompiledModel model, string modelDirectory)
+        CompiledModel model, string modelDirectory, double spanSeconds, int snapshots = 0)
     {
         var grid = DiffusionRun.GridFor(model);
 
@@ -2101,12 +2595,13 @@ public static class EstimateCommand
         // fastest drift anywhere in the sequence is at one of them. Sampling only t = 0 would
         // have been right for a sequence that ramps DOWN and an under-estimate for one that
         // ramps up, which is the unsafe direction for a gate.
-        var instants = new List<double> { 0.0 };
-
-        foreach (var phase in model.Phases)
-        {
-            instants.Add(phase.EndsAtSeconds);
-        }
+        //
+        // The DIFFUSIVE phases' own instants, from the same decomposition as everything else
+        // (Spans): their starts and the last instant inside each - at a boundary the field is the
+        // next phase's. An extraction flown as trajectories pushes with a field a held density
+        // never feels, and reading the drift limit there shrank the hold's step by orders of
+        // magnitude and billed it accordingly.
+        var instants = DiffusiveInstants(model.Phases);
 
         // Whether the run will step through a cycle average, which is also whether it builds
         // the ponderomotive well cache - seven arrays over the density grid.
@@ -2114,7 +2609,11 @@ public static class EstimateCommand
 
         foreach (var atSeconds in instants)
         {
-            var field = built;
+            // The instrument as it is at that instant, by the run's own shift. The bare field
+            // answers its time-free questions at zero, so without the shift every instant read
+            // the first phase's field - and only a driven field, through the cycle average,
+            // ever saw the instant at all.
+            var field = SequencedRun.Instant(built, atSeconds);
             averaged |= DiffusionRun.Effective(ref field, species, declaredMobility, gas, atSeconds) is not null;
 
             // Every node where the gas is graded, every other one where it is not. The run
@@ -2164,7 +2663,7 @@ public static class EstimateCommand
 
         var step = implicitly ? stable * model.DensityStep.Gain : stable;
 
-        var steps = Math.Max(1.0, Math.Ceiling(model.MaximumFlightTimeSi / step));
+        var steps = Math.Max(1.0, Math.Ceiling(spanSeconds / step));
 
         // Measured at 3.0 on the shipped funnel across gains from 4 to 256, rising to
         // 4.9 at 1024. A sweep costs about what an explicit step costs - it is the
@@ -2183,7 +2682,7 @@ public static class EstimateCommand
         // Once per declared species: each steps its own density through its own coefficients,
         // face operator and well, and nothing of the working set is shared between them.
         var speciesCount = Math.Max(1, model.Species.Count);
-        var memory = DiffusiveMemoryMiB(model, grid, averaged);
+        var memory = DiffusiveMemoryMiB(model, grid, averaged, snapshots);
         var selfField = SelfFieldBytes(model);
 
         return (
@@ -2196,6 +2695,9 @@ public static class EstimateCommand
             + (model.ModelsMeanField
                 ? string.Create(Inv, $", with one mean-field self-field over the grid at {selfField:F0} bytes a node")
                 : string.Empty)
+            + (snapshots > 0
+                ? string.Create(Inv, $", and {snapshots} recorded instant(s), each a copy of the density kept to the end")
+                : string.Empty)
             + $", a stability-limited step of "
             + $"{stable:G3} s set by {limit}, "
             + (implicitly
@@ -2203,13 +2705,15 @@ public static class EstimateCommand
                     + $"about {steps:N0} steps at an assumed {sweeps:F1} Gauss-Seidel sweeps each "
                     + "over "
                 : $"so about {steps:N0} steps over ")
-            + $"{model.MaximumFlightTimeSi * 1e6:G4} us, at {MegaCellsPerSecond:G2} million cell "
+            + $"{spanSeconds * 1e6:G4} us"
+            + (model.NeedsSequencedTransport ? " of diffusive phases" : string.Empty)
+            + $", at {MegaCellsPerSecond:G2} million cell "
             + "updates per second measured on this codebase. "
             + $"Both stability limits are included. The field was solved to get the drift one, "
             + $"which cost {solveWatch.Elapsed.TotalSeconds:F2} s of this estimate - a diffusive "
             + "run cannot be cheaper than its own solve, so that is bounded by the run's floor, "
             + "and omitting it used to make this number four orders low on a ramped model. "
-            + $"Sampled at {instants.Count} instant(s) - zero and every phase boundary - through "
+            + $"Sampled at {instants.Count} instant(s) - zero, or each diffusive phase's start and end - through "
             + "the cycle-averaged field the run drifts through, not the instantaneous one."
             + (implicitly
                 ? " The sweep count is the one quantity here that is not knowable in advance - it "
@@ -2229,15 +2733,23 @@ public static class EstimateCommand
     /// <returns>The run's own working set, on top of whatever its solved fields hold.</returns>
     /// <remarks>
     /// Once per declared species, each stepping its own density through its own coefficients, face
-    /// operator and well - nothing of that is shared - and once for the self-field, which is the
-    /// one thing the species do share.
+    /// operator and well - nothing of that is shared - and once for the conductors' map and the
+    /// self-field, which are what the species do share.
     /// </remarks>
-    private static double DiffusiveMemoryMiB(CompiledModel model, Grid2D grid, bool averaged)
+    /// <param name="snapshots">How many instants the density is recorded at.</param>
+    private static double DiffusiveMemoryMiB(CompiledModel model, Grid2D grid, bool averaged, int snapshots = 0)
     {
         var speciesCount = Math.Max(1, model.Species.Count);
 
+        // By the test the run applies: the map is kept only where an electrode claims a node of
+        // the density grid, and a grid clear of every conductor lets it go.
+        var absorbers = DiffusionRun.AnyElectrodeClaims(model, grid)
+            ? AbsorberMapBytesPerNode
+            : 0.0;
+
         return grid.NodeCount
-            * ((speciesCount * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0))) + SelfFieldBytes(model))
+            * ((speciesCount * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0)))
+                + absorbers + SelfFieldBytes(model) + (snapshots * SnapshotBytesPerNode))
             / Mebibyte;
     }
 

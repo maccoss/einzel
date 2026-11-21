@@ -5728,3 +5728,328 @@ that replaced it are, by construction, the runs in which first-tier code execute
 `DOTNET_TC_CallCounting=0`, so nothing is promoted and the hold shows on every machine: putting
 the residual back inline reads 1.06 of the statement there (143.57 and 47.94 bytes a node)
 while every in-process memory test still passes.
+
+## The most a build holds is held just after an allocation, so read it there
+
+`ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays` failed once on the Linux CI runner
+reading 1.028 of its statement: a slope of 45.11 bytes a node against 43.87, from builds
+printed at 42.64 and 43.88. Nothing was held that should not have been. The larger build read
+its statement, and the smaller read low by 1.24 - which is 8 x 0.154, one double for each node
+of the first coarse level: the restricted residual, alive beside the fine residual only while
+`Restrict` runs, about a millisecond on that grid, once in a two-cycle solve. The live set was
+read by a second thread forcing a collection about every millisecond, and that thread did not
+land in the window.
+
+**The readings were quantized, which is what identified a miss.** A sample lands on one of the
+instants a solve passes through, so a reading is the statement's own arithmetic at some
+earlier instant: 43.88 (the peak), 43.63 (the first cycle's restriction, before the second
+coarse mask is memoised, 0.25 less), 42.64 (the fine residual alone), 42.39 (that, in the
+first cycle). Delaying the sampler by 2, 4 and 5 ms a sample on an idle workstation produced
+those values in all but two of some two hundred readings - the two, 43.09 and 43.10 of the
+larger build, were low and never identified - and at 4 ms the failing pair itself, printed as
+42.65 and 43.88 and making 45.11, in eight runs of thirty-two; at 20 ms every reading was
+35.88, a solve with no cycle seen at all. An allocation the statement omits would read above
+the statement in both builds. **When a flaky reading is off by an amount, divide the amount by
+the node counts of the levels before looking for a cause: a multiple of a level is an instant,
+not an allocation.** Not reproduced on Linux - WSL on that machine had no SDK - so that the
+runner descheduled the sampler, whose raised priority Linux does not honor, is an inference.
+
+**Why that test: a slope takes the smaller build's miss at the smaller build over the
+difference in nodes.** Between two cubes at a halved cell that weight is a seventh. That test
+doubles one axis, so the weight is one, and the miss arrived whole, with the wrong sign, on the
+edge that means "something is held that is not charged".
+
+**The first fix moved the hazard rather than removing it**, and a review said so. It asserted
+each build against its own statement, where a miss "can only pass". That dropped the slope's
+cancelling of what a build holds whatever its size; it left a sampler descheduled across a
+whole solve reading 0.82 against a lower edge of 0.90; it left every other memory test on the
+same sampler; it ran six cycles for five windows where nothing checked that six cycles ran; and
+its tightest assertion, a tenth of a byte a node, was 100 kB wide beside a known reading 100 to
+300 kB high once a process. Each was a way for a sampler to be unlucky. **A measurement that
+races the thing it measures is fixed by not racing, not by choosing which way it may lose.**
+
+**What it is now.** A build's live set can only rise at an allocation, so its maximum is
+attained immediately after one. The solver allocates each per-node array through one helper
+(`GridArrays`: internal, a static read and a branch an array when nobody watches), and the
+test forces a full blocking collection at each of them, on the
+build's own thread, and reads what survived. The largest reading is the peak: nothing to miss,
+no second thread, nothing that depends on the runner's load or on how many cycles ran. Three
+things had to be got right for that to be a measurement rather than a second kind of luck.
+
+- **What is not reported is bounded, and the bound is what the upper edge is asserted on.**
+  The thread's own allocation counter says how many bytes it allocated between two readings,
+  and the reports say how many of those they account for; the live set between them was at
+  most the earlier reading plus the rest. So a reading is an interval - held, and at most -
+  and an array added to the solver without a report fails as slack instead of passing unseen.
+  An array allocated silently and dropped before the next report reads 1.20 to 1.36 of the statement
+  that way, and one held through a restriction 1.18.
+- **The bound found a real allocation on its first run.** The plane build's bound was 174 bytes
+  a node against 135 held: the plane cut-link builder enumerated its electrode list through
+  `IReadOnlyList`, which allocates an enumerator for every arm of every free node - 101 bytes
+  a node of garbage across a mask, 26.8 MB on a 263 k-node plane. It is an index loop now and
+  the bound is 207 bytes above the reading. A sampler measuring the live set had no way to see
+  garbage at all.
+- **The process has to be the build's.** A reading is of the whole process. Counting what
+  other threads allocated - the process's total less this thread's - showed a test host's own
+  threads allocating 10 to 550 kB during one build, and that is the likeliest account of the
+  reading "100 to 300 kB high, once a process" that a middle-of-three had been outvoting. (It
+  cannot be shown to be those bytes; it is the only allocation in the process that was not the
+  build's.) So the builds are measured in a child process, fully optimized from the first call
+  so that a local's lifetime does not depend on what has been promoted yet, after one unmeasured
+  build of each kind. There, other threads allocate 336 bytes a forced collection from the
+  second measurement on - the same in every run, source not established - which is taken off
+  the lower end of the interval, and a measurement in which more than 16 kB arrives between two
+  readings is taken again: discarded for a cause that was measured, never for its value.
+
+With readings that cannot miss, a slope is the difference of two exact figures, so the tests
+that need one to cancel a fixed cost have it back, the thin-grid test included, and a forced
+solve fails if it ran fewer cycles than it was asked for.
+
+**The instrument then made the defect it measures, twice, and both showed only in Debug.** A
+plain `dotnet test` builds Debug, and the first version had been run in Release alone.
+
+- The plane's bound read 18 bytes a node over. An allocation-tick listener named the type,
+  `System.RuntimeFieldInfoStub`: a span written as a collection expression of constants is
+  made from a field handle, optimized code turns that into a pointer to data, and unoptimized
+  code allocates a stub for the handle every time the expression is evaluated - once a node,
+  in a loop over a coarse mask. **Garbage that exists in one build configuration is still the
+  engine's**, and the bound cannot tell garbage from held memory by design; the answer was to
+  find the site, not to teach the bound to forgive it.
+- To refuse an array reported twice, the harness looked through the arrays reported before -
+  and that loop left one of them in a local of the frame that then forced the collection.
+  Unoptimized code keeps a local to the end of its method, so an array the solver had already
+  let go was alive at the reading: 52.95 bytes a node against 45.01, one grid-sized array,
+  attributed to the solver. It is the hold #72 found in the V-cycle, written into the test
+  for it. **Whatever a measuring frame touches is in the measurement**; the bookkeeping is in
+  a frame of its own, as the residual is.
+
+**And a report could be used to hide an allocation**, which is the general hazard of an
+instrument that subtracts what it is told. A site stated how many bytes it had allocated and
+the rest of what the thread allocated was "unreported": a count too large by exactly what was
+allocated silently came to zero, and `max(0, ...)` made sure of it. The site hands over the
+arrays now and the observer measures them. **Let the instrument measure what it can; a number
+supplied by the code under test is a number the code under test can get wrong in its own
+favor.** The same goes for the tier a child process runs in: it was checked by reading an
+environment variable, which a shell can set, and is checked now by dropping the last use of an
+object and seeing whether a collection takes it.
+
+**A convention a test depends on should be a function.** The first version put a report at
+each of twelve allocations, and its correctness rested on every future allocation getting
+one, in the right place, on the right thread, with `Array.Resize` taken apart by hand so that
+one could sit inside it. Three reviews in a row found a different way that could go wrong -
+a wrong size, a second report, a worker thread. `GridArrays.New` allocates and tells the
+watcher in one call, so none of them can be written; a test that reads the source refuses a
+per-node array allocated any other way; and an allocation on a thread other than the
+measuring one is refused by name, because what the watcher does there would be a measurement
+of nothing. **When a review keeps finding new ways to break a rule, the rule is in the wrong
+place**: move it from every call site into the one thing they all call.
+
+**A bound is only a bound if its count starts before what it bounds.** The lower end of the
+interval takes off everything other threads have allocated. That count was taken before the
+forced collection, so bytes arriving between the count and the collection were read and not
+taken off; and it was started after the baseline was read, so a block allocated between the
+two was in every reading and in no count. The second was found by the test written for the
+first, about one run in eight, the "least" coming out 37 kB above a truth known exactly. Both
+are orderings of two lines that read the same either way round.
+
+**Other threads are counted, not judged.** A reading follows a full collection, so nothing of
+another thread's is in it but what is still reachable, and that cannot exceed what the thread
+has allocated by then: each reading is reduced by exactly that, and the lower end of the
+interval is true whatever a runner's threads do. Nothing about them fails a measurement,
+except one thing by name - other threads allocating more than a quarter of what a build held,
+which is what a solver that started allocating on workers would look like, and which a
+per-thread probe could neither read nor bound.
+
+**The rule.** Before sampling a quantity from outside, ask whether the code under test passes
+through a countable set of instants at which the quantity can change, and read it at those. For
+a live set the instants are allocations, and "the peak is just after an allocation" is a
+property of the quantity rather than of the solver, which is what lets a probe at every
+allocation find a peak the statement does not know about - one placed only where the statement
+says the peak is could not. And account for what the probe cannot see with a counter the
+runtime already keeps, so that the gap is a number in the test's output rather than an
+assumption in its design.
+
+The readings are the sampler's best ones, which is the check that the probe changes nothing
+about what is alive: 43.88 on the thin grid, 135.41 and 135.58 on four rods, 147.0 on the
+slabs, 135.56 and 45.25 with nothing promoted. An observed solve is the unobserved solve to
+the last bit of every node (`GridArraysTests`). The two memory classes took 60 s and take
+18 s in Release, since a build is measured once instead of three times with a sampler halving
+its speed, and read the same figures in Debug.
+`SelfFieldMemoryTests` and `StudyMemoryEstimateTests` still sampled then, and so did
+`tools/memory-harness`; they read from inside now ("A bound nobody could meet was pointing at
+garbage", below).
+
+**Then the interval was made immune rather than retried.** What other threads allocate can
+only be bounded by counting it, and counting it widens the interval by however much they
+allocate - on a loaded runner, enough to fail a slope. Retrying the measurement until it was
+quiet, then keeping the least bad, was a vote under another name. The answer was a second
+reading of each end that another thread cannot touch: the build's own grid arrays, each
+followed by a weak handle, are an exact part of what it holds after a full collection; and
+what its own thread allocated outside them bounds the rest. **When a measurement of a process
+is contaminated by the process, look for a measurement of the subject instead** - here the
+subject announces every allocation that matters, so it can be followed one array at a time.
+And when even that cannot decide, the test should say so by name: a disturbed measurement and
+a defect are different findings, and only one of them is about the code.
+
+**A result is only as good as the run that produced it, and that has to be checked before the
+result is read, not after.** The child measured each case and then checked its own tier once
+more; the parent read the cases first, and a child that failed its last check had its numbers
+used anyway. A check that runs after the work it vouches for has to be able to withdraw the
+work - so the work counts only once the run says it finished, with an explicit end marker, and
+everything else, however much of it arrived, is a failure of the run.
+
+**A baseline is a promise that what it counted stays.** Every reading is the live set less the
+baseline, so an object counted in the baseline that dies during the measurement makes every
+later reading low by its size - and low is the dangerous direction for a test whose upper edge
+is the one that matters. The measurement broke that promise itself, twice: growing its own
+storage dropped the arrays the baseline had counted, and a warm-up object it made before the
+baseline went out of scope during the build. Neither shows in a test whose build is too small to
+trigger it; both showed in one that holds a known amount at a realistic size.
+
+## A bound nobody could meet was pointing at garbage
+
+The diffusive run was the last thing measured by a thread sampling the heap. Read from inside
+instead, at each of its arrays, its lower end was exact at once - 248.03 bytes a node, the
+arrays and 664 bytes - and its upper end was nine times that. The upper end is what the run's
+own thread allocated between two readings, added to the last reading: the most that could have
+been live there. On a solve that is a few kilobytes. Here it was 33 MB in nine steps.
+
+The reflex was to call the bound useless for a long loop and look for another one. The bound was
+right, and it was the only thing in the repository that had ever looked at that number.
+`FaceCoefficients.Offsets` was written
+
+```csharp
+public static (int Di, int Dj)[] Offsets => [(1, 0), (-1, 0), (0, 1), (0, -1)];
+```
+
+which reads as a constant and is a method that builds an array. `Neighbour` indexed it once a
+face, so the stepping loop made four arrays a node a step: 224 bytes a node a step, 3.7 MB a
+step on a 129 by 129 grid. Nothing was wrong with any number, so no test failed; the run was
+merely collecting a generation every step, and the sampled memory figure - 263 where the arrays
+come to 248 - was partly that garbage caught before a collection took it. The same sentence was
+written about the 3-D energy sweep's solve inside its member loop: a cost is invisible to a
+suite that only checks answers.
+
+Three things to keep.
+
+- **A property that returns a collection expression allocates on every read.** `=> [..]` on a
+  property is not a field initializer. Where a table is read in a loop, make it a `static
+  readonly` field and say so; where a caller must not be able to reorder it, hand out a copy
+  from a second member that is not on the hot path.
+- **When a bound comes out absurd, find out what it is counting before replacing it.** An upper
+  bound that includes everything allocated is exactly the instrument that sees a loop
+  allocating. The mutation that puts the property back fails the diffusive memory tests by
+  name, where every numerical test in the suite still passes.
+- **A measurement that reads low or high by chance hides the size of what it is measuring
+  around.** The sampled figure had been "248 and 259, a slope of 263" for months, with 216
+  attributed and the rest written down as unattributed. An exact reading attributes all of it
+  in one line - the face names are 32 - and leaves nothing to call noise.
+
+## List what a rule cannot decide, not what it should
+
+The guard that keeps grid-sized arrays inside `GridArrays` refused every allocation whose size
+was not a literal, and excused by exact text the ones that were not grid-sized: eighty-eight of
+them, each a list of drives or stages or weight terms, each with a reason typed beside it. Every
+reason was the same reason. An unrelated edit that reflowed one of those expressions failed the
+test, and the fix each time was to retype the excuse.
+
+A list of exceptions is a rule written out by extension, and the reviewer's question was what
+the rule is. Here it is two sentences: storage for bare numbers is in scope unless its size is
+shown to be a count of things; storage for things only if its size is shown to be a grid's. The
+compiler's semantic model can follow a size back through locals, parameters, fields and calls
+far enough to decide 168 of 171 allocations by those two sentences, and what is left - three
+allocations in one method, each really the size of a grid divided by 512 - is a list worth
+reading.
+
+- **If every entry of an allowlist has the same justification, the justification is the rule
+  and the list is its output.** Write the rule; keep the list for what the rule gets wrong.
+- **State what the rule cannot show.** This one cannot follow a size that arrives from an
+  assembly it does not compile, a collection grown through a reference handed elsewhere, or
+  per-node storage of objects whose count never touches a grid dimension. Each is written in
+  the scan's remarks with what covers it instead, and where the scan does not know it refuses.
+- **Test the rule on small written cases, both ways.** A scan that passes 168 of 171 could be
+  passing them because it is blind. Fifty snippets say which shapes reach a grid, which cannot
+  be shown small, and which per-drive lists must pass, and two mutations of the engine - a grid
+  array outside the helper in the density run, and one number a species beside it - come out
+  refused and passed.
+
+## Two passes over one array must ask one question
+
+`PacketConversion.Cumulative` filled two lists cell by cell. Making its arrays the right length
+before filling them - so that they could come from the one allocator - turned one loop into two,
+a count and a fill, and the two were written a few lines apart:
+
+```csharp
+if (density[i, j] * density.CellVolume(j) > 0.0) { occupied++; }   // the count
+...
+if (ions <= 0.0) { continue; }                                       // the fill
+```
+
+They read as complements and are not. A value that is not a number is neither greater than zero
+nor at most zero, so the count passed over it and the fill wrote it, one element past the end.
+Every test passed, because no test had a density that was not a number, and a refactor that
+"changes nothing" is not usually given new tests.
+
+- **Write the predicate once and call it twice.** Two spellings of one condition agree on every
+  value somebody thought of.
+- **`x > 0` and `x <= 0` are not complements for a floating-point `x`.** Wherever a branch on a
+  comparison is duplicated, mirrored or negated, ask what not-a-number does at each copy.
+- **And then ask what the old code did with it.** It did not throw, which made the new crash
+  look like the regression. It was drawing every ion from an arbitrary cell and saying nothing,
+  which is worse than a crash and is what the refusal replaces.
+
+## A constant measured in one configuration is a claim about one configuration
+
+The diffusive figure was restated from a sampled 263 to an exact 248 on the strength of a drift
+tube stepped explicitly with nothing driven, and the estimate applied it to every diffusive
+run: implicit, driven, ramped, recording, mixed. The old figure had fifteen bytes of slack that
+nobody had asked for and that covered, by accident, anything a configuration might add. The
+exact one had none.
+
+Measured in a release build, every configuration held what the statement already said (in a
+debug build two held one array more - see the next section) - the implicit scheme solves
+in place, a ramp re-assembles into the arrays it has, a well cache is its seven arrays, a second
+species is everything again. One term was missing, a recorded instant, which the estimate had
+never been able to be told about. So the restatement was right, and it was right by luck: the
+argument for it was a measurement of one case.
+
+- **When a measured constant replaces a padded one, the padding was covering something or
+  nothing, and only measuring the other cases says which.** Enumerate what the constant is
+  multiplied into - every branch of the code that bills it - and measure one case down each.
+- **Hold a term to its own size.** An array too many in a 56-byte cache is three percent of a
+  304-byte run and inside any band worth having; against the run without the cache it is
+  fourteen percent of the difference.
+
+## What a frame once held, an unoptimized frame keeps
+
+A mixture held one density more than it was billed, and so did a sequence whose second phase
+ramped - in a Debug build, and never in Release. The mixture copied one seed shape into each
+species and never read the shape again; the sequence made its first phase's density in the
+frame that walks the whole timeline. Code compiled without optimization keeps every local, and
+some of the JIT's own temporaries, alive to the end of the method, so the shape lived through
+the run and the seed through every phase after the one it seeded. Finding the second took a
+weak handle: alive after the last phase, gone once the method returned, and reachable from none
+of the run's objects - so the frame was the root, and no variable in it named the seed.
+
+- **A grid-sized object made in a long-lived frame lives as long as that frame, in the build
+  somebody debugs with.** Make it in the frame that uses it - here, inside the leg that steps
+  it - or let the last use be the object itself rather than a copy of it.
+- **Run the memory tests in both configurations.** The two disagree about liveness, and the
+  estimate is a statement about the code, not about the optimizer.
+
+## A maximum over the readings taken is a maximum over a choice
+
+The live-set measurement skips a reading wherever its bound proves the reading could not raise
+the least, and that proof is sound for the least. It was then used for two other quantities that
+it is not sound for: the most of a build's own grid arrays alive at once, and the most other
+threads allocated between two readings. Both are maxima over whichever readings were taken, and
+which were taken depends on what the process's live set happened to be. A charged run's fourth
+repetition read a coarse level fewer; a ramped run's count of other threads' bytes swung from
+25 to 70 kB between runs of one build.
+
+- **A skip proven harmless for one statistic is not proven harmless for another.** Ask, of each
+  quantity a measurement reports, whether it is computed over every instant or over the
+  instants a rule selected.
+- **The first use of a measurement is part of the first measurement.** Whatever the measuring
+  code allocates and keeps the first time it runs is in that reading and in no baseline before
+  it - 32 bytes on one machine, 152 on another. Run it once on nothing first.

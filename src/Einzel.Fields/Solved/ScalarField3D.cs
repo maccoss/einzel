@@ -1,3 +1,5 @@
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>Nodal values on a <see cref="Grid3D"/>.</summary>
@@ -24,7 +26,7 @@ public sealed class ScalarField3D
         grid.ThrowIfTooLargeToSolve();
 
         Grid = grid;
-        _values = new double[grid.NodeCount];
+        _values = GridArrays.New<double>(grid.NodeCount);
     }
 
     /// <summary>The grid these values live on.</summary>

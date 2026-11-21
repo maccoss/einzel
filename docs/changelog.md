@@ -3346,3 +3346,643 @@ Two findings from Stage 1 that bear on the spec:
   141.34 and 69.30 kHz. Not built: the resonance-ejection scan through the exit hole. Not
   sourced: the hole size and the stretch, so nothing here predicts a named instrument. Details
   in `docs/device-templates.md`, `docs/literature-targets.md` section 9, `docs/lessons.md`.
+
+- **The solve memory tests read the live set from inside the build, and stopped racing it.**
+  `ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays` read 1.028 of its statement once on
+  the Linux CI runner: a slope of 45.11 bytes a node from builds printed at 42.64 and 43.88
+  against 43.87. The larger build read its statement; the smaller read low by 1.24, one double
+  for each node of the first coarse level - the sampling thread missed the millisecond in which
+  the restricted residual is alive beside the fine one, and a slope between two builds one of
+  which is twice the other takes the smaller one's miss whole. Reproduced on an idle
+  workstation by delaying the sampler 4 ms a sample: readings fell on 42.64, 43.63 and 43.88,
+  each the statement's arithmetic at an earlier instant, and the failing pair came up in eight
+  runs of thirty-two.
+
+  **A first fix asserted each build alone, where a miss "can only pass", and a review found
+  five ways it still lost**: no cancelling of a build's fixed cost, a lower edge a sampler
+  descheduled across a whole solve fell under, every other memory test still on the sampler,
+  six cycles assumed and never checked, and a tenth-of-a-byte assertion narrower than a known
+  100 to 300 kB outlier. All five are one problem - a second thread sampling a
+  millisecond-wide window - and it is removed rather than hedged.
+
+  **A build's live set can only rise at an allocation, so its peak is held just after one.** The
+  solver allocates each per-node array through one internal helper (`GridArrays`: a static read
+  and a branch an array when nobody watches; it began as a probe each site reported to, see
+  the third review below), and
+  `LiveSet` forces a full collection at each report on the build's own thread and reads what
+  survived. No window, no second thread, no dependence on load or on how many cycles ran - and
+  no reliance on the statement to say where the peak is, which a probe placed at the stated
+  peaks would have had.
+
+  | | stated, real cut arms | held, to at most |
+  | --- | --- | --- |
+  | Galerkin slabs, 36 k to 275 k nodes, slope | 146.97 | 146.94 to 146.97 |
+  | rediscretized sphere, 36 k to 275 k, slope | 44.98 | 44.95 to 45.01 |
+  | no coarse level, 4.9 k to 36 k, slope | 42.50 | 42.41 to 42.56 |
+  | one coarse level, 36 k to 275 k, slope | 44.71 | 44.69 to 44.72 |
+  | thin grid, 332 k to 664 k, slope | 43.87 | 43.85 to 43.89 |
+  | plane, four rods, 66 k to 263 k, slope | 135.25 | 135.32 to 135.37 |
+  | a second volume channel | 8.0 | 7.71 to 8.03 |
+  | a second plane channel | 8.0 | 7.13 to 8.10 |
+  | first-tier plane, 66 k | 135.25 | 135.58 to 135.58 |
+  | first-tier sphere, 36 k | 45.19 | 45.11 to 45.26 |
+
+  The same to the hundredth in a Debug build.
+
+  The interval's upper end adds whatever the thread allocated between two readings without
+  reporting it, and the upper edge is asserted there, so a per-node array added with no report
+  fails as slack. **That bound found a real allocation on its first run**: the plane cut-link
+  builder enumerated its electrode list through an interface, an enumerator for every arm of
+  every free node - **101 bytes a node of garbage, 26.8 MB on a 263 k-node plane**, which no
+  sampler of the live set could see. It is an index loop now; masks are unchanged.
+
+  **And it identified the outlier as far as it can be.** A reading is of the process; counting
+  what other threads allocated showed the xUnit host's threads allocating **10 to 550 kB during
+  one build**, so the builds are measured in a child process (fully optimized from the first
+  call, one unmeasured build of each kind first). There it is 336 bytes a forced collection,
+  the same in every run and of no established source. Each reading is reduced by what other
+  threads had allocated *by then* - a reading follows a full collection, so no more of theirs
+  can be in it - and the largest result is the interval's lower end; a measurement in which
+  over 16 kB arrives between two readings is retaken, for a cause measured, not by a vote, and
+  after four the least disturbed is kept and reported, never thrown away as a failure. That the host's allocations *were* the "100 to 300 kB high, once a
+  process" reading is inferred, not shown.
+
+  Checks: the readings equal the sampler's best ones (43.88, 135.4, 147.0, and 135.56 and
+  45.25 with nothing promoted), so the probe changes nothing about what is alive; an observed
+  solve is the unobserved one **to the last bit of every node**, on a rediscretized volume, a
+  Galerkin volume and a plane; 100 million unobserved reports allocate nothing, at 0.36 ns
+  each (0.7 ns since a report carries the arrays); and with all twenty-four hardware threads
+  held by busy loops, five runs read the same figures to the hundredth with no measurement
+  retaken. Mutations: an
+  extra reported array held through the restriction reads 1.18 and fails the three
+  rediscretized tests and the first-tier one; a raw unreported array dropped at once reads 1.20 to 1.36
+  and fails the same four; the fine residual put back in the recursing frame fails the
+  first-tier test at 1.06. A forced solve now fails if it ran fewer cycles than asked. The two
+  memory classes took 60 s and take 14 s in Release. No stated figure changed; three in the thin-grid
+  test's remarks were wrong and are corrected in the test and in `docs/cli.md` (the second
+  coarse level is 0.028 of the fine grid, its mask 0.25 bytes a node, the statement without it
+  43.62). **Not done**: `SelfFieldMemoryTests`, `StudyMemoryEstimateTests` and
+  `tools/memory-harness` still sample, and the Linux half of the account - that the runner
+  descheduled the sampler - was never reproduced, WSL here having no SDK.
+  `docs/lessons.md`, "The most a build holds is held just after an allocation".
+
+  **A second review ran it in Debug, which is what a plain `dotnet test` runs, and three tests
+  failed.** The bound read 153.5 bytes a node on the plane against 135.25: 18 a node of
+  garbage that only unoptimized code allocates. An allocation-tick listener in the child named
+  it - `System.RuntimeFieldInfoStub`, 813 ticks of about 100 kB. `DirichletMask.ZeroCutPotentials`
+  walked its four directions through a span written as a collection expression, which is made
+  from a field handle, and unoptimized code allocates a stub for that handle on every pass:
+  once a node, for every coarse mask of every cycle. It walks a static array now, and Debug
+  reads what Release reads. The same review found the interface enumeration removed from
+  `CutTowards` still in both `Shadowed` checks and in the unculled volume reference; all
+  three are index loops. `PlaneMaskTests` holds the plane mask to both things nothing held it
+  to: every cut link against the definition written out in the test, bit for bit (1,136 cut
+  arms at 257 by 257, 272 at 65 by 65, none differing; skipping an electrode fails both), and
+  73.00 bytes a node allocated against 73 kept, where the enumerator read 174.
+
+  **Four more were defects in the measurement, and one of them was the defect it measures.**
+  - *A report could hide an allocation.* A site stated a byte count, and what was unreported
+    was `max(0, allocated - reported)`: a count 800 kB too large beside 800 kB allocated
+    silently came to nothing. A site hands over the arrays now and the observer works out
+    what they hold, so there is no size to get wrong; an array reported again within 64
+    reports, or arrays holding more than the thread allocated since the last report, are
+    refused by name. Reporting an array twice in `ScalarField3D` fails every solve test with
+    "reported to AllocationProbe twice" (superseded: see the third review). What is left is stated: an array reported long after
+    it was allocated, beside an equal unreported allocation.
+  - *The harness held an array itself.* Remembering reported arrays put one in a local of the
+    frame that then collects, and unoptimized code keeps a local to the end of its method, so
+    in Debug the larger sphere read 52.95 bytes a node against 45.01 - one grid-sized array the
+    solver had let go, kept alive by the test, and reported as the solver's. The bookkeeping
+    has a frame of its own. **The first-tier hold of #72, reproduced in the instrument built
+    to detect it**, and found only because the suite was run in the configuration the
+    instrument's own code is unoptimized in.
+  - *Other threads could fail a measurement.* Eight attempts and a throw, calibrated on one
+    machine, with every foreign byte of the whole build taken off the lower end. Now per
+    reading and never thrown, as above; what remains by design is a named failure when other
+    threads allocated more than a quarter of what a build held, which is what a solver that
+    moved its arrays onto workers would look like, since the probe is per thread and would
+    neither read at those allocations nor bound them.
+  - *The first-tier child trusted a variable.* It checked `DOTNET_TC_CallCounting=0` and
+    inherited everything else, so a shell exporting `DOTNET_TieredCompilation=0` made it an
+    optimized child that passed for the wrong reason. Each child now has every tiering
+    variable set or cleared under both prefixes, and **checks its tier by what the code
+    does**: it drops the last use of an object and sees whether a collection takes it. Run
+    with the wrong environment each child refuses by name.
+
+  Full suite, 1,978 tests, passes in Debug and in Release. `SPEC.md`'s GRD-8 row described the
+  sampler and still carried 143.25 and 51.2 from before #72; it states the method and 135.25
+  and 48.8 now.
+
+  **A third review found no fault in the solver and ten weaknesses in the instrument, and the
+  answer to most of them was one function.** Twelve hand-placed reports were a convention
+  nothing enforced: forget one and an array is invisible, make one on a worker thread and it
+  is silently unmeasured, and `Array.Resize` had been written out by hand in the cut store so
+  that a report could sit in the middle of it. **`GridArrays.New` and `GridArrays.Resize`
+  allocate and tell the watcher in one call**, and every field, mask, cut-link store and
+  operator gets its arrays there - 26 allocations in the solver's directory. So a report
+  cannot be forgotten, doubled or mis-sized, because there is no report; the 64-array memory
+  for catching a double one is gone with the need for it. Two things then hold the rule:
+  - `GridArraySourceTests` reads the directory's source and fails on a numeric array
+    allocated with `new` at a length that is not a literal, on `Array.Resize`, on the
+    collector's allocators, and on `.ToArray()` or `.Clone()`. Eight lines it catches are not
+    grid-sized and are listed with the reason; a listed line that no longer exists fails too.
+    A `new double[n]` added to the V-cycle fails it, and fails the memory tests at 1.18 to
+    1.31 as slack besides.
+  - A watch belongs to one thread and is known to the process, so **an array allocated
+    through `GridArrays` on any other thread while a build is measured is refused by name**.
+    Moving the fine residual's allocation onto a pool thread fails every solve test with "a
+    grid array of 287,496 bytes was allocated on thread 4 while thread 2 is measuring".
+    The quarter-of-peak count of other threads' bytes stays as the backstop for an array
+    allocated on a worker some other way, and its remarks now say what it cannot see.
+
+  **Two of the ten were holes in the lower bound, and the test written for the first found the
+  second.** Other threads' bytes were counted *before* the forced collection, so bytes
+  arriving between the count and the collection were in the reading and not taken off it;
+  they are counted after it now. `AnotherThreadsMemoryWidensTheIntervalDownwardOnly` holds
+  that with a thread allocating and keeping 32 kB blocks through a measurement of a known
+  size - and failed about one run in eight with the fix in, the least 37 kB **above** the
+  truth: the count started after the baseline was read, so a block allocated between the two
+  was in every reading and in no count. It starts before the baseline now; twenty-five runs of
+  twenty-five pass, and with the count moved back before the collection, and a millisecond put
+  between them to widen the window, five of five fail.
+
+  The rest: one child process for the whole class instead of one a test (the four rods were
+  being built in three of them), every case built once unmeasured at its own size before it
+  is measured, and the first-tier child given the same warm-up and the same check on other
+  threads - it tests its tier before the first build and after the last, since a warm-up is
+  what would promote code. The plane test asserts a slope like the volume tests, 135.32 to
+  135.37 against 135.25, with its lower edge **tightened from 0.85 to 0.98**; a second plane
+  channel must cost at least nothing, where -10 was allowed. The entry point has a file of
+  its own and an unknown command exits 64 with a usage line. Readings moved only in the
+  width of their intervals, since the smaller build of each pair is no longer the first thing
+  a process measures. The memory classes take 18 s in Release. Full suite, 1,997 tests, passes in both
+  configurations.
+
+  **A fourth review found the interval still widened by other threads, and the answer was to
+  read the build twice over rather than the process once.** Every byte another thread
+  allocated came off the lower end, and a loaded runner's few hundred kilobytes on the smaller
+  build of a slope would have pushed the thin grid's upper edge over 1.02 - the class of failure
+  this whole change exists to remove - so measurements were retaken four times and the least
+  disturbed kept. Now each end has a second reading that uses nothing but the build's own
+  thread: **every grid array is followed by a weak handle**, and after a full blocking collection
+  a handle is cleared exactly when its array is unreachable, so the arrays still alive are an
+  exact part of what the build held, whatever any other thread is doing; and the most it can
+  have held is those arrays plus everything its thread allocated outside `GridArrays`. Each
+  end is the better of the two readings. A thread allocating and keeping 32 kB blocks beside a
+  17.3 MB build moved the process's reading 430 kB and the interval not at all: **17,313,480 to
+  17,318,448 bytes against a truth of 17,313,480**. With the process-only interval restored
+  that test fails. Nothing is retaken any more, and an edge the interval straddles fails as
+  **"INCONCLUSIVE, the measurement was disturbed"**, with the numbers, when other threads
+  allocated enough to account for the excess - never as "not billed".
+
+  The rest, each verified first:
+  - **The count of other threads' bytes starts just before the baseline's last collection.**
+    Started before the first, as the last round left it, it charged the build with what
+    finalizers allocate while the baseline settles: a finalizer allocating 256 kB was charged
+    in full, and is not now. Started after the last, as before that, it missed a block
+    allocated between the collection and the count.
+  - **`GridArraySourceTests` parses `src/Einzel.Fields` with the compiler's own parser**
+    (Microsoft.CodeAnalysis.CSharp 5.9.0, MIT, test-only, the version the pinned SDK compiles
+    with) instead of matching single lines of `Solved/`. It reads every file in every
+    subdirectory, requires each to parse, and catches array creation of any element type with
+    a size not written as a literal, collection expressions with a spread, `ToArray`/`ToList`/
+    `Clone`/`Resize`/`Rent`/`AllocateArray` and the like by name, and collections constructed
+    with a capacity, including target-typed `new(n)`. It caught 94 sites the regex had not; 88
+    distinct expressions are listed with the reason, nearly all "one entry an electrode, a
+    stage, a drive or a basis channel". One is real and stays listed with its size: the volume
+    cull's candidate lists, one a block of 512 nodes, under 0.2 bytes a node and dropped before
+    the solve. Its remarks state what it does not catch - a list grown by `Add` with no capacity.
+  - **A grid array allocated on another thread during a watch is recorded, not refused.** The
+    previous round made a production constructor throw on any thread but the measuring one;
+    now the allocation proceeds, the watch records it, and the measurement fails by name with
+    the count and bytes. The memory measurements run only in the child process.
+  - **The child reports each case separately**, failures included, and a child that fails as a
+    whole - does not start, refuses its tier, runs a different runtime - says so once, as such.
+    A `Lazy` that cached an exception had made one bad case fail every test identically.
+  - **The child's host is the running runtime's own `dotnet`**, found from the runtime's
+    directory rather than from the path, and the child reports the runtime version it ran on,
+    which must equal the test process's.
+  - `GridArrays.New` sizes by `Unsafe.SizeOf<T>()`, which a struct element needs, and
+    `GridArrays.Resize` does what `Array.Resize` does on a null array and an unchanged length.
+
+  Readings, Release and Debug alike, stated against held to at most: Galerkin slope 146.97
+  against 146.95 to 146.97, rediscretized 44.98 against 44.98 to 45.00, no coarse level 42.50
+  against 42.47 to 42.53, one level 44.71 against 44.70 to 44.72, thin grid 43.87 against 43.87
+  to 43.88, plane slope 135.25 against 135.34 to 135.36, first-tier plane 135.25 against 135.58
+  and sphere 45.19 against 45.19 to 45.26. Mutations: the process-only interval, the count
+  started early, sizing by `Buffer.ByteLength`, a resize that always allocates, a scan blind to
+  spreads or to non-primitive element types, a throw on another thread, and every earlier one
+  (an extra held array, an unreported array, the residual back in its frame, the plane
+  enumerator, a skipped electrode, a direct `new double[n]`, an allocation on a pool thread, the
+  Debug-only span) each fail. Full suite, 2,024 tests, passes in Debug and in Release; the
+  memory, probe and source tests take about 40 s in Release and 3.5 minutes in Debug.
+
+  **A fifth review found the child's own checks were not enforced**, which is the real bug of
+  the round. A case's measurement was handed to its test before anything looked at whether the
+  child as a whole had succeeded, so a child that refused its tier after its last build - the
+  check that exists because a warm-up is what promotes first-tier code - still had every number
+  it printed used, and so did one that ran on another runtime or died part way. A case now
+  counts only if the whole child succeeded: it writes `BEGIN` and `CASE` for each case and `END`
+  after its last check, and a non-zero exit, anything on its error stream, a missing `END`, a
+  different runtime or a timeout fails every test that asked it for anything, with what it
+  wrote and the case it was building. A child that runs out of time is stopped and its output
+  kept. Forcing the late tier check to fail now fails every dependent test.
+
+  The rest, each verified first:
+  - **A target-typed `new` is typed by the compiler.** The source scan built a compilation of
+    every `Einzel.Fields` file against the running framework and Einzel.Core and asks the
+    semantic model what each `new(...)` creates, so an assignment to a field, a return or an
+    argument is read like a declaration; one whose type cannot be resolved is caught if it has a
+    non-literal argument.
+  - **An excuse names the member it is in and how many times.** `(file, type.member, expression,
+    count, reason)`, so the same expression written a second time in a listed member, or moved
+    to another, is caught; adding a second `new List<double>(drives.Count)` to the member that
+    has one fails the test.
+  - **A watcher that throws cannot make an allocation throw.** The exception is recorded, the
+    watcher is not called again, and the measurement fails by name - the 16,384-array cap of the
+    last round was such an exception. There is no cap now: the storage for following arrays
+    grows, outside what is charged to the build.
+  - **A full collection only where it could matter.** A reading at an array is skipped when an
+    upper bound on the live set there - the last reading plus everything allocated since, or the
+    build's grid arrays plus everything outside them - is already no more than the least read
+    so far: such a reading cannot raise the least, and the upper bound goes into the bound.
+    Proved rather than tuned, and measured: the least is the same to the byte, from 32 readings
+    of 385 arrays on the plane and 63 of 129 on the sphere.
+  - `SPEC.md`'s GRD-8 row states current figures only; the history is here.
+
+  Full suite, 2,045 tests, passes in Debug and in Release; the memory, probe, protocol and source
+  tests take about 70 s in Release, 20 of them the test that waits for a child to run out of time.
+
+  **A seventh review found the measurement reading low after a build outgrew its room**, which
+  is the bug of the round. Growing the storage that follows a build's arrays replaced the arrays
+  made before the baseline and dropped them, and they had been counted in the baseline: every
+  reading after the first growth was 256 kB low - the default room of 16,384 arrays - which
+  lowers the least and the process's half of the bound, so an unbilled array of that size could
+  pass. The previous test could not see it, because it grew from a room of one. Now nothing the
+  storage replaces is dropped until the measurement ends, and what growing allocated is measured
+  by the thread's own counter and taken off each reading. **A build that holds 16.8 MB, outgrows
+  the default room and is read afterwards reads 16,800,208 bytes against a truth of 16,800,048**;
+  dropping the replaced storage again fails that test. The warm-up storage made before the
+  baseline is kept to the end for the same reason: an object of the baseline that dies during the
+  build makes every later reading low by its size.
+
+  The rest, each verified first:
+  - **A case line that does not read is the child failing, not the parent throwing.** A line cut
+    off when a child is stopped, or `CASE null`, used to throw out of the method the fixture
+    caches, and every test then failed with the exception instead of what the child said.
+  - **The child runs in a controlled environment and says which collector it ran with.** It keeps
+    only what starting a process needs and the tier, and pins the collector to workstation,
+    non-concurrent - so the only full collections are the ones a measurement forces. It prints
+    `GC workstation Batch`, and anything else fails every case by name. A parent run with
+    `COREHOST_TRACE`, `DOTNET_gcServer` and `DOTNET_gcConcurrent` set no longer reaches it;
+    inheriting the environment again fails that test. What other threads allocate in a quiet child
+    is still a few hundred bytes some collections and nothing at others; where it comes from is
+    not established.
+  - **A grid array is charged what it occupies**, header and padding included, measured from the
+    runtime at startup and checked against arrays of several lengths, so a build that allocates
+    nothing outside `GridArrays` reports nothing there - it reported 24 bytes an array.
+  - **The guard on other threads' allocation asks of the most between two readings**, not the
+    total, which grew with the number of collections a build needs.
+  - The first-tier child's claim is narrowed to JIT-compiled code, which the solver is: the
+    framework is precompiled and runs optimized in every tier, and the child refuses if
+    `Einzel.Fields` ever carries a ReadyToRun header. The off-thread message formats its numbers
+    invariantly. The test project checks documentation references, which found the one stale
+    `cref` the review named and no other. The live-set reader is one file linked into the three
+    projects that measure memory, where it had three copies.
+
+  Full suite, 2,051 tests, passes in Debug and in Release.
+
+  **Then the last memory tests that sampled were read from inside too, and a bound found what
+  the sampler had been reading.** `SelfFieldMemoryTests` still measured a diffusive run with a
+  thread forcing collections beside it - two warm-up runs, five readings, the largest held to
+  the middle one - and so did `tools/memory-harness`. `GridArrays` moved to `Einzel.Core`, the
+  one assembly `Einzel.Fields` and `Einzel.Transport` both already reference, and stays
+  internal, named to those two, the two test assemblies that measure and the harness; the
+  densities, the step's six coefficients, the face operator, the conductors' map, the
+  self-field, the well cache, an imported gas density and a density's cumulative table for
+  sampling all come from it now. The measurement and the child process moved to `tests/Shared`
+  and are linked as source into `Einzel.Fields.Tests` and `Einzel.Cli.Tests`, which is an
+  executable as well; the harness links the measurement.
+
+  | | stated | read from inside, least to most |
+  | --- | --- | --- |
+  | diffusive run, drift tube, slope 129 by 129 to 257 by 257 | 248 | 247.89 to 248.11 |
+  | the same in a bore, with the conductors' map | 252 | 251.88 to 252.12 |
+  | self-field, tube, 16,641 and 66,049 nodes | 62 | 61.00 to 61.46, 61.21 to 61.35 |
+  | self-field, bore, 16,641 and 66,049 nodes | 62 | 60.97 to 61.47, 61.20 to 61.32 |
+
+  **The first reading had an upper end nine times its lower.** A measurement's upper end is what
+  the run's thread allocated between two of its arrays, and a 129 by 129 run holding 4.1 MB had
+  allocated 33 MB there in nine steps; at 257 by 257, 501 MB in thirty-four against 16 held.
+  `FaceCoefficients.Offsets` was a property returning a collection expression, so each read made
+  a new four-entry array, and `Neighbour` read it once a face: **224 bytes of garbage a node a
+  step**, in the loop CMP-1 says allocates nothing. The offsets are a static array read in
+  place, the step's ledger of what each surface took is the run's own and reused where it was
+  a dictionary and a list a step, and the stepping loop allocates nothing; the run's whole
+  interval is now under 6 kB wide. Every diffusive number is unchanged - same sums in the same
+  order.
+
+  **So the diffusive figure moves from 263 to 248.** 263 was a slope between two sampled
+  readings, 248 and 259, of which 216 were attributed to arrays. The rest of the 248 is the
+  face names, 32; the 15 over was the sampler reading that garbage as held. The statement is
+  the arrays now - three densities, six coefficients, a face operator of 176 - and the map of
+  which conductor owns each node is 4 more, once, where a solved element has electrodes. A
+  diffusive estimate is 5.7 percent lower without conductors and 4.2 with.
+
+  **The source guard follows sizes and no longer lists them.** It refused every allocation
+  sized at run time and excused 88 by their exact text, so an unrelated edit to a list of
+  drives tripped it. `GridSizeScan` compiles the engine's sources and follows each size back:
+  through arithmetic, locals, parameters to their arguments at every call, fields and
+  properties to what is assigned to them, calls to what they return, a collection filled by
+  `Add` to the loops its `Add`s are in. Storage for bare numbers is refused unless its size
+  ends in constants and counts of things; storage for things only if it reaches a grid's
+  dimensions. In `Einzel.Fields` and `Einzel.Transport`, which is now what is covered, **171
+  allocations are judged, 168 pass by rule and three are listed** - the volume cull's per-block
+  candidate lists, which are the size of a grid over 512. Fifty-odd snippets pin each way a size
+  can reach a grid, each way it can fail to be shown small, and each shape of per-drive list
+  that must pass.
+
+  **A child's failure belongs to whatever caused it.** One child measured seventeen cases under
+  one twenty-minute limit, and a slow case or a line on the error stream failed all of them
+  with nothing naming the culprit. Each case has its own time now, counted by the parent from
+  the line saying the case began; a case past it, or one that takes the process down, fails by
+  name with what was written, and the cases after it are measured by a fresh child. The child
+  marks on its error stream where each case begins and ends, so a line written inside a case
+  fails that case alone. What still fails every case is what is about every case: no start,
+  another runtime or collector, the wrong JIT tier - checked after each case now, before it is
+  reported. The test that gave a cold child twenty seconds to start, build a real case twice
+  and hang gives the stuck case two seconds from its own beginning instead, after a case that
+  sleeps for longer than that.
+
+  **Only the tests that watch in this process run alone.** The whole memory collection ran with
+  parallelization off, though most of it only reads what a child reported. The child-reading
+  classes run in parallel with the rest of the suite; `GridArraysTests`, which starts watches
+  and reads this process's live set, keeps the serialized collection. Every solve a child
+  measured read the same to the byte with the whole suite running beside it as with nothing
+  else running; the one case that is forty small fields, whose least comes from the process's
+  reading, moved by under 6 kB.
+
+  **An interval wholly past an edge is a finding whatever other threads did.** An array added
+  to the self-field failed its test as inconclusive: a refresh re-samples the step's
+  coefficients across cores, those threads allocated a megabyte or two over the run, and the
+  verdict asked only whether that could cover the excess. But the interval's lower end is the
+  build's own arrays still alive, which no other thread can add to, so a lower end over the
+  upper edge is not billed, by name: 68.95 to 69.21 against an edge of 63.24. Only an edge the
+  interval straddles can be the measurement's doing.
+
+  Mutations, each run alone: one more density held fails the two diffusive tests at 256.11 and
+  260.14 against 252.96 and 257.04; one more self-field array fails its four; the density's
+  values allocated without `GridArrays` fail the scan and three self-field tests; the offsets
+  property read in the loop again fails all six, at up to 34,123 bytes a node; a grid-sized
+  `bool[]` and a grid-long list copied to an array in the density run are refused by the scan,
+  and one number a species beside them is passed; a case's time counted from the child's start,
+  one limit for the whole child, an error-stream line failing every case, no fresh child, and a
+  case's death failing every case each fail the protocol tests written for them. The thirty
+  from earlier rounds still fail.
+
+  The room kept for replaced storage said sixty-four doublings and held thirty-two; it holds
+  what thirty-one need, which is more than an array can be doubled, and refuses by name past
+  that. `docs/lessons.md`, "A bound nobody could meet was pointing at garbage" and "List what a
+  rule cannot decide, not what it should".
+
+  Full suite, 2,104 tests, passes in Debug and in Release, with the same readings in both. The
+  solver's memory, protocol and source tests take 47 s in Release and the diffusive ones 75 s.
+
+  **A ninth review found a crash this work had introduced, and a zero-margin constant standing
+  for runs nobody had measured.**
+
+  **The crash.** Sizing a density's cumulative table through `GridArrays` took two passes, and
+  they asked different questions: the count kept a cell whose population was `> 0` and the fill
+  skipped one that was `<= 0`. A cell that is not a number answers false to both, so it was
+  passed over by the count and written by the fill, one past the end - `INTERNAL_ERROR` where a
+  sequence hands a density to a trajectory phase. Both passes ask one predicate now. **And a
+  density that is not a number is refused there, by its cell** (`CONVERGENCE_FAILED` at
+  `/sequence`): the list-based code this replaced did not throw, and that was worse - it carried
+  the cell into the table, every total after it was not a number, and every ion was drawn from
+  wherever a search for not-a-number stopped, with nothing said. A cell below zero is skipped,
+  as it always was.
+
+  **The constant.** 248 bytes a node had been read on an explicit, undriven run on a drift tube
+  and billed to every diffusive run. Each configuration the estimate bills differently is now a
+  run in a child process, read as a slope between 129 by 129 and 257 by 257 and, for a term, as
+  what it adds to the run without it:
+
+  | configuration | stated | read, least to most |
+  | --- | --- | --- |
+  | plain, drift tube | 248 | 247.89 to 248.11 |
+  | plain, in a bore (the conductors' map) | 252 | 251.87 to 252.13 |
+  | implicit scheme | 248 | 247.84 to 248.16 |
+  | a sequence whose phase ramps (1,189 assemblies), in a bore | 252 | 250.93 to 252.14 |
+  | driven: the cycle-averaged well's cache | 304; the cache 56 | 303.86 to 304.14; 55.92 to 56.11 |
+  | four recorded instants | 280; the four 32 | 279.88 to 280.12; 31.92 to 32.09 |
+  | two species | 496; the second 248 | 495.91 to 496.09; 247.92 to 248.08 |
+  | two species and their self-field | 566; the field 70 | 565.20 to 565.35; 69.22 to 69.35 |
+  | self-field, one species, tube and bore, two grids | 62 | 60.96 to 61.47 |
+
+  Every stated term held. One was missing: **a recorded instant is a copy of the density kept to
+  the end**, 8 bytes a node each, and the estimate had no way to be told of one - `einzel
+  estimate --snapshots <n>` now. And the ramped run could not be bounded at first: it
+  re-assembles its operator every step, a few kilobytes of allocation and no grid array, so
+  there was nowhere to read for a thousand steps and the most it could have held came out at 318
+  against 252. A run's progress listener is asked at every step, on the thread that steps, and
+  the measured runs pass one that offers the measurement a reading there
+  (`LiveSet.Checkpoint`), which can only tighten the upper end.
+
+  **In a Debug build two of them held one density more, and the code was changed rather than
+  the statement.** A mixture read 503.89 to 504.11 against 496, and the ramped sequence 258.89
+  to 260.13 against 252 - one array of the grid each, and only where the engine is compiled
+  without optimization, which keeps every local and some of the JIT's own temporaries alive to
+  the end of their method. A mixture seeded each species from a copy of one shape and kept the
+  shape; the last species is now seeded in the shape itself. A sequence made the first phase's
+  density in its own frame, which ran to the end of the whole timeline, so the seed outlived
+  the phase it seeded - shown by a weak handle to it, alive after the second phase and gone
+  once the sequence returned, and reachable from none of the run's objects, so held by the
+  frame; it is now made inside the leg that steps it, as a density converted from trajectories
+  is. Read again in Debug: 495.87 to 496.11 and 250.89 to 252.13, against 496 and 252. A release build never held
+  either, which is why the table above did not show them.
+
+  **Five repetitions that had to agree are back, exactly.** The sampled self-field test this
+  replaced ran a run five times and held the readings together, which is what catches something
+  kept from one run into the next. One measurement cannot see that, since each takes its own
+  baseline. A case may now be measured several times in one child, and two things are asserted
+  of four repetitions of a charged run and of a solve: the build's own grid arrays still alive
+  after it has returned and its result has been let go are none, and the arrays alive at its
+  peak are the same number of bytes each time - 5,148,024 four times over.
+
+  **The allocator is public and the watch is not.** Reaching `GridArrays` from `Einzel.Fields` and
+  `Einzel.Transport` had been done by showing them all of `Einzel.Core`'s internals, and
+  `Einzel.Commands` still could not reach it, which forced a special public method on
+  `AbsorbingCells`. `GridArrays.New` and `Resize` are public; starting and stopping a watch are
+  internal, visible to the two test assemblies that measure and to the harness. No shipping
+  assembly sees into another: the two grants are gone, nothing had come to rely on them, and
+  `Einzel.Fields`' grant to its own tests went too - they use no internal of it. A field sampled
+  for export and an imported gas field come from the allocator now, and the scan refuses by the
+  whole rule in `Einzel.Io` and, in `Einzel.Commands`, wherever a size is shown to be a grid's:
+  438 allocations judged, four listed.
+
+  **A test run alone starts only the children it reads.** The fixture measured every case of
+  its class, each built twice, whichever test asked. A case is measured in a child of its own
+  when a test first asks for it; one solve test alone took its class's whole fixture, about 14 s, and takes
+  under a second; the class takes 14 s as it did, and the memory, protocol and source tests
+  together 47 s as they did.
+
+  The harness's live figure had none of this - no warm-up, no verdict, concurrent collection
+  left on. It reports the whole interval with the tests' verdict, warms up once, and starts
+  itself again under the collector the children run under; **a collector written into its
+  project file could not be turned off from the environment**: measured on .NET 10,
+  `System.GC.Concurrent: true` in the runtime configuration survives `DOTNET_gcConcurrent=0`
+  (though `System.GC.Server` yields to `DOTNET_gcServer`), so the project states none. The host for a child is looked for on the
+  path again, last, the runtime check being what makes that safe. Fourteen environment entries
+  that unset variables in an environment already emptied are gone.
+
+  Mutations, each run alone. The density's finite check removed fails the two not-a-number
+  tests, and with the two predicates put back as well it is the index out of range; a cell below
+  zero drawn from fails its test. A static list keeping one array a run fails the repetition
+  tests by what was left alive (133,152 bytes after the first of four), and the same in a solve.
+  One array too many in the implicit run, the ramped phase, beside each recorded instant, in the
+  well cache, in one species of two, and beside a mixture's summed charge each fail the test of
+  that configuration, as not billed. `Einzel.Fields` reading whether `GridArrays` is watched
+  does not compile. The forty from earlier rounds still fail, and one number a species is still
+  passed by the scan.
+
+  **An eleventh review, and CI failing the repetition tests on both runners.** Two failures of
+  one premise - that the same build read twice reads the same - and neither was the engine.
+  On Linux the first of four solves read 152 bytes more than the rest, and locally 32, every
+  time: run once on nothing first, the measurement read all four the same (1,626,344 four times
+  over), so the excess was the measurement's own first use, kept, in the first reading and in
+  no baseline before it. Every child now measures nothing once before it measures. On Windows
+  a charged bore run's fourth repetition held 33,824 bytes of grid arrays fewer - a 65 by 65
+  coarse level, by its size - because the most of a build's arrays alive at once was taken over
+  the readings actually made, and a reading is skipped wherever the bound says it cannot raise
+  the least, which other threads move. A repeated case is now read at every array: 5,149
+  readings a run, the same 5,214,616 bytes each of four, twice. The same skipping made a ramped
+  run's count of other threads' bytes "between two readings" swing from 25 to 70 kB - a few
+  kilobytes a step of its parallel coefficient sweep, over however many steps went unread - so
+  that count is now taken at every occasion to read, taken or skipped: about 6 kB.
+
+  The estimate asks every mode the run uses, so a trajectory model entering a diffusive phase
+  is billed its density (`tube-entered`, 247.84 to 248.18 against 248) over that phase, and
+  `--snapshots` where no density is stepped is refused. A mixture's summed charge is refilled
+  in place (160 bytes asked again, where a grid is 33,800). Entering the density description
+  is done in a frame of its own that clears the caller's reference to the trajectories and
+  says it converted, so the conversion is counted where it happens; its warnings come first,
+  as before. The conversion to trajectories refuses a non-finite density unlocated, and the
+  sequence locates it and names the phase. The face operator's name is a pointer's size, not
+  eight. The source scan now takes a local that its own member hands to `GridArrays` as a
+  size for a grid's (round twelve; round eleven had shaped the export around the scan with a
+  record it could recognise, which is gone), so an array of an export's node count made any
+  other way is refused there as in the conductor map and the sequenced leg - each shown by
+  adding one. And the harness's comment was half wrong in the other
+  direction: `DOTNET_gcConcurrent=0` does not override `System.GC.Concurrent: true` on .NET 10,
+  measured, though `DOTNET_gcServer` does override `System.GC.Server`.
+
+  **A twelfth review: the routing change of the eleventh paid some phases twice and dropped a
+  basis line.** Sending a trajectory model with a diffusive phase down the diffusive branch put
+  that branch's basis in place of the solve and trajectory lines, stepped the density over the
+  diffusive phases while the trajectory pilot was still scaled over the whole flight, and said
+  in its text that the steps ran over the whole flight; a diffusive model whose sequence leaves
+  the density was stepped through its trajectory phases; and a study decided whether an
+  evaluation is one whole run from the model's own mode. **Now one decomposition, `Spans`**: a
+  run not walked phase by phase spends its whole flight in its own mode, and one that is spends
+  each phase in that phase's mode for its duration. The pilot is scaled to the trajectory span,
+  the density stepped over the diffusive span and said to be, the two basis lines kept side by
+  side with a sentence giving both spans, and a study's whole-run decision asks the same split.
+  Measured with nothing solved: half a flight in each mode costs **0.5000** of the wholly
+  diffusive tube, a diffusive model leaving its density halfway **0.5000**, where both were
+  billed the whole. A refusal of a non-finite density names the phase that produced it by its
+  index (`/sequence/2`), since names need not be unique; `einzel estimate` decides that a study
+  takes no `--snapshots` before parsing the number; a step's report no longer carries the run's
+  reused ledger; and a mixture's seed shape is consumed in a method of its own, so what it
+  became is not reachable under its old name.
+
+  **A thirteenth review.** The trajectory pilot of a sequenced run is now flown through the
+  first trajectory phase's own field - shifted to that phase's start, as the run's leg is -
+  where it was flown from zero through whatever came first: on a hold-then-extract tube the
+  pilot now takes 49 steps under a gentle extraction and 193 under a strong one, where both
+  crossed the same hold. `--snapshots` is refused for a mixture, whose run records no instants,
+  and the refusal is located at `/args/--snapshots` rather than at the model's mode. A non-finite
+  density is refused by its own exception type, `NonFiniteDensityException`, which the sequence
+  catches to locate it, rather than by an error code and an unlocated path. The timeline's path
+  comes out of the call that resolves the timeline instead of a second resolution.
+
+  **A fourteenth review.** One pilot through the first trajectory phase, scaled to all of them,
+  billed a later extraction at a hold's rate: every trajectory phase is now piloted through its
+  own field over its own duration and the costs summed, the eight longest piloted and any others
+  charged at the dearest rate measured, and the basis says each was flown from the source rather
+  than from where the packet is. The pilot and the run's leg shift the field by one function
+  now, `SequencedRun.Instant`. A refusal of a non-finite density says what the document can
+  change - the gain or the scheme where the phase steps implicitly, the inputs that set the
+  stability limit where it does not - since `densityStep` has no step of its own to shorten. A
+  finite density whose population overflows a double is refused as that, not as a density that
+  is not a number. `--snapshots` with no number is refused by name. The face operator's edge and
+  name per face come from static data, so re-assembling it allocates nothing (asserted: 0 bytes
+  over ten re-assemblies), and a self-field keeps its Poisson source between solves.
+
+  **The memory tests were loading the CI runners, measured.** On run 44230667544 the diffusive
+  memory class took 483 s of the Linux runner's test step and 248 s of the Windows one's, the
+  Fields memory classes about 120 s more, and on Windows the extension tests took 394 s where they
+  take 26 s on `main` - the runaway-timeout test waited 21 s for a kill declared at 1.2 s. Locally
+  the measuring children took **264 s of processor time in 183 s**, and one, the ramped bore at
+  257 by 257, **114 s in 27 s**: its coefficient sweep spread across every core. Contained without
+  touching a bound: each child is pinned to one core and told it has one (135 s of processor time
+  in 188 s after, the ramped bore 47 s in 60 s, the class 13 s longer), and a machine-wide turn -
+  a lock file every test process sees - lets one measuring child run at a time across both
+  measuring assemblies, and none while the energy-member cost test or the runaway-timeout test is
+  timing.
+
+  **A fifteenth review, and the instant the diffusive drift limit was read at.** The drift limit
+  was sampled at a list of instants, and for a field that is staged but not driven every one of
+  them read the field at zero: only the cycle average of a driven field ever saw the instant.
+  It now reads the instrument at each instant by the run's own shift, at the diffusive phases'
+  own starts and ends - an extraction flown as trajectories is no longer read, before or after
+  the hold. A hold beside a 2 MV/m extraction is estimated at **68 steps, the 68 the run takes**,
+  in either order, where reading the extraction gave 9,600. A phase whose pilot fails is charged
+  at the dearest rate measured, and if none was measured the cost is reported unknown and the
+  gate refuses rather than billing the trajectories nothing; the pilots share one coarse solve;
+  phases are chosen by index; a calibrated study over a sequenced model re-flies its trajectory
+  phases phase by phase across its range. The conductor map is billed only where an electrode
+  claims a node of the density grid, the test the run keeps it by. `--snapshots 0` is accepted
+  for a study, and every refusal of the flag is an AGT-3 error at `/args/--snapshots`, JSON under
+  `--json`. A non-finite density with no known producing phase names none.
+  The ramped memory case is shorter (1 + 2 us, from 2 + 4): on the one core a measuring child
+  now has, its 256-interval build took eight of its ten minutes in a Debug child and ran out of
+  them under load. Its working set is whole after one re-assembly and it still makes several
+  hundred; the 256 child now takes 262 s on core 0, with 169 s of that processor time.
+
+  **A sixteenth review.** A study over a model whose every pilot failed was billed with no
+  trajectory term and passed the gate: the gate's `|| !measured` lived in the model's estimate
+  alone, and the study re-flew its sequenced phases only when the model's own figure was above
+  zero - which a failed pilot makes it. `trajectoryMeasured` now travels on the outcome and
+  through the study, and the study re-flies whenever it is calibrated. A phase starts where the
+  one before it ended (`CompiledPhase.StartOf`), in the estimate, its pilots, the resolving-power
+  figure and the sequence view: recomputed as end less duration, a 3.3 us hold after two 0.1 us
+  phases started 2.1e-22 s inside the extraction and read its 2 MV/m. A pilot's rate is per
+  simulated second it covered, so one whose ion arrived early no longer under-charges the phases
+  billed at it. The billed and kept conductor maps are one scan. A measuring child that could not
+  get the machine-wide turn now measures nothing and fails saying the machine was not quiet,
+  where it used to measure anyway; the timed tests assert the turn too. Making that loud is what
+  showed the turn's own test had been taking the machine-wide lock: losing it once to another
+  process failed the test with the second turn still held, and every measurement after waited its
+  twenty minutes and refused. The turn's tests take lock files of their own now. Children are pinned to
+  the highest-numbered core rather than core 0: three runs of one build took 21.8 to 45.7 s on
+  core 0 and 27.0 to 27.7 s on the last core. Found on the way and not fixed here: a trajectory
+  leg whose field switches at the leg's end with ions still in flight stops with
+  `StepSizeUnderflow` within an attosecond of the switch.
+
+  **A seventeenth review.** A calibrated study over a sequenced model billed its model's cloud
+  of flights where its figure of merit declared its own: 64 where `transmission` at 1,000 ions
+  flies 1,000. Every study now replaces the model's cloud flights with the figure's, and a model
+  costed unsequenced with a cloud is no longer billed all but one of its cloud flights twice. A
+  pilot measured at no cost is a measurement: one that rounded to nothing used to be dropped, so
+  a cheap study read NOT MEASURED and was gated. A pilot's rate is taken over at least a tenth of
+  its phase, so one that struck after a nanosecond at 2 ms of setup no longer prices the phases
+  charged at it at 2 ms a nanosecond - 1,000 s for a half-millisecond phase, now 10 ms. The
+  resolving power's ramp slope is taken over the same interval as its start; a diffusive phase
+  with no length gives no instant (a model cannot reach the estimate with one: its field refuses
+  two boundaries at one instant, as an internal error, which is recorded and left). The conductor
+  scan visits only each electrode's bounding box, stops at the first claim when only asked whether
+  there is one, and numbers its nodes by declaration rather than by compiled instance. A refusal
+  of `--snapshots` is at `/args/--snapshots`, the spelling flag mistakes take everywhere. And the
+  face-operator reuse test, which asserts a re-assembly allocates nothing, read 7,344 bytes in one
+  window of a Debug run of the whole suite and none on repeat: it now takes the least of five
+  windows, as the allocation tests here already do, and still requires zero.

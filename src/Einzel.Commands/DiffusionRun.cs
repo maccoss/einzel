@@ -1,6 +1,7 @@
 using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
 using Einzel.Core.Model;
+using Einzel.Core.Numerics;
 using Einzel.Core.Results;
 using Einzel.Core.Units;
 using Einzel.Fields;
@@ -256,24 +257,9 @@ public static class DiffusionRun
         var grid = GridFor(model);
         var cylindrical = model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);
 
-        // The shape every species is seeded with. Taken once and scaled per population, because
-        // one source emits them all: a mixture that seeded each species from its own geometry
-        // would be a model of several instruments.
-        var shape = Seed(model, grid, cylindrical);
-        var shapePopulation = shape.Population();
-
-        if (shapePopulation <= 0.0)
-        {
-            throw new EinzelException(new EinzelError
-            {
-                Code = ErrorCodes.SchemaInvalid,
-                Path = "/source",
-                Constraint = "the source seeded no density, so there is nothing to scale per species",
-                Suggestion = "check the source position lies inside the tracked region",
-            });
-        }
-
-        var (absorbers, seedLoss) = Absorb(model, grid, shape);
+        // One density a species, each the source's shape scaled to its population - made in a
+        // frame of its own, so that the shape is gone when they come back (see SeedEach).
+        var (seeds, absorbers, seedLoss, shapePopulation) = SeedEach(model, grid, cylindrical);
         var edges = EdgesFor(model, grid);
 
         var warnings = new List<ValidityWarning>(fieldWarnings);
@@ -282,8 +268,9 @@ public static class DiffusionRun
         var mobilities = new List<CompiledMobility>(model.Species.Count);
         var launched = new List<double>(model.Species.Count);
 
-        foreach (var declared in model.Species)
+        for (var s = 0; s < model.Species.Count; s++)
         {
+            var declared = model.Species[s];
             var species = IonSpecies.Create(
                 Quantity.Si(declared.MassSi, Dimension.MassDimension),
                 Quantity.Si(declared.ChargeSi, Dimension.Charge));
@@ -300,16 +287,7 @@ public static class DiffusionRun
 
             mobilities.Add(declared.Mobility with { ZeroFieldSi = mobility.ZeroFieldSi });
 
-            var seeded = shape.Clone();
-            var scale = declared.Population / shapePopulation;
-
-            for (var j = 0; j < grid.CountY; j++)
-            {
-                for (var i = 0; i < grid.CountX; i++)
-                {
-                    seeded[i, j] *= scale;
-                }
-            }
+            var seeded = seeds[s];
 
             launched.Add(seeded.Population());
 
@@ -666,6 +644,155 @@ public static class DiffusionRun
     }
 
     /// <summary>
+    /// One seeded density for each species of a mixture: the source's shape, emptied where it
+    /// overlaps metal and scaled to each species' population.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One shape for them all, because one source emits them all: a mixture that seeded each
+    /// species from its own geometry would be a model of several instruments.
+    /// </para>
+    /// <para>
+    /// <b>The last species is seeded in the shape itself and every other in a copy of it</b>,
+    /// so that no shape is held beside the densities made from it - one more density for the
+    /// whole run, which the estimate does not bill and nothing reads again; unoptimized code
+    /// keeps a local to the end of its method, and a mixture in a Debug build read 504 bytes a
+    /// node where 496 are billed. Done here, in a frame of its own, so that what the shape has
+    /// become is not reachable under its old name by the code that steps the species.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="EinzelException">The source seeds no density inside the tracked region.</exception>
+    private static (List<DensityField> Seeds, AbsorbingCells Absorbers, IReadOnlyDictionary<string, double> SeedLoss, double ShapePopulation)
+        SeedEach(CompiledModel model, Grid2D grid, bool cylindrical)
+    {
+        var shape = Seed(model, grid, cylindrical);
+        var shapePopulation = shape.Population();
+
+        if (shapePopulation <= 0.0)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/source",
+                Constraint = "the source seeded no density, so there is nothing to scale per species",
+                Suggestion = "check the source position lies inside the tracked region",
+            });
+        }
+
+        var (absorbers, seedLoss) = Absorb(model, grid, shape);
+        var seeds = new List<DensityField>(model.Species.Count);
+
+        for (var s = 0; s < model.Species.Count; s++)
+        {
+            var seeded = s == model.Species.Count - 1 ? shape : shape.Clone();
+            var scale = model.Species[s].Population / shapePopulation;
+
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    seeded[i, j] *= scale;
+                }
+            }
+
+            seeds.Add(seeded);
+        }
+
+        return (seeds, absorbers, seedLoss, shapePopulation);
+    }
+
+    /// <summary>
+    /// Whether any electrode claims a node of the density grid - which is whether a run keeps the
+    /// map of which conductor owns each node (<see cref="Absorb"/> keeps it exactly then).
+    /// </summary>
+    /// <remarks>
+    /// The estimate asks this rather than whether a solve declares an electrode at all: a grid
+    /// that lies clear of every conductor builds the map, finds nothing in it, and lets it go.
+    /// It stops at the first claim, and the scan visits only the nodes inside each electrode's
+    /// own bounding box, so the answer costs a few nodes where a conductor reaches the grid and
+    /// nothing where it does not.
+    /// </remarks>
+    internal static bool AnyElectrodeClaims(CompiledModel model, Grid2D grid) =>
+        ConductorNodes(model, grid).Any();
+
+    /// <summary>
+    /// Every node of the density grid inside a conductor, electrode by electrode in declaration
+    /// order and row by row within one - the one scan both <see cref="Absorb"/> and
+    /// <see cref="AnyElectrodeClaims"/> read, so the map billed and the map kept cannot disagree.
+    /// </summary>
+    /// <param name="model">The validated model.</param>
+    /// <param name="grid">The density grid.</param>
+    /// <returns>
+    /// Each declaration's place among all of the model's electrodes, the electrode, and a node it
+    /// contains; a node inside two comes once for each. The place, not the instance, says which
+    /// declaration a node belongs to: two declarations may share one compiled electrode.
+    /// </returns>
+    /// <remarks>
+    /// Only the nodes inside an electrode's bounding box, widened by a node each way, are asked:
+    /// none outside it can be inside the conductor, and an edge profile, which holds no interior
+    /// at all, is not asked about any.
+    /// </remarks>
+    internal static IEnumerable<(int Declaration, CompiledElectrode Electrode, int I, int J)> ConductorNodes(
+        CompiledModel model, Grid2D grid)
+    {
+        var declaration = -1;
+
+        foreach (var element in model.Fields)
+        {
+            foreach (var electrode in element.Solve?.Electrodes ?? [])
+            {
+                declaration++;
+
+                if (Box(electrode) is not var (minX, minY, maxX, maxY))
+                {
+                    continue;
+                }
+
+                // Clamped as doubles before they become indices, so a box far off the grid - or one
+                // without bounds - cannot overflow on the way.
+                var fromI = (int)Math.Clamp(Math.Floor((minX - grid.X(0)) / grid.SpacingX) - 1.0, 0.0, grid.CountX);
+                var toI = (int)Math.Clamp(Math.Ceiling((maxX - grid.X(0)) / grid.SpacingX) + 1.0, -1.0, grid.CountX - 1);
+                var fromJ = (int)Math.Clamp(Math.Floor((minY - grid.Y(0)) / grid.SpacingY) - 1.0, 0.0, grid.CountY);
+                var toJ = (int)Math.Clamp(Math.Ceiling((maxY - grid.Y(0)) / grid.SpacingY) + 1.0, -1.0, grid.CountY - 1);
+
+                for (var j = fromJ; j <= toJ; j++)
+                {
+                    for (var i = fromI; i <= toI; i++)
+                    {
+                        if (electrode.Contains(grid.X(i), grid.Y(j)))
+                        {
+                            yield return (declaration, electrode, i, j);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>An electrode's bounding box, or null for one with no interior to contain a node.</summary>
+    /// <param name="electrode">The electrode.</param>
+    /// <returns>Its extent in metres, or null for an edge profile.</returns>
+    private static (double MinX, double MinY, double MaxX, double MaxY)? Box(CompiledElectrode electrode) =>
+        electrode.Shape switch
+        {
+            ElectrodeShape.Rectangle => (electrode.MinX, electrode.MinY, electrode.MaxX, electrode.MaxY),
+            ElectrodeShape.Disc => (
+                electrode.CentreX - electrode.Radius,
+                electrode.CentreY - electrode.Radius,
+                electrode.CentreX + electrode.Radius,
+                electrode.CentreY + electrode.Radius),
+            ElectrodeShape.Polygon when electrode.Vertices.Count > 0 => (
+                electrode.Vertices.Min(v => v.X),
+                electrode.Vertices.Min(v => v.Y),
+                electrode.Vertices.Max(v => v.X),
+                electrode.Vertices.Max(v => v.Y)),
+            ElectrodeShape.EdgeProfile or ElectrodeShape.Polygon => null,
+
+            // A shape this does not know is scanned whole rather than guessed at.
+            _ => (double.NegativeInfinity, double.NegativeInfinity, double.PositiveInfinity, double.PositiveInfinity),
+        };
+
+    /// <summary>
     /// The conductors, as cells that keep absorbing, plus whatever the seed already
     /// had inside them.
     /// </summary>
@@ -691,60 +818,63 @@ public static class DiffusionRun
         CompiledModel model, Grid2D grid, DensityField density)
     {
         var names = new List<string>();
-        var owner = new int[grid.CountX * grid.CountY];
+        // The size of the grid, so from the one place such arrays come from.
+        var owner = GridArrays.New<int>(grid.CountX * grid.CountY);
 
         Array.Fill(owner, -1);
 
         var seedLoss = new Dictionary<string, double>(StringComparer.Ordinal);
 
-        foreach (var element in model.Fields)
+        CompiledElectrode? current = null;
+        var at = -1;
+        var index = 0;
+        var claimed = false;
+
+        foreach (var (declaration, electrode, i, j) in ConductorNodes(model, grid))
         {
-            foreach (var electrode in element.Solve?.Electrodes ?? [])
+            // A new declaration: the last one is named if it claimed anything, and this one takes
+            // the next name's index. By declaration, not by instance - two declarations sharing
+            // one compiled electrode are two, as they were when each had a loop of its own.
+            if (declaration != at)
             {
-                var index = names.Count;
-                var claimed = false;
-
-                for (var j = 0; j < grid.CountY; j++)
-                {
-                    var volume = density.CellVolume(j);
-
-                    for (var i = 0; i < grid.CountX; i++)
-                    {
-                        if (!electrode.Contains(grid.X(i), grid.Y(j)))
-                        {
-                            continue;
-                        }
-
-                        var k = (j * grid.CountX) + i;
-
-                        // First claim wins, so two overlapping electrodes do not
-                        // both bill for the same ions. Which one is arbitrary and
-                        // does not matter: the cell absorbs either way, and the
-                        // total is right.
-                        if (owner[k] >= 0)
-                        {
-                            continue;
-                        }
-
-                        owner[k] = index;
-                        claimed = true;
-
-                        if (density[i, j] > 0.0)
-                        {
-                            seedLoss[electrode.Name] =
-                                seedLoss.GetValueOrDefault(electrode.Name)
-                                + (density[i, j] * volume);
-
-                            density[i, j] = 0.0;
-                        }
-                    }
-                }
-
                 if (claimed)
                 {
-                    names.Add(electrode.Name);
+                    names.Add(current!.Name);
                 }
+
+                current = electrode;
+                at = declaration;
+                index = names.Count;
+                claimed = false;
             }
+
+            var k = (j * grid.CountX) + i;
+
+            // First claim wins, so two overlapping electrodes do not
+            // both bill for the same ions. Which one is arbitrary and
+            // does not matter: the cell absorbs either way, and the
+            // total is right.
+            if (owner[k] >= 0)
+            {
+                continue;
+            }
+
+            owner[k] = index;
+            claimed = true;
+
+            if (density[i, j] > 0.0)
+            {
+                seedLoss[electrode.Name] =
+                    seedLoss.GetValueOrDefault(electrode.Name)
+                    + (density[i, j] * density.CellVolume(j));
+
+                density[i, j] = 0.0;
+            }
+        }
+
+        if (claimed)
+        {
+            names.Add(current!.Name);
         }
 
         return names.Count > 0

@@ -281,6 +281,12 @@ disagreement is written down as a disagreement.
   nothing.
 - **`SPEC.md` updated in the same change** — the register row and its evidence, or an amendment.
   A status page that has drifted is worse than none, because it is trusted.
+- **An array the size of a grid comes from `GridArrays`**, in `Einzel.Core`, and is a term in
+  the memory statement beside the reason for it (`SolveMemoryModel` for a solve, the diffusive
+  constants in `EstimateCommand` for a density run). The memory tests read what a build holds at
+  each array that helper allocates, so an array made any other way is neither read at nor billed:
+  `GridArraySourceTests` refuses one in `Einzel.Fields` or `Einzel.Transport`, and the memory
+  test for whatever allocated it fails at its upper edge.
 - **The reason, in the code.** This repository's comments record why a thing is the way it is,
   including the version that was wrong first. Several decisions here cost real time to reach and
   the argument is worth more than the outcome.

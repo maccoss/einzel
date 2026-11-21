@@ -1,19 +1,30 @@
 using System.Diagnostics;
 
 using Einzel.Core.Model;
+using Einzel.Core.Numerics;
 using Einzel.Fields.Solved;
+using Einzel.Testing;
 
 using Xunit.Abstractions;
 
 namespace Einzel.Fields.Tests;
 
 /// <summary>
-/// The measurements here force full collections from a second thread, so they must not share
-/// the process with anything else allocating: another test's arrays would be counted as this
-/// build's. xUnit runs a collection with parallelization disabled after every parallel one.
+/// The tests that read what a child process measured. They share the children - each build is
+/// measured once - and nothing else: the measuring is done in processes of its own, so these
+/// run in parallel with the rest of the suite, which does not reach a child.
 /// </summary>
-[CollectionDefinition(nameof(MemoryMeasurement), DisableParallelization = true)]
-public sealed class MemoryMeasurement;
+[CollectionDefinition(nameof(MeasuredInAChild))]
+public sealed class MeasuredInAChild : ICollectionFixture<MeasuredBuilds>;
+
+/// <summary>
+/// The tests that watch <see cref="GridArrays"/> or read the live set in this process. A watch
+/// is the process's and belongs to one thread, and a grid array another test allocated on
+/// another thread meanwhile would be recorded against the measurement, so these run with
+/// nothing else: xUnit runs a collection with parallelization disabled after every parallel one.
+/// </summary>
+[CollectionDefinition(nameof(WatchedInProcess), DisableParallelization = true)]
+public sealed class WatchedInProcess;
 
 /// <summary>
 /// What a build says it will hold, against what a build actually holds.
@@ -28,53 +39,65 @@ public sealed class MemoryMeasurement;
 /// 3.1 GiB and needed 15. With the cut links stored over the cut arms alone it needs about 9.5.
 /// </para>
 /// <para>
-/// <b>Measured as a slope between two mesh sizes</b>, so that whatever the process holds
-/// regardless of the mesh - the runtime, the geometry, the JIT - cancels, and what is compared
-/// is bytes a node. The live set is sampled by forcing a full collection every few
-/// milliseconds through the build and keeping the largest; a sample can only miss the peak and
-/// read low, which is why the band below is wider under the prediction than over it.
+/// <b>Read from inside the build, at each allocation</b> (<see cref="LiveSet"/>): a build's
+/// live set can only rise at an allocation, so the solver allocates each per-node array through
+/// <see cref="GridArrays"/> and the live set is read there, on the build's thread, after a forced full collection. The largest
+/// reading is the peak. This was a second thread sampling the heap, which has to land inside
+/// the peak - a millisecond on the smaller grids here - and on loaded CI runners did not; a
+/// missed peak read low, and a slope between two builds turned a low reading of the smaller
+/// one into an excess.
+/// </para>
+/// <para>
+/// <b>Each measurement is an interval</b> (<see cref="LiveSet"/>): the least the build can have
+/// held and the most. An edge is failed as a finding about the solver only when the interval is
+/// wholly past it and other threads could not account for the excess; otherwise it fails as a
+/// disturbed measurement, by name (<see cref="MemoryVerdict"/>). A per-node allocation outside
+/// <see cref="GridArrays"/> widens the upper end, and fails <c>GridArraySourceTests</c> first.
+/// </para>
+/// <para>
+/// <b>As a slope between two mesh sizes where a build has a cost that does not scale</b> - the
+/// geometry, small arrays, a first level that is a little more than an eighth - so that it
+/// cancels and what is compared is bytes a node. With readings that cannot miss, a slope is
+/// the difference of two exact figures and has no sign to get wrong.
 /// </para>
 /// <para>
 /// <b>Against the arithmetic with the geometry's real cut arms</b>, not the billed quarter of
 /// an arm a node: the allowance is 5.5 bytes a node where a sphere or two slabs store under 2,
-/// and on the rediscretized hierarchy's 51 that is 7 percent of a 10 percent band. The sphere
-/// read 0.92 to 0.93 of the billed figure on an idle twenty-core machine and 0.896 on a CI
-/// runner, with the solver holding exactly what it held on the dense store, which read 1.00.
+/// and on the rediscretized hierarchy's 51 that is 7 percent of a 10 percent band.
 /// </para>
 /// <para>
 /// <b>The upper edge is the one that matters.</b> An estimate that runs under is discovered by
 /// the run failing twenty minutes in, which is the failure GRD-8's gate exists to prevent. If
 /// a solver change adds a per-node array, this is what fails, and the fix is a term in
-/// <see cref="SolveMemoryModel"/> beside the reason for the array.
+/// <see cref="SolveMemoryModel"/> beside the reason for the array - and a report to
+/// <see cref="GridArrays"/>, which is where it has to be allocated.
 /// </para>
 /// </remarks>
-[Collection(nameof(MemoryMeasurement))]
-public sealed class SolveMemoryTests(ITestOutputHelper output)
+[Collection(nameof(MeasuredInAChild))]
+public sealed class SolveMemoryTests(MeasuredBuilds builds, ITestOutputHelper output)
 {
     /// <summary>The Galerkin hierarchy's peak, per node, against two thin slabs at two meshes.</summary>
     [Fact]
     public void AGalerkinBuildHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, galerkin) = Slope(Plates, 0.0005, 0.00025);
+        var slope = Slope("slabs", Plates, 0.0005, 0.00025);
 
-        Assert.True(galerkin, "thin slabs leave the rediscretized hierarchy a bottom the size of the mesh");
-        Assert.InRange(measured / predicted, 0.90, 1.02);
+        Assert.True(slope.Galerkin, "thin slabs leave the rediscretized hierarchy a bottom the size of the mesh");
+        slope.AssertWithin(0.90, 1.02);
     }
 
     /// <summary>The rediscretized hierarchy's peak, per node, against a fat sphere at two meshes.</summary>
     /// <remarks>
-    /// At 35,937 and 274,625 nodes rather than 4,913 and 35,937. The smaller pair's larger
-    /// build is 1.6 MiB, and its slope read 0.87 to 0.93 of the statement from one process to
-    /// the next on one idle machine, and 0.90 on a CI runner: 50 kB of scatter in a 1.3 MiB
-    /// difference. On the larger pair the three readings of a build agree to a byte a node.
+    /// At 35,937 and 274,625 nodes rather than 4,913 and 35,937, as it was sized when the live
+    /// set was sampled and the smaller pair's slope scattered by 50 kB in 1.3 MiB.
     /// </remarks>
     [Fact]
     public void ARediscretizedBuildHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, galerkin) = Slope(Sphere, 0.000625, 0.0003125);
+        var slope = Slope("sphere", Sphere, 0.000625, 0.0003125);
 
-        Assert.False(galerkin, "a fat sphere coarsens to a small bottom and keeps the cheap hierarchy");
-        Assert.InRange(measured / predicted, 0.90, 1.02);
+        Assert.False(slope.Galerkin, "a fat sphere coarsens to a small bottom and keeps the cheap hierarchy");
+        slope.AssertWithin(0.90, 1.02);
     }
 
     /// <summary>
@@ -90,7 +113,8 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// there is no coarse mask for a second cycle to find already built.
     /// </para>
     /// <para>
-    /// <b>Driven through <see cref="PoissonSolver3D.Solve"/> with the hierarchy forced</b>, at
+    /// <b>Driven through <see cref="PoissonSolver3D.Solve"/> with the hierarchy forced</b>
+    /// (<see cref="MemoryCases.Direct"/>), at
     /// one cell size with the box doubled, rather than through a template: a rediscretized solve
     /// with no coarse level is chosen by the solver only below twenty thousand nodes, too small
     /// to measure, while the arithmetic is the same on any grid with the same descent.
@@ -99,11 +123,10 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     [Fact]
     public void ARediscretizedSolveWithNoCoarseLevelIsChargedItsBottomScratch()
     {
-        var (predicted, measured, levels, _, _) = DirectSlope(
-            length => Ball(length, radius: 0.0016, cell: 0.001), 0.016, 0.032, cycles: 1, source: false);
+        var reading = DirectSlope("ball-flat", 0.016, 0.032);
 
-        Assert.Equal(0, levels);
-        Assert.InRange(measured / predicted, 0.90, 1.02);
+        Assert.Equal(0, reading.Levels);
+        reading.AssertWithin(0.90, 1.02);
     }
 
     /// <summary>A rediscretized solve one coarse level deep, against its statement.</summary>
@@ -115,11 +138,10 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     [Fact]
     public void ARediscretizedSolveOneLevelDeepHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, levels, _, _) = DirectSlope(
-            length => Ball(length, radius: 0.0015, cell: 0.0005), 0.016, 0.032, cycles: 2, source: false);
+        var reading = DirectSlope("ball-one-level", 0.016, 0.032);
 
-        Assert.Equal(1, levels);
-        Assert.InRange(measured / predicted, 0.90, 1.02);
+        Assert.Equal(1, reading.Levels);
+        reading.AssertWithin(0.90, 1.02);
     }
 
     /// <summary>
@@ -127,36 +149,47 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// eighth, holds every memoised coarse mask from its second cycle on.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// With no interior electrode the descent goes as far as the grid allows: 8193 by 9 by 9,
-    /// then 4097 by 5 by 5 (0.154 of the fine grid) and 2049 by 3 by 3 (0.034). The coarsener
-    /// keeps both masks for the whole solve, so the fine restriction in the second cycle holds
-    /// the second level's mask as well - 0.30 bytes a node that charging only the masks down to
-    /// the level being restricted onto left out, and which this measures: 43.87 bytes a node
-    /// against 43.87 stated with the real cut arms, and 43.57 without the second mask.
+    /// then 4097 by 5 by 5 (0.154 of the fine grid) and 2049 by 3 by 3 (0.028). The coarsener
+    /// keeps both masks for the whole solve, so the fine restriction from the second cycle on
+    /// holds the second level's mask as well - 0.25 bytes a node that charging only the masks
+    /// down to the level being restricted onto left out, and which this measures: 43.88 bytes a
+    /// node against 43.87 stated with the real cut arms, and 43.62 without the second mask.
     /// A Poisson problem with a uniform source, since with no electrode a Laplace problem is
     /// solved before it starts.
+    /// </para>
+    /// <para>
+    /// <b>The test that showed what sampling cost.</b> The peak is the fine restriction: the
+    /// fine residual and the first level's restricted residual alive together for as long as
+    /// <c>Restrict</c> takes, about a millisecond on these grids, once in a two-cycle solve. A
+    /// sampling thread descheduled across it read the fine residual alone, 8 x 0.154 = 1.24
+    /// bytes a node low. This test doubles one axis, so the difference in nodes between its
+    /// builds is the smaller build, and the slope took the smaller build's miss at full weight
+    /// and the wrong sign: builds printed at 42.64 and 43.88 made 45.11, 1.028 of the
+    /// statement, on a Linux CI runner whose every step was sound. Read at the allocation there
+    /// is nothing to miss.
+    /// </para>
+    /// <para>
+    /// Two cycles, because the second level's mask is memoised during the first and is held at
+    /// the fine restriction from the second on; <see cref="DirectSlope"/> fails if the solve
+    /// stops before it has run them.
+    /// </para>
     /// </remarks>
     [Fact]
     public void ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, levels, largePredicted, largeMeasured) = DirectSlope(
-            length => new Geometry3D(0.0, -0.004, -0.004, length, 0.004, 0.004, 0.001, []),
-            4.096, 8.192, cycles: 2, source: true);
+        var reading = DirectSlope("thin", 4.096, 8.192);
 
-        Assert.Equal(2, levels);
-        Assert.InRange(measured / predicted, 0.90, 1.02);
+        Assert.Equal(2, reading.Levels);
+        reading.AssertWithin(0.90, 1.02);
 
         // And to a tenth of a byte, which this geometry can be held to: a grid with no conductor
-        // has no cut arms to bill, and idle both builds read the same bytes a node to the
-        // hundredth. Charging the masks only down to the level being restricted onto read 0.30
-        // over. Asked of the larger build alone rather than of the slope, because a reading can
-        // only miss a peak and read low, and a slope turns a low reading of the smaller build
-        // into a high one: under load the smaller read 43.63 once and the slope 44.12 against a
-        // build that held 43.88. At 663 thousand nodes the build's fixed allocations are under a
-        // hundredth of a byte a node.
+        // has no cut arms to bill. Charging the masks only down to the level being restricted
+        // onto read 0.25 over.
         Assert.True(
-            largeMeasured <= largePredicted + 0.15,
-            $"the larger build read {largeMeasured:F2} B/node against a prediction of {largePredicted:F2}: something the cycle holds is not charged");
+            reading.Upper <= reading.Predicted + 0.15,
+            $"the slope read at most {reading.Upper:F2} B/node against a prediction of {reading.Predicted:F2}: something the cycle holds is not charged");
     }
 
     /// <summary>
@@ -222,11 +255,6 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     {
         const double cell = 0.00025;
 
-        // Each path built once, small, so the first measurement is not charged for the
-        // allocations a first call makes.
-        GeometryBuilder3D.BuildField(Plates(0.001));
-        GeometryBuilder3D.BuildField(TwoChannelPlates(0.001));
-
         var one = Plates(cell);
         var two = TwoChannelPlates(cell);
 
@@ -236,14 +264,16 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         Assert.Equal(1, planOne.Channels);
         Assert.Equal(2, planTwo.Channels);
 
-        var peakOne = PeakLive(() => GeometryBuilder3D.BuildField(one).Field);
-        var peakTwo = PeakLive(() => GeometryBuilder3D.BuildField(two).Field);
+        var peakOne = builds.Optimized(output, "slabs", cell).Peak;
+        var peakTwo = builds.Optimized(output, "driven-slabs", cell).Peak;
 
-        var extra = (peakTwo - peakOne) / planOne.Nodes;
+        // The most the second channel can have cost, and the least.
+        var extra = (peakTwo.Bound - peakOne.Least) / planOne.Nodes;
+        var least = (peakTwo.Least - peakOne.Bound) / planOne.Nodes;
 
         output.WriteLine(
-            $"{planOne.Nodes:N0} nodes: one channel {peakOne / planOne.Nodes:F1} B/node, "
-            + $"two {peakTwo / planOne.Nodes:F1}; the second costs {extra:F1} "
+            $"{planOne.Nodes:N0} nodes: one channel {Describe(peakOne, planOne.Nodes)}; two {Describe(peakTwo, planOne.Nodes)}; "
+            + $"the second costs {least:F2} to {extra:F2} "
             + $"(predicted {(planTwo.PeakBytes - planOne.PeakBytes) / planOne.Nodes:F1})");
 
         // A kept mask is the conductor mask's 9 bytes a node and its cut links' 2 - an index
@@ -251,7 +281,10 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         // sits between. It was 30 while a kept mask was 105. Kept cut links alone are 2 now,
         // inside this measurement's noise: the defect that held them is defused by the store
         // shrinking rather than caught here.
-        Assert.InRange(extra, 0.0, 14.0);
+        MemoryVerdict.Covered("one channel", peakOne);
+        MemoryVerdict.Covered("two channels", peakTwo);
+        MemoryVerdict.Within(
+            "the second channel's cost", least, extra, 0.0, 14.0, planOne.Nodes, peakOne.Foreign + peakTwo.Foreign);
     }
 
     /// <summary>
@@ -317,51 +350,42 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// <summary>The plane statement against a plane build.</summary>
     /// <remarks>
     /// <para>
-    /// <b>Per node of one build, not a slope between two.</b> The plane's peak is a transient -
-    /// the instant the first coarse level holds two copies of its cut links - which lasts a
-    /// fraction of a millisecond, so a sample can miss it, and a build that misses it reads
-    /// about 135 rather than 143. A slope between two builds turns that into an error either
-    /// way: it read 0.78 of the statement on one CI runner. One build at a quarter of a
-    /// million nodes, where the fixed cost of a build is a tenth of a byte a node, can only
-    /// read low.
+    /// <b>A slope between two builds, as the volume tests are</b>, so that what a build holds
+    /// whatever its size cancels. It was one build per node, because the plane's peak - the
+    /// instant the first coarse level holds two copies of its cut links, a fraction of a
+    /// millisecond - was something a sampling thread caught in one build and missed in the
+    /// other, and a slope turned that into an error either way.
     /// </para>
     /// <para>
-    /// <b>How low depends on how loaded the machine is, so the lower edge is 0.85.</b> The plane
-    /// spends most of a build smoothing its fine level, and its coarse levels exist only during
-    /// each cycle's descent. A sampler reads 135.4 to 135.7 when it catches the copy - the
-    /// 143.3 to 143.9 recorded here before was first-tier code keeping the V-cycle's fine
-    /// residual alive, see <c>SolveMemoryModel.PlanePeak</c> - and about 126.6 when it sees only the fine
-    /// level and the first coarse mask - which a four-core CI runner did in two builds of three,
-    /// reading 0.884. The upper edge, which is what guards against under-billing, is unchanged.
-    /// </para>
-    /// <para>
-    /// The smaller build is kept, and printed, as a control on the fixed cost: it reads the
-    /// same per node.
+    /// The lower edge was 0.85, for a sampler that saw only the fine level on a loaded runner.
+    /// Read at the allocation the slope is 1.001 of the statement's, in Debug and Release, and
+    /// the edge is 0.98.
     /// </para>
     /// </remarks>
     [Fact]
     public void APlaneBuildHoldsWhatItsStatementSays()
     {
-        var small = Rods(0.0001);
-        var large = Rods(0.00005);
+        var planSmall = GeometryBuilder.Memory(Rods(0.0001));
+        var planLarge = GeometryBuilder.Memory(Rods(0.00005));
 
-        var planSmall = GeometryBuilder.Memory(small);
-        var planLarge = GeometryBuilder.Memory(large);
+        var peakSmall = builds.Optimized(output, "rods", 0.0001).Peak;
+        var peakLarge = builds.Optimized(output, "rods", 0.00005).Peak;
 
-        var peakSmall = PeakLive(() => GeometryBuilder.Build(small).Field);
-        var peakLarge = PeakLive(() => GeometryBuilder.Build(large).Field);
+        var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
 
-        var predicted = planLarge.PeakBytes / planLarge.Nodes;
-        var measured = peakLarge / planLarge.Nodes;
+        var slope = SlopeReading.Of(
+            "the plane slope", (planLarge.PeakBytes - planSmall.PeakBytes) / nodes, peakSmall, peakLarge, nodes, false, 0);
 
         output.WriteLine(
-            $"plane {planLarge.Nodes:N0} nodes: predicted {predicted:F1} B/node, measured {measured:F1} "
-            + $"({planSmall.Nodes:N0} nodes: {peakSmall / planSmall.Nodes:F1})");
+            $"plane {planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes: predicted {slope.Predicted:F2} B/node, "
+            + $"measured {slope.Lower:F2} to {slope.Upper:F2}");
+        output.WriteLine(
+            $"  smaller: {Describe(peakSmall, planSmall.Nodes)} against {planSmall.PeakBytes / planSmall.Nodes:F2}; "
+            + $"larger: {Describe(peakLarge, planLarge.Nodes)} against {planLarge.PeakBytes / planLarge.Nodes:F2}");
 
-        // 135.4 when a sample catches the transient, in every tier of the JIT since the V-cycle's
-        // descent has frames of its own (143.4 while first-tier code kept the fine residual, which
-        // the upper edge now fails); 126.6 when it sees only the fine level.
-        Assert.InRange(measured / predicted, 0.85, 1.02);
+        // 135.4 in every tier of the JIT since the V-cycle's descent has frames of its own; 143.4
+        // while first-tier code kept the fine residual, which the upper edge fails.
+        slope.AssertWithin(0.98, 1.02);
     }
 
     /// <summary>A second plane channel costs one kept potential, not a second geometry.</summary>
@@ -374,8 +398,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     [Fact]
     public void ASecondPlaneChannelCostsAPotentialNotAMask()
     {
-        // 66 k nodes: a kept mask is still 73 bytes a node against a limit of 30, and a quarter
-        // of the nodes keeps this to seconds in Debug, where the sampler halves a build's speed.
+        // 66 k nodes: a kept mask is still 73 bytes a node against a limit of 30.
         const double cell = 0.0001;
 
         var one = Rods(cell);
@@ -387,23 +410,24 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         Assert.Equal(1, planOne.Channels);
         Assert.Equal(2, planTwo.Channels);
 
-        var peakOne = PeakLive(() => GeometryBuilder.Build(one).Field);
-        var peakTwo = PeakLive(() => GeometryBuilder.Build(two).Field);
+        var peakOne = builds.Optimized(output, "rods", cell).Peak;
+        var peakTwo = builds.Optimized(output, "driven-rods", cell).Peak;
 
-        var extra = (peakTwo - peakOne) / planOne.Nodes;
+        var extra = (peakTwo.Bound - peakOne.Least) / planOne.Nodes;
+        var least = (peakTwo.Least - peakOne.Bound) / planOne.Nodes;
 
         output.WriteLine(
-            $"{planOne.Nodes:N0} nodes: one channel {peakOne / planOne.Nodes:F1} B/node, "
-            + $"two {peakTwo / planOne.Nodes:F1}; the second costs {extra:F1} "
+            $"{planOne.Nodes:N0} nodes: one channel {Describe(peakOne, planOne.Nodes)}; two {Describe(peakTwo, planOne.Nodes)}; "
+            + $"the second costs {least:F2} to {extra:F2} "
             + $"(predicted {(planTwo.PeakBytes - planOne.PeakBytes) / planOne.Nodes:F1})");
 
-        // A kept mask is 73; the plane's own transient can be caught in one build and missed
-        // in the other. The "about 8 either way" this allowed for was mostly the first build in
-        // a process running first-tier code that kept the V-cycle residual (one channel 143.6
-        // and two 135.6, a second channel costing -8.0); with the descent in frames of its own
-        // both builds read the optimized figure and the second costs 8.0. The band is left as
-        // it was until runners have shown it can narrow.
-        Assert.InRange(extra, -10.0, 30.0);
+        // A kept mask is 73. The lower edge was -10, for a sampler catching the plane's transient
+        // in one build and missing it in the other; read at the allocation a second channel
+        // costs 7.3 to 8.0, and less than nothing is not a cost.
+        MemoryVerdict.Covered("one channel", peakOne);
+        MemoryVerdict.Covered("two channels", peakTwo);
+        MemoryVerdict.Within(
+            "the second plane channel's cost", least, extra, 0.0, 30.0, planOne.Nodes, peakOne.Foreign + peakTwo.Foreign);
     }
 
     /// <summary>
@@ -433,8 +457,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         };
     }
 
-    private (double Predicted, double Measured, bool Galerkin) Slope(
-        Func<double, Geometry3D> geometry, double coarse, double fine)
+    private SlopeReading Slope(string kind, Func<double, Geometry3D> geometry, double coarse, double fine)
     {
         var small = geometry(coarse);
         var large = geometry(fine);
@@ -449,31 +472,85 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         var armsSmall = WithRealCutArms(small, planSmall);
         var armsLarge = WithRealCutArms(large, planLarge);
 
-        var peakSmall = PeakLive(() => GeometryBuilder3D.BuildField(small).Field);
-        var peakLarge = PeakLive(() => GeometryBuilder3D.BuildField(large).Field);
+        var peakSmall = builds.Optimized(output, kind, coarse).Peak;
+        var peakLarge = builds.Optimized(output, kind, fine).Peak;
 
         var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
         var billed = (planLarge.PeakBytes - planSmall.PeakBytes) / nodes;
-        var predicted = (armsLarge - armsSmall) / nodes;
-        var measured = (peakLarge - peakSmall) / nodes;
+
+        var reading = SlopeReading.Of(
+            $"the {kind} slope", (armsLarge - armsSmall) / nodes, peakSmall, peakLarge, nodes, planLarge.Galerkin, 0);
 
         output.WriteLine(
             $"{planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes, {(planLarge.Galerkin ? "galerkin" : "rediscretized")}: "
-            + $"billed {billed:F1} B/node, predicted with the real cut arms {predicted:F1}, measured {measured:F1} "
-            + $"(peaks {peakSmall / 1048576.0:F1} and {peakLarge / 1048576.0:F1} MiB)");
+            + $"billed {billed:F2} B/node, predicted with the real cut arms {reading.Predicted:F2}, "
+            + $"measured {reading.Lower:F2} to {reading.Upper:F2}");
+        output.WriteLine(
+            $"  smaller: {Describe(peakSmall, planSmall.Nodes)} against {armsSmall / planSmall.Nodes:F2}; "
+            + $"larger: {Describe(peakLarge, planLarge.Nodes)} against {armsLarge / planLarge.Nodes:F2}");
 
         Assert.Equal(planSmall.Galerkin, planLarge.Galerkin);
 
-        return (predicted, measured, planLarge.Galerkin);
+        return reading;
+    }
+
+    /// <summary>One build's reading in bytes a node, with what bounds it.</summary>
+    internal static string Describe(LivePeak peak, long nodes) =>
+        $"{peak.Least / nodes:F2} to {peak.Bound / nodes:F2} B/node "
+        + $"({peak.Readings} grid arrays, {peak.Collections} read; process read {peak.Held / nodes:F2}, grid arrays {peak.Tracked / nodes:F2}; "
+        + $"{peak.Silent:N0} B allocated outside GridArrays, at most {peak.Unreported:N0} between two readings; "
+        + $"{peak.Foreign:N0} B by other threads)";
+
+    /// <summary>
+    /// A slope between two builds, as the interval the two measurements leave it in, against
+    /// the statement's.
+    /// </summary>
+    /// <param name="What">What the slope is, for a message.</param>
+    /// <param name="Predicted">The statement's slope, bytes a node.</param>
+    /// <param name="Lower">The least the slope can be: the larger build's least, less the smaller's bound.</param>
+    /// <param name="Upper">The most it can be: the larger's bound, less the smaller's least.</param>
+    /// <param name="Nodes">The difference in nodes the slope is over.</param>
+    /// <param name="Foreign">Bytes other threads allocated during the two measurements.</param>
+    /// <param name="Galerkin">Whether the builds took the Galerkin hierarchy.</param>
+    /// <param name="Levels">How many coarse levels a forced rediscretized solve descended.</param>
+    private sealed record SlopeReading(
+        string What, double Predicted, double Lower, double Upper, double Nodes, long Foreign, bool Galerkin, int Levels)
+    {
+        public static SlopeReading Of(
+            string what, double predicted, LivePeak small, LivePeak large, double nodes, bool galerkin, int levels)
+        {
+            MemoryVerdict.Covered(what, small);
+            MemoryVerdict.Covered(what, large);
+
+            return new(
+                what,
+                predicted,
+                (large.Least - small.Bound) / nodes,
+                (large.Bound - small.Least) / nodes,
+                nodes,
+                small.Foreign + large.Foreign,
+                galerkin,
+                levels);
+        }
+
+        /// <summary>Asserts the slope lies within these fractions of the statement's.</summary>
+        public void AssertWithin(double least, double most) =>
+            MemoryVerdict.Within(What, Lower, Upper, least * Predicted, most * Predicted, Nodes, Foreign);
     }
 
     /// <summary>
     /// A rediscretized solve, forced, at two sizes of one geometry, against the statement for
     /// the levels the solver says it descends through.
     /// </summary>
-    private (double Predicted, double Measured, int Levels, double LargePredicted, double LargeMeasured) DirectSlope(
-        Func<double, Geometry3D> geometry, double small, double large, int cycles, bool source)
+    /// <remarks>
+    /// Fails if a solve stops before it has run the cycles asked for - by converging, or by
+    /// stalling - since what the statement says is held at its most is held in a particular
+    /// cycle, and a solve that never reached it would be measured against the wrong figure.
+    /// </remarks>
+    private SlopeReading DirectSlope(string kind, double small, double large)
     {
+        var direct = MemoryCases.Direct[kind];
+
         (double Stated, double Real, long Nodes, int Levels) Plan(Geometry3D g)
         {
             var grid = GeometryBuilder3D.BuildGrid(g);
@@ -485,68 +562,42 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             return (stated, real, grid.NodeCount, levels.Count);
         }
 
-        object Solve(Geometry3D g, Action<SolveReport>? report = null)
-        {
-            var grid = GeometryBuilder3D.BuildGrid(g);
-            var mask = GeometryBuilder3D.BuildMask(g, grid);
-            ScalarField3D? rhs = null;
+        var planSmall = Plan(direct.Geometry(small));
+        var planLarge = Plan(direct.Geometry(large));
 
-            if (source)
-            {
-                rhs = new ScalarField3D(grid);
-
-                for (var k = 0; k < grid.CountZ; k++)
-                {
-                    for (var j = 0; j < grid.CountY; j++)
-                    {
-                        for (var i = 0; i < grid.CountX; i++)
-                        {
-                            rhs[i, j, k] = 1.0;
-                        }
-                    }
-                }
-            }
-
-            var (potential, solved) = PoissonSolver3D.Solve(
-                mask, 1e-14, cycles, GeometryBuilder3D.Coarsener(g), source: rhs, galerkin: false);
-
-            report?.Invoke(solved);
-
-            return potential;
-        }
-
-        var gSmall = geometry(small);
-        var gLarge = geometry(large);
-        var planSmall = Plan(gSmall);
-        var planLarge = Plan(gLarge);
-
-        // Once each, unmeasured: the descent the solver takes, and a first call's allocations
-        // kept out of the first reading.
-        var solvedLevels = -1;
-        Solve(gSmall);
-        Solve(gLarge, r => solvedLevels = r.Levels);
-
-        var peakSmall = PeakLive(() => Solve(gSmall));
-        var peakLarge = PeakLive(() => Solve(gLarge));
+        MeasuredBuild[] measured = [builds.Optimized(output, kind, small), builds.Optimized(output, kind, large)];
+        var peakSmall = measured[0].Peak;
+        var peakLarge = measured[1].Peak;
 
         var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
         var billed = (planLarge.Stated - planSmall.Stated) / nodes;
-        var predicted = (planLarge.Real - planSmall.Real) / nodes;
-        var measured = (peakLarge - peakSmall) / nodes;
+
+        var reading = SlopeReading.Of(
+            $"the {kind} slope", (planLarge.Real - planSmall.Real) / nodes, peakSmall, peakLarge, nodes, false, planLarge.Levels);
 
         output.WriteLine(
             $"{planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes, {planLarge.Levels} coarse level(s): "
-            + $"billed {billed:F2} B/node, predicted with the real cut arms {predicted:F2}, measured {measured:F2} "
-            + $"(peaks {peakSmall / planSmall.Nodes:F2} and {peakLarge / planLarge.Nodes:F2} B/node of each build)");
+            + $"billed {billed:F2} B/node, predicted with the real cut arms {reading.Predicted:F2}, "
+            + $"measured {reading.Lower:F2} to {reading.Upper:F2}");
+        output.WriteLine(
+            $"  smaller: {Describe(peakSmall, planSmall.Nodes)} against {planSmall.Real / planSmall.Nodes:F2}; "
+            + $"larger: {Describe(peakLarge, planLarge.Nodes)} against {planLarge.Real / planLarge.Nodes:F2}");
 
-        Assert.Equal(planLarge.Levels, solvedLevels);
         Assert.Equal(planSmall.Levels, planLarge.Levels);
 
-        return (predicted, measured, planLarge.Levels, planLarge.Real / planLarge.Nodes, peakLarge / planLarge.Nodes);
+        foreach (var build in measured)
+        {
+            // The descent the statement was worked out for, and every cycle asked for: a solve
+            // that converged or stalled early never reached the cycle its peak is held in.
+            Assert.Equal(planLarge.Levels, build.Fact("levels"));
+            Assert.Equal(direct.Cycles, build.Fact("cycles"));
+        }
+
+        return reading;
     }
 
     /// <summary>A sphere at the centre of a cube, at one cell size.</summary>
-    private static Geometry3D Ball(double length, double radius, double cell) => new(
+    internal static Geometry3D Ball(double length, double radius, double cell) => new(
         -0.5 * length, -0.5 * length, -0.5 * length, 0.5 * length, 0.5 * length, 0.5 * length, cell,
         [
             new CompiledElectrode3D
@@ -564,7 +615,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// <remarks>
     /// A quarter of a cut arm a node is 5.5 bytes a node; a 3 mm sphere at these meshes stores
     /// 1.6 to 1.9, and two slabs less. Over the rediscretized hierarchy's 51 that is 7 percent
-    /// of the band, spent before a build is sampled.
+    /// of the band, spent before a build is measured.
     /// </remarks>
     internal static double WithRealCutArms(Geometry3D geometry, SolveMemory plan)
     {
@@ -573,130 +624,8 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         return plan.PeakBytes - (SolveMemoryModel.VolumeCutLinks * plan.Nodes) + (cuts?.Bytes ?? 0);
     }
 
-    /// <summary>The most a build holds reachable at once, above what was live before it.</summary>
-    /// <remarks>
-    /// <para>
-    /// A forced, blocking, full collection and then the heap size, from a second thread. The
-    /// collection is what makes this the live set rather than the heap: without it the reading
-    /// includes garbage the collector has not yet bothered to free, which on the Astral ran to
-    /// 1.6 times the live peak.
-    /// </para>
-    /// <para>
-    /// <b>A sample can only miss the peak, so this reads low, and a slope between two builds can
-    /// read either way</b> - low when the larger build's peak is missed, high when the smaller
-    /// one's is. It passed on a sixteen-core workstation and failed on both four-core CI runners
-    /// in Release, where a build is eight times faster than in Debug: the sampler slept 2 ms
-    /// between collections, which is a timer tick of about 15 ms on Windows, and the smallest
-    /// build here finishes in about 10 ms. So the sampler now waits only as long as its last
-    /// collection took - the build keeps at least half the time, and a sample lands every few
-    /// hundred microseconds on a small heap - and each build is measured three times.
-    /// </para>
-    /// <para>
-    /// <b>The middle of three, not the largest.</b> Sampled this densely a build's peak is
-    /// caught nearly every time, and what is left is a build whose samples miss its peak. The
-    /// middle discards a lone outlier either way, while an array a build really keeps is in all
-    /// three readings and still fails.
-    /// </para>
-    /// <para>
-    /// <b>What survived the collection, not the heap after it.</b> This read
-    /// <see cref="GC.GetTotalMemory(bool)"/> after the forced collection, which counts everything
-    /// allocated since - and the build thread does not stop while the sampler reads. A sampler
-    /// descheduled between the two calls came back to find the next V-cycle's residual allocated,
-    /// eight bytes a node of garbage, and reported it as held: about 7 bytes a node over the
-    /// statement, once on the Linux CI runner and once in WSL before the middle of three, and in
-    /// two readings of three on PR #57's Linux run, where the middle of three could not discard
-    /// it. Reproduced in WSL by loading the four cores a test was pinned to: 153.4 and 153.7
-    /// against 147.0 in two runs of five, never unloaded. The collector's own account of the
-    /// collection it just finished has no such window.
-    /// </para>
-    /// </remarks>
-    internal static double PeakLive(Func<object> build)
-    {
-        static long Live()
-        {
-            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
-            GC.WaitForPendingFinalizers();
-            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
-
-            return SurvivedLastFullCollection();
-        }
-
-        // What the last full blocking collection left live, read from that collection's own
-        // record: the generations' sizes after it, less the free space between their objects.
-        static long SurvivedLastFullCollection()
-        {
-            var info = GC.GetGCMemoryInfo(GCKind.FullBlocking);
-            var live = 0L;
-
-            foreach (var generation in info.GenerationInfo)
-            {
-                live += generation.SizeAfterBytes - generation.FragmentationAfterBytes;
-            }
-
-            return live;
-        }
-
-        static double Once(Func<object> build)
-        {
-            var baseline = Live();
-            var peak = baseline;
-            var stop = 0;
-
-            var sampler = new Thread(() =>
-            {
-                var clock = Stopwatch.StartNew();
-
-                while (Volatile.Read(ref stop) == 0)
-                {
-                    var started = clock.Elapsed;
-
-                    GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
-
-                    peak = Math.Max(peak, SurvivedLastFullCollection());
-
-                    // As long again as the collection took: the build runs at least half the time.
-                    var resume = clock.Elapsed + (clock.Elapsed - started);
-
-                    while (clock.Elapsed < resume && Volatile.Read(ref stop) == 0)
-                    {
-                        Thread.SpinWait(32);
-                    }
-                }
-            })
-            {
-                IsBackground = true,
-                Priority = ThreadPriority.AboveNormal,
-            };
-
-            sampler.Start();
-
-            object? built = null;
-
-            try
-            {
-                built = build();
-            }
-            finally
-            {
-                // Whatever the build did: a sampler left running forces a full collection every
-                // few hundred microseconds for the rest of the test process.
-                Volatile.Write(ref stop, 1);
-                sampler.Join();
-            }
-
-            GC.KeepAlive(built);
-
-            return peak - baseline;
-        }
-
-        double[] readings = [Once(build), Once(build), Once(build)];
-        Array.Sort(readings);
-
-        return readings[1];
-    }
-
     /// <summary>Two 1 mm slabs across a 5 mm gap: the geometry the Galerkin hierarchy exists for.</summary>
-    private static Geometry3D Plates(double cell) => new(
+    internal static Geometry3D Plates(double cell) => new(
         -0.006, -0.006, -0.005, 0.006, 0.006, 0.005, cell,
         [
             Box("lower", -0.004, -0.004, -0.0035, 0.004, 0.004, -0.0025, 100.0),
@@ -704,7 +633,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         ]);
 
     /// <summary>The same slabs with the upper one driven, which makes a second spatial pattern.</summary>
-    private static Geometry3D TwoChannelPlates(double cell) => new(
+    internal static Geometry3D TwoChannelPlates(double cell) => new(
         -0.006, -0.006, -0.005, 0.006, 0.006, 0.005, cell,
         [
             Box("lower", -0.004, -0.004, -0.0035, 0.004, 0.004, -0.0025, 100.0),

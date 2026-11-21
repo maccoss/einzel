@@ -46,7 +46,16 @@ public sealed class CoefficientReuseTests
         }
         _ = Allocated(true);
         var freshBytes = Allocated(false);
-        var reusedBytes = Allocated(true);
+
+        // The least of five windows: the runtime charges one-off work - a static constructor, a
+        // method compiled again - to whichever window it fires in, and a Debug run of the whole
+        // suite once read 7,344 bytes in a single window that a repeat read as none. What reuse
+        // allocates is a floor, so the minimum is the statistic, and the bound is still zero.
+        var reusedBytes = Enumerable.Range(0, 5).Min(_ => Allocated(true));
         Assert.True(reusedBytes < freshBytes / 100, $"fresh: {freshBytes}; reused: {reusedBytes}");
+
+        // Nothing at all, re-assembled into what it has: a ramped phase assembles at every step,
+        // and the edge and name of each face made into two new arrays per call were garbage there.
+        Assert.Equal(0, reusedBytes);
     }
 }

@@ -1,4 +1,5 @@
 using Einzel.Core.Geometry;
+using Einzel.Core.Numerics;
 using Einzel.Fields.Solved;
 
 namespace Einzel.Transport.Diffusion;
@@ -33,7 +34,7 @@ internal sealed class PonderomotiveWellCache
 
         for (var offset = 0; offset < Offsets; offset++)
         {
-            _well[offset] = new double[count];
+            _well[offset] = GridArrays.New<double>(count);
         }
 
         Fill(field);

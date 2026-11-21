@@ -5,18 +5,32 @@
     <AssemblyName>memory-harness</AssemblyName>
     <RootNamespace>MemoryHarness</RootNamespace>
     <!--
-      The runtime's default collector, stated rather than left implicit: the peak working set
-      this measures IS a property of the collector, so a run under a different configuration
-      is a different measurement. See README.md.
+      NO COLLECTOR IS SET HERE, on purpose. The default run measures a working set under the
+      runtime's own default - workstation, concurrent - and the peak working set IS a property
+      of the collector, so a run under another is another measurement. A `live` run starts
+      itself again with the collector set by environment variable to workstation and not
+      concurrent, as the memory tests' children run. A collector written here would go into
+      runtimeconfig.json as System.GC.Concurrent, and that one is not overridden by the
+      environment: measured on .NET 10, a program built with it true reports Interactive
+      under DOTNET_gcConcurrent=0, and Batch under the same variable with nothing in its
+      configuration. (DOTNET_gcServer=1 does override System.GC.Server=false, so the two
+      settings do not behave alike, and a general rule about which source wins would be
+      wrong for one of them.) The live run also checks what it got and refuses otherwise.
+      See README.md.
     -->
-    <ServerGarbageCollector>false</ServerGarbageCollector>
-    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Einzel.Commands\Einzel.Commands.csproj" />
     <ProjectReference Include="..\..\src\Einzel.Fields\Einzel.Fields.csproj" />
     <ProjectReference Include="..\..\src\Einzel.Io\Einzel.Io.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The memory tests' own measurement of the live set, linked as source; see the files. -->
+    <Compile Include="..\..\tests\Shared\LiveSetReading.cs" Link="Shared\LiveSetReading.cs" />
+    <Compile Include="..\..\tests\Shared\LiveSet.cs" Link="Shared\LiveSet.cs" />
+    <Compile Include="..\..\tests\Shared\LiveVerdict.cs" Link="Shared\LiveVerdict.cs" />
   </ItemGroup>
 
 </Project>

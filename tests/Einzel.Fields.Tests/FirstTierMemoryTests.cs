@@ -1,7 +1,5 @@
-using System.Diagnostics;
-using System.Globalization;
-
 using Einzel.Fields.Solved;
+using Einzel.Testing;
 
 using Xunit.Abstractions;
 
@@ -33,131 +31,50 @@ namespace Einzel.Fields.Tests;
 /// </para>
 /// <para>
 /// <b>Small builds, because first-tier code is slow</b>: a sixty-six-thousand-node plane and a
-/// thirty-six-thousand-node sphere, each the middle of three readings, take a few seconds in
-/// all. The upper edge is the one that matters, as in <see cref="SolveMemoryTests"/>; it is 1.03
+/// thirty-six-thousand-node sphere, each built once unmeasured and then read from inside the
+/// build (<see cref="LiveSet"/>), take a few seconds in all. A warm-up cannot promote anything
+/// here, and the child checks that it has not: it tests its tier before the first build and
+/// after the last (<see cref="JitTier"/>). The upper edge is the one that matters, as in <see cref="SolveMemoryTests"/>; it is 1.03
 /// rather than 1.02 because a single build at these sizes carries the build's fixed allocations
 /// per node where a slope would cancel them, and the hold it exists to catch is 1.06.
 /// </para>
 /// </remarks>
-[Collection(nameof(MemoryMeasurement))]
-public sealed class FirstTierMemoryTests(ITestOutputHelper output)
+[Collection(nameof(MeasuredInAChild))]
+public sealed class FirstTierMemoryTests(MeasuredBuilds builds, ITestOutputHelper output)
 {
-    /// <summary>The argument that makes the test assembly's entry point measure rather than exit.</summary>
-    internal const string Command = "first-tier-solve-memory";
-
     [Fact]
-    public async Task AFirstTierSolveHoldsWhatItsStatementSays()
+    public void AFirstTierSolveHoldsWhatItsStatementSays()
     {
-        var start = new ProcessStartInfo(Host())
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-
-        start.ArgumentList.Add("exec");
-        start.ArgumentList.Add(typeof(FirstTierMemoryTests).Assembly.Location);
-        start.ArgumentList.Add(Command);
-
-        // Nothing is counted, so nothing is promoted: every method stays first-tier.
-        start.Environment["DOTNET_TC_CallCounting"] = "0";
-        start.Environment["DOTNET_TieredPGO"] = "0";
-
-        using var child = Process.Start(start)!;
-        var stdout = child.StandardOutput.ReadToEndAsync();
-        var stderr = child.StandardError.ReadToEndAsync();
-
-        using var limit = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-
-        try
-        {
-            await child.WaitForExitAsync(limit.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            child.Kill(entireProcessTree: true);
-            Assert.Fail("the first-tier child did not finish in five minutes");
-        }
-
-        var text = await stdout;
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        output.WriteLine(text);
-        output.WriteLine(await stderr);
-
-        Assert.Equal(0, child.ExitCode);
-
-        var ratios = lines
-            .Select(line => line.Split(' '))
-            .ToDictionary(parts => parts[0], parts => double.Parse(parts[^1], CultureInfo.InvariantCulture));
-
-        Assert.Equal(["plane", "volume"], ratios.Keys.Order());
-
-        foreach (var (name, ratio) in ratios)
-        {
-            Assert.True(
-                ratio is >= 0.85 and <= 1.03,
-                $"the {name} build read {ratio:F3} of its statement as first-tier code: an array the cycle "
-                + "allocates is held across the recursion by a frame that outlives its last use");
-        }
-    }
-
-    /// <summary>The child's work: one plane and one volume build, each against its statement.</summary>
-    /// <returns>The process exit code.</returns>
-    internal static int Measure()
-    {
-        // Not a test of the tier unless the tier is pinned; refuse rather than pass vacuously.
-        if (Environment.GetEnvironmentVariable("DOTNET_TC_CallCounting") != "0")
-        {
-            Console.Error.WriteLine("DOTNET_TC_CallCounting must be 0, so that nothing is promoted");
-            return 2;
-        }
-
         var plane = SolveMemoryTests.Rods(0.0001);
         var planePlan = GeometryBuilder.Memory(plane);
-        var planePeak = SolveMemoryTests.PeakLive(() => GeometryBuilder.Build(plane).Field);
 
-        Report("plane", planePlan.Nodes, planePeak, planePlan.PeakBytes);
+        Check("plane", builds.FirstTier(output, "rods", 0.0001).Peak, planePlan.Nodes, planePlan.PeakBytes);
 
         var sphere = SolveMemoryTests.Sphere(0.000625);
         var spherePlan = GeometryBuilder3D.Memory(sphere);
-        var sphereStated = SolveMemoryTests.WithRealCutArms(sphere, spherePlan);
-        var spherePeak = SolveMemoryTests.PeakLive(() => GeometryBuilder3D.BuildField(sphere).Field);
 
-        Report("volume", spherePlan.Nodes, spherePeak, sphereStated);
-
-        return 0;
-
-        static void Report(string name, long nodes, double peak, double stated) =>
-            Console.WriteLine(string.Create(
-                CultureInfo.InvariantCulture,
-                $"{name} {nodes} nodes: measured {peak / nodes:F2} B/node, stated {stated / nodes:F2}, ratio {peak / stated:F4}"));
+        Check(
+            "volume",
+            builds.FirstTier(output, "sphere", 0.000625).Peak,
+            spherePlan.Nodes,
+            SolveMemoryTests.WithRealCutArms(sphere, spherePlan));
     }
 
-    /// <summary>The <c>dotnet</c> host this test process runs under.</summary>
-    private static string Host()
+    private void Check(string name, LivePeak peak, long nodes, double stated)
     {
-        // Set by the dotnet CLI for the processes it starts, test hosts included.
-        if (Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host && File.Exists(host))
-        {
-            return host;
-        }
+        output.WriteLine($"{name} {nodes:N0} nodes, stated {stated / nodes:F2}: {SolveMemoryTests.Describe(peak, nodes)}");
 
-        var self = Environment.ProcessPath;
+        MemoryVerdict.Covered($"the first-tier {name} build", peak);
 
-        return self is not null && Path.GetFileNameWithoutExtension(self).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
-            ? self
-            : "dotnet";
+        // 1.03 rather than 1.02: a single build at these sizes carries its fixed allocations per
+        // node, where a slope would cancel them. The hold this exists to catch reads 1.06.
+        MemoryVerdict.Within(
+            $"the first-tier {name} build",
+            peak.Least / nodes,
+            peak.Bound / nodes,
+            0.85 * stated / nodes,
+            1.03 * stated / nodes,
+            nodes,
+            peak.Foreign);
     }
-}
-
-/// <summary>
-/// The test assembly's entry point, which does nothing unless asked to be the first-tier child
-/// of <see cref="FirstTierMemoryTests"/>. The test host loads this assembly as a library and
-/// never calls it.
-/// </summary>
-internal static class Program
-{
-    private static int Main(string[] args) =>
-        args is [FirstTierMemoryTests.Command] ? FirstTierMemoryTests.Measure() : 0;
 }

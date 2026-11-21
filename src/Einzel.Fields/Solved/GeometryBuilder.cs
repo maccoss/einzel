@@ -312,8 +312,14 @@ public static class GeometryBuilder
         var potential = 0.0;
         var found = false;
 
-        foreach (var electrode in solve.Electrodes)
+        // By index: the list is behind an interface, and enumerating it allocates an enumerator
+        // for every arm of every free node - 100 bytes a node of garbage across a mask.
+        var electrodes = solve.Electrodes;
+
+        for (var at = 0; at < electrodes.Count; at++)
         {
+            var electrode = electrodes[at];
+
             if (electrode.FirstEntry(fromX, fromY, toX, toY) is not { } entry || entry >= nearest)
             {
                 continue;
@@ -693,8 +699,11 @@ public static class GeometryBuilder
         IReadOnlyList<CompiledElectrode> electrodes,
         double fromX, double fromY, double toX, double toY, double entry)
     {
-        foreach (var electrode in electrodes)
+        // By index, as CutTowards: enumerating the interface allocates an enumerator a call.
+        for (var at = 0; at < electrodes.Count; at++)
         {
+            var electrode = electrodes[at];
+
             if (electrode.FirstEntry(fromX, fromY, toX, toY) is { } nearer
                 && nearer > 0.0
                 && nearer < entry - SharedFaceNodes.ToleranceFraction)

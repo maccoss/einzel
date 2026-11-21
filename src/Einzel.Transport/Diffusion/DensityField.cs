@@ -1,3 +1,4 @@
+using Einzel.Core.Numerics;
 using Einzel.Fields.Solved;
 
 namespace Einzel.Transport.Diffusion;
@@ -36,7 +37,7 @@ public sealed class DensityField
 
         Grid = grid;
         Cylindrical = cylindrical;
-        _values = new double[grid.CountX * grid.CountY];
+        _values = GridArrays.New<double>(grid.CountX * grid.CountY);
     }
 
     /// <summary>The grid this density lives on.</summary>

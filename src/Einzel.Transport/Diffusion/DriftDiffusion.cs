@@ -1,4 +1,5 @@
 using Einzel.Core.Geometry;
+using Einzel.Core.Numerics;
 using Einzel.Fields;
 using Einzel.Transport.Collisions;
 
@@ -362,6 +363,7 @@ public static class DriftDiffusion
             edges, absorbers);
 
         var arrivals = new List<(double, double)>();
+        var ledger = new StepLedger();
         var lost = new Dictionary<string, double>(StringComparer.Ordinal);
 
         var collected = 0.0;
@@ -440,7 +442,7 @@ public static class DriftDiffusion
             var dt = Math.Min(step, untilSeconds - time);
 
             var leaving = DensityStepper.Advance(
-                density, next, faces, absorbers, scheme, dt);
+                density, next, faces, absorbers, scheme, dt, ledger);
 
             (density, next) = (next, density);
 
@@ -457,8 +459,11 @@ public static class DriftDiffusion
                 arrivals.Add((time, leaving.Collected));
             }
 
-            foreach (var (where, ions) in leaving.Absorbed)
+            // By index: the ledger is the run's own and is read in place, where a foreach over
+            // the interface would allocate an enumerator a step.
+            for (var taken = 0; taken < ledger.Count; taken++)
             {
+                var (where, ions) = ledger[taken];
                 lost[where] = lost.GetValueOrDefault(where) + ions;
             }
 
@@ -693,12 +698,12 @@ public static class DriftDiffusion
                 + $"{count} long for this grid", nameof(reuse));
         }
 
-        var driftX = reuse?.DriftX ?? new double[count];
-        var driftY = reuse?.DriftY ?? new double[count];
-        var diffusion = reuse?.Diffusion ?? new double[count];
-        var potential = reuse?.Potential ?? new double[count];
-        var gasX = reuse?.GasX ?? new double[count];
-        var gasY = reuse?.GasY ?? new double[count];
+        var driftX = reuse?.DriftX ?? GridArrays.New<double>(count);
+        var driftY = reuse?.DriftY ?? GridArrays.New<double>(count);
+        var diffusion = reuse?.Diffusion ?? GridArrays.New<double>(count);
+        var potential = reuse?.Potential ?? GridArrays.New<double>(count);
+        var gasX = reuse?.GasX ?? GridArrays.New<double>(count);
+        var gasY = reuse?.GasY ?? GridArrays.New<double>(count);
 
         // SPREAD ACROSS CORES, and the results do not depend on how many.
         //

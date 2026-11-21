@@ -400,6 +400,7 @@ public static class MixtureDiffusion
         private readonly double _number;
         private readonly Dictionary<string, double> _lost = new(StringComparer.Ordinal);
         private readonly List<(double, double)> _arrivals = [];
+        private readonly StepLedger _ledger = new();
 
         private DensityField _next;
         private PonderomotiveWellCache? _well;
@@ -491,7 +492,7 @@ public static class MixtureDiffusion
 
         internal void Advance(AbsorbingCells absorbers, StepScheme scheme, double dt, double endsAt)
         {
-            var leaving = DensityStepper.Advance(Density, _next, _faces!, absorbers, scheme, dt);
+            var leaving = DensityStepper.Advance(Density, _next, _faces!, absorbers, scheme, dt, _ledger);
 
             _collected += leaving.Collected;
 
@@ -500,8 +501,9 @@ public static class MixtureDiffusion
                 _arrivals.Add((endsAt, leaving.Collected));
             }
 
-            foreach (var (where, ions) in leaving.Absorbed)
+            for (var taken = 0; taken < _ledger.Count; taken++)
             {
+                var (where, ions) = _ledger[taken];
                 _lost[where] = _lost.GetValueOrDefault(where) + ions;
             }
         }

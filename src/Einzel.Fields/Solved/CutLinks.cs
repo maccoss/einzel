@@ -1,3 +1,5 @@
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>The four axis directions a stencil reaches in.</summary>
@@ -53,8 +55,8 @@ public sealed class CutLinks
         ArgumentNullException.ThrowIfNull(grid);
 
         Grid = grid;
-        _fraction = new double[grid.NodeCount * Directions];
-        _potential = new double[grid.NodeCount * Directions];
+        _fraction = GridArrays.New<double>(grid.NodeCount * Directions);
+        _potential = GridArrays.New<double>(grid.NodeCount * Directions);
 
         Array.Fill(_fraction, 1.0);
     }

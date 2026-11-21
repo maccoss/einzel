@@ -1,3 +1,5 @@
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>
@@ -46,7 +48,7 @@ public sealed class GalerkinOperator3D
     {
         Grid = grid;
 
-        _coefficient = new double[grid.NodeCount * Entries];
+        _coefficient = GridArrays.New<double>(grid.NodeCount * Entries);
     }
 
     /// <summary>The grid this operator is over.</summary>
@@ -103,12 +105,12 @@ public sealed class GalerkinOperator3D
 
         var fineGrid = fine.Grid;
 
-        var column = new double[fineGrid.NodeCount];
-        var applied = new double[fineGrid.NodeCount];
+        var column = GridArrays.New<double>(fineGrid.NodeCount);
+        var applied = GridArrays.New<double>(fineGrid.NodeCount);
 
         // Generation stamps rather than clearing whole arrays per column: a column
         // touches a few dozen nodes out of millions, so clearing would dominate.
-        var stamp = new int[fineGrid.NodeCount];
+        var stamp = GridArrays.New<int>(fineGrid.NodeCount);
         var generation = 0;
 
         var touched = new List<int>(32);
@@ -174,10 +176,10 @@ public sealed class GalerkinOperator3D
 
         var fineGrid = fine.Grid;
 
-        var column = new double[fineGrid.NodeCount];
-        var applied = new double[fineGrid.NodeCount];
+        var column = GridArrays.New<double>(fineGrid.NodeCount);
+        var applied = GridArrays.New<double>(fineGrid.NodeCount);
 
-        var stamp = new int[fineGrid.NodeCount];
+        var stamp = GridArrays.New<int>(fineGrid.NodeCount);
         var generation = 0;
 
         var touched = new List<int>(32);

@@ -1,5 +1,6 @@
 using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
+using Einzel.Core.Numerics;
 
 namespace Einzel.Transport.Collisions;
 
@@ -207,7 +208,7 @@ public sealed class SampledGasDensity : IGasDensity
 
         var scale = 1.0 / (BackgroundGas.BoltzmannSi * temperatureK);
         var source = pascals.Values;
-        var densities = new double[source.Length];
+        var densities = GridArrays.New<double>(source.Length);
 
         for (var i = 0; i < source.Length; i++)
         {

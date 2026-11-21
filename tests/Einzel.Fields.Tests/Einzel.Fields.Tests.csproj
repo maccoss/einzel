@@ -2,10 +2,17 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!--
-      An executable, so FirstTierMemoryTests can run this assembly as a child process with the
-      JIT's tiering pinned; its entry point does nothing unless asked. See that class.
+      Documentation comments are checked though not required: a cref that names nothing fails
+      the build (CS1574), which is how a remark pointing at a renamed member is caught. Public
+      members of a test project need no comment, so CS1591 alone is off.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!--
+      An executable, so that the memory tests can run this assembly as a child process, with the
+      JIT's tiering pinned, and read a build's live set in a process that holds nothing else.
+      Program.cs is the entry point; the test host never calls it. See MemoryCases.
     -->
     <OutputType>Exe</OutputType>
     <GenerateProgramFile>false</GenerateProgramFile>
@@ -13,6 +20,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -26,6 +34,11 @@
     <ProjectReference Include="..\..\src\Einzel.Fields\Einzel.Fields.csproj" />
     <ProjectReference Include="..\..\src\Einzel.Io\Einzel.Io.csproj" />
     <ProjectReference Include="..\..\src\Einzel.Transport\Einzel.Transport.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- One harness for every memory measurement, linked as source; see the files. -->
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

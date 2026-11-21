@@ -62,6 +62,10 @@ namespace Einzel.Commands;
 /// different densities, and one number for the run would be the larger of the two with
 /// nothing saying which phase it belonged to.
 /// </param>
+/// <param name="DensitySteps">
+/// How many steps a diffusive phase took the density through, or <c>null</c> for a trajectory
+/// phase, which steps none - what <c>einzel estimate</c> predicts, phase by phase.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>Every trajectory is accounted for within a phase</b>, which ACC-5 requires and
@@ -94,7 +98,8 @@ public sealed record PhaseOutcome(
     int Assemblies = 0,
     int WellRebuilds = 0,
     int? SelfFieldSolves = null,
-    double? PeakSelfPotentialVolts = null);
+    double? PeakSelfPotentialVolts = null,
+    int? DensitySteps = null);
 
 /// <summary>What a run across a changing transport mode did.</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -295,6 +300,11 @@ public static class SequencedRun
         PhaseState[]? states = null;
         DensityField? density = null;
 
+        // Which phase the density was last stepped by, for a refusal of it to point at - or null
+        // where nothing stepped it, which a refusal then says rather than naming a phase that
+        // did not produce it.
+        int? producedBy = null;
+
         var started = 0.0;
 
         for (var i = 0; i < model.Phases.Count; i++)
@@ -340,14 +350,30 @@ public static class SequencedRun
                 }
                 else
                 {
-                    var back = PacketConversion.ToTrajectories(
-                        density,
-                        Math.Max(model.Cloud.Ions, 1),
-                        species,
-                        gas,
-                        Instant(field, started),
-                        Mobility(model, gas, species),
-                        model.Cloud.Seed);
+                    TrajectoryConversion back;
+
+                    try
+                    {
+                        back = PacketConversion.ToTrajectories(
+                            density,
+                            Math.Max(model.Cloud.Ions, 1),
+                            species,
+                            gas,
+                            Instant(field, started),
+                            Mobility(model, gas, species),
+                            model.Cloud.Seed);
+                    }
+                    catch (NonFiniteDensityException refused)
+                    {
+                        throw new EinzelException(
+                            NotFiniteAtBoundary(
+                                refused.Error,
+                                model.TimelinePath,
+                                producedBy,
+                                producedBy is { } by ? model.Phases[by].Name : null,
+                                model.DensityStep.IsImplicit ? model.DensityStep.Gain : null),
+                            refused);
+                    }
 
                     states = back.States;
                     perTrajectory = back.PopulationPerIon;
@@ -357,32 +383,14 @@ public static class SequencedRun
                     conversions++;
                 }
             }
-            else if (!trajectory && density is null)
-            {
-                if (states is null)
-                {
-                    // A trap-then-extract instrument starts in the trap, so the first
-                    // phase being diffusive is the ordinary case rather than a corner.
-                    // Seeded by the same function `einzel run` uses for a wholly
-                    // diffusive model - one implementation, because `run` and `test`
-                    // once computed one flight time two ways and disagreed by 1.3e-10.
-                    density = DiffusionRun.Seed(
-                        model, DiffusionRun.GridFor(model), Cylindrical(model));
-                }
-                else
-                {
-                    var forward = PacketConversion.ToDensity(
-                        states, states.Length * perTrajectory,
-                        DiffusionRun.GridFor(model), Cylindrical(model));
 
-                    density = forward.Density;
-                    warnings.AddRange(forward.Warnings);
-                    states = null;
-                    converted = true;
-                    conversions++;
-                }
-            }
-
+            // Entering the density description is done inside the leg (`Diffuse`), from the
+            // states or, entering from nothing, from the source: never in this method, whose
+            // frame outlives every phase and in unoptimized code keeps what it once held to
+            // the end - the first phase's seed was alive through the second in a Debug build,
+            // 8 bytes a node the estimate does not bill. The states go by reference, so the
+            // leg lets go of them here as it converts, and the conversion is counted where it
+            // happened.
             // Run the phase in its own mode, for its own duration.
             if (trajectory)
             {
@@ -445,9 +453,16 @@ public static class SequencedRun
                         .ToList();
 
                 var diffused = Diffuse(
-                    density!, model, field, gas, species, started, phase, warnings, progress,
-                    mine is { Count: > 0 } ? mine : null);
+                    density, ref states, perTrajectory, model, field, gas, species, started, phase, warnings,
+                    progress, out var entered, mine is { Count: > 0 } ? mine : null);
                 density = diffused.Density;
+                producedBy = i;
+
+                if (entered)
+                {
+                    converted = true;
+                    conversions++;
+                }
 
                 foreach (var shot in diffused.Snapshots)
                 {
@@ -520,7 +535,8 @@ public static class SequencedRun
                     // is the question, and reading it off a value of zero would answer a
                     // different one.
                     model.ModelsMeanField ? diffused.SelfFieldSolves : null,
-                    model.ModelsMeanField ? diffused.PeakSelfPotentialVolts : null));
+                    model.ModelsMeanField ? diffused.PeakSelfPotentialVolts : null,
+                    diffused.Steps));
             }
 
             // A FINISHED PHASE IS A MEASUREMENT. Handed over whole, so a run killed in
@@ -568,13 +584,6 @@ public static class SequencedRun
         };
     }
 
-    /// <summary>The field as a leg starting part-way along the timeline sees it.</summary>
-    /// <remarks>
-    /// The integrator starts at t = 0, so a leg beginning at 100 us has to be handed an
-    /// instrument shifted by 100 us rather than a start time it has nowhere to put. A
-    /// static field needs no shift and is passed through, which keeps an unsequenced
-    /// element bit-identical.
-    /// </remarks>
     /// <summary>
     /// Where a phase is asked whether it changes the field: the packet's own centre, and
     /// the four corners of the tracked region half a cell in, so a change anywhere the
@@ -614,7 +623,15 @@ public static class SequencedRun
         return at.PotentialAt(in probe);
     }
 
-    private static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
+    /// <summary>The field as a leg starting part-way along the timeline sees it.</summary>
+    /// <remarks>
+    /// The integrator starts at t = 0, so a leg beginning at 100 us has to be handed an
+    /// instrument shifted by 100 us rather than a start time it has nowhere to put. A
+    /// static field needs no shift and is passed through, which keeps an unsequenced
+    /// element bit-identical. Shared with the estimate's pilot, so that the two cannot
+    /// disagree about which instrument a trajectory phase flies through.
+    /// </remarks>
+    internal static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
         field is ITimeVaryingField driven && atSeconds > 0.0
             ? new TimeShiftedField(driven, atSeconds)
             : field;
@@ -829,6 +846,88 @@ public static class SequencedRun
         return ([.. flying], arrived, lost);
     }
 
+    /// <summary>
+    /// A density refused by the conversion to trajectories for not being finite, located in the
+    /// sequence and told what to change.
+    /// </summary>
+    /// <remarks>
+    /// The conversion is general and names only the cell. Only this layer knows the density came
+    /// from the diffusive phase before the boundary into <paramref name="phase"/>.
+    /// </remarks>
+    /// <param name="refused">The conversion's unlocated refusal.</param>
+    /// <param name="timeline">Where the document declares the timeline (<see cref="CompiledModel.TimelinePath"/>).</param>
+    /// <param name="index">
+    /// The index there of the phase that produced the density, or null where no phase is known to
+    /// have: the refusal is then located at the timeline and names no phase, rather than one that
+    /// did not produce it.
+    /// </param>
+    /// <param name="phase">That phase's name, for the sentence, or null with the index.</param>
+    /// <param name="implicitGain">
+    /// The gain the density is stepped at past its stability limit, where it steps implicitly,
+    /// or null where it steps explicitly - at the limit itself.
+    /// </param>
+    /// <remarks>
+    /// What to change depends on what set the step. `densityStep` has a scheme and a gain and no
+    /// step: an explicit step is the stability limit, taken from the mesh, the mobility and the
+    /// field, so nothing in the document lengthens or shortens it directly; an implicit one is
+    /// that limit times the gain.
+    /// </remarks>
+    internal static EinzelError NotFiniteAtBoundary(
+        EinzelError refused, string timeline, int? index, string? phase, double? implicitGain)
+    {
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        var path = index is { } at ? string.Create(invariant, $"{timeline}/{at}") : timeline;
+        var which = phase is null ? "the diffusive phase before this boundary" : $"the diffusive phase '{phase}'";
+
+        return refused.At(path) with
+        {
+            Suggestion = implicitGain is { } gain
+                ? string.Create(
+                    invariant,
+                    $"{which} did not stay finite. It steps implicitly at {gain:G4}x its "
+                    + $"stability limit: lower transport.densityStep.gain, or set its scheme to \"explicit\", "
+                    + $"which steps at the limit itself; then check the field and the mobility near that cell")
+                : $"{which} did not stay finite although it steps explicitly, at its "
+                    + "stability limit, which nothing in the document lengthens: check the field, the mobility "
+                    + "and the gas near that cell, which set that limit and the drift, and transport.densityGrid, "
+                    + "whose spacing the limit is taken over",
+        };
+    }
+
+    /// <summary>The density a diffusive leg starts from, where the packet is not one yet.</summary>
+    /// <remarks>
+    /// In a frame of its own, so that nothing of the states or the seed outlives the entry in
+    /// a temporary of the leg's: entering from nothing it is the source's seed, by the same
+    /// function `einzel run` uses for a wholly diffusive model - one implementation, because
+    /// `run` and `test` once computed one flight time two ways and disagreed by 1.3e-10; a
+    /// trap-then-extract instrument starts in the trap, so a first diffusive phase is the
+    /// ordinary case. Entering from trajectories it is their deposit, and the caller's
+    /// reference to them is let go here.
+    /// </remarks>
+    internal static DensityField Enter(
+        CompiledModel model,
+        Grid2D grid,
+        ref PhaseState[]? states,
+        double perTrajectory,
+        List<ValidityWarning> warnings,
+        out bool converted)
+    {
+        if (states is null)
+        {
+            converted = false;
+            return DiffusionRun.Seed(model, grid, Cylindrical(model));
+        }
+
+        var forward = PacketConversion.ToDensity(
+            states, states.Length * perTrajectory, grid, Cylindrical(model));
+
+        states = null;
+        warnings.AddRange(forward.Warnings);
+        converted = true;
+
+        return forward.Density;
+    }
+
     /// <summary>Steps the density for one phase.</summary>
     /// <remarks>
     /// A phase that changes the field - a ramp - hands the solver the field as a function
@@ -839,7 +938,9 @@ public static class SequencedRun
     /// steps through, and a phase could in principle change it some other way.
     /// </remarks>
     private static DiffusionResult Diffuse(
-        DensityField density,
+        DensityField? density,
+        ref PhaseState[]? states,
+        double perTrajectory,
         CompiledModel model,
         IElectrostaticField field,
         BackgroundGas gas,
@@ -848,9 +949,17 @@ public static class SequencedRun
         CompiledPhase phase,
         List<ValidityWarning> warnings,
         IRunProgress? progress,
+        out bool converted,
         IReadOnlyList<double>? snapshotSeconds = null)
     {
         var grid = DiffusionRun.GridFor(model);
+        converted = false;
+
+        // Entering the density description, the density is made here, in this leg's frame,
+        // so that it is held for as long as this leg runs and no longer.
+        // The conversion's warnings are added here, before anything this leg adds of its own,
+        // which is the order they had when the conversion was done by the caller just before.
+        density ??= Enter(model, grid, ref states, perTrajectory, warnings, out converted);
 
         // The electrodes absorb during a diffusive phase exactly as they do in a wholly
         // diffusive run. Leaving them out would let a density pass through metal, which
