@@ -916,6 +916,16 @@ public static class ModelValidator
             baseline = baseline with { Region = region };
         }
 
+        // A stage may change what an element holds, not where it is - the rule the solved stages
+        // already keep for an electrode. A region is compiled once, off the base surface, and an
+        // analytic element's discontinuity members are read off its first state, so a phase moving
+        // either would leave the field's surfaces where they were while its values moved: a run
+        // landing on a plane that is no longer there and straddling the one that is.
+        if (timeline.Count > 0 && Moved(field, path, region, baseline, timeline, errors))
+        {
+            return null;
+        }
+
         if (timeline.Count == 0 || !NeedsPhases(field.Type))
         {
             return baseline;
@@ -987,6 +997,70 @@ public static class ModelValidator
         return moved
             ? baseline with { Phases = phases, PhaseBoundariesSeconds = boundaries }
             : baseline;
+    }
+
+    /// <summary>
+    /// Whether a phase of the timeline moves an element's geometry - its region's bounds or fringe,
+    /// or a half-space's plane - reported naming the element and the phase.
+    /// </summary>
+    /// <param name="field">The element as declared.</param>
+    /// <param name="path">Its JSON Pointer.</param>
+    /// <param name="region">Its region off the base surface, or null.</param>
+    /// <param name="baseline">It compiled off the base surface.</param>
+    /// <param name="timeline">The phases.</param>
+    /// <param name="errors">Where a refusal goes.</param>
+    /// <returns>True when a phase moves it.</returns>
+    private static bool Moved(
+        FieldDocument field,
+        string path,
+        FieldRegion? region,
+        CompiledField baseline,
+        IReadOnlyList<PhaseSurface> timeline,
+        List<EinzelError> errors)
+    {
+        foreach (var phase in timeline)
+        {
+            foreach (var surface in new[] { phase.Surface, phase.EndSurface })
+            {
+                if (surface is null)
+                {
+                    continue;
+                }
+
+                // Swallowed as the per-phase compile's are: the base compile reported anything
+                // wrong with the element itself.
+                var ignored = new List<EinzelError>();
+                string? what = null;
+
+                if (region is not null && CompileRegion(field, path, surface, ignored) is { } moved && moved != region)
+                {
+                    what = "its region";
+                }
+                else if (baseline.Kind == CompiledFieldKind.HalfSpaceUniform
+                    && CompileOnce(field, path, surface, timeline, ignored) is { } state
+                    && (state.PlanePoint != baseline.PlanePoint || state.InwardNormal != baseline.InwardNormal))
+                {
+                    what = "its plane";
+                }
+
+                if (what is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = phase.Path,
+                        Constraint = $"stage '{phase.Name}' sets a parameter that moves {what} - the element at {path} - "
+                            + "and a stage may change what an element holds, not where it is",
+                        Suggestion = "keep the parameters the element's region and position are written over out of every "
+                            + "stage, or declare one element per position and switch which holds a field",
+                    });
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The box outside which an element is silent, if it declares one.</summary>

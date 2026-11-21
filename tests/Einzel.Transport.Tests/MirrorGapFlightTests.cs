@@ -411,6 +411,71 @@ public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper ou
             Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
             Assert.Single(xs, x => Math.Abs(x) < 1e-9);
         }
+
+        // Grazing: launched on the face and moving along it, then along it and a hair outward. The
+        // box member starts at zero and stays there or barely leaves; the inner member, gated by the
+        // box, goes between finite and infinite with it, and none of that is a landing.
+        foreach (var outward in new[] { 0.0, -1e-3 })
+        {
+            var species = IonSpecies.FromMassToCharge(500.0, 1);
+            var recorder = new TrajectoryRecorder(1e9);
+            var settings = new IntegrationSettings { MaximumFlightTime = 100.0, InitialStep = 7e-7, MaximumStep = 7e-7 };
+            TrajectoryStopFunction reached = (in PhaseState s) => 0.005 - s.Position.Y;
+
+            var result = TrajectoryIntegrator.Integrate(
+                new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(outward, 1000.0, 0.0)), species, bounded, settings, reached, recorder);
+
+            var ys = recorder.Samples.Select(sample => sample.Position.Y).ToList();
+            var gaps = ys.Zip(ys.Skip(1), (a, b) => b - a).ToList();
+            output.WriteLine($"grazing at {outward} m/s outward: {ys.Count} samples, shortest step {gaps.Min() * 1e3:E3} mm");
+
+            Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
+
+            // Every step but the last (cut to the detector) is a whole one: 0.7 mm at 1000 m/s.
+            Assert.All(gaps.SkipLast(1), gap => Assert.Equal(7e-4, gap, 9));
+        }
+    }
+
+    // A box face at 0.5, reading exactly zero over a band so a probe there is on it, and beside it
+    // a member positive before 0.25, negative from there to the face, plus infinity past it: gated
+    // by the box, as a bounded element's inner member is.
+    private sealed class FaceAtTheMidpoint : IElectrostaticField
+    {
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public int DiscontinuityMembers => 2;
+
+        public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+        {
+            var box = Math.Abs(0.5 - position.X) < 1e-6 ? 0.0 : position.X - 0.5;
+            return member == 0 ? box : box <= 0.0 ? 0.25 - position.X : double.PositiveInfinity;
+        }
+
+        public void DiscontinuityMemberGates(Span<int> gates)
+        {
+            gates[0] = -1;
+            gates[1] = 0;
+        }
+    }
+
+    /// <summary>
+    /// When the bisection's first probe falls exactly on the box face, an inner surface crossed
+    /// before it is still landed on first.
+    /// </summary>
+    /// <remarks>
+    /// The re-check read the members at the bisection's last probe on the start side, and with the
+    /// first probe exactly on the face there was none: it read the step's start again, found nothing
+    /// changed, and the inner jump at 0.25 was straddled for the face at 0.5. The members are read
+    /// just short of the landing where no start-side probe exists.
+    /// </remarks>
+    [Fact]
+    public void AnInnerSurfaceBeforeAFaceTheFirstProbeHitsIsLandedOn()
+    {
+        var launch = new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
+
+        Assert.Equal(0.25, FirstLandingX(launch, new FaceAtTheMidpoint(), 1.0, 2.0), 9);
     }
 
     // Two planes, the second reading exactly zero over a band around it - so a probe there reads as
@@ -603,6 +668,39 @@ public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper ou
 
         // The next plain step's end, read once: reused as the start after it.
         Assert.Equal(1, field.ReadAt.Count(x => Math.Abs(x - 1.3) < 1e-9));
+    }
+
+    /// <summary>
+    /// An ion in the declared half crossing the mirror of a surface the declared field has on the
+    /// image's side makes no landing there.
+    /// </summary>
+    /// <remarks>
+    /// The image read the declared field through the mirror on both sides of the plane, so a surface
+    /// the declared field has past the plane changed the image's sign at its mirror, in the declared
+    /// half, where the image contributes nothing - a landing on a surface no half declares there.
+    /// </remarks>
+    [Fact]
+    public void TheMirrorOfASurfacePastThePlaneIsNoLandingInTheDeclaredHalf()
+    {
+        // The declared field has a plane at 12 mm, past the mirror at 10 mm; its mirror is at 8 mm,
+        // in the declared half.
+        var inner = HalfSpaceUniformField.Create(new Vec3(0.012, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0), Quantity.From(0.0, "V/m"));
+        var image = new Einzel.Fields.ReflectedField(inner, new Reflection(0.010, ImageAbove: true));
+        var union = new SuperposedField([image, FieldFreeSpace.Instance]);
+
+        // 7 to 9 mm, entirely in the declared half, across the mirror at 8 mm.
+        var launch = new PhaseState(new Vec3(0.007, 0.0, 0.0), new Vec3(1000.0, 0.0, 0.0));
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var recorder = new TrajectoryRecorder(1e9);
+        var settings = new IntegrationSettings { MaximumFlightTime = 1.0, InitialStep = 7e-7, MaximumStep = 7e-7, UseAnalyticDrift = false };
+        TrajectoryStopFunction detector = (in PhaseState s) => 0.009 - s.Position.X;
+
+        var result = TrajectoryIntegrator.Integrate(launch, species, union, settings, detector, recorder);
+        var xs = recorder.Samples.Select(sample => sample.Position.X).ToList();
+        output.WriteLine($"samples at {string.Join(", ", xs.Select(x => (x * 1e3).ToString("F6", System.Globalization.CultureInfo.InvariantCulture)))} mm");
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
+        Assert.DoesNotContain(xs, x => Math.Abs(x - 0.008) < 1e-9);
     }
 
     /// <summary>

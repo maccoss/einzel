@@ -242,7 +242,11 @@ become a feature release without being renamed twice.
   inside its region) is now landed on even where a face of the region is nearer than it. Magnets
   are tracked the same way: the shared face of two abutting hard-edge magnets is landed on, where
   their combined sign cancelled. An element's own surface crossed in the same step that leaves its
-  region is landed on before the region's face, whichever side of the surface the ion started on.
+  region is landed on before the region's face, whichever side of the surface the ion started on. Each
+  half of a reflected solve declares its surfaces only on its own side of the plane, so an ion is no
+  longer landed on the mirror of a surface the half it is in does not have. A sequence phase that
+  moves an analytic element's region or a half-space's plane is refused at validation, naming the
+  element and the phase: a phase may change what an element holds, not where it is.
 - **A reflected solve's mirror plane is a surface the integrator lands on unless its edge is a
   mirror**: a grounded (Dirichlet) edge or face on the plane makes the plane a surface of its own,
   carried by the declared half, wherever an ion crosses it - over the box, where the field jumps,

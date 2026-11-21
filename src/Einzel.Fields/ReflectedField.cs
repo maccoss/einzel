@@ -181,15 +181,30 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The declared half's measure seen through the mirror, on both sides of the plane: the image
-    /// declares exactly the mirror of what the declared half declares, and nothing else - not the
-    /// plane, which the declared half carries as a member of its own where it is a surface. Gated
-    /// to its own side, as it was, the image had to carry one sign over the other side, and every
-    /// way of choosing that sign either cancelled a surface of the declared half at the rim or
-    /// declared one the declared side does not have.
+    /// <para>
+    /// The declared half's measure seen through the mirror where the image answers
+    /// (<see cref="Contributes"/>), and plus infinity where it does not - the image declares exactly
+    /// the mirror of what the declared half declares, and only where the image is: not the plane,
+    /// which the declared half carries as a member of its own where it is a surface.
+    /// </para>
+    /// <para>
+    /// Read on both sides, the image's measure changed sign in the declared half wherever a surface
+    /// of the declared field lay on the image's side, and an ion in the declared half landed on the
+    /// mirror of a surface the declared half does not have. Gated to plus infinity, as a bounded
+    /// element's inner members are, it changes at the plane only by going between finite and
+    /// infinite, which the integrator reads by its sign and checks again at a landing's bracket, so
+    /// a real crossing of an image surface just past the plane is still caught. Combined into one
+    /// sign, as it once was, gating could cancel a surface of the declared half at the rim; tracked
+    /// by member, it cannot.
+    /// </para>
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
+        if (!Contributes(in position))
+        {
+            return double.PositiveInfinity;
+        }
+
         var mirrored = Reflect(in position);
         return _inner.SignedDistanceToDiscontinuity(in mirrored);
     }
@@ -200,16 +215,59 @@ public sealed class ReflectedField : IElectrostaticField, IConductorBounded
     /// <inheritdoc/>
     public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
     {
+        if (!Contributes(in position))
+        {
+            var onPlane = OnPlane(in position);
+            return Math.CopySign(double.PositiveInfinity, _inner.MemberDistanceToDiscontinuity(member, in onPlane));
+        }
+
         var mirrored = Reflect(in position);
         return _inner.MemberDistanceToDiscontinuity(member, in mirrored);
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// The declared half's members seen through the mirror where the image answers
+    /// (<see cref="Contributes"/>). Where it does not, each is an infinity - no surface there - with
+    /// the sign its measure has on the plane, straight across from the point.
+    /// </para>
+    /// <para>
+    /// Read through the mirror on both sides, as they were, a member changed sign in the declared
+    /// half wherever a surface of the declared field lay on the image's side, and an ion in the
+    /// declared half landed on the mirror of a surface the declared half does not have. Plus infinity
+    /// alone, as a bounded element's inner members are, changes sign at the plane wherever the
+    /// declared measure is negative there - a solved domain's interior, at a mirror edge - which the
+    /// integrator reads by sign as a crossing of a plane where nothing jumps. With the plane's own
+    /// sign the infinity agrees with the image across the plane, so the plane is crossed only where
+    /// the declared half carries it as a member of its own, and an image surface just past the plane
+    /// is still a change of sign from the plane's side.
+    /// </para>
+    /// </remarks>
     public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
     {
+        if (!Contributes(in position))
+        {
+            var onPlane = OnPlane(in position);
+            _inner.MemberDistancesToDiscontinuity(in onPlane, distances);
+
+            for (var k = 0; k < distances.Length; k++)
+            {
+                distances[k] = double.IsNaN(distances[k]) ? double.NaN : Math.CopySign(double.PositiveInfinity, distances[k]);
+            }
+
+            return;
+        }
+
         var mirrored = Reflect(in position);
         _inner.MemberDistancesToDiscontinuity(in mirrored, distances);
     }
+
+    // The point on the plane straight across from a position: its own image.
+    private Vec3 OnPlane(in Vec3 position) => new(_reflection.PlaneX, position.Y, position.Z);
+
+    /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates) => _inner.DiscontinuityMemberGates(gates);
 
     /// <inheritdoc/>
     public double ResolutionLength => _inner.ResolutionLength;

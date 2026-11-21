@@ -74,6 +74,53 @@ public static class DiscontinuityDistance
     public static void Members(IReadOnlyList<IElectrostaticField> elements, int[] offsets, in Vec3 position, Span<double> distances) =>
         Members(elements, offsets, in position, distances, static (e, in p, d) => e.MemberDistancesToDiscontinuity(in p, d));
 
+    /// <summary>Every member's gate in a sum (<see cref="IElectrostaticField.DiscontinuityMemberGates"/>), in the sum's numbering.</summary>
+    /// <param name="elements">The elements.</param>
+    /// <param name="offsets">Their offsets (<see cref="MemberOffsets(IReadOnlyList{IElectrostaticField})"/>).</param>
+    /// <param name="gates">Filled with every member's gate.</param>
+    public static void Gates(IReadOnlyList<IElectrostaticField> elements, int[] offsets, Span<int> gates) =>
+        Gates(elements, offsets, gates, static (e, g) => e.DiscontinuityMemberGates(g));
+
+    /// <summary>Reads every member's gate of an element into its slice.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
+    /// <param name="element">The element.</param>
+    /// <param name="gates">Its slice, in its own numbering.</param>
+    public delegate void GatesReader<in T>(T element, Span<int> gates);
+
+    /// <summary>Every member's gate in a sum of any kind of element: each element's own, moved to the sum's numbering.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
+    /// <param name="elements">The elements.</param>
+    /// <param name="offsets">Their offsets.</param>
+    /// <param name="gates">Filled with every member's gate, or -1.</param>
+    /// <param name="read">Reads an element's gates into its slice.</param>
+    public static void Gates<T>(IReadOnlyList<T> elements, int[] offsets, Span<int> gates, GatesReader<T> read)
+    {
+        ArgumentNullException.ThrowIfNull(elements);
+        ArgumentNullException.ThrowIfNull(offsets);
+        ArgumentNullException.ThrowIfNull(read);
+
+        for (var i = 0; i < elements.Count; i++)
+        {
+            var slice = gates[offsets[i]..offsets[i + 1]];
+            read(elements[i], slice);
+            Shift(slice, offsets[i]);
+        }
+    }
+
+    /// <summary>Moves gates read in a part's own numbering to where the part's members start.</summary>
+    /// <param name="gates">The part's slice.</param>
+    /// <param name="offset">Where its members start.</param>
+    public static void Shift(Span<int> gates, int offset)
+    {
+        for (var k = 0; k < gates.Length; k++)
+        {
+            if (gates[k] >= 0)
+            {
+                gates[k] += offset;
+            }
+        }
+    }
+
     /// <summary>Reads one member of an element.</summary>
     /// <typeparam name="T">The element type.</typeparam>
     /// <param name="element">The element.</param>

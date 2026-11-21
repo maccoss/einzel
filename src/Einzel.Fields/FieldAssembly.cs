@@ -52,6 +52,10 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded
         DiscontinuityDistance.Members(_elements, _members, in position, distances);
 
     /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates) =>
+        DiscontinuityDistance.Gates(_elements, _members, gates);
+
+    /// <inheritdoc/>
     /// <remarks>
     /// The nearest conductor over every element that has any. Potentials
     /// superpose; solid bodies do not, they simply coexist, so this is a union

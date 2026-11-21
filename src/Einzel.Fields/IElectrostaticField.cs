@@ -138,6 +138,20 @@ public interface IElectrostaticField
     }
 
     /// <summary>
+    /// For each member, the member whose surface bounds where it is finite, or -1 for none.
+    /// </summary>
+    /// <param name="gates">Filled with one entry per member; as long as <see cref="DiscontinuityMembers"/>.</param>
+    /// <remarks>
+    /// A bounded element's inner members are finite inside its box and plus infinity outside, so
+    /// the box member gates them: a gated member changes between finite and infinite only on its
+    /// gate's surface, and a step that starts on that surface - having just landed there - has
+    /// already landed on that change. Asked once, when a flight starts: it is a property of how the
+    /// field is composed, not of where the ion is. The integrator reads it instead of probing a
+    /// hair along the step.
+    /// </remarks>
+    void DiscontinuityMemberGates(Span<int> gates) => gates.Fill(-1);
+
+    /// <summary>
     /// The length scale on which this field is resolved. Infinite for a field
     /// given in closed form.
     /// </summary>

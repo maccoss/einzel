@@ -4067,6 +4067,30 @@ Two findings from Stage 1 that bear on the spec:
   study is told to leave it out again, where the command line's reader had told it to give a value;
   and a CSV field holding NEL, LS, PS or FF is quoted.
 
+  **A fortieth review, and a member's domain made a property of the field.** A field now says which
+  member's surface bounds where each of its members is finite (`DiscontinuityMemberGates`, on the
+  electric and the magnetic side, passed through every wrapper and sum, held so by the wrapper guard):
+  a bounded element's box gates its inner members. The integrator reads it once per flight and drops
+  a gated member's change between finite and infinite when the step starts on its gate - the face it
+  just landed on - instead of probing 10^-9 along the step; a step grazing along a face makes no
+  landing. Where the bisection's first probe falls exactly on a surface there is no start-side probe
+  to re-check, so the members are read just short of the landing: an inner surface before such a
+  face is landed on first. The start-side readings are kept by swapping buffers, not copying. **A
+  reflected solve's halves now declare surfaces only where they answer**: the image read the declared
+  field through the mirror on both sides of the plane, and the declared half read its own on both
+  sides, so an ion in either half landed on the mirror of a surface that half does not have. Where a
+  half answers nothing each member is an infinity with the sign its measure has on the plane
+  straight across - plus infinity alone changed sign at a mirror edge wherever the declared measure
+  is negative there, a landing on a plane where nothing jumps - and the plane stays the declared
+  half's member. The mirror-plane tests now count what the integrator lands on rather than the sign of
+  the combined measure, which is a step cap's distance. **A stage may change what an analytic element
+  holds, not where it is**: a phase moving a region's bounds or a half-space's plane is refused,
+  naming the element and the phase, since a region is compiled once and the members are read off
+  the first state. No shipped model does it. A bounded field's combined measure gates on the box
+  member's sign as its members do. And the flag reader asks whether a file is a study only of an
+  argument that can name one, total over what a path can spell: `estimate "" --snapshots` is refused
+  as the empty argument, exit 1, where it was an internal error.
+
   Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
   key for the top view.
 

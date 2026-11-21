@@ -73,6 +73,10 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
         DiscontinuityDistance.Members(_elements, _members, in position, distances);
 
     /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates) =>
+        DiscontinuityDistance.Gates(_elements, _members, gates);
+
+    /// <inheritdoc/>
     public double MonochromaticPeriodSeconds
     {
         get

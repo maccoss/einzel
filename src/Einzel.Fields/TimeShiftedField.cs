@@ -166,6 +166,9 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
         _inner.MemberDistancesToDiscontinuity(position, distances);
 
     /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates) => _inner.DiscontinuityMemberGates(gates);
+
+    /// <inheritdoc/>
     public double FieldFreeRunLength(in Vec3 position, in Vec3 direction) =>
         _inner.FieldFreeRunLength(position, direction);
 }

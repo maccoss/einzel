@@ -68,33 +68,74 @@ internal sealed class DeclaredHalf(IElectrostaticField inner, Reflection reflect
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
-        var own = inner.SignedDistanceToDiscontinuity(in position);
+        var own = reflection.DeclaredAnswersAt(position.X) ? inner.SignedDistanceToDiscontinuity(in position) : double.PositiveInfinity;
         return _plane ? DiscontinuityDistance.Combine(own, reflection.PlaneMeasure(position.X)) : own;
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The inner field's own members, as they are on both sides of the plane - it declares the
-    /// surfaces it has, and the image declares their mirror - and, where the edge on the plane is
-    /// not a mirror, the plane, as one member of its own. Tracked separately, a surface of the
-    /// half's own that lies on the plane and the plane itself are one landing there, never two
-    /// that cancel; and the plane beyond the box, where nothing jumps, costs a landing and cannot
-    /// cancel a neighbouring element's surface there.
+    /// The inner field's own members where this half answers, and on the image's side an infinity
+    /// - no surface there - with the sign the member has on the plane straight across: the image
+    /// declares their mirror there (<see cref="ReflectedField"/>, gated the same way). Read on both
+    /// sides, as they were, a member changed sign on the image's side wherever the inner field had a
+    /// surface past the plane, and an ion there landed on a surface neither half declares. And,
+    /// where the edge on the plane is not a mirror, the plane, as one member of its own, on both
+    /// sides. Tracked separately, a surface of the half's own that lies on the plane and the plane
+    /// itself are one landing there, never two that cancel; and the plane beyond the box, where
+    /// nothing jumps, costs a landing and cannot cancel a neighbouring element's surface there.
     /// </remarks>
     public int DiscontinuityMembers => _own + (_plane ? 1 : 0);
 
     /// <inheritdoc/>
-    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
-        member < _own ? inner.MemberDistanceToDiscontinuity(member, in position) : reflection.PlaneMeasure(position.X);
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        if (member >= _own)
+        {
+            return reflection.PlaneMeasure(position.X);
+        }
+
+        if (reflection.DeclaredAnswersAt(position.X))
+        {
+            return inner.MemberDistanceToDiscontinuity(member, in position);
+        }
+
+        var onPlane = new Vec3(reflection.PlaneX, position.Y, position.Z);
+        return Math.CopySign(double.PositiveInfinity, inner.MemberDistanceToDiscontinuity(member, in onPlane));
+    }
 
     /// <inheritdoc/>
     public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
     {
-        inner.MemberDistancesToDiscontinuity(in position, distances[.._own]);
+        if (reflection.DeclaredAnswersAt(position.X))
+        {
+            inner.MemberDistancesToDiscontinuity(in position, distances[.._own]);
+        }
+        else
+        {
+            var onPlane = new Vec3(reflection.PlaneX, position.Y, position.Z);
+            var own = distances[.._own];
+            inner.MemberDistancesToDiscontinuity(in onPlane, own);
+
+            for (var k = 0; k < own.Length; k++)
+            {
+                own[k] = double.IsNaN(own[k]) ? double.NaN : Math.CopySign(double.PositiveInfinity, own[k]);
+            }
+        }
 
         if (_plane)
         {
             distances[_own] = reflection.PlaneMeasure(position.X);
+        }
+    }
+
+    /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates)
+    {
+        inner.DiscontinuityMemberGates(gates[.._own]);
+
+        if (_plane)
+        {
+            gates[_own] = -1;
         }
     }
 

@@ -304,6 +304,14 @@ public static class Program
 
             if ((flags.Values.Contains(flag) && values.Any(v => v is null)) || ((flags.Values.Contains(flag) || flags.Optional.Contains(flag)) && emptied))
             {
+                // Whether the file is a study decides what a bare --snapshots is told, and asking
+                // means reading it: done only for an argument that can name a file. A blank one is
+                // the mistake to report, and is, below.
+                if (StudyDecidesTheSuggestion(key, flag) && !NamesAFile(options))
+                {
+                    continue;
+                }
+
                 refusal = new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
@@ -311,7 +319,9 @@ public static class Program
                     Constraint = emptied
                         ? $"--{flag} takes a value, and the one given is empty"
                         : $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
-                    Suggestion = ValueSuggestion(key, flag, options),
+                    Suggestion = StudyDecidesTheSuggestion(key, flag) && IsStudy(options.Positional[0])
+                        ? "leave out --snapshots: a study records no instants"
+                        : $"give --{flag} its value, as --{flag} <value>",
                 };
                 break;
             }
@@ -582,13 +592,13 @@ public static class Program
         }
     }
 
-    // What to do about a value flag given no value. Usually: give it one. A study records no
-    // instants, so a bare --snapshots on one is told to leave the flag out, as every other refusal
-    // of it on a study is - giving it a value would only be refused next.
-    private static string ValueSuggestion(string key, string flag, CommandLine options) =>
-        key == "estimate" && flag == "snapshots" && options.Positional.Count > 0 && IsStudy(options.Positional[0])
-            ? "leave out --snapshots: a study records no instants"
-            : $"give --{flag} its value, as --{flag} <value>";
+    // A study records no instants, so a bare --snapshots on one is told to leave the flag out, as
+    // every other refusal of it on a study is - giving it a value would only be refused next.
+    private static bool StudyDecidesTheSuggestion(string key, string flag) => key == "estimate" && flag == "snapshots";
+
+    // Whether the command line's first argument can name a file at all.
+    private static bool NamesAFile(CommandLine options) =>
+        options.Positional.Count > 0 && !string.IsNullOrWhiteSpace(options.Positional[0]);
 
     private static int Unknown(string verb)
     {
@@ -1333,10 +1343,12 @@ public static class Program
                 && model.ValueKind == System.Text.Json.JsonValueKind.String;
         }
         catch (Exception failure) when (
-            failure is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+            failure is IOException or System.Text.Json.JsonException or UnauthorizedAccessException
+                or ArgumentException or NotSupportedException)
         {
-            // Not readable or not JSON: let the model path report it properly, with
-            // AGT-3's code and suggestion, rather than failing here as "not a study".
+            // Not readable, not a path or not JSON: let the model path report it properly, with
+            // AGT-3's code and suggestion, rather than failing here as "not a study". Total, so
+            // nothing a command line can spell ends here as an internal error.
             return false;
         }
     }
@@ -1399,8 +1411,8 @@ public static class Program
 
         if (options.Has("snapshots"))
         {
-            // A bare --snapshots never reaches here: the command line's reader refuses a value
-            // flag given no value, at the flag, with a study told to leave it out.
+            // A bare --snapshots never reaches here: the command line's reader refuses a value flag
+            // given no value, at the flag, a study told to leave it out.
             var instants = options.Value("snapshots")!;
 
             if (!TryWhole(instants, 0, int.MaxValue, out snapshots))

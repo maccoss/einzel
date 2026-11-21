@@ -121,8 +121,9 @@ public class BoundedField : IElectrostaticField
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
+        // The one predicate the members use: the box member's own sign.
         var toBoundary = Region.SignedDistance(in position);
-        return Region.Contains(in position)
+        return toBoundary <= 0.0
             ? DiscontinuityDistance.Combine(toBoundary, _inner.SignedDistanceToDiscontinuity(in position))
             : toBoundary;
     }
@@ -154,10 +155,13 @@ public class BoundedField : IElectrostaticField
     /// member set at a point is one reading, and a face is closed for the inner members as it is for
     /// the box.
     /// </remarks>
-    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
-        member == 0 ? Region.SignedDistance(in position)
-            : Region.SignedDistance(in position) <= 0.0 ? _inner.MemberDistanceToDiscontinuity(member - 1, in position)
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        var box = Region.SignedDistance(in position);
+        return member == 0 ? box
+            : box <= 0.0 ? _inner.MemberDistanceToDiscontinuity(member - 1, in position)
             : double.PositiveInfinity;
+    }
 
     /// <inheritdoc />
     public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
@@ -172,6 +176,22 @@ public class BoundedField : IElectrostaticField
         else
         {
             distances[1..].Fill(double.PositiveInfinity);
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The box member gates every inner member, except one the inner field already gates by a
+    /// surface of its own, which is nearer to it.
+    /// </remarks>
+    public void DiscontinuityMemberGates(Span<int> gates)
+    {
+        gates[0] = -1;
+        _inner.DiscontinuityMemberGates(gates[1..]);
+
+        for (var k = 1; k < gates.Length; k++)
+        {
+            gates[k] = gates[k] >= 0 ? gates[k] + 1 : 0;
         }
     }
 

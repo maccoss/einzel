@@ -99,7 +99,7 @@ public static class TrajectoryIntegrator
 
         // Where a field tracks several discontinuity members, the buffers their measures are read
         // into, made once per flight so the step loop allocates nothing.
-        var members = field.DiscontinuityMembers > 1 ? new MemberScratch(field.DiscontinuityMembers) : null;
+        var members = field.DiscontinuityMembers > 1 ? new MemberScratch(field) : null;
 
         // Conductors, when the field has any. Expressed as a stopping surface
         // because that is exactly what an electrode is - the ion stops on it - and
@@ -714,22 +714,41 @@ public static class TrajectoryIntegrator
     // integrator's own advance has happened between them: the measures are functions of position
     // within a step (IElectrostaticField.MemberDistancesToDiscontinuity), and a landed sequencer
     // switch, a collision or an analytic drift is something else, so each forgets the end.
-    private sealed class MemberScratch(int count)
+    private sealed class MemberScratch
     {
-        public double[] Start { get; set; } = new double[count];
+        public MemberScratch(IElectrostaticField field)
+        {
+            var count = field.DiscontinuityMembers;
+            Start = new double[count];
+            End = new double[count];
+            Marked = new double[count];
+            Probe = new double[count];
+            Inside = new double[count];
+            Gates = new int[count];
+            field.DiscontinuityMemberGates(Gates);
+        }
 
-        public double[] End { get; set; } = new double[count];
+        public double[] Start { get; set; }
+
+        public double[] End { get; set; }
 
         // The start's measures for the members that change sign over the step, not a number for the
         // rest: what the bisection compares each probe's signs with.
-        public double[] Marked { get; } = new double[count];
+        public double[] Marked { get; }
 
-        // Where the bisection reads each probe, and a nudge just off a surface the step starts on.
-        public double[] Probe { get; } = new double[count];
+        // Where the bisection reads a probe. Swapped with Inside when the probe is on the start side,
+        // rather than copied.
+        public double[] Probe { get; set; }
 
-        // The members at the bisection's last probe on the start side of the crossing: the inner side
-        // of the landing's bracket.
-        public double[] Inside { get; } = new double[count];
+        // The members at the bisection's last probe on the start side of the crossing - the inner side
+        // of the landing's bracket - once InsideRead says one has been read.
+        public double[] Inside { get; set; }
+
+        public bool InsideRead { get; set; }
+
+        // For each member, the member whose surface bounds where it is finite, or -1
+        // (IElectrostaticField.DiscontinuityMemberGates): a property of the field, read once.
+        public int[] Gates { get; }
 
         // Where End was read, if it still holds that point's measures and nothing has happened since
         // but the step that ended there.
@@ -802,59 +821,27 @@ public static class TrajectoryIntegrator
         // probes with.
         var crossing = false;
         var marked = members.Marked;
-        var onSurface = false;
-        var domainOnly = false;
+        var gates = members.Gates;
 
         for (var k = 0; k < start.Length; k++)
         {
             // Sitting on this member's surface having just landed there, or not changing sign over
             // the step: left out of the bisection's test, marked as not a number. An infinity is a
             // sign like any other: a member infinite at one end and finite at the other has changed
-            // sign or not by the signs alone.
+            // sign or not by the signs alone - unless the change is between finite and infinite and
+            // the step starts on the surface of the member that gates it: then it changed at the face
+            // the step starts on, which was the last landing, and is no crossing of its own.
+            var gate = gates[k];
             marked[k] = double.IsNaN(start[k]) || start[k] == 0.0 || double.IsNaN(end[k]) || Math.Sign(end[k]) == Math.Sign(start[k])
+                || (gate >= 0 && start[gate] == 0.0 && double.IsInfinity(start[k]) != double.IsInfinity(end[k]))
                 ? double.NaN
                 : start[k];
             crossing |= !double.IsNaN(marked[k]);
-            onSurface |= start[k] == 0.0;
-            domainOnly |= !double.IsNaN(marked[k]) && double.IsInfinity(start[k]) != double.IsInfinity(end[k]);
         }
 
         if (!crossing)
         {
             return double.PositiveInfinity;
-        }
-
-        var probe = members.Probe;
-
-        if (onSurface && domainOnly)
-        {
-            // The step starts on a surface it has just landed on - a box face - and a member is finite
-            // at one end and infinite at the other: a member that has no surface outside the box. If it
-            // is already what it is at the end a hair along the step, its change happened at the face
-            // the step starts on, which was the last landing: no crossing of its own.
-            var nudge = from + ((to - from) * 1e-9);
-            field.MemberDistancesToDiscontinuity(in nudge, probe);
-            fieldEvaluations++;
-            crossing = false;
-
-            for (var k = 0; k < start.Length; k++)
-            {
-                if (!double.IsNaN(marked[k])
-                    && double.IsInfinity(start[k]) != double.IsInfinity(end[k])
-                    && double.IsInfinity(probe[k]) == double.IsInfinity(end[k])
-                    && !double.IsNaN(probe[k]) && probe[k] != 0.0
-                    && Math.Sign(probe[k]) == Math.Sign(end[k]))
-                {
-                    marked[k] = double.NaN;
-                }
-
-                crossing |= !double.IsNaN(marked[k]);
-            }
-
-            if (!crossing)
-            {
-                return double.PositiveInfinity;
-            }
         }
 
         // The bisection lands on the earliest crossing among the marked members. A member that is
@@ -863,15 +850,29 @@ public static class TrajectoryIntegrator
         // marked; but its finite, changed sign is there at the inner side of the box landing's
         // bracket. So the members read there are asked again, and any that is finite and of the other
         // sign from the start joins the marked set and the bisection is repeated over the step as far
-        // as that landing. No member is read for it but the probes the bisection reads anyway.
-        var inside = members.Inside;
-        start.CopyTo(inside, 0);
+        // as that landing. The inner side is the bisection's last probe on the start side; where it
+        // had none - its first probe fell exactly on the surface, or every probe was past - the
+        // members are read just short of the landing instead.
+        members.InsideRead = false;
         var landing = LandingStep(
-            in state, in derivative, step, field, chargeToMass, new Members(field, marked, probe, inside), timeSeconds,
+            in state, in derivative, step, field, chargeToMass, new Members(field, marked, members), timeSeconds,
             ref fieldEvaluations);
 
         while (true)
         {
+            if (!members.InsideRead)
+            {
+                DormandPrince54.Step(
+                    in state, in derivative, landing * (1.0 - 1e-9), field, chargeToMass,
+                    out var shortOf, out _, out _, out _, timeSeconds);
+                fieldEvaluations += 6;
+
+                var at = shortOf.Position;
+                field.MemberDistancesToDiscontinuity(in at, members.Inside);
+                fieldEvaluations++;
+            }
+
+            var inside = members.Inside;
             var joined = false;
 
             for (var k = 0; k < start.Length; k++)
@@ -889,9 +890,9 @@ public static class TrajectoryIntegrator
                 return landing;
             }
 
-            start.CopyTo(inside, 0);
+            members.InsideRead = false;
             landing = LandingStep(
-                in state, in derivative, landing, field, chargeToMass, new Members(field, marked, probe, inside), timeSeconds,
+                in state, in derivative, landing, field, chargeToMass, new Members(field, marked, members), timeSeconds,
                 ref fieldEvaluations);
         }
     }
@@ -917,11 +918,12 @@ public static class TrajectoryIntegrator
     // exactly on its surface: a probe exactly on a later member's surface, with an earlier member
     // already past, is past - returned as on, it landed on the later surface and straddled the
     // earlier. An infinity reads by its sign.
-    private readonly struct Members(IElectrostaticField field, double[] marked, double[] probe, double[] inside) : ILandingSurface
+    private readonly struct Members(IElectrostaticField field, double[] marked, MemberScratch scratch) : ILandingSurface
     {
         public int Side(in PhaseState state)
         {
             var position = state.Position;
+            var probe = scratch.Probe;
             field.MemberDistancesToDiscontinuity(in position, probe);
 
             var on = false;
@@ -943,14 +945,16 @@ public static class TrajectoryIntegrator
                 }
             }
 
-            if (!on)
+            if (on)
             {
-                // On the start side: the inner side of the bracket so far.
-                probe.CopyTo(inside, 0);
-                return 1;
+                return 0;
             }
 
-            return 0;
+            // On the start side: this reading becomes the inner side of the bracket so far, by
+            // swapping the two buffers rather than copying one into the other.
+            (scratch.Probe, scratch.Inside) = (scratch.Inside, scratch.Probe);
+            scratch.InsideRead = true;
+            return 1;
         }
     }
 

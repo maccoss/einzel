@@ -143,6 +143,11 @@ public interface IMagneticField
             distances[k] = MagneticMemberDistanceToDiscontinuity(k, in position);
         }
     }
+
+    /// <summary>For each magnetic member, the member whose surface bounds where it is finite, or -1.</summary>
+    /// <param name="gates">Filled with one entry per member; as long as <see cref="MagneticDiscontinuityMembers"/>.</param>
+    /// <remarks>The magnetic side of <see cref="IElectrostaticField.DiscontinuityMemberGates"/>.</remarks>
+    void MagneticDiscontinuityMemberGates(Span<int> gates) => gates.Fill(-1);
 }
 
 /// <summary>The refusal every path that cannot honour a magnetic field raises.</summary>

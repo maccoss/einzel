@@ -388,25 +388,29 @@ public sealed class MirrorPlaneTests
 
         // The sum of a half whose face is the plane, on a grounded edge: a surface at the plane.
         var sum = new Reflection(Plane, true).Sum(new Edged(Plane));
-        Assert.NotEqual(
-            Math.Sign(sum.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0))),
-            Math.Sign(sum.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.0, 0.0))));
+        Assert.True(Crossings(sum, new Vec3(Plane - 0.001, 0.0, 0.0), new Vec3(Plane + 0.001, 0.0, 0.0)) >= 1);
 
-        // A surface the declared half declares 2 mm past the plane is mirrored 2 mm before it: the
-        // image's measure at a point is the inner field's at its mirror, on either side.
+        // A surface the declared half declares 2 mm past the plane is mirrored 2 mm before it, on the
+        // image's side only: where the image answers, its measure is the inner field's at the mirror;
+        // in the declared half it answers nothing and declares nothing - an infinity of one sign - so
+        // an ion there crosses no phantom of it.
         var inner = new Edged(Plane + 0.002);
         var phantom = new Reflection(Plane, true).Image(inner);
 
-        foreach (var x in new[] { Plane - 0.003, Plane - 0.001, Plane + 0.001, Plane + 0.003 })
+        foreach (var x in new[] { Plane + 0.001, Plane + 0.003 })
         {
             Assert.Equal(
                 inner.SignedDistanceToDiscontinuity(new Vec3((2.0 * Plane) - x, 0.0, 0.0)),
-                phantom.SignedDistanceToDiscontinuity(new Vec3(x, 0.0, 0.0)));
+                phantom.MemberDistanceToDiscontinuity(0, new Vec3(x, 0.0, 0.0)));
         }
 
-        Assert.NotEqual(
-            Math.Sign(phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.0, 0.0))),
-            Math.Sign(phantom.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.003, 0.0, 0.0))));
+        foreach (var x in new[] { Plane - 0.003, Plane - 0.001 })
+        {
+            Assert.True(double.IsInfinity(phantom.MemberDistanceToDiscontinuity(0, new Vec3(x, 0.0, 0.0))));
+            Assert.Equal(double.PositiveInfinity, phantom.SignedDistanceToDiscontinuity(new Vec3(x, 0.0, 0.0)));
+        }
+
+        Assert.Equal(0, Crossings(phantom, new Vec3(Plane - 0.003, 0.0, 0.0), new Vec3(Plane - 0.001, 0.0, 0.0)));
     }
 
     // A declared half at kilometre scale whose box edge is the plane to a rounding: its measure on
@@ -424,8 +428,9 @@ public sealed class MirrorPlaneTests
     }
 
     /// <summary>
-    /// At kilometre scale, a face of the half's own on the plane to a rounding and the plane itself
-    /// are two members changing sign there - one landing - with no tolerance to scale.
+    /// At kilometre scale, a face of the half's own on the plane to a rounding - here 1e-10 m past it,
+    /// on the image's side, where the half declares nothing - leaves the plane itself to land on,
+    /// with no tolerance to scale.
     /// </summary>
     /// <remarks>
     /// The plane was declared by a face test whose tolerance had to scale with the geometry; a fixed
@@ -439,7 +444,7 @@ public sealed class MirrorPlaneTests
         var below = new Vec3(FarEdge.Mirror - 1.0, 0.0, 0.0);
         var above = new Vec3(FarEdge.Mirror + 1.0, 0.0, 0.0);
 
-        Assert.Equal(2, MemberChanges(owner, below, above));
+        Assert.Equal(1, Crossings(owner, below, above));
         Assert.Equal(1.0, owner.MemberDistanceToDiscontinuity(1, in below), 12);
         Assert.Equal(-1.0, owner.MemberDistanceToDiscontinuity(1, in above), 12);
     }
@@ -557,28 +562,32 @@ public sealed class MirrorPlaneTests
     [Fact]
     public void TheDeclaredHalfDeclaresItsOwnSurfacesAndThePlaneApart()
     {
-        double Measure(IElectrostaticField field, double x) => field.SignedDistanceToDiscontinuity(new Vec3(x, 0.0, 0.0));
         Vec3 At(double x) => new(x, 0.0, 0.0);
 
-        // A surface 2 mm past the plane is declared there, behind a mirror edge, and nothing else.
+        // A surface 2 mm past the plane, behind a mirror edge: past the plane the declared half
+        // answers nothing and declares nothing - the image declares what stands there - so neither
+        // that surface nor the plane is crossed.
         var mirror = new Reflection(Plane, ImageAbove: true, EdgeIsContinuous: true).Declared(new Edged(Plane + 0.002));
         Assert.Equal(1, mirror.DiscontinuityMembers);
-        Assert.Equal(1, MemberChanges(mirror, At(Plane + 0.001), At(Plane + 0.003)));
-        Assert.Equal(0, MemberChanges(mirror, At(Plane - 0.0005), At(Plane + 0.001)));
+        Assert.Equal(0, Crossings(mirror, At(Plane + 0.001), At(Plane + 0.003)));
+        Assert.Equal(0, Crossings(mirror, At(Plane - 0.0005), At(Plane + 0.001)));
 
         // Behind a grounded edge, the plane besides: a member of its own, changing at the plane.
         var grounded = new Reflection(Plane, ImageAbove: true).Declared(new Edged(Plane + 0.002));
         Assert.Equal(2, grounded.DiscontinuityMembers);
-        Assert.Equal(1, MemberChanges(grounded, At(Plane - 0.0005), At(Plane + 0.001)));
-        Assert.Equal(1, MemberChanges(grounded, At(Plane + 0.001), At(Plane + 0.003)));
+        Assert.Equal(1, Crossings(grounded, At(Plane - 0.0005), At(Plane + 0.001)));
+        Assert.Equal(0, Crossings(grounded, At(Plane + 0.001), At(Plane + 0.003)));
         Assert.Equal(0.001, Math.Abs(grounded.MemberDistanceToDiscontinuity(1, At(Plane + 0.001))), 12);
+
+        // A surface of its own before the plane, on the declared side: declared where it is.
+        var near = new Reflection(Plane, ImageAbove: true).Declared(new Edged(Plane - 0.002));
+        Assert.Equal(1, Crossings(near, At(Plane - 0.003), At(Plane - 0.001)));
 
         // A face of its own on the plane, on a grounded edge: two members changing there, which the
         // integrator lands on once. Combined into one sign they would cancel - which is why they are
         // not combined for landing.
         var faced = new Reflection(Plane, ImageAbove: true).Declared(new Edged(Plane));
-        Assert.Equal(2, MemberChanges(faced, At(Plane - 0.001), At(Plane + 0.001)));
-        Assert.Equal(Math.Sign(Measure(faced, Plane - 0.001)), Math.Sign(Measure(faced, Plane + 0.001)));
+        Assert.Equal(2, Crossings(faced, At(Plane - 0.001), At(Plane + 0.001)));
     }
 
     // A half with a face on the plane and a field through it or along it: its box is 0 to the
@@ -612,13 +621,14 @@ public sealed class MirrorPlaneTests
     [Fact]
     public void APlaneIsASurfaceUnlessItsEdgeIsContinuous()
     {
-        double Sign(IElectrostaticField field, double x, double y = 0.001) => Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(x, y, 0.0)));
+        int Across(IElectrostaticField field, double y = 0.001) =>
+            Crossings(field, new Vec3(Plane - 0.0005, y, 0.0), new Vec3(Plane + 0.0005, y, 0.0));
 
         // A mirror edge: no surface, even with a field through it as its declared value says.
         foreach (var inside in new[] { new Vec3(0.0, 1000.0, 0.0), new Vec3(1000.0, 0.0, 0.0) })
         {
             var mirror = new Reflection(Plane, ImageAbove: true, EdgeIsContinuous: true).Sum(new Through(inside));
-            Assert.Equal(Sign(mirror, Plane - 0.0005), Sign(mirror, Plane + 0.0005));
+            Assert.Equal(0, Across(mirror));
         }
 
         // Any other edge: one surface, whatever the field there - an extra landing where it
@@ -626,8 +636,8 @@ public sealed class MirrorPlaneTests
         foreach (var inside in new[] { new Vec3(0.0, 1000.0, 0.0), new Vec3(1000.0, 0.0, 0.0) })
         {
             var edged = new Reflection(Plane, ImageAbove: true).Sum(new Through(inside));
-            Assert.NotEqual(Sign(edged, Plane - 0.0005), Sign(edged, Plane + 0.0005));
-            Assert.NotEqual(Sign(edged, Plane - 0.0005, -0.001), Sign(edged, Plane + 0.0005, -0.001));
+            Assert.True(Across(edged) >= 1);
+            Assert.True(Across(edged, -0.001) >= 1);
         }
     }
 
@@ -669,45 +679,74 @@ public sealed class MirrorPlaneTests
         };
 
         var (field, _) = GeometryBuilder.Build(solve);
-        var before = Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, 0.006, 0.0)));
-        var after = Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.006, 0.0)));
 
-        Assert.Equal(surface, before != after);
+        Assert.Equal(surface, Crossings(field, new Vec3(Plane - 2e-4, 0.006, 0.0), new Vec3(Plane + 2e-4, 0.006, 0.0)) > 0);
         Assert.Equal(!surface, GeometryBuilder.ReflectionOf(solve)!.EdgeIsContinuous);
 
         // Above the box, where neither half has field: on a grounded edge the one change of sign
         // no surface stands behind is the plane there (see AReflectedCrossSectionsRimIsOneSurfaceEach);
         // on a mirror, nothing.
-        Assert.Equal(
-            surface,
-            Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane - 2e-4, 0.02, 0.0)))
-                != Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(Plane + 2e-4, 0.02, 0.0))));
+        Assert.Equal(surface, Crossings(field, new Vec3(Plane - 2e-4, 0.02, 0.0), new Vec3(Plane + 2e-4, 0.02, 0.0)) > 0);
     }
 
-    // How many times a field's discontinuity measure changes sign along a segment, sampled finely.
+    // How many landings the integrator makes along a segment, sampled finely: the places where any
+    // member has changed sign since its last reading off its surface - several members changing at
+    // one place are one landing. The combined measure is a step cap's distance and no longer what a
+    // landing is decided by, so its sign is not asked.
     private static int SignChanges(IElectrostaticField field, Vec3 from, Vec3 to, int samples = 4000)
     {
-        var changes = 0;
-        var last = 0;
+        var count = field.DiscontinuityMembers;
+        var last = new int[count];
+        var reading = new double[count];
+        var landings = 0;
 
         for (var i = 0; i <= samples; i++)
         {
             var t = (double)i / samples;
             var p = new Vec3(from.X + (t * (to.X - from.X)), from.Y + (t * (to.Y - from.Y)), from.Z + (t * (to.Z - from.Z)));
-            var sign = Math.Sign(field.SignedDistanceToDiscontinuity(in p));
+            field.MemberDistancesToDiscontinuity(in p, reading);
 
-            if (sign != 0 && last != 0 && sign != last)
+            var landed = false;
+
+            for (var k = 0; k < count; k++)
             {
-                changes++;
+                if (double.IsNaN(reading[k]) || reading[k] == 0.0)
+                {
+                    continue;
+                }
+
+                var sign = Math.Sign(reading[k]);
+                landed |= last[k] != 0 && sign != last[k];
+                last[k] = sign;
             }
 
-            if (sign != 0)
+            landings += landed ? 1 : 0;
+        }
+
+        return landings;
+    }
+
+    // How many members change sign between two points, as the integrator reads them: an infinity
+    // by its sign, a member exactly on its surface or not a number at either end never.
+    private static int Crossings(IElectrostaticField field, Vec3 a, Vec3 b)
+    {
+        var count = field.DiscontinuityMembers;
+        var at = new double[count];
+        var to = new double[count];
+        field.MemberDistancesToDiscontinuity(in a, at);
+        field.MemberDistancesToDiscontinuity(in b, to);
+
+        var crossings = 0;
+
+        for (var k = 0; k < count; k++)
+        {
+            if (!double.IsNaN(at[k]) && !double.IsNaN(to[k]) && at[k] != 0.0 && to[k] != 0.0 && Math.Sign(at[k]) != Math.Sign(to[k]))
             {
-                last = sign;
+                crossings++;
             }
         }
 
-        return changes;
+        return crossings;
     }
 
     /// <summary>
@@ -930,10 +969,7 @@ public sealed class MirrorPlaneTests
         var inside = new Vec3(Plane - 0.001, 0.011, 0.0);
         var past = new Vec3(Plane + 0.001, 0.013, 0.0);
 
-        Assert.Equal(2, MemberChanges(field, inside, past));
-        Assert.Equal(
-            Math.Sign(field.SignedDistanceToDiscontinuity(in inside)),
-            Math.Sign(field.SignedDistanceToDiscontinuity(in past)));
+        Assert.True(Crossings(field, inside, past) >= 2, $"{Crossings(field, inside, past)} crossings");
     }
 
     /// <summary>
@@ -1048,14 +1084,14 @@ public sealed class MirrorPlaneTests
         };
 
         var (field, _) = GeometryBuilder.Build(solve);
-        double Sign(double x) => Math.Sign(field.SignedDistanceToDiscontinuity(new Vec3(x, 0.006, 0.0)));
+        int Across(double x) => Crossings(field, new Vec3(x - 2e-4, 0.006, 0.0), new Vec3(x + 2e-4, 0.006, 0.0));
 
         Assert.True(GeometryBuilder.ReflectionOf(solve)!.EdgeIsContinuous);
-        Assert.Equal(Sign(Plane - 2e-4), Sign(Plane + 2e-4));
+        Assert.Equal(0, Across(Plane));
 
         // Its own edge, a gap's width short of the plane, and that edge's image, are surfaces.
-        Assert.NotEqual(Sign(Plane - 0.002 - 2e-4), Sign(Plane - 0.002 + 2e-4));
-        Assert.NotEqual(Sign(Plane + 0.002 - 2e-4), Sign(Plane + 0.002 + 2e-4));
+        Assert.True(Across(Plane - 0.002) >= 1);
+        Assert.True(Across(Plane + 0.002) >= 1);
     }
 
     /// <summary>
@@ -1133,14 +1169,15 @@ public sealed class MirrorPlaneTests
     {
         var owner = new Reflection(Plane, ImageAbove: true).Declared(new Through(new Vec3(1000.0, 0.0, 0.0), signedByY: true));
 
-        var above = owner.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.001, 0.0));
-        var below = owner.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, -0.001, 0.0));
+        // On the declared side, where the half's own measure stands beside the plane's.
+        var above = owner.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.001, 0.0));
+        var below = owner.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, -0.001, 0.0));
 
         Assert.NotEqual(Math.Sign(above), Math.Sign(below));
 
         // Asked again in the other order, the same answers.
-        Assert.Equal(below, owner.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, -0.001, 0.0)));
-        Assert.Equal(above, owner.SignedDistanceToDiscontinuity(new Vec3(Plane + 0.001, 0.001, 0.0)));
+        Assert.Equal(below, owner.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, -0.001, 0.0)));
+        Assert.Equal(above, owner.SignedDistanceToDiscontinuity(new Vec3(Plane - 0.001, 0.001, 0.0)));
 
         foreach (var type in new[] { owner.GetType(), typeof(ReflectedField) })
         {

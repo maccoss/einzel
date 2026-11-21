@@ -171,9 +171,10 @@ public sealed class BoundedMagneticField : IMagneticField
             return double.PositiveInfinity;
         }
 
+        // The one predicate the members use: the box member's own sign.
         var toBoundary = Region.SignedDistance(in position);
 
-        if (!Region.Contains(in position))
+        if (toBoundary > 0.0)
         {
             return toBoundary;
         }
@@ -192,11 +193,18 @@ public sealed class BoundedMagneticField : IMagneticField
     public int MagneticDiscontinuityMembers => 1 + _inner.MagneticDiscontinuityMembers;
 
     /// <inheritdoc />
-    public double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position) =>
-        _inner.MaximumFluxDensity == 0.0 ? double.PositiveInfinity
-            : member == 0 ? Region.SignedDistance(in position)
-            : Region.SignedDistance(in position) <= 0.0 ? _inner.MagneticMemberDistanceToDiscontinuity(member - 1, in position)
+    public double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        if (_inner.MaximumFluxDensity == 0.0)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var box = Region.SignedDistance(in position);
+        return member == 0 ? box
+            : box <= 0.0 ? _inner.MagneticMemberDistanceToDiscontinuity(member - 1, in position)
             : double.PositiveInfinity;
+    }
 
     /// <inheritdoc />
     public void MagneticMemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
@@ -218,6 +226,24 @@ public sealed class BoundedMagneticField : IMagneticField
         else
         {
             distances[1..].Fill(double.PositiveInfinity);
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The box gates every inner member, except one the inner field already gates itself.</remarks>
+    public void MagneticDiscontinuityMemberGates(Span<int> gates)
+    {
+        if (gates.Length == 0)
+        {
+            return;
+        }
+
+        gates[0] = -1;
+        _inner.MagneticDiscontinuityMemberGates(gates[1..]);
+
+        for (var k = 1; k < gates.Length; k++)
+        {
+            gates[k] = gates[k] >= 0 ? gates[k] + 1 : 0;
         }
     }
 
@@ -353,4 +379,8 @@ public sealed class SuperposedMagneticField : IMagneticField
     public void MagneticMemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances) =>
         DiscontinuityDistance.Members(
             _elements, _offsets, in position, distances, static (e, in p, d) => e.MagneticMemberDistancesToDiscontinuity(in p, d));
+
+    /// <inheritdoc />
+    public void MagneticDiscontinuityMemberGates(Span<int> gates) =>
+        DiscontinuityDistance.Gates(_elements, _offsets, gates, static (e, g) => e.MagneticDiscontinuityMemberGates(g));
 }

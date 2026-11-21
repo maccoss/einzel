@@ -21,6 +21,7 @@ public sealed class DiscontinuityMembersGuardTests(ITestOutputHelper output)
         "get_" + nameof(IElectrostaticField.DiscontinuityMembers),
         nameof(IElectrostaticField.MemberDistanceToDiscontinuity),
         nameof(IElectrostaticField.MemberDistancesToDiscontinuity),
+        nameof(IElectrostaticField.DiscontinuityMemberGates),
     ];
 
     // Whether a field's type holds a field: itself one, or an array or sequence of them.
@@ -101,6 +102,7 @@ public sealed class DiscontinuityMembersGuardTests(ITestOutputHelper output)
         "get_" + nameof(Einzel.Fields.Magnetic.IMagneticField.MagneticDiscontinuityMembers),
         nameof(Einzel.Fields.Magnetic.IMagneticField.MagneticMemberDistanceToDiscontinuity),
         nameof(Einzel.Fields.Magnetic.IMagneticField.MagneticMemberDistancesToDiscontinuity),
+        nameof(Einzel.Fields.Magnetic.IMagneticField.MagneticDiscontinuityMemberGates),
     ];
 
     /// <summary>The same rule on the magnetic side: a magnet holding a magnet passes its members through.</summary>

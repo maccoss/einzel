@@ -195,6 +195,9 @@ public sealed class RotatedField : IElectrostaticField, IConductorBounded
     }
 
     /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates) => _inner.DiscontinuityMemberGates(gates);
+
+    /// <inheritdoc/>
     public double ResolutionLength => _inner.ResolutionLength;
 
     /// <inheritdoc/>

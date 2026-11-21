@@ -689,6 +689,19 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     }
 
     /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates)
+    {
+        if (Metal is { } metal)
+        {
+            metal.DiscontinuityMemberGates(gates);
+        }
+        else
+        {
+            gates.Fill(-1);
+        }
+    }
+
+    /// <inheritdoc/>
     /// <remarks>
     /// Every channel is the same geometry at different potentials, so the metal is
     /// in the same place in all of them and the first is as good as any.
