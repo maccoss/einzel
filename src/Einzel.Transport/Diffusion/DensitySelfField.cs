@@ -1,3 +1,4 @@
+using Einzel.Core.Numerics;
 using Einzel.Fields.Solved;
 
 namespace Einzel.Transport.Diffusion;
@@ -50,6 +51,20 @@ public sealed class DensitySelfField
     private readonly double _tolerance;
     private readonly double[] _potential;
     private double[]? _solvedFor;
+
+    // A mixture's net charge density, made once and refilled at every refresh. Asked for at
+    // every step of a mixture's loop and mostly answered "no change", so a fresh array there
+    // was a grid of garbage a step - and, alive through a refresh that did solve, one more
+    // array in a reading of what the run holds.
+    private double[]? _rho;
+
+    // The Poisson solve's source, made once and written over at every solve: every node of it is
+    // set from the density before the solve reads it. Made new for each solve it was a grid of
+    // garbage a refresh, in a loop that refreshes as the density moves.
+    private ScalarField2D? _source;
+
+    /// <summary>The source the last solve was handed, for a test that it is the same one each time.</summary>
+    internal ScalarField2D? Source => _source;
     private double _solvedCharge;
 
     /// <summary>Builds the self-field solver for a tracked region.</summary>
@@ -91,7 +106,7 @@ public sealed class DensitySelfField
         _grid = grid;
         _chargeSi = chargeSi;
         _tolerance = refreshTolerance;
-        _potential = new double[grid.CountX * grid.CountY];
+        _potential = GridArrays.New<double>(grid.CountX * grid.CountY);
 
         _mask = new DirichletMask(grid)
         {
@@ -188,7 +203,7 @@ public sealed class DensitySelfField
 
         if (_solvedFor is null)
         {
-            _solvedFor = new double[cells];
+            _solvedFor = GridArrays.New<double>(cells);
         }
         else
         {
@@ -212,7 +227,7 @@ public sealed class DensitySelfField
             }
         }
 
-        var source = new ScalarField2D(_grid);
+        var source = _source ??= new ScalarField2D(_grid);
 
         for (var j = 0; j < _grid.CountY; j++)
         {
@@ -322,7 +337,7 @@ public sealed class DensitySelfField
         }
 
         var cells = _grid.CountX * _grid.CountY;
-        var rho = new double[cells];
+        var rho = _rho ??= GridArrays.New<double>(cells);
 
         // The net charge density, and the magnitude present, in one pass.
         var magnitude = 0.0;
@@ -351,7 +366,7 @@ public sealed class DensitySelfField
 
         if (_solvedFor is null)
         {
-            _solvedFor = new double[cells];
+            _solvedFor = GridArrays.New<double>(cells);
         }
         else
         {
@@ -374,7 +389,7 @@ public sealed class DensitySelfField
             }
         }
 
-        var source = new ScalarField2D(_grid);
+        var source = _source ??= new ScalarField2D(_grid);
 
         for (var j = 0; j < _grid.CountY; j++)
         {

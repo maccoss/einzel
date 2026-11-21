@@ -85,6 +85,18 @@
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+
+    <!--
+      Test only: Einzel.Fields.Tests parses the solver's own source with it, to refuse an
+      array allocated outside GridArrays (GridArraySourceTests). Nothing that ships references
+      it. Licence verified from the nuspecs rather than assumed: Microsoft.CodeAnalysis.CSharp
+      5.9.0 and Microsoft.CodeAnalysis.Common 5.9.0 both declare MIT as an SPDX expression,
+      and their only net10.0 dependency is Microsoft.CodeAnalysis.Analyzers, also MIT. LIC-1
+      clear. 5.9.0 is the compiler the pinned SDK ships (5.900), so the test parses the
+      language the build compiles; it was three months old when chosen, against a 5.12.0
+      three days old.
+    -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
   </ItemGroup>
 
 </Project>

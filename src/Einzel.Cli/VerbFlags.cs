@@ -104,7 +104,7 @@ public sealed record VerbFlags(
         ["validate"] = Of([], [], 1),
         ["outline"] = Of(["dry-run"], ["set"], 1),
         ["project"] = Of([], ["project"], 1),
-        ["estimate"] = Of(["no-calibrate"], ["threshold"], 1),
+        ["estimate"] = Of(["no-calibrate"], ["threshold", "snapshots"], 1),
         ["solve"] = Of([], [], 1),
         ["probe"] = Of(["dry-run"], ["at-mm", "line-mm", "to-mm", "samples", "at-us", "csv"], 1, ["at", "line", "to"]),
         ["run"] = Of(["vtu"], ["project"], 1, optional: ["progress"]),

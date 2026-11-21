@@ -25,6 +25,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Its tests, for the few rules that cannot be reached through a command: how a
+         refusal from a general conversion is located in a sequence, which needs a density
+         that is not finite and no valid model produces one. A test assembly, not a shipping
+         one. -->
+    <InternalsVisibleTo Include="Einzel.Cli.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
     <ProjectReference Include="..\Einzel.Io\Einzel.Io.csproj" />
     <ProjectReference Include="..\Einzel.Library\Einzel.Library.csproj" />

@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.Numerics;
 
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>Which of the six stencil arms a cut is recorded on.</summary>
@@ -100,10 +102,10 @@ public sealed class CutLinks3D
 
         var blocks = (grid.NodeCount + Block - 1) / Block;
 
-        _arms = new byte[blocks * Block];
-        _before = new int[blocks];
-        _fraction = new double[InitialCapacity];
-        _potential = new double[InitialCapacity];
+        _arms = GridArrays.New<byte>(blocks * Block);
+        _before = GridArrays.New<int>(blocks);
+        _fraction = GridArrays.New<double>(InitialCapacity);
+        _potential = GridArrays.New<double>(InitialCapacity);
     }
 
     /// <summary>The grid these links cover.</summary>
@@ -230,8 +232,8 @@ public sealed class CutLinks3D
             return;
         }
 
-        Array.Resize(ref _fraction, CutCount);
-        Array.Resize(ref _potential, CutCount);
+        GridArrays.Resize(ref _fraction, CutCount);
+        GridArrays.Resize(ref _potential, CutCount);
     }
 
     /// <summary>Which of a node's arms are cut.</summary>
@@ -297,8 +299,8 @@ public sealed class CutLinks3D
         var doubled = Math.Max(InitialCapacity, 2L * _fraction.Length);
         var grown = (int)Math.Min(Array.MaxLength, Math.Max(count, doubled));
 
-        Array.Resize(ref _fraction, grown);
-        Array.Resize(ref _potential, grown);
+        GridArrays.Resize(ref _fraction, grown);
+        GridArrays.Resize(ref _potential, grown);
     }
 }
 
@@ -324,8 +326,8 @@ public sealed class DirichletMask3D
         grid.ThrowIfTooLargeToSolve();
 
         Grid = grid;
-        _fixed = new bool[grid.NodeCount];
-        _value = new double[grid.NodeCount];
+        _fixed = GridArrays.New<bool>(grid.NodeCount);
+        _value = GridArrays.New<double>(grid.NodeCount);
     }
 
     /// <summary>The grid this mask covers.</summary>

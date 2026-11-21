@@ -841,8 +841,11 @@ public static class GeometryBuilder3D
         IReadOnlyList<CompiledElectrode3D> electrodes,
         double fromX, double fromY, double fromZ, double toX, double toY, double toZ, double entry)
     {
-        foreach (var electrode in electrodes)
+        // By index: enumerating the interface allocates an enumerator a call.
+        for (var at = 0; at < electrodes.Count; at++)
         {
+            var electrode = electrodes[at];
+
             if (electrode.FirstEntry(fromX, fromY, fromZ, toX, toY, toZ) is { } nearer
                 && nearer > 0.0
                 && nearer < entry - SharedFaceNodes.ToleranceFraction)
@@ -1504,8 +1507,13 @@ public static class GeometryBuilder3D
         var potential = 0.0;
         var found = false;
 
-        foreach (var electrode in geometry.Electrodes)
+        // By index: enumerating the interface allocates an enumerator for every arm.
+        var electrodes = geometry.Electrodes;
+
+        for (var at = 0; at < electrodes.Count; at++)
         {
+            var electrode = electrodes[at];
+
             if (electrode.FirstEntry(fromX, fromY, fromZ, toX, toY, toZ) is not { } entry || entry >= nearest)
             {
                 continue;

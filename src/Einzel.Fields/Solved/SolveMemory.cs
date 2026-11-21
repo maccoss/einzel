@@ -98,9 +98,9 @@ public sealed record SolveMemory(
 /// <para>
 /// <b>Superseded: "not counted, an instant".</b> A sampler now and then read about 7 bytes a node
 /// over, and this record put it down to catching a new array beside the one it replaces. It was
-/// the sampler counting garbage allocated after its own collection; it now reads what the
-/// collection left live (<c>SolveMemoryTests</c>' sampler), and a reading over the statement is
-/// an array the statement does not charge.
+/// the sampler counting garbage allocated after its own collection. <c>SolveMemoryTests</c> no
+/// longer samples: it reads the live set at the build's own allocations, and a reading over the
+/// statement is an array the statement does not charge.
 /// </para>
 /// </remarks>
 public static class SolveMemoryModel

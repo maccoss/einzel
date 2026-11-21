@@ -124,7 +124,7 @@ public static class ModelValidator
         // is the instrument's rather than one element's, so a parameter it sets has to
         // reach every expression written over it - which is exactly what compiling
         // stages per element failed to do.
-        var timeline = Timeline(document, Restage, fieldErrors);
+        var timeline = Timeline(document, Restage, fieldErrors, out var timelinePath);
 
         var fields = ValidateFields(document.Fields, p, timeline, fieldErrors);
 
@@ -204,6 +204,7 @@ public static class ModelValidator
             // parameter overrides follow. So a model with no sequence and one whose
             // every phase runs in the declared mode are the same run.
             Phases = Schedule(timeline, transport.Mode),
+            TimelinePath = timelinePath,
             RelativeTolerance = transport.RelativeTolerance,
             MaximumFlightTimeSi = transport.MaximumFlightTime,
             SampleIntervalSi = transport.SampleInterval,
@@ -1529,10 +1530,11 @@ public static class ModelValidator
     internal static List<PhaseSurface> Timeline(
         ModelDocument document,
         StageResolver restage,
-        List<EinzelError> errors)
+        List<EinzelError> errors,
+        out string path)
     {
         var phases = new List<PhaseSurface>();
-        var declared = Declared(document, errors, out var path);
+        var declared = Declared(document, errors, out path);
 
         if (declared is null)
         {

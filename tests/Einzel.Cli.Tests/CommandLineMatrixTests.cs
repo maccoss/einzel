@@ -92,6 +92,7 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         ["set"] = ("turningDepth=50", "turningDepth"),
         ["project"] = ("{root}", null),
         ["threshold"] = ("100", "abc"),
+        ["snapshots"] = ("0", "three"),
         ["at-mm"] = ("0,0,0", "1,2"),
         ["line-mm"] = ("0,0,0", "abc"),
         ["to-mm"] = ("10,0,0", "abc"),

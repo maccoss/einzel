@@ -1,3 +1,5 @@
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>
@@ -45,9 +47,9 @@ public sealed class OperatorStencil3D
     {
         Grid = grid;
 
-        _diagonal = new double[grid.NodeCount];
-        _arm = new double[grid.NodeCount * Arms];
-        _known = new double[grid.NodeCount];
+        _diagonal = GridArrays.New<double>(grid.NodeCount);
+        _arm = GridArrays.New<double>(grid.NodeCount * Arms);
+        _known = GridArrays.New<double>(grid.NodeCount);
     }
 
     /// <summary>The grid this operator is over.</summary>

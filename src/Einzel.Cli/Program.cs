@@ -76,12 +76,7 @@ public static class Program
             // raised as a refusal is the same finding as one raised as a warning on
             // a completed run, and a caller branching on the exit code should not
             // have to know which route it took.
-            return (int)(failure.Error.Code switch
-            {
-                ErrorCodes.RegimeInvalid => ExitCode.RegimeViolation,
-                ErrorCodes.ConvergenceFailed => ExitCode.ConvergenceFailure,
-                _ => ExitCode.ValidationFailure,
-            });
+            return (int)ExitFor(failure.Error);
         }
         catch (FileNotFoundException failure)
         {
@@ -592,6 +587,33 @@ public static class Program
         Console.Error.WriteLine($"unknown command '{verb}'");
         Console.Error.Write(Usage);
         return (int)ExitCode.ValidationFailure;
+    }
+
+    /// <summary>The exit code for a refusal, by the class of its error (CLI-3).</summary>
+    private static ExitCode ExitFor(EinzelError error) => error.Code switch
+    {
+        ErrorCodes.RegimeInvalid => ExitCode.RegimeViolation,
+        ErrorCodes.ConvergenceFailed => ExitCode.ConvergenceFailure,
+        _ => ExitCode.ValidationFailure,
+    };
+
+    /// <summary>What <c>einzel estimate --json</c> writes when it refuses: the AGT-3 errors.</summary>
+    /// <param name="Errors">Every error, the first being the one that decided the exit code.</param>
+    private sealed record EstimateRefusal(IReadOnlyList<EinzelError> Errors);
+
+    /// <summary>Refuses an estimate with one error, as JSON under --json and prose otherwise.</summary>
+    private static int RefuseEstimate(bool json, EinzelError error)
+    {
+        if (json)
+        {
+            Console.Out.Write(CommandJson.Write(new EstimateRefusal([error])));
+        }
+        else
+        {
+            Console.Error.WriteLine(error.ToString());
+        }
+
+        return (int)ExitFor(error);
     }
 
     /// <summary>
@@ -1316,7 +1338,7 @@ public static class Program
         if (options.Positional.Count == 0)
         {
             Console.Error.WriteLine(
-                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--json]");
+                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--snapshots <instants>] [--json]");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -1352,9 +1374,68 @@ public static class Program
         // because the file already says which it is and a flag would let the two
         // disagree - the cost of getting that wrong is a plan short by a factor of
         // the evaluation count.
-        var outcome = IsStudy(path)
-            ? EstimateCommand.ForStudy(path, calibrate, threshold)
-            : EstimateCommand.Execute(path, calibrate, threshold);
+        var isStudy = IsStudy(path);
+
+        // How many instants a diffusive run is to record its density at: none for a run, one for
+        // a render at an instant, one a frame for an animation. Each is a copy held to the end.
+        var snapshots = 0;
+        var json = options.Has("json");
+
+        // Every refusal of the flag is an AGT-3 error located at it, refused as every flag reader
+        // refuses: the reason on stderr, and under --json the same error as JSON on stdout.
+        int RefuseSnapshots(string constraint, string suggestion)
+        {
+            Refuse(options, "snapshots", constraint, suggestion);
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        if (options.Has("snapshots"))
+        {
+            var instants = options.Value("snapshots");
+
+            // Named but given no number - `--snapshots` alone, or followed by another flag - is
+            // refused rather than read as none: an estimate that silently billed zero instants
+            // for a flag somebody typed would be the under-bill the gate exists to prevent.
+            if (instants is null)
+            {
+                return RefuseSnapshots(
+                    "--snapshots takes a whole number of instants, and none was given",
+                    isStudy ? "leave out --snapshots: a study records no instants" : "give one, as in --snapshots 60");
+            }
+
+            if (!TryWhole(instants, 0, int.MaxValue, out snapshots))
+            {
+                return RefuseSnapshots(
+                    $"--snapshots takes a whole number of instants, and '{instants}' is not one",
+                    isStudy ? "leave out --snapshots: a study records no instants" : "give a whole number, as in --snapshots 60");
+            }
+
+            // A study records no instants, so it is refused any number but none - which is
+            // exactly what a study records, so says nothing false. The number parsed, not the
+            // text: `00` is none as well as `0` is.
+            if (isStudy && snapshots > 0)
+            {
+                return RefuseSnapshots(
+                    "--snapshots is about one diffusive run's recorded instants, and a study records none",
+                    "leave out --snapshots, or estimate the model the study names");
+            }
+        }
+
+        EstimateOutcome outcome;
+
+        try
+        {
+            outcome = isStudy
+                ? EstimateCommand.ForStudy(path, calibrate, threshold)
+                : EstimateCommand.Execute(path, calibrate, threshold, snapshots: snapshots);
+        }
+        catch (EinzelException refused) when (json)
+        {
+            // Under --json a refusal is JSON too, as every error the estimate found.
+            Console.Out.Write(CommandJson.Write(new EstimateRefusal(refused.Errors)));
+
+            return (int)ExitFor(refused.Error);
+        }
 
         if (options.Has("json"))
         {

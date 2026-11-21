@@ -1,5 +1,6 @@
 using Einzel.Core.Errors;
 using Einzel.Core.Model;
+using Einzel.Core.Numerics;
 using Einzel.Core.Results;
 using Einzel.Fields.Solved;
 using Einzel.Project;
@@ -213,12 +214,13 @@ public static class ExportCommand
             };
         }
 
-        var potential = new double[nodes];
-        var field = new double[3 * nodes];
+        // As many as the nodes of the grid being written, so from where such arrays come from.
+        var potential = GridArrays.New<double>(nodes);
+        var field = GridArrays.New<double>(3 * nodes);
 
         // B only for a model that declares a magnet: a magnet adds no potential and no E, so
         // without it "the field an ion sees" would be written as zeros inside a sector.
-        var flux = probe.Magnetic ? new double[3 * nodes] : null;
+        var flux = probe.Magnetic ? GridArrays.New<double>(3 * nodes) : null;
         var at = (atUs ?? 0.0) * 1e-6;
         long refused = 0;
         long outside = 0;

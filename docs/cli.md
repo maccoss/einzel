@@ -1651,14 +1651,21 @@ array, in the same file as the reasons for the arrays), and a test measures real
 against it. It was 48 bytes a node for every solve, from a comment listing three fields and
 some restriction buffers, and nothing measured it.
 
-| solve | bytes a node at peak | measured, Release, live set sampled through the build |
+| solve | bytes a node at peak | measured, Release, live set of the build |
 | --- | --- | --- |
 | volume, Galerkin hierarchy | 149.5 on a deep grid; 151.3 Astral at 1.12 M nodes, 150.4 at 8.68 M | 150.8 and 148.2 |
 | volume, rediscretized hierarchy | 48.8 on a deep grid; the largest instant of a cycle over the real levels, every memoised coarse mask and the bottom solve's scratch included - 46.5 with no coarse level | with each geometry's real cut arms, a sphere 45.0 against 45.0 deep, 42.50 against 42.50 with no coarse level, 44.87 against 44.71 one level deep, 43.87 against 43.87 on a thin grid two levels deep; 45.3 to 47.1 on the C-trap and segmented quadrupole against 48.8 to 48.9 billed (51.2 stated, and 47.8 to 48.7 measured, while first-tier code kept the V-cycle residual) |
 | plane | 135.25 | 135.3 on the quadrupole at 1.05 M to 16.8 M nodes; 135.4 to 135.7 on four rods at 66 k and 263 k, first-tier and fully optimized alike (143.25 stated, and 143.3 to 143.9 measured, while first-tier code kept the V-cycle residual) |
 | each basis channel before the last | + 8 | 156.1 linear ion trap, two channels, against 158.4 |
-| diffusive run, per density node and per species | 263 | 248 and 259, drift tube at 66 k and 263 k nodes; each added species 248 |
-| mean-field self-field, once whatever the species count | 62, and 70 for a mixture | 61.3 to 61.4 on the drift tube at 66 k to 1.05 M nodes; 69.3 to 69.4 with two species |
+| diffusive run, per density node and per species | 248: the densities 24, the coefficients 48, the face operator 176 | 247.89 to 248.11, drift tube, as a slope between 129 by 129 and 257 by 257 (263 stated until the run was read from inside) |
+| the same, implicit scheme | 248 | 247.84 to 248.16 |
+| the same through a sequence whose phase ramps, re-assembling the operator every step | 248, and the map below | 250.93 to 252.34 against 252, in a bore |
+| the map of which conductor owns each node, once, where a solved element has electrodes | + 4 | 251.87 to 252.13 on a drift tube in a bore, against 252 |
+| a cycle-averaged well's cache, per species, where the run is driven | + 56 | 303.86 to 304.14 against 304; 55.92 to 56.11 over the undriven run |
+| each further species of a mixture | + 248 | 495.91 to 496.09 against 496 with two |
+| each instant the density is recorded at (`--snapshots`) | + 8 | 279.88 to 280.12 against 280 with four |
+| a trajectory model whose sequence enters a diffusive phase | the same terms, over its diffusive phases | 247.84 to 248.18 against 248 (a drift tube, a cloud of 64 converted) |
+| mean-field self-field, once whatever the species count | 62, and 70 for a mixture | 61.0 to 61.5 on the tube and the bore at 129 by 129, 61.2 to 61.4 at 257 by 257; with two species 565.19 to 565.39 against 566 |
 
 **The coarse levels are charged at their real size.** A grid coarsens by halving each axis's
 interval count, which keeps one node more than half, so a first coarse level is more than an
@@ -1682,6 +1689,60 @@ the collections allow, a build whose samples see only the fine level - a loaded 
 runner did - reads about 126.6, which is why the plane test's lower edge is 0.85 where the
 volume tests' is 0.90.
 
+**Every term of the diffusive statement is measured in the configuration that has it.** The
+estimate works out what a run holds from the model - its scheme, its drives, its species, its
+space charge, its conductors - and from how many instants it is told the run records
+(`einzel estimate --snapshots <n>`; a run records none, a render at an instant one, an animation
+one a frame). `--snapshots` on a model that steps no density in any phase, or on a mixture, whose run records no instants, is refused (`SCHEMA_INVALID` at `/args/--snapshots`, the flag being the mistake, and JSON under `--json` like every refusal of the flag), not billed for copies nothing makes; a study accepts any number that parses to none (`0`, `00`), which is what it records, and is refused one that parses to more or does not parse. The conductors' map is billed only where an electrode claims a node of the density grid, as the run keeps it. **A sequenced run is costed phase by phase**: a run not walked phase by phase spends its whole flight in its own mode, and one that is spends each phase in that phase's mode over that phase's duration - each trajectory phase piloted from the source through its own field (shifted to that phase's start, as the run does) and scaled to its own duration, the costs summed - the eight longest piloted and any others, or any whose pilot failed, charged at the dearest rate measured, per simulated second the pilot actually flew, over no less than a tenth of its phase - the density stepped over the time spent as a density - and the basis keeps both lines and states both spans. A study's evaluation is one whole run wherever a density is stepped, and its flights are the ones its figure of merit asks for, not the model's cloud. Where no pilot could be flown - at the declared values or across a study's range - `trajectoryMeasured` is false, the basis says the trajectories are NOT MEASURED, and the gate refuses rather than pass a figure missing its flights. A phase starts where the one before it ended, never at its own end less its duration, which can round into the phase before. Each row above is a run in a child process read at two grids, and each term is
+also read as the difference between the run with it and the run without, so that an array too
+many in a 56-byte term is not hidden inside a 304-byte run.
+
+**No memory test samples.** A build's live set can only rise at an allocation, so the
+solvers and the density run allocate each per-node array through one allocator (`GridArrays`
+in `Einzel.Core`: two public methods, a static read and a branch an array when nobody is
+watching; watching it is internal to the tests and the harness) and the tests read
+the live set there, on the build's own thread, after a forced full collection, in a child process
+that does nothing else and is pinned fully optimized: `SolveMemoryTests` and
+`FirstTierMemoryTests` for a solve, `DiffusiveMemoryTests` for a diffusive run and its
+self-field, and `tools/memory-harness live` for any model by hand. The largest reading is the peak, with nothing to
+miss: 43.88 against 43.87 on the thin grid, 135.41 against 135.25 on four rods at 263 k nodes,
+147.2 against 147.2 on the slabs' Galerkin build at 275 k - in Debug as in Release. Each end of
+the interval is also read from the build alone - its grid arrays followed by weak handles, and
+what its own thread allocated outside them - so another thread allocating beside it moves
+neither end, and an edge the interval still straddles fails as inconclusive rather than as a
+finding. A collection is forced only where an upper bound on the live set could pass what has
+already been read, which reads 32 of a plane build's 385 arrays and changes the least by nothing. The child runs
+in a controlled environment with the collector pinned to workstation, non-concurrent, and reports
+it; a grid array is charged what it occupies, header included. What the thread allocated between two readings without reporting it bounds how
+much higher the peak can have been, and the upper edge is asserted on that bound, so a per-node
+array allocated any other way fails as slack - and fails `GridArraySourceTests` first. That test
+compiles the engine's sources and follows the size of every allocation back to where it comes
+from: storage for bare numbers is refused unless its size is shown to be a count of things -
+electrodes, drives, stages, channels - and storage for things only if its size is shown to be a
+grid's. **In `Einzel.Fields`, `Einzel.Transport` and `Einzel.Io` by the whole rule**: between
+them they allocate every array the size of a field's grid or a density's that a solve or a run
+holds, an imported gas field included. **In `Einzel.Commands` by its first half only** - refused
+where the size is shown to be a grid's - because what that assembly sizes at run time is mostly
+counts that arrive from outside it (ions in a cloud, vertices of a mesh, instants on a command
+line), which nothing in the code shows small. Its per-node arrays are a diffusive run's
+conductor map and a field sampled for export, both through `GridArrays`, and the viewport's
+rasters, which are two-dimensional arrays made for a picture after the run and are not part of
+what a run holds. 438 allocations sized at run time are judged and four are listed: the volume
+cull's three per-block candidate lists and one viewport raster.
+
+**The diffusive figure was 263 and is 248, and reading it from inside found why.** The run's
+arrays come to exactly 248 bytes a node - three densities, six coefficients, and a face operator
+of four faces of four doubles, two flags and a name, with one outward rate - and the run holds
+under 6 kB beside them. The 263 was a slope between two sampled readings, 248 and 259. What the
+sampler was reading as held was garbage: `FaceCoefficients.Offsets` built a new four-entry array
+each time it was read, and the stepping loop read it four times a node a step - **224 bytes a
+node a step, 3.7 MB a step on a 129 by 129 grid, 501 MB over the 34 steps of a 257 by 257 run
+that holds 16**. It was found because the measurement bounds what a run can hold between two of
+its arrays by what its thread allocated there, and the bound came out at nine times the run.
+The offsets are made once now, the step's ledger of what each surface took is the run's own and
+reused, and the loop allocates nothing (CMP-1). The estimate bills 248, and 4 more for the map of
+which conductor owns each node where a solved element has electrodes; it billed 263 for both.
+
 **The step from 143.25 to 135.25 was what first-tier code held, and the explanation recorded
 for it before was wrong.** The V-cycles kept each level's residual as a local of the frame that
 recursed. Optimized code ends a local at its last use; first-tier code, which every method runs
@@ -1701,8 +1762,8 @@ measuring a solve in a child process with promotion switched off.
 of a cycle with every level's residual held, true of first-tier code only - and then 48.6, the
 fine restriction with one coarse mask. Derived from what is alive at each instant it is 48.8 on
 a deep grid: the coarsener memoises every coarse mask for the whole solve, so from the second
-cycle on all of them are live at the fine restriction (0.16 bytes a node on a deep grid, 0.30
-on an 8193 by 9 by 9 one, which measures 43.87 against 43.87 with them and would read 0.30 over
+cycle on all of them are live at the fine restriction (0.16 bytes a node on a deep grid, 0.25
+on an 8193 by 9 by 9 one, which measures 43.88 against 43.87 with them and would read 0.25 over
 without). And a solve that builds no coarse level relaxes the fine grid itself with a scratch
 residual over it, 46.5 bytes a node where 38.5 was billed - an under-bill of 17 percent on any
 rediscretized solve too small to coarsen.
@@ -1829,12 +1890,15 @@ solves on top of the step, and over a flight long enough to refresh the self-fie
 **61.3 to 61.4 bytes a node, flat from 66 k to 1.05 M nodes**. A mixture solves one field for its
 summed charge, so it is charged once, plus that sum's own array: 69.3 to 69.4 with two species.
 It was not billed at all - the diffusive figure's own remarks said "a mean-field solve adds its
-own grids". `SelfFieldMemoryTests` measures it through a real run at 0.90 to 1.02 of the
-statement - 59.3 to 61.4 on a Cartesian tube, the two readings a sampler alternates between, and 59.3 to 61.4 on a cylindrical bore whose
-earthed wall lies inside the density grid, so the self-field's mask fixes every absorbing node -
-asserting that the self-field was solved inside the loop at least once. **A Debug build is held to the same band**: it
-held one array more (68.7 to 70.1) and was allowed it, and that array was the V-cycle's residual -
-with the residual in a frame of its own, Debug reads 61.4 like Release.
+own grids". `DiffusiveMemoryTests` measures it through a real run at 0.90 to 1.02 of the
+statement, as the difference between the same run with the self-field and without - 61.0 to 61.5
+on a Cartesian tube and on a cylindrical bore whose earthed wall lies inside the density grid, so
+the self-field's mask fixes every absorbing node, at 129 by 129, and 61.2 to 61.4 at 257 by 257 -
+asserting that the self-field was solved inside the loop at least once. It is read at each array
+the run allocates, in a child process; it used to be sampled from a second thread, five times
+after two warm-up runs, and outvoted. **A Debug build is held to the same band**: it held one
+array more (68.7 to 70.1) and was allowed it, and that array was the V-cycle's residual - with
+the residual in a frame of its own, Debug reads what Release reads.
 
 **What a run shows is higher, and depends on the machine.** The collector frees a large array
 lazily when memory is plentiful: the Astral at 4 mm reached 390 bytes a node of heap against a

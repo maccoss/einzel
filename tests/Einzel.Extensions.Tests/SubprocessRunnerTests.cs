@@ -263,6 +263,13 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
                     pass
             """);
 
+        // Timed while no memory test's measuring child is running, which loads the machine for
+        // seconds to minutes: stopping the runaway took 21 s against a declared 1.2 s on a
+        // runner doing that (Einzel.Testing.QuietMachine).
+        using var turn = Einzel.Testing.QuietMachine.Hold();
+
+        Assert.True(turn.Quiet, turn.NotQuietBecause);
+
         // Warmed, so the first call's file-system cache miss is nobody's measurement,
         // and measured, because what follows has to be scale-free.
         Bare();
