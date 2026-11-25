@@ -513,6 +513,32 @@ public static class EstimateCommand
         return total;
     }
 
+    /// <summary>Whether one evaluation of a study's figure is a whole sequenced run.</summary>
+    /// <param name="figureOfMerit">The study's figure, or an extension objective's name.</param>
+    /// <param name="studyPath">The study file, whose project holds the extension.</param>
+    /// <returns>
+    /// The registry's answer for a built-in figure; for an extension objective, whether any figure
+    /// its manifest declares reads the sequenced run.
+    /// </returns>
+    /// <remarks>
+    /// An extension is handed every figure its manifest declares, each evaluated on the model - so
+    /// one that declares a transit is handed a whole sequenced run per evaluation, and costs one.
+    /// An extension that cannot be found is answered no: the study itself refuses it.
+    /// </remarks>
+    internal static bool ReadsTheSequencedRun(string? figureOfMerit, string studyPath)
+    {
+        if (!ExtensionObjective.Names(figureOfMerit))
+        {
+            return FiguresOfMerit.ReadsTheSequencedRun(figureOfMerit);
+        }
+
+        var project = Project.ProjectLayout.Find(studyPath)
+            ?? new Project.ProjectLayout(Path.GetDirectoryName(Path.GetFullPath(studyPath))!);
+
+        return ExtensionObjective.DeclaredFigures(figureOfMerit!, project.Extensions)
+            .Any(FiguresOfMerit.ReadsTheSequencedRun);
+    }
+
     /// <summary>How long a phase's trajectory leg lasts, as the run computes it.</summary>
     /// <param name="phase">The phase, or null for no phase.</param>
     /// <param name="startsAt">When it begins on the instrument's timeline, as the run takes it.</param>
@@ -699,7 +725,8 @@ public static class EstimateCommand
     /// <param name="Measured">Whether anything was measured; where not, the cost is unknown rather than nothing.</param>
     /// <param name="CoveredSeconds">
     /// The simulated time <paramref name="Seconds"/> is the cost of: the span scaled to, or the
-    /// flight itself where the ion arrived or struck before the span was over.
+    /// flight itself where the ion arrived or struck before the span was over. Read of one phase's
+    /// pilot, to charge the rest per simulated second flown; zero for a sum over phases.
     /// </param>
     internal readonly record struct Pilot(double Seconds, string How, bool Measured, double CoveredSeconds);
 
@@ -1639,7 +1666,7 @@ public static class EstimateCommand
         // space-charge model's ensemble is a packet whatever asked for it, and is not
         // re-billed as independent flights.
         var runsTheSequence = sequencedFlights
-            && (validation.Model!.ModelsSpaceCharge || FiguresOfMerit.ReadsTheSequencedRun(study.FigureOfMerit));
+            && (validation.Model!.ModelsSpaceCharge || ReadsTheSequencedRun(study.FigureOfMerit, absolute));
         var billed = runsTheSequence ? flown : members;
 
         var perEvaluation = sequencedFlights || !wholeRun
@@ -2517,7 +2544,6 @@ public static class EstimateCommand
         var dearest = 0.0;
         var anyMeasured = false;
         var unmeasured = 0.0;
-        var covered = 0.0;
         var lines = new List<string>();
 
         foreach (var i in indices.Where(piloted.Contains))
@@ -2528,7 +2554,6 @@ public static class EstimateCommand
             if (measured && flew > 0.0)
             {
                 seconds += phaseSeconds;
-                covered += flew;
                 anyMeasured = true;
 
                 // Per simulated second the pilot actually covered: one whose ion arrived early
@@ -2563,7 +2588,6 @@ public static class EstimateCommand
         if (unpiloted + unmeasured > 0.0)
         {
             seconds += dearest * (unpiloted + unmeasured);
-            covered += unpiloted + unmeasured;
             lines.Add(string.Create(
                 Inv,
                 $"{(unpiloted + unmeasured) * 1e6:G4} us of trajectory phases not piloted or not "
@@ -2577,9 +2601,9 @@ public static class EstimateCommand
             + string.Join("; ", lines),
             true,
 
-            // What the seconds are the cost of: each measured phase as far as its pilot flew, and
-            // the phases charged at the dearest rate in whole.
-            covered);
+            // A sum of phases is the cost of the trajectory time as a whole; what each phase's
+            // pilot covered is used above, phase by phase, and nothing reads a total of it.
+            0.0);
     }
 
     /// <summary>How long a run flies trajectories and how long it steps a density.</summary>

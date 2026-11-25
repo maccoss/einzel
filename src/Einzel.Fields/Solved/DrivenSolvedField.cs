@@ -325,26 +325,6 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// <summary>When the sequence finishes, in seconds. Infinity when there is none.</summary>
     public double SequenceEndsAt => _boundaries.Length == 0 ? double.PositiveInfinity : _boundaries[^1];
 
-    /// <summary>The stage ending at a switch this field reported, or holding at any other instant.</summary>
-    /// <remarks>
-    /// Asked with the switch itself - the value <see cref="NextSwitchAfter"/> returned - so on a
-    /// boundary the equality below is identity, not arithmetic landing on it.
-    /// </remarks>
-    /// <param name="timeSeconds">The instant.</param>
-    /// <returns>The stage index.</returns>
-    private int StageBefore(double timeSeconds)
-    {
-        for (var k = 0; k < _boundaries.Length; k++)
-        {
-            if (timeSeconds <= _boundaries[k])
-            {
-                return k;
-            }
-        }
-
-        return _boundaries.Length - 1;
-    }
-
     /// <summary>
     /// Which stage is running at an instant.
     /// </summary>
@@ -355,11 +335,18 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// the end of the declared sequence would make every ion still in flight
     /// suddenly coast, which is a physics change disguised as a bookkeeping one.
     /// </remarks>
-    private int StageAt(double timeSeconds)
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">
+    /// Whether a time on a boundary is given the stage ending there rather than the one starting.
+    /// Asked with the switch itself - the value <see cref="NextSwitchAfter"/> returned - so on a
+    /// boundary the equality is identity, not arithmetic landing on it.
+    /// </param>
+    /// <returns>The stage index.</returns>
+    private int StageAt(double timeSeconds, bool before = false)
     {
         for (var k = 0; k < _boundaries.Length; k++)
         {
-            if (timeSeconds < _boundaries[k])
+            if (timeSeconds < _boundaries[k] || (before && timeSeconds == _boundaries[k]))
             {
                 return k;
             }
@@ -486,8 +473,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
         // A HELD FIELD IS ONE STATE AT EVERY INSTANT, so there is no switch for it to be before:
         // the stage is the one the operating point selects whichever side it is asked from. Only
         // the drive's own phase, which is not held, still takes its left limit.
-        var stage = _boundaries.Length == 0 ? -1
-            : before && _operatingPoint is null ? StageBefore(setting) : StageAt(setting);
+        var stage = _boundaries.Length == 0 ? -1 : StageAt(setting, before && _operatingPoint is null);
 
         var direct = stage < 0 ? _direct[channel] : _stageDirect[stage][channel];
         var harmonics = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];

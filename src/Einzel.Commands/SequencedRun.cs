@@ -452,10 +452,6 @@ public static class SequencedRun
                             : at - started)
                         .ToList();
 
-                // The packet goes in by reference: where there is no density yet the leg converts it
-                // and clears this loop's reference to it, so it is held only as long as the
-                // conversion needs it. Where there is a density the packet is already gone - a
-                // density is only ever made by clearing it - so there is never both.
                 var diffused = Diffuse(
                     density, ref states, perTrajectory, model, field, gas, species, started, phase, warnings,
                     progress, out var entered, mine is { Count: > 0 } ? mine : null);
@@ -635,9 +631,10 @@ public static class SequencedRun
     /// element bit-identical. Shared with the estimate's pilot, so that the two cannot
     /// disagree about which instrument a trajectory phase flies through.
     /// </remarks>
-    internal static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
+    internal static IElectrostaticField Instant(
+        IElectrostaticField field, double atSeconds, double endsAtSeconds = double.PositiveInfinity) =>
         field is ITimeVaryingField driven && atSeconds > 0.0
-            ? new TimeShiftedField(driven, atSeconds)
+            ? new TimeShiftedField(driven, atSeconds, endsAtSeconds)
             : field;
 
     private static PhaseState Launch(CompiledModel model) =>
@@ -738,7 +735,7 @@ public static class SequencedRun
         int phaseIndex,
         List<ValidityWarning> warnings)
     {
-        var seen = Instant(field, startedAt);
+        var seen = Instant(field, startedAt, startedAt + durationSeconds);
 
         var settings = new IntegrationSettings
         {
@@ -940,11 +937,6 @@ public static class SequencedRun
     /// the field whether it differs between the phase's two ends at a probe point, rather
     /// than by asking the phase whether it declares a ramp: the field is what the solver
     /// steps through, and a phase could in principle change it some other way.
-    /// <para>
-    /// It is handed the density to step on, or, where there is none, the caller's packet by
-    /// reference to convert into one - cleared as it is converted, so nothing holds it past the
-    /// conversion - or no packet, to seed one.
-    /// </para>
     /// </remarks>
     private static DiffusionResult Diffuse(
         DensityField? density,
@@ -965,13 +957,10 @@ public static class SequencedRun
         converted = false;
 
         // Entering the density description, the density is made here, in this leg's frame,
-        // so that it is held for as long as this leg runs and no longer: converted from the
-        // caller's packet, which `Enter` clears, or seeded where there was none. The
-        // conversion's warnings are added before anything this leg adds of its own.
-        if (density is null)
-        {
-            density = Enter(model, grid, ref states, perTrajectory, warnings, out converted);
-        }
+        // so that it is held for as long as this leg runs and no longer.
+        // The conversion's warnings are added here, before anything this leg adds of its own,
+        // which is the order they had when the conversion was done by the caller just before.
+        density ??= Enter(model, grid, ref states, perTrajectory, warnings, out converted);
 
         // The electrodes absorb during a diffusive phase exactly as they do in a wholly
         // diffusive run. Leaving them out would let a density pass through metal, which

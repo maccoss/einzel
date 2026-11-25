@@ -506,6 +506,13 @@ become a feature release without being renamed twice.
   boundary.
 - **Validation reports every mistake in a sequence's phases in one round**, where a phase after
   the first mistake had its set, ramp and mode left unchecked.
+- **A detector, electrode or field discontinuity reached exactly at a sequence switch** is met
+  by the step that reached it, in the phase ending there, where it used to be re-integrated with
+  the next phase's field at its end.
+- **A density phase shorter than the trajectory integrator's smallest step is no longer refused**
+  for it; only a phase that lasts no time at all is.
+- **`einzel estimate` bills an extension objective as the sequenced run** when its manifest
+  declares a figure that reads it.
 - **A phase duration that converts to infinity is refused as not finite**, and a phase refused
   for another reason still counts toward the next phase's start.
 - **`einzel estimate` does not solve a dear model at its declared resolution to cost a pilot**,

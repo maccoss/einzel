@@ -39,13 +39,34 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     // allocates nothing. Null until read.
     private Switches? _switches;
 
+    // Where the leg ends on the instrument's timeline: the switches are read up to the first past it.
+    private readonly double _endsAtSeconds;
+
     /// <summary>Wraps a field so t = 0 here is <paramref name="offsetSeconds"/> there.</summary>
     /// <param name="inner">The field as the instrument declares it.</param>
     /// <param name="offsetSeconds">Where this leg starts on the instrument's timeline.</param>
     /// <exception cref="ArgumentNullException"><paramref name="inner"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The offset is negative or not finite.</exception>
     public TimeShiftedField(ITimeVaryingField inner, double offsetSeconds)
+        : this(inner, offsetSeconds, double.PositiveInfinity)
     {
+    }
+
+    /// <summary>Wraps a field for a leg that ends where it says, so t = 0 here is <paramref name="offsetSeconds"/> there.</summary>
+    /// <param name="inner">The field as the instrument declares it.</param>
+    /// <param name="offsetSeconds">Where this leg starts on the instrument's timeline.</param>
+    /// <param name="endsAtSeconds">
+    /// Where it ends on the instrument's timeline, or infinity for no end: the switches held are
+    /// those up to the first past it, so a leg of a long staircase reads its own few and not the
+    /// whole timeline. An instant past them is still answered, by scanning.
+    /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="inner"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The offset is negative or not finite, or the end is NaN.</exception>
+    public TimeShiftedField(ITimeVaryingField inner, double offsetSeconds, double endsAtSeconds)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(double.IsNaN(endsAtSeconds), true, nameof(endsAtSeconds));
+        _endsAtSeconds = endsAtSeconds;
+
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentOutOfRangeException.ThrowIfNegative(offsetSeconds);
 
@@ -68,7 +89,8 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// <summary>A leg's switches on both clocks, in order, or neither where there are too many to hold.</summary>
     /// <param name="Boundaries">Each switch on the instrument's clock, or null to scan.</param>
     /// <param name="Reported">Each switch as the leg reports it, or null to scan.</param>
-    private sealed record Switches(double[]? Boundaries, double[]? Reported)
+    /// <param name="Truncated">Whether switches past the last held one were left unread; an instant past it scans.</param>
+    private sealed record Switches(double[]? Boundaries, double[]? Reported, bool Truncated = false)
     {
         /// <summary>No switch at all: shared, so a leg that meets none allocates nothing.</summary>
         public static readonly Switches None = new([], []);
@@ -86,19 +108,20 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
 
     private Switches Publish()
     {
-        Interlocked.CompareExchange(ref _switches, Read(_inner, _offsetSeconds), null);
+        Interlocked.CompareExchange(ref _switches, Read(_inner, _offsetSeconds, _endsAtSeconds), null);
         return _switches!;
     }
 
     /// <summary>The switches a leg from an offset can meet, or null where there are too many to hold.</summary>
     /// <param name="inner">The field as the instrument declares it.</param>
     /// <param name="offsetSeconds">Where the leg starts on the instrument's timeline.</param>
+    /// <param name="endsAtSeconds">Where it ends there; reading stops at the first switch past it.</param>
     /// <returns>Each switch on the instrument's clock and as the leg reports it.</returns>
     /// <remarks>
     /// From the first boundary after a few ulps before the offset, which is the earliest any
     /// query starts from, since a leg's instants are never negative.
     /// </remarks>
-    private static Switches Read(ITimeVaryingField inner, double offsetSeconds)
+    private static Switches Read(ITimeVaryingField inner, double offsetSeconds, double endsAtSeconds)
     {
         var boundary = inner.NextSwitchAfter(Before(offsetSeconds));
 
@@ -108,6 +131,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
         }
 
         var boundaries = new List<double>();
+        var truncated = false;
 
         while (double.IsFinite(boundary))
         {
@@ -117,6 +141,14 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
             }
 
             boundaries.Add(boundary);
+
+            // The first switch past the leg's end is the last it can be asked about.
+            if (boundary > endsAtSeconds)
+            {
+                truncated = true;
+                break;
+            }
+
             var next = inner.NextSwitchAfter(boundary);
 
             if (!(next > boundary))
@@ -135,8 +167,12 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
             reported[k] = held[k] - offsetSeconds;
         }
 
-        return new Switches(held, reported);
+        return new Switches(held, reported, truncated);
     }
+
+    /// <summary>Whether an instant lies past the switches a truncated read holds, where it scans.</summary>
+    private static bool Past(Switches switches, double timeSeconds) =>
+        switches.Truncated && timeSeconds >= switches.Reported![^1];
 
     /// <summary>The most switches a leg holds; past this a query scans the inner field instead.</summary>
     private const int MaximumHeldSwitches = 1 << 16;
@@ -238,7 +274,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     {
         var switches = Held;
 
-        if (switches.Reported is { } held)
+        if (switches.Reported is { } held && !Past(switches, timeSeconds))
         {
             // The held switches in order: the first not below the instant is the only one that
             // can equal it, and a switch a few ulps or more before the instant is never equal.
@@ -354,7 +390,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     {
         var held = _inner.AtOperatingPoint(timeSeconds);
 
-        return ReferenceEquals(held, _inner) ? this : new TimeShiftedField(held, _offsetSeconds);
+        return ReferenceEquals(held, _inner) ? this : new TimeShiftedField(held, _offsetSeconds, _endsAtSeconds);
     }
 
     /// <inheritdoc/>
@@ -371,7 +407,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// </remarks>
     public double NextSwitchAfter(double timeSeconds)
     {
-        if (Held.Reported is { } reported)
+        if (Held is { Reported: { } reported } held && !Past(held, timeSeconds))
         {
             var after = FirstAbove(reported, timeSeconds);
 

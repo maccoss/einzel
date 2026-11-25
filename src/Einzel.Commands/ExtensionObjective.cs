@@ -35,6 +35,24 @@ public static class ExtensionObjective
     public static bool Names(string? name) =>
         name is not null && name.StartsWith(Prefix, StringComparison.Ordinal);
 
+    /// <summary>The built-in figures an installed extension's manifest declares, or none if it is not installed.</summary>
+    /// <param name="name">The figure-of-merit name, including the prefix.</param>
+    /// <param name="extensionsRoot">The project's extensions directory.</param>
+    /// <returns>The declared figures, in manifest order.</returns>
+    internal static IReadOnlyList<string> DeclaredFigures(string name, string extensionsRoot)
+    {
+        if (!Names(name) || !Directory.Exists(extensionsRoot))
+        {
+            return [];
+        }
+
+        var wanted = name[Prefix.Length..];
+
+        return ExtensionCatalogue.Discover(extensionsRoot)
+            .FirstOrDefault(e => string.Equals(e.Manifest.Name, wanted, StringComparison.Ordinal))
+            ?.Manifest.Figures ?? [];
+    }
+
     /// <summary>
     /// What an extension contributed to a run, for the manifest.
     /// </summary>

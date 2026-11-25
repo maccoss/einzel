@@ -4735,17 +4735,18 @@ Two findings from Stage 1 that bear on the spec:
   windows, as the allocation tests here already do, and still requires zero.
 
   **An eighteenth review, landed after the merge.** A study over a sequenced model now bills what one evaluation flies.
-  A figure read off the sequenced run (`transitTime`, `mobilityResolvingPower`,
-  `FiguresOfMerit.ReadsTheSequencedRun`, held to the source by a test; `radialSpread` refuses a
-  sequenced model) is a whole sequenced run
+  A figure read off the sequenced run (`transitTime`, `mobilityResolvingPower`; the registry
+  entry's `ReadsTheRun`, held to the source by a test; `radialSpread` refuses a sequenced model,
+  and an `ext:` objective counts when its manifest declares such a figure) is a whole sequenced run
   and flies the sequence's cloud; under space charge that is one packet, billed as the model's
   lockstep cost and not as a thousand independent flights. Any other figure flies its own ions
   outside the sequence - `flightTime` on a 2,000-ion sequenced cloud flies its three-rung ladder,
   not the cloud, because `Single` integrates through the instrument and never walks the
   sequence - and is billed those. A pilot that cannot be measured through the coarsened field is
-  flown again at the declared resolution before the gate refuses, and the basis says which; only
-  where that fails too is the cost unknown. A sequence's phases cover what was flown and charged
-  rather than every phase whole. The conductor scan refuses a shape it has no box for. A diffusive
+  flown again at the declared resolution before the gate refuses - only where that solve, one per
+  basis channel, is estimated within a second - and the basis says which; otherwise, or where that
+  fails too, the cost is unknown. A phase whose pilot failed is charged at the dearest rate
+  measured per simulated second the measured pilots actually flew, not per second of their phases. The conductor scan refuses a shape it has no box for. A diffusive
   leg is handed a density or a packet, never both, and the caller hands the packet over visibly.
   The export's grid arrays stay with the allocator: a watch runs only in a measuring child or in
   `Einzel.Fields.Tests`, neither of which exports, and an allocation on any other thread is counted
@@ -4766,13 +4767,16 @@ Two findings from Stage 1 that bear on the spec:
   a time past the switch instead of a step count that was counting the defect.
 
   `ITimeVaryingField.ElectricFieldBefore` asks a field for the left limit at an instant: the
-  phase ending, on a boundary. It defaults to the field at the instant (right for anything
-  continuous in time); the sequenced field and the staged solved field answer by side, and the
-  composites forward it. **By side, not by an instant a hair earlier**: on a shifted leg an ulp of
-  the leg's clock is far smaller than an ulp of the instrument's and rounds back onto the switch -
-  a leg from 1.40141743e-6 to 3.00152224e-5 s maps its own end an ulp *past* the instrument's -
-  so `TimeShiftedField` puts a mapped instant within four ulps of a switch onto the switch. The
-  step cut to a switch asks its end stages from before, and hands on the next phase's derivative.
+  phase ending, on a boundary, and the level ending at a rectangular drive's edge. It has no
+  default, so a wrapper cannot forget it; the sequenced field and the staged solved field answer
+  by side, a held field answers with its one state, and the composites forward it. **By side, not
+  by an instant a hair earlier**: on a shifted leg an ulp of the leg's clock is far smaller than an
+  ulp of the instrument's - a leg from 1.40141743e-6 to 3.00152224e-5 s maps its own end an ulp
+  *past* the instrument's - so `TimeShiftedField` recognises a switch it reported by identity:
+  an instant equal to `boundary - offset` is that boundary, found in the leg's own switches, read
+  once and bounded at the leg's end. The step cut to a switch - and a detector, electrode or
+  discontinuity landed on at its end - asks its end stages from before and hands on the next
+  phase's derivative.
 
   **The reference flights and the corpus are bit-identical except where a step lands on a
   switch.** The scaffolded reflectron, the planar mirror pair, the einzel lens and the rectilinear
@@ -4815,7 +4819,8 @@ Two findings from Stage 1 that bear on the spec:
   the compiler named the four test wrappers that had. A phase shorter than the integrator's
   smallest step (`IntegrationLimits.MinimumStepSeconds`, 1e-18 s, now one constant for both) is
   refused at its duration as well as one that rounds to nothing - a 1e-19 s phase after a
-  microsecond. The extra field evaluation a landing step makes, and the one a magnetic step always
+  microsecond - where the phase is flown as trajectories; a density phase has no smallest step
+  and is refused only where it rounds to nothing. The extra field evaluation a landing step makes, and the one a magnetic step always
   made, are counted (`DormandPrince54.Evaluations`), checked against a field that counts what it
   is asked. The diffusive leg takes the caller's packet by reference again, with no second variable.
 
@@ -4832,8 +4837,8 @@ Two findings from Stage 1 that bear on the spec:
   a switch at all: a sequenced packet crossing one into a field two thousand times stronger took
   **58 to 103 refused steps** at it and then crossed it on the smallest step. It now cuts, asks the
   phase ending, and sets its clock as the single-ion path does - **0 refused**. A leg's switches are
-  read once when the leg is made, so a query is a binary search, allocation-free, rather than
-  sixteen decrements and a scan per stage; 35,610 instants on and around every switch of sixty
+  read once - the first time a query needs them, up to the first switch past the leg's end - so a
+  query is a binary search, allocation-free, rather than sixteen decrements and a scan per stage; 35,610 instants on and around every switch of sixty
   random legs answer exactly as the scan did. Validation counts a phase's duration toward the next
   one's start even when it refuses that phase for something else, and refuses a duration that
   converts to infinity (1e306 hours) as not finite, which passed both checks before. The estimate's
@@ -4867,3 +4872,19 @@ Two findings from Stage 1 that bear on the spec:
   needed each phase's parameters resolved against its own errors, since the parameter surface
   refuses to resolve into a list that already holds any error at all, so every phase after a first
   mistake was silently skipped.
+
+  **The fourth review: a surface met at a switch is the step that met it.** A detector, an electrode
+  or a field discontinuity reached exactly at the end of the step cut to a switch was landed on by
+  re-running that step with no switch, so its last stages sampled the next phase: an ion struck a
+  wall with **7,063 m/s** from a field-free phase that left it at 3,000. The landing is now the
+  step, asked of the phase ending, with the clock set onto the switch. A leg's switches stop at
+  the first one past the leg's end, so a five-phase leg of a 200,000-phase staircase reads its own
+  seven or so where it used to give up holding and scan the instrument on every query; an instant
+  past them is still answered, by scanning. An `ext:` objective is billed as the sequenced run when
+  its manifest declares a figure that reads it. The trajectory integrator's smallest step bounds
+  only a phase flown as trajectories: a density phase is refused only where it lasts no time at
+  all. **Not changed, deliberately**: ordinary field evaluations on a leg still go through the
+  switch lookup rather than adding the offset, because the derivative handed on at a switch is
+  asked through that same evaluation, and where `(boundary - offset) + offset` rounds below the
+  boundary it would be the phase that has ended; the lookup is one binary search over the leg's
+  few switches and allocates nothing.

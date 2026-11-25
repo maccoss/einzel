@@ -1731,7 +1731,15 @@ public static class ModelValidator
             // Refused, and the rest of the phase still checked: a document with a phase too short
             // and a mistake in its set, its ramp or its mode has two mistakes, and reporting one
             // makes it take two rounds to fix. Kept out of the schedule at the end.
-            var tooShort = !(length >= Core.Numerics.IntegrationLimits.MinimumStepSeconds);
+            //
+            // THE SMALLEST STEP IS THE TRAJECTORY INTEGRATOR'S, so it bounds only a phase that
+            // integrator flies. A density is stepped by its own stability limit and has no smallest
+            // step to underflow; what fails for it is a phase of no time at all, whose end is its
+            // start - two boundaries at one instant, which the sequenced field refuses.
+            var flown = (stage.Mode ?? document.Transport?.Mode ?? "trajectory") != "diffusion";
+            var tooShort = flown
+                ? !(length >= Core.Numerics.IntegrationLimits.MinimumStepSeconds)
+                : !(length > 0.0);
 
             if (tooShort)
             {
@@ -1739,12 +1747,17 @@ public static class ModelValidator
                 {
                     Code = ErrorCodes.ValueOutOfBounds,
                     Path = $"{stagePath}/duration",
-                    Constraint = string.Create(
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        $"a phase must last at least the integrator's smallest step, "
-                        + $"{Core.Numerics.IntegrationLimits.MinimumStepSeconds:G3} s, after the "
-                        + $"{before:G6} s before it; added up as the run adds it, this one lasts "
-                        + $"{length:G3} s{(length == 0.0 ? " - its end is its start" : string.Empty)}"),
+                    Constraint = flown
+                        ? string.Create(
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            $"a phase flown as trajectories must last at least the integrator's smallest step, "
+                            + $"{Core.Numerics.IntegrationLimits.MinimumStepSeconds:G3} s, after the "
+                            + $"{before:G6} s before it; added up as the run adds it, this one lasts "
+                            + $"{length:G3} s{(length == 0.0 ? " - its end is its start" : string.Empty)}")
+                        : string.Create(
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            $"a phase must end after it starts, and added up as the run adds it to the "
+                            + $"{before:G6} s before it, this one lasts no time at all - its end is its start"),
                     Observed = new ObservedValue(duration.Value.SiValue, "s"),
                     Suggestion = "make the phase long enough to be resolved against the time before "
                         + "it, or remove it",

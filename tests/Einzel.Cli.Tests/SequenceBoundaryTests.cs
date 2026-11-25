@@ -75,16 +75,18 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
     /// <param name="before">Each of the two phases before it, in microseconds.</param>
     /// <param name="duration">The third phase's duration, in microseconds.</param>
     /// <param name="says">What the refusal says.</param>
+    /// <param name="mode">How the third phase is run.</param>
     [Theory]
-    [InlineData("3", "1e-30", "its end is its start")]
-    [InlineData("0.5", "1e-13", "smallest step")]
-    [InlineData("3", "0", "positive time")]
-    public void APhaseThatEndsWhereItBeginsIsRefusedAtItsDuration(string before, string duration, string says)
+    [InlineData("3", "1e-30", "its end is its start", "diffusion")]
+    [InlineData("3", "1e-30", "its end is its start", "trajectory")]
+    [InlineData("0.5", "1e-13", "smallest step", "trajectory")]
+    [InlineData("3", "0", "positive time", "diffusion")]
+    public void APhaseThatEndsWhereItBeginsIsRefusedAtItsDuration(string before, string duration, string says, string mode)
     {
         var path = Model($$"""
             [ { "name": "hold", "duration": { "value": {{before}}, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
               { "name": "push", "duration": { "value": {{before}}, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 100, "unit": "V/m" } } },
-              { "name": "blip", "duration": { "value": {{duration}}, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+              { "name": "blip", "duration": { "value": {{duration}}, "unit": "us" }, "mode": "{{mode}}", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
             """);
 
         foreach (var verb in new[] { "validate", "run" })
@@ -130,6 +132,29 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
 
         Assert.Contains("/sequence/0/mode", paths);
         Assert.Contains("/sequence/1/duration", paths);
+    }
+
+    /// <summary>
+    /// A density phase shorter than the trajectory integrator's smallest step is not refused for
+    /// it: a density has no smallest step. The same phase flown as trajectories is.
+    /// </summary>
+    [Fact]
+    public void TheSmallestStepBoundsOnlyAPhaseFlownAsTrajectories()
+    {
+        string Phases(string mode) => $$"""
+            [ { "name": "hold", "duration": { "value": 0.5, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "blip", "duration": { "value": 1e-13, "unit": "us" }, "mode": "{{mode}}", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "after", "duration": { "value": 0.5, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+            """;
+
+        var (densityExit, densityOut, densityErr) = Run("validate", Model(Phases("diffusion")), "--json");
+        var (flownExit, flownOut, _) = Run("validate", Model(Phases("trajectory")), "--json");
+
+        output.WriteLine($"diffusion: exit {densityExit}: {densityOut.Trim()} {densityErr.Trim()}");
+
+        Assert.DoesNotContain("smallest step", densityOut, StringComparison.Ordinal);
+        Assert.Equal(1, flownExit);
+        Assert.Contains("smallest step", flownOut, StringComparison.Ordinal);
     }
 
     /// <summary>

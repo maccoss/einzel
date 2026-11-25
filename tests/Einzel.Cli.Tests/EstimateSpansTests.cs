@@ -540,6 +540,49 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// An extension objective is billed by what its manifest declares: one handed a transit is
+    /// handed a whole sequenced run per evaluation, and flies the sequence's cloud.
+    /// </summary>
+    /// <param name="declared">The built-in figure the extension's manifest declares.</param>
+    /// <param name="flights">The flights one evaluation makes.</param>
+    [Theory]
+    [InlineData("transitTime", 2000)]
+    [InlineData("flightTime", 9)]
+    public void AnExtensionIsBilledByTheFiguresItDeclares(string declared, int flights)
+    {
+        // A project: the extension lives in its extensions directory, found by the models one.
+        Directory.CreateDirectory(Path.Combine(_root, "models"));
+        Assert.Equal(0, Program.Main(["ext", "register", "transitwatch", "--project", _root]));
+
+        var manifestPath = Path.Combine(_root, "extensions", "transitwatch", "extension.json");
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["figures"] = new JsonArray(declared);
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+
+        var model = Model("tube-entered", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+            document["source"]!["cloud"]!["ions"] = 2000;
+        });
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "ext:transitwatch", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        EstimateOutcome costed;
+
+        using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+        {
+            costed = EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine($"declares {declared}: {costed.Study!.Members} flights an evaluation");
+
+        Assert.Equal(flights, costed.Study!.Members);
+    }
+
+    /// <summary>
     /// Under space charge a sequenced evaluation advances one packet, whatever the figure asks
     /// for, and is not re-billed as that many independent flights.
     /// </summary>
@@ -719,11 +762,11 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
-    /// What the phases' cost covers is the time actually flown and the time charged at the
-    /// dearest rate, not every phase's whole duration.
+    /// A phase whose pilot could not be measured is charged at the dearest rate measured, per
+    /// simulated second the measured pilot actually flew rather than per second of its phase.
     /// </summary>
     [Fact]
-    public void ThePhasesCoverWhatWasFlownAndCharged()
+    public void AnUnmeasuredPhaseIsChargedPerSecondFlown()
     {
         var phases = new[]
         {
@@ -734,8 +777,10 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         var cost = EstimateCommand.PhasePilots(
             phases, phase => phase.Name == "early" ? new(4.0, "arrived", true, 1e-6) : new(0.0, "not measured", false, 0.0));
 
-        // A microsecond flown before the ion arrived, and the failed phase's three charged.
-        Assert.Equal(4e-6, cost.CoveredSeconds, 15);
+        // Four seconds for the microsecond flown before the ion arrived is four million seconds a
+        // simulated second, and the failed phase's three microseconds charged at that: sixteen.
+        // Per second of its phase it would have been ten.
+        Assert.Equal(16.0, cost.Seconds, 9);
     }
 
     /// <summary>Two phases declared alike are two phases, and both are piloted.</summary>

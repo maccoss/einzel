@@ -106,6 +106,197 @@ public sealed class ClockEdgeTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A detector reached exactly at the end of the step cut to a switch is landed on as that step:
+    /// asked of the phase ending, with the clock on the switch.
+    /// </summary>
+    /// <remarks>
+    /// The detector fires on the state that step ends in - computed here by the same step - the
+    /// first time it is shown it, and on nothing else, so every bisection probe short of the whole
+    /// step is on its near side and the landing is the whole step. (A probe an ulp short can round
+    /// to the same state, which is why it fires once.) Re-run without the switch, the landing's
+    /// last stages sampled the next phase's reversed field and the ion arrived at a speed the phase
+    /// it flew through did not give it.
+    /// </remarks>
+    [Fact]
+    public void ADetectorReachedAtASwitchIsLandedOnAsTheStep()
+    {
+        const double phase = 1e-7;
+        var qm = Ion.ChargeSi / Ion.MassSi;
+        var field = new SequencedField([Uniform(1e6), Uniform(-2e6)], [phase, 2 * phase]);
+        var start = new PhaseState(Vec3.Zero, Vec3.Zero);
+        var derivative = DormandPrince54.Derivative(in start, field, qm, 0.0);
+
+        DormandPrince54.Step(in start, in derivative, phase, field, qm, out var end, out _, out _, out _, 0.0, phase);
+
+        var fired = false;
+        var flight = TrajectoryIntegrator.Integrate(
+            start,
+            Ion,
+            field,
+            new IntegrationSettings { MaximumFlightTime = 2 * phase, UseAnalyticDrift = false, InitialStep = phase },
+            (in PhaseState s) =>
+            {
+                if (!fired && s.Position == end.Position && s.Velocity == end.Velocity)
+                {
+                    fired = true;
+                    return -1.0;
+                }
+
+                return s.Position.X < end.Position.X ? 1.0 : (fired ? 1.0 : -1.0);
+            });
+
+        output.WriteLine($"{flight.Outcome} at {flight.FlightTimeSeconds:R} s, {flight.FinalState.Velocity.X:R} m/s against {end.Velocity.X:R}");
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, flight.Outcome);
+        Assert.Equal(phase, flight.FlightTimeSeconds);
+        Assert.Equal(end.Velocity.X, flight.FinalState.Velocity.X);
+    }
+
+    /// <summary>
+    /// A field discontinuity reached exactly at the end of the step cut to a switch is landed on as
+    /// that step, and the flight goes on in the next phase from the switch.
+    /// </summary>
+    [Fact]
+    public void ADiscontinuityReachedAtASwitchIsLandedOnAsTheStep()
+    {
+        const double phase = 1e-7;
+        var inner = new SequencedField([Uniform(0.0), Uniform(2e6)], [phase, 2 * phase]);
+        var start = new PhaseState(Vec3.Zero, new Vec3(3000.0, 0.0, 0.0));
+        var qm = Ion.ChargeSi / Ion.MassSi;
+        var derivative = DormandPrince54.Derivative(in start, inner, qm, 0.0);
+
+        DormandPrince54.Step(in start, in derivative, phase, inner, qm, out var end, out _, out _, out _, 0.0, phase);
+
+        var field = new Discontinuous(inner, end.Position.X);
+        var flight = TrajectoryIntegrator.Integrate(
+            start,
+            Ion,
+            field,
+            new IntegrationSettings { MaximumFlightTime = 1.5 * phase, UseAnalyticDrift = false, InitialStep = phase });
+
+        var expected = 3000.0 + (qm * 2e6 * 0.5 * phase);
+
+        output.WriteLine($"{flight.Outcome} at {flight.FlightTimeSeconds:R} s, {flight.FinalState.Velocity.X:R} m/s against {expected:R}");
+
+        Assert.Equal(TrajectoryOutcome.MaximumFlightTimeReached, flight.Outcome);
+        Assert.Equal(expected, flight.FinalState.Velocity.X, 1e-9 * expected);
+    }
+
+    /// <summary>An electrode reached exactly at the end of the step cut to a switch is struck as that step.</summary>
+    [Fact]
+    public void AnElectrodeReachedAtASwitchIsStruckAsTheStep()
+    {
+        const double phase = 1e-7;
+        var qm = Ion.ChargeSi / Ion.MassSi;
+        var inner = new SequencedField([Uniform(0.0), Uniform(2e6)], [phase, 2 * phase]);
+        var start = new PhaseState(Vec3.Zero, new Vec3(3000.0, 0.0, 0.0));
+        var derivative = DormandPrince54.Derivative(in start, inner, qm, 0.0);
+
+        DormandPrince54.Step(in start, in derivative, phase, inner, qm, out var end, out _, out _, out _, 0.0, phase);
+
+        var flight = TrajectoryIntegrator.Integrate(
+            start,
+            Ion,
+            new Walled(inner, end.Position.X),
+            new IntegrationSettings { MaximumFlightTime = 2 * phase, UseAnalyticDrift = false, InitialStep = phase });
+
+        output.WriteLine($"{flight.Outcome} at {flight.FlightTimeSeconds:R} s, {flight.FinalState.Velocity.X:R} m/s against {end.Velocity.X:R}");
+
+        Assert.Equal(TrajectoryOutcome.StruckElectrode, flight.Outcome);
+        Assert.Equal(phase, flight.FlightTimeSeconds);
+        Assert.Equal(3000.0, flight.FinalState.Velocity.X);
+    }
+
+    // A sequenced field with a wall of metal past a plane of x, met as the discontinuity below is.
+    private sealed class Walled(ITimeVaryingField inner, double planeX) : ITimeVaryingField, IConductorBounded
+    {
+        private bool _seen;
+
+        public double ResolutionLength => inner.ResolutionLength;
+
+        public double OscillatingResolutionLength => inner.OscillatingResolutionLength;
+
+        public double ShortestPeriodSeconds => inner.ShortestPeriodSeconds;
+
+        public double SignedDistanceToConductor(in Vec3 position)
+        {
+            // On the plane: far side until a probe short of it has been asked, near side after.
+            if (position.X == planeX)
+            {
+                return _seen ? 1.0 : -1.0;
+            }
+
+            if (position.X < planeX && position.X > 0.0)
+            {
+                _seen = true;
+            }
+
+            return position.X < planeX ? 1.0 : -1.0;
+        }
+
+        public string? ConductorAt(in Vec3 position) => position.X >= planeX ? "wall" : null;
+
+        public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => inner.ElectricFieldAt(position, timeSeconds);
+
+        public double PotentialAt(in Vec3 position, double timeSeconds) => inner.PotentialAt(position, timeSeconds);
+
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => inner.ElectricFieldBefore(position, switchSeconds);
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds) => inner.PotentialBefore(position, switchSeconds);
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => inner.ElectricFieldAt(position);
+
+        public double PotentialAt(in Vec3 position) => inner.PotentialAt(position);
+
+        public double NextSwitchAfter(double timeSeconds) => inner.NextSwitchAfter(timeSeconds);
+    }
+
+    // A sequenced field with a declared discontinuity across a plane of x, read as on the far side
+    // when asked exactly on the plane - which is the step's own result - until the bisection has
+    // asked a point short of it, and on the near side after, so a probe an ulp short that rounds
+    // onto the plane is not taken for it.
+    private sealed class Discontinuous(ITimeVaryingField inner, double planeX) : ITimeVaryingField
+    {
+        private bool _seen;
+
+        public double ResolutionLength => inner.ResolutionLength;
+
+        public double OscillatingResolutionLength => inner.OscillatingResolutionLength;
+
+        public double ShortestPeriodSeconds => inner.ShortestPeriodSeconds;
+
+        public double SignedDistanceToDiscontinuity(in Vec3 position)
+        {
+            // On the plane: far side until a probe short of it has been asked, near side after.
+            if (position.X == planeX)
+            {
+                return _seen ? 1.0 : -1.0;
+            }
+
+            if (position.X < planeX && position.X > 0.0)
+            {
+                _seen = true;
+            }
+
+            return position.X < planeX ? 1.0 : -1.0;
+        }
+
+        public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => inner.ElectricFieldAt(position, timeSeconds);
+
+        public double PotentialAt(in Vec3 position, double timeSeconds) => inner.PotentialAt(position, timeSeconds);
+
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => inner.ElectricFieldBefore(position, switchSeconds);
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds) => inner.PotentialBefore(position, switchSeconds);
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => inner.ElectricFieldAt(position);
+
+        public double PotentialAt(in Vec3 position) => inner.PotentialAt(position);
+
+        public double NextSwitchAfter(double timeSeconds) => inner.NextSwitchAfter(timeSeconds);
+    }
+
+    /// <summary>
     /// A rectangular drive whose edge lies on a switch is landed on without a cascade: the step
     /// ending there is asked the level it held, not the level after the edge.
     /// </summary>

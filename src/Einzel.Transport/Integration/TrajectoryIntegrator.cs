@@ -464,12 +464,16 @@ public static class TrajectoryIntegrator
             if (double.IsFinite(conductorStep) && conductorStep <= boundaryStep
                 && !(double.IsFinite(stopStep) && stopStep < conductorStep))
             {
+                var landsOnSwitch = endsOnSwitch && conductorStep == step;
+
                 DormandPrince54.Step(
                     in state, in derivative, conductorStep, field, chargeToMass,
-                    out var absorbed, out _, out _, out _, time.Total);
-                fieldEvaluations += DormandPrince54.Evaluations(field);
+                    out var absorbed, out _, out _, out _, time.Total,
+                    landsOnSwitch ? switchAt : double.NaN);
+                fieldEvaluations += DormandPrince54.Evaluations(field, landsOnSwitch);
 
                 time.Add(conductorStep);
+                Land(ref time, landsOnSwitch, switchAt, endsOnCeiling && conductorStep == step, settings);
                 state = absorbed;
                 accepted++;
                 recorder?.Offer(time.Total, in state, force: true);
@@ -482,12 +486,16 @@ public static class TrajectoryIntegrator
 
             if (double.IsFinite(stopStep) && stopStep <= boundaryStep)
             {
+                var landsOnSwitch = endsOnSwitch && stopStep == step;
+
                 DormandPrince54.Step(
                     in state, in derivative, stopStep, field, chargeToMass,
-                    out var landed, out _, out _, out _, time.Total);
-                fieldEvaluations += DormandPrince54.Evaluations(field);
+                    out var landed, out _, out _, out _, time.Total,
+                    landsOnSwitch ? switchAt : double.NaN);
+                fieldEvaluations += DormandPrince54.Evaluations(field, landsOnSwitch);
 
                 time.Add(stopStep);
+                Land(ref time, landsOnSwitch, switchAt, endsOnCeiling && stopStep == step, settings);
                 state = landed;
                 accepted++;
                 recorder?.Offer(time.Total, in state, force: true);
@@ -499,12 +507,22 @@ public static class TrajectoryIntegrator
 
             if (double.IsFinite(boundaryStep))
             {
+                var landsOnSwitch = endsOnSwitch && boundaryStep == step;
+
                 DormandPrince54.Step(
                     in state, in derivative, boundaryStep, field, chargeToMass,
-                    out var onBoundary, out _, out _, out _, time.Total);
-                fieldEvaluations += DormandPrince54.Evaluations(field);
+                    out var onBoundary, out _, out _, out _, time.Total,
+                    landsOnSwitch ? switchAt : double.NaN);
+                fieldEvaluations += DormandPrince54.Evaluations(field, landsOnSwitch);
 
                 time.Add(boundaryStep);
+                Land(ref time, landsOnSwitch, switchAt, endsOnCeiling && boundaryStep == step, settings);
+
+                if (landsOnSwitch)
+                {
+                    members?.Forget();
+                }
+
                 state = onBoundary;
                 accepted++;
                 recorder?.Offer(time.Total, in state, force: true);
@@ -1116,6 +1134,30 @@ public static class TrajectoryIntegrator
         }
 
         return high;
+    }
+
+    /// <summary>Sets the clock onto a switch or the ceiling a landing step ended on, where the sum missed.</summary>
+    /// <param name="time">The flight's clock, already advanced by the landing step.</param>
+    /// <param name="onSwitch">Whether the landing step was the step cut to the switch.</param>
+    /// <param name="switchAt">The switch, as the field reported it.</param>
+    /// <param name="onCeiling">Whether the landing step was the step cut to the ceiling.</param>
+    /// <param name="settings">The flight's settings.</param>
+    /// <remarks>
+    /// A surface reached exactly at the end of the step cut to a switch lands on the switch: the
+    /// same step, so the same rule as the plain step - asked of the phase ending, and the clock set
+    /// to the instant the field reported, so the next phase starts there and not an ulp short.
+    /// </remarks>
+    private static void Land(ref CompensatedSum time, bool onSwitch, double switchAt, bool onCeiling, IntegrationSettings settings)
+    {
+        if (onSwitch && time.Total != switchAt)
+        {
+            time.Restart(switchAt);
+        }
+
+        if (onCeiling && time.Total < settings.MaximumFlightTime)
+        {
+            time.Restart(settings.MaximumFlightTime);
+        }
     }
 
     private static double InitialStep(

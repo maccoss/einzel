@@ -275,6 +275,53 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
         Assert.True(asked <= 48, $"{asked:F0} bytes to make a switchless leg and ask it");
     }
 
+    /// <summary>
+    /// A leg of a long staircase reads its own few switches, not the whole timeline, and still
+    /// answers past them.
+    /// </summary>
+    /// <remarks>
+    /// Two hundred thousand phases is more than a leg holds, so an unbounded leg gave up holding
+    /// and scanned the instrument on every query - from sixteen ulps back, through every switch
+    /// before the leg. Bounded at its own end, a five-phase leg reads its seven or so switches
+    /// once and asks the instrument nothing after that.
+    /// </remarks>
+    [Fact]
+    public void ALegOfALongStaircaseReadsOnlyItsOwnSwitches()
+    {
+        const int phases = 200_000;
+        const double phase = 1e-6;
+        var ends = Enumerable.Range(1, phases).Select(k => k * phase).ToArray();
+        var level = UniformField.Create(new Vec3(1.0, 0.0, 0.0));
+        var inner = new CountingSwitches(new SequencedField(ends.Select(_ => level).ToArray(), ends));
+        var start = 100_000 * phase;
+        var leg = new TimeShiftedField(inner, start, start + (5 * phase));
+
+        // The leg's instants, first: every one answered as the scan answers it.
+        for (var k = 0; k < 600; k++)
+        {
+            var t = k * 1e-8;
+            Assert.Equal(ScannedNextSwitchAfter(inner, start, t), leg.NextSwitchAfter(t));
+        }
+
+        var asked = inner.Asked;
+        var before = asked;
+
+        for (var k = 0; k < 600; k++)
+        {
+            _ = leg.NextSwitchAfter(k * 1e-8);
+            _ = leg.ElectricFieldAt(Vec3.Zero, k * 1e-8);
+        }
+
+        asked = inner.Asked - before;
+
+        // And past its end, by scanning, still right.
+        Assert.Equal(ScannedNextSwitchAfter(inner, start, 7.5 * phase), leg.NextSwitchAfter(7.5 * phase));
+
+        output.WriteLine($"{asked} inner switch queries over 1,200 leg queries");
+
+        Assert.Equal(0, asked);
+    }
+
     private static double Step(double value, int ulps)
     {
         for (var k = 0; k < Math.Abs(ulps); k++)
