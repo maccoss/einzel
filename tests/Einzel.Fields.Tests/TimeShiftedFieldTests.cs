@@ -128,4 +128,177 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new TimeShiftedField(Two(), double.NaN));
     }
+
+    /// <summary>
+    /// The switches a leg holds answer exactly as a scan of the inner field's boundaries did, on
+    /// every boundary, a few ulps either side of each, and between them.
+    /// </summary>
+    /// <remarks>
+    /// The reference is the scan this wrapper used to run on every query - sixteen decrements and
+    /// a walk from there - written out here so a lookup that answers differently anywhere fails.
+    /// </remarks>
+    [Fact]
+    public void HeldSwitchesAnswerAsTheScanDid()
+    {
+        var random = new Random(20261124);
+        var compared = 0;
+
+        for (var draw = 0; draw < 60; draw++)
+        {
+            var count = 2 + random.Next(30);
+            var ends = new double[count];
+            var at = 0.0;
+
+            for (var k = 0; k < count; k++)
+            {
+                at += Math.Exp(random.NextDouble() * Math.Log(1e4)) * 1e-9;
+                ends[k] = at;
+            }
+
+            var inner = new SequencedField(
+                ends.Select((_, k) => UniformField.Create(new Vec3(k + 1.0, 0.0, 0.0))).ToArray(), ends);
+            var offset = draw % 3 == 0 ? 0.0 : ends[random.Next(count)] * random.NextDouble();
+            var shifted = new TimeShiftedField(inner, offset);
+
+            var instants = new List<double> { 0.0, at * 2.0 };
+
+            foreach (var end in ends)
+            {
+                var reported = end - offset;
+                instants.Add(reported);
+
+                for (var ulp = 1; ulp <= 20; ulp++)
+                {
+                    instants.Add(Step(reported, ulp));
+                    instants.Add(Step(reported, -ulp));
+                }
+
+                instants.Add(reported * random.NextDouble());
+            }
+
+            foreach (var t in instants.Where(t => t >= 0.0))
+            {
+                Assert.Equal(ScannedNextSwitchAfter(inner, offset, t), shifted.NextSwitchAfter(t));
+                Assert.Equal(
+                    inner.ElectricFieldAt(Vec3.Zero, ScannedOnTheInstrument(inner, offset, t)).X,
+                    shifted.ElectricFieldAt(Vec3.Zero, t).X);
+                Assert.Equal(
+                    inner.ElectricFieldBefore(Vec3.Zero, ScannedOnTheInstrument(inner, offset, t)).X,
+                    shifted.ElectricFieldBefore(Vec3.Zero, t).X);
+                compared++;
+            }
+        }
+
+        output.WriteLine($"{compared} instants answered as the scan did");
+    }
+
+    /// <summary>A query asks the inner field nothing about its switches, and allocates nothing.</summary>
+    /// <remarks>
+    /// The integrator asks a leg for its next switch on every step and for its field at every
+    /// stage; each of those used to scan the inner field's boundaries from sixteen ulps back.
+    /// </remarks>
+    [Fact]
+    public void AQueryNeitherScansNorAllocates()
+    {
+        var ends = Enumerable.Range(1, 40).Select(k => k * 1e-6).ToArray();
+        var inner = new CountingSwitches(new SequencedField(
+            ends.Select(_ => UniformField.Create(new Vec3(1.0, 0.0, 0.0))).ToArray(), ends));
+        var shifted = new TimeShiftedField(inner, 3.5e-6);
+        var asked = inner.Asked;
+
+        var total = 0.0;
+        total += shifted.NextSwitchAfter(0.0) + shifted.ElectricFieldAt(Vec3.Zero, 1e-6).X;
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var k = 0; k < 10_000; k++)
+        {
+            var t = k * 3.3e-9;
+            total += shifted.NextSwitchAfter(t);
+            total += shifted.ElectricFieldAt(Vec3.Zero, t).X;
+            total += shifted.ElectricFieldBefore(Vec3.Zero, shifted.NextSwitchAfter(t)).X;
+        }
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        output.WriteLine($"{inner.Asked - asked} inner switch queries and {allocated} bytes over 30,000 queries ({total:G3})");
+
+        Assert.Equal(asked, inner.Asked);
+        Assert.Equal(0, allocated);
+    }
+
+    private static double Step(double value, int ulps)
+    {
+        for (var k = 0; k < Math.Abs(ulps); k++)
+        {
+            value = ulps > 0 ? Math.BitIncrement(value) : Math.BitDecrement(value);
+        }
+
+        return value;
+    }
+
+    private static double SixteenBefore(double instant) => Step(instant, -16);
+
+    // The scan TimeShiftedField ran on every query before it held its switches.
+    private static double ScannedOnTheInstrument(ITimeVaryingField inner, double offset, double t)
+    {
+        var instrument = t + offset;
+        var boundary = inner.NextSwitchAfter(SixteenBefore(instrument));
+
+        while (double.IsFinite(boundary))
+        {
+            var reported = boundary - offset;
+
+            if (reported == t)
+            {
+                return boundary;
+            }
+
+            if (reported > t)
+            {
+                break;
+            }
+
+            boundary = inner.NextSwitchAfter(boundary);
+        }
+
+        return instrument;
+    }
+
+    private static double ScannedNextSwitchAfter(ITimeVaryingField inner, double offset, double t)
+    {
+        var boundary = inner.NextSwitchAfter(SixteenBefore(t + offset));
+
+        while (double.IsFinite(boundary) && boundary - offset <= t)
+        {
+            boundary = inner.NextSwitchAfter(boundary);
+        }
+
+        return double.IsFinite(boundary) ? boundary - offset : double.PositiveInfinity;
+    }
+
+    private sealed class CountingSwitches(ITimeVaryingField inner) : ITimeVaryingField
+    {
+        public long Asked { get; private set; }
+
+        public double ShortestPeriodSeconds => inner.ShortestPeriodSeconds;
+
+        public double NextSwitchAfter(double timeSeconds)
+        {
+            Asked++;
+            return inner.NextSwitchAfter(timeSeconds);
+        }
+
+        public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => inner.ElectricFieldAt(position, timeSeconds);
+
+        public double PotentialAt(in Vec3 position, double timeSeconds) => inner.PotentialAt(position, timeSeconds);
+
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => inner.ElectricFieldBefore(position, switchSeconds);
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds) => inner.PotentialBefore(position, switchSeconds);
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => inner.ElectricFieldAt(position);
+
+        public double PotentialAt(in Vec3 position) => inner.PotentialAt(position);
+    }
 }

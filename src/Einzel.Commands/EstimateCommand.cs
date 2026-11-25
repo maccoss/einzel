@@ -473,6 +473,49 @@ public static class EstimateCommand
     /// <summary>How long the repeats may cost in total before settling for what is measured.</summary>
     private const double PilotRepeatBudgetMs = 1000.0;
 
+    /// <summary>
+    /// The most a declared-resolution pilot's solve may be estimated to cost before an estimate
+    /// declines to fly one, in seconds: the same second the pilots' own repeats are allowed.
+    /// </summary>
+    private const double DeclaredPilotSolveBudgetSeconds = PilotRepeatBudgetMs / 1000.0;
+
+    /// <summary>What solving every element at the declared mesh is estimated to cost, in seconds.</summary>
+    /// <param name="model">The validated model.</param>
+    /// <param name="planeSecondsPerMegaNode">The plane rate measured or documented above.</param>
+    /// <param name="volumeSecondsPerMegaNode">The volume rate.</param>
+    /// <returns>The sum over the solved elements of rate times nodes; arithmetic on the boxes, nothing solved.</returns>
+    internal static double DeclaredSolveSeconds(
+        CompiledModel model, double planeSecondsPerMegaNode, double volumeSecondsPerMegaNode)
+    {
+        var total = 0.0;
+
+        foreach (var element in model.Fields)
+        {
+            if (element.Solve3D is { } volume)
+            {
+                total += volumeSecondsPerMegaNode
+                    * Fields.Solved.GeometryBuilder3D.BuildGrid(Declared(volume)).NodeCount / 1e6;
+            }
+            else if (element.Solve is { } plane)
+            {
+                total += planeSecondsPerMegaNode * GeometryBuilder.BuildGrid(plane).NodeCount / 1e6;
+            }
+        }
+
+        return total;
+    }
+
+    /// <summary>How long a phase's trajectory leg lasts, as the run computes it.</summary>
+    /// <param name="phase">The phase, or null for no phase.</param>
+    /// <param name="startsAt">When it begins on the instrument's timeline, as the run takes it.</param>
+    /// <returns>Its end less its start, and infinity for no phase.</returns>
+    /// <remarks>
+    /// <c>SequencedRun</c> flies a leg to <c>phase.EndsAtSeconds - started</c>; asked here by the
+    /// same subtraction, so the pilot's ceiling is the leg's to the bit.
+    /// </remarks>
+    internal static double Leg(CompiledPhase? phase, double startsAt) =>
+        phase is null ? double.PositiveInfinity : phase.EndsAtSeconds - startsAt;
+
     /// <summary>What the integration costs, measured by flying a little of it.</summary>
     /// <param name="model">The validated model.</param>
     /// <param name="coarsening">How much coarser the pilot field is than the real one.</param>
@@ -551,10 +594,14 @@ public static class EstimateCommand
 
             var span = spanSeconds ?? coarse.MaximumFlightTimeSi;
 
-            // Inside the phase flown: past its end the field is the next phase's.
+            // Inside the phase flown: past its end the field is the next phase's. Measured as the
+            // run measures its leg - the phase's end on the instrument's timeline less when it
+            // starts - rather than the declared duration, which differs from that by the rounding
+            // of the sum: longer by an ulp, the pilot's ceiling sits past the switch the leg
+            // reports at its end, and the pilot flies into the next phase the leg never enters.
             var window = Math.Min(
                 windowSeconds ?? (span * PilotFlightFraction),
-                phase?.DurationSeconds ?? double.PositiveInfinity);
+                Leg(phase, startsAt));
 
             var settings = new Transport.Integration.IntegrationSettings
             {
@@ -624,9 +671,11 @@ public static class EstimateCommand
                     : spanSeconds is null
                         ? $"the declared {span * 1e6:G4} us"
                         : $"the {span * 1e6:G4} us the run spends as trajectories")
-                + ". Flown through a field solved at "
-                + $"{coarsening:G2}x the cell size, so this is a FLOOR wherever the step is "
-                + "capped by resolution rather than by tolerance",
+                + (coarsening == 1.0
+                    ? ". Flown through the field solved at the declared mesh, the run's own"
+                    : ". Flown through a field solved at "
+                        + $"{coarsening:G2}x the cell size, so this is a FLOOR wherever the step is "
+                        + "capped by resolution rather than by tolerance"),
                 true,
                 span);
         }
@@ -942,18 +991,41 @@ public static class EstimateCommand
         // where the model's own does not - the gate would then refuse a run that takes
         // milliseconds for a reason that is nothing to do with it. Still a pilot, a fraction of
         // the flight, so bounded as the coarse one was; only if this fails too is the cost unknown.
+        //
+        // BUT ONLY WHERE THAT SOLVE IS CHEAP. Flying at the declared resolution solves the model's
+        // own field, which is the run's whole solve - minutes or hours on a volume geometry - and
+        // an estimate that does the work it is estimating has stopped being one (GRD-8 gates on a
+        // number available without doing the work). So it is tried only where the declared solve
+        // is itself estimated within a pilot's budget, and otherwise the failure is reported as it
+        // is, for the gate to refuse.
         if (!trajectory.Measured && calibrate && spans.TrajectorySeconds > 0.0)
         {
-            var declared = Pilots(model, spans, coarsening: 1.0);
+            var declaredSolve = DeclaredSolveSeconds(model, planeRate.Item1, volumeRate.Item1);
 
-            trajectory = declared with
+            if (declaredSolve <= DeclaredPilotSolveBudgetSeconds)
             {
-                How = declared.Measured
-                    ? $"the pilot at {PilotCoarsening:G2}x the cell size could not be measured "
-                    + $"({trajectory.How}), so it was flown at the declared resolution: {declared.How}"
-                    : $"NOT MEASURED at {PilotCoarsening:G2}x the cell size ({trajectory.How}), "
-                    + $"nor at the declared resolution ({declared.How})",
-            };
+                var declared = Pilots(model, spans, coarsening: 1.0);
+
+                trajectory = declared with
+                {
+                    How = declared.Measured
+                        ? $"the pilot at {PilotCoarsening:G2}x the cell size could not be measured "
+                        + $"({trajectory.How}), so it was flown at the declared resolution: {declared.How}"
+                        : $"NOT MEASURED at {PilotCoarsening:G2}x the cell size ({trajectory.How}), "
+                        + $"nor at the declared resolution ({declared.How})",
+                };
+            }
+            else
+            {
+                trajectory = trajectory with
+                {
+                    How = string.Create(
+                        Inv,
+                        $"NOT MEASURED at {PilotCoarsening:G2}x the cell size ({trajectory.How}), and not "
+                        + $"flown at the declared resolution: its solve is estimated at {declaredSolve:G3} s, "
+                        + $"over the {DeclaredPilotSolveBudgetSeconds:G3} s an estimate spends on a pilot"),
+                };
+            }
         }
 
         // A CLOUD FLIES ONCE PER ION THROUGH ONE SOLVED FIELD, so the flight is paid as many
@@ -2393,14 +2465,22 @@ public static class EstimateCommand
 
         return PhasePilots(
             spans.TrajectoryPhases,
-            phase => PilotFlight(
-                model,
-                coarsening,
-                windowSeconds: whole ? phase.DurationSeconds : null,
-                spanSeconds: phase.DurationSeconds,
-                phase: phase,
-                built: built,
-                startsAt: CompiledPhase.StartOf(model.Phases, phase)));
+            phase =>
+            {
+                // The leg the run flies, end less start, which is the declared duration only to
+                // the rounding of the sum.
+                var startsAt = CompiledPhase.StartOf(model.Phases, phase);
+                var leg = Leg(phase, startsAt);
+
+                return PilotFlight(
+                    model,
+                    coarsening,
+                    windowSeconds: whole ? leg : null,
+                    spanSeconds: leg,
+                    phase: phase,
+                    built: built,
+                    startsAt: startsAt);
+            });
     }
 
     /// <summary>

@@ -237,6 +237,24 @@ internal static class DormandPrince54
         in PhaseState state, IElectrostaticField field, double chargeToMass, double timeSeconds, in Vec3 magneticSide) =>
         Derivative(in state, field, chargeToMass, timeSeconds, in magneticSide, before: false);
 
+    /// <summary>The derivative, with a driven field asked at an instant or as it is approached from before.</summary>
+    /// <param name="state">The state to evaluate at.</param>
+    /// <param name="field">The field.</param>
+    /// <param name="chargeToMass">Charge divided by mass, in coulombs per kilogram.</param>
+    /// <param name="timeSeconds">The instant to sample a driven field at.</param>
+    /// <param name="before">
+    /// Whether a driven field is asked for the phase ending at <paramref name="timeSeconds"/>, a
+    /// switch it reported, rather than the one starting there.
+    /// </param>
+    /// <returns>The derivative.</returns>
+    /// <remarks>For an integrator that evaluates its stages itself, as the packet integrator does.</remarks>
+    internal static PhaseDerivative Derivative(
+        in PhaseState state, IElectrostaticField field, double chargeToMass, double timeSeconds, bool before)
+    {
+        var side = SideOf(in state, field);
+        return Derivative(in state, field, chargeToMass, timeSeconds, in side, before);
+    }
+
     /// <summary>The derivative, with a driven field sampled at or just before an instant.</summary>
     /// <param name="state">The state to evaluate at.</param>
     /// <param name="field">The field.</param>

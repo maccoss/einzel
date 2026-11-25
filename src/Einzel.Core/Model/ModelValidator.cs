@@ -1674,19 +1674,63 @@ public static class ModelValidator
                 NoParameters,
                 errors);
 
-            if (duration is null || duration.Value.SiValue <= 0.0)
+            if (duration is null || !double.IsFinite(duration.Value.SiValue) || duration.Value.SiValue <= 0.0)
             {
                 if (duration is not null)
                 {
+                    var finite = double.IsFinite(duration.Value.SiValue);
+
                     errors.Add(new EinzelError
                     {
                         Code = ErrorCodes.ValueOutOfBounds,
                         Path = $"{stagePath}/duration",
-                        Constraint = "a stage must last a positive time",
+                        Constraint = finite
+                            ? "a stage must last a positive time"
+                            : "a stage must last a finite time, and this duration is not a finite number",
                         Observed = new ObservedValue(duration.Value.SiValue, "s"),
                         Suggestion = "give the stage a duration, for example {\"value\": 100, \"unit\": \"us\"}",
                     });
                 }
+
+                continue;
+            }
+
+            // ITS LENGTH MUST BE ONE THE RUN CAN RESOLVE, measured by the arithmetic the run itself
+            // uses: the schedule and both sequenced fields add durations up from zero, and the
+            // integrator's leg is the difference of two of those sums. A phase short enough to
+            // vanish in the sum - a femtosecond after a microsecond - has an end equal to its
+            // start, which the field refused as two boundaries at one instant, an internal error,
+            // exit 6. And one that survives the sum but is shorter than the integrator's smallest
+            // step reaches the run as a leg that underflows at once. Both are the document's
+            // mistake, so both are refused here, at the duration.
+            //
+            // THE TIME BEFORE THE NEXT PHASE IS THIS ONE'S END WHATEVER ELSE IS WRONG WITH IT: a
+            // phase refused below for a set, a ramp or a mode still lasts what it says, and the run
+            // the document is corrected into adds it up. Advanced here, before any of those
+            // refusals, so the next phase's length is measured against the time it really starts
+            // at - and so a refusal elsewhere in a phase cannot hide that the next one is too short
+            // to resolve, or report one that is not.
+            var ends = elapsed + duration.Value.SiValue;
+            var length = ends - elapsed;
+            var before = elapsed;
+            elapsed = ends;
+
+            if (!(length >= Core.Numerics.IntegrationLimits.MinimumStepSeconds))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{stagePath}/duration",
+                    Constraint = string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $"a phase must last at least the integrator's smallest step, "
+                        + $"{Core.Numerics.IntegrationLimits.MinimumStepSeconds:G3} s, after the "
+                        + $"{before:G6} s before it; added up as the run adds it, this one lasts "
+                        + $"{length:G3} s{(length == 0.0 ? " - its end is its start" : string.Empty)}"),
+                    Observed = new ObservedValue(duration.Value.SiValue, "s"),
+                    Suggestion = "make the phase long enough to be resolved against the time before "
+                        + "it, or remove it",
+                });
 
                 continue;
             }
@@ -1831,39 +1875,6 @@ public static class ModelValidator
 
                 continue;
             }
-
-            // ITS LENGTH MUST BE ONE THE RUN CAN RESOLVE, measured by the arithmetic the run itself
-            // uses: the schedule and both sequenced fields add durations up from zero, and the
-            // integrator's leg is the difference of two of those sums. A phase short enough to
-            // vanish in the sum - a femtosecond after a microsecond - has an end equal to its
-            // start, which the field refused as two boundaries at one instant, an internal error,
-            // exit 6. And one that survives the sum but is shorter than the integrator's smallest
-            // step reaches the run as a leg that underflows at once. Both are the document's
-            // mistake, so both are refused here, at the duration.
-            var ends = elapsed + duration.Value.SiValue;
-            var length = ends - elapsed;
-
-            if (!(length >= Core.Numerics.IntegrationLimits.MinimumStepSeconds))
-            {
-                errors.Add(new EinzelError
-                {
-                    Code = ErrorCodes.ValueOutOfBounds,
-                    Path = $"{stagePath}/duration",
-                    Constraint = string.Create(
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        $"a phase must last at least the integrator's smallest step, "
-                        + $"{Core.Numerics.IntegrationLimits.MinimumStepSeconds:G3} s, after the "
-                        + $"{elapsed:G6} s before it; added up as the run adds it, this one lasts "
-                        + $"{length:G3} s{(length == 0.0 ? " - its end is its start" : string.Empty)}"),
-                    Observed = new ObservedValue(duration.Value.SiValue, "s"),
-                    Suggestion = "make the phase long enough to be resolved against the time before "
-                        + "it, or remove it",
-                });
-
-                continue;
-            }
-
-            elapsed = ends;
 
             phases.Add(new PhaseSurface(
                 name, duration.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface, ramps));

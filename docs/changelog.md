@@ -4817,3 +4817,34 @@ Two findings from Stage 1 that bear on the spec:
   microsecond. The extra field evaluation a landing step makes, and the one a magnetic step always
   made, are counted (`DormandPrince54.Evaluations`), checked against a field that counts what it
   is asked. The diffusive leg takes the caller's packet by reference again, with no second variable.
+
+  **The second review found the ceiling snap was only half the fix, and the packet integrator had
+  none of it.** An ulp short of the ceiling is reached by more than one road: an analytic drift's
+  run over speed lands there (0.3 m at 3000 m/s is 1.4e-20 s short of 1e-4 s, and where the
+  field-free region ends inside the next 1e-13 m no second drift is taken), and a step that ends on
+  a switch and on the ceiling - equal by difference from where it started, an ulp apart - was set
+  back onto the switch and not then onto the ceiling. Both left less than the smallest step and
+  ended as `StepSizeUnderflow`. The fix is general rather than a third snap: **less than the
+  smallest step from the ceiling is the ceiling**, and a switch closer than the smallest step is
+  reached - the clock set onto it and the flight gone on in the next phase - rather than being an
+  underflow before the first step. The packet integrator, which flies space charge, cut no step to
+  a switch at all: a sequenced packet crossing one into a field two thousand times stronger took
+  **58 to 103 refused steps** at it and then crossed it on the smallest step. It now cuts, asks the
+  phase ending, and sets its clock as the single-ion path does - **0 refused**. A leg's switches are
+  read once when the leg is made, so a query is a binary search, allocation-free, rather than
+  sixteen decrements and a scan per stage; 35,610 instants on and around every switch of sixty
+  random legs answer exactly as the scan did. Validation counts a phase's duration toward the next
+  one's start even when it refuses that phase for something else, and refuses a duration that
+  converts to infinity (1e306 hours) as not finite, which passed both checks before. The estimate's
+  pilot flies the leg the run flies, end less start, not the declared duration; and it no longer
+  falls back to a declared-resolution pilot whose solve is estimated past a second - on the Astral
+  that fallback was the run's whole solve inside `estimate` - nor calls a declared-resolution
+  pilot a floor from a coarser field.
+
+  **A sweep-cost test that failed on Windows CI was the runner, not this branch.** One more energy
+  member cost 22.7 ms against a 23.2 ms solve there; locally it is **2.5-2.7 ms a member on both
+  this branch and `main`** (0.04 solves). The three timings were each cheapest-of-three in a row,
+  so a burst of load could slow one and not the others - CI's sweeps came out seven times this
+  machine's while its solve came out a third. They are now taken interleaved, round by round,
+  cheapest of seven: **0.18 solves** as the code stands, **1.27** with the solve put back in the
+  member loop.

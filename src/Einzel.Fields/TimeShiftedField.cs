@@ -31,6 +31,13 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     private readonly ITimeVaryingField _inner;
     private readonly double _offsetSeconds;
 
+    // The switches this leg can meet, on the instrument's clock and on the leg's, in order: read
+    // once here so a query is a binary search rather than sixteen decrements and a scan of the
+    // inner field's boundaries per stage. Null where the inner field reports more than this
+    // holds, and then a query scans as it always did.
+    private readonly double[]? _boundaries;
+    private readonly double[]? _reported;
+
     /// <summary>Wraps a field so t = 0 here is <paramref name="offsetSeconds"/> there.</summary>
     /// <param name="inner">The field as the instrument declares it.</param>
     /// <param name="offsetSeconds">Where this leg starts on the instrument's timeline.</param>
@@ -55,6 +62,98 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
 
         _inner = inner;
         _offsetSeconds = offsetSeconds;
+        (_boundaries, _reported) = Switches(inner, offsetSeconds);
+    }
+
+    /// <summary>The switches a leg from an offset can meet, or null where there are too many to hold.</summary>
+    /// <param name="inner">The field as the instrument declares it.</param>
+    /// <param name="offsetSeconds">Where the leg starts on the instrument's timeline.</param>
+    /// <returns>Each switch on the instrument's clock and as the leg reports it.</returns>
+    /// <remarks>
+    /// From the first boundary after a few ulps before the offset, which is the earliest any
+    /// query starts from, since a leg's instants are never negative.
+    /// </remarks>
+    private static (double[]? Boundaries, double[]? Reported) Switches(ITimeVaryingField inner, double offsetSeconds)
+    {
+        var boundaries = new List<double>();
+        var boundary = inner.NextSwitchAfter(Before(offsetSeconds));
+
+        while (double.IsFinite(boundary))
+        {
+            if (boundaries.Count == MaximumHeldSwitches)
+            {
+                return (null, null);
+            }
+
+            boundaries.Add(boundary);
+            var next = inner.NextSwitchAfter(boundary);
+
+            if (!(next > boundary))
+            {
+                break;
+            }
+
+            boundary = next;
+        }
+
+        var held = boundaries.ToArray();
+        var reported = new double[held.Length];
+
+        for (var k = 0; k < held.Length; k++)
+        {
+            reported[k] = held[k] - offsetSeconds;
+        }
+
+        return (held, reported);
+    }
+
+    /// <summary>The most switches a leg holds; past this a query scans the inner field instead.</summary>
+    private const int MaximumHeldSwitches = 1 << 16;
+
+    /// <summary>The first held switch whose reported value is not below an instant on the leg's clock.</summary>
+    private static int FirstNotBelow(double[] reported, double timeSeconds)
+    {
+        var low = 0;
+        var high = reported.Length;
+
+        while (low < high)
+        {
+            var middle = (low + high) >>> 1;
+
+            if (reported[middle] < timeSeconds)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
+    }
+
+    /// <summary>The first held switch whose reported value is past an instant on the leg's clock.</summary>
+    private static int FirstAbove(double[] reported, double timeSeconds)
+    {
+        var low = 0;
+        var high = reported.Length;
+
+        while (low < high)
+        {
+            var middle = (low + high) >>> 1;
+
+            if (reported[middle] <= timeSeconds)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
     }
 
     /// <summary>Where this leg starts on the instrument's timeline, in seconds.</summary>
@@ -106,6 +205,17 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// </remarks>
     private double OnTheInstrument(double timeSeconds)
     {
+        if (_reported is { } held)
+        {
+            // The held switches in order: the first not below the instant is the only one that
+            // can equal it, and a switch a few ulps or more before the instant is never equal.
+            var at = FirstNotBelow(held, timeSeconds);
+
+            return at < held.Length && held[at] == timeSeconds
+                ? _boundaries![at]
+                : timeSeconds + _offsetSeconds;
+        }
+
         var instrument = timeSeconds + _offsetSeconds;
         var boundary = _inner.NextSwitchAfter(Before(instrument));
 
@@ -228,6 +338,13 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// </remarks>
     public double NextSwitchAfter(double timeSeconds)
     {
+        if (_reported is { } reported)
+        {
+            var after = FirstAbove(reported, timeSeconds);
+
+            return after < reported.Length ? reported[after] : double.PositiveInfinity;
+        }
+
         var boundary = _inner.NextSwitchAfter(Before(timeSeconds + _offsetSeconds));
 
         while (double.IsFinite(boundary) && boundary - _offsetSeconds <= timeSeconds)

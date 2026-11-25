@@ -615,6 +615,84 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A failed coarse pilot is not flown again at the declared resolution where that solve is
+    /// itself dear: the estimate would be doing the run's whole solve to cost it. The failure is
+    /// reported, and the gate refuses.
+    /// </summary>
+    /// <remarks>
+    /// The Astral's declared volume solve takes seconds, over the second an estimate spends on a
+    /// pilot. Asked of which coarsenings a pilot was requested at, so a declared-resolution attempt
+    /// shows whatever it reports.
+    /// </remarks>
+    [Fact]
+    public void ADearDeclaredSolveIsNotFlownForAPilot()
+    {
+        var model = Write("astral-" + Guid.NewGuid().ToString("N")[..6], Einzel.Library.DeviceTemplates.Read("astral-3d"));
+        var failed = new EstimateCommand.Pilot(0.0, "not measured: no field at that coarsening, for a test", false, 0.0);
+        var asked = new System.Collections.Concurrent.ConcurrentBag<double>();
+
+        EstimateOutcome outcome;
+
+        using (EstimateCommand.PilotsForTestBy(coarsening =>
+        {
+            asked.Add(coarsening);
+            return failed;
+        }))
+        {
+            outcome = EstimateCommand.Execute(model, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(outcome.Basis);
+
+        Assert.DoesNotContain(1.0, asked);
+        Assert.False(outcome.TrajectoryMeasured);
+        Assert.True(outcome.AboveThreshold);
+        Assert.Contains("not flown at the declared resolution", outcome.Basis, StringComparison.Ordinal);
+        Assert.DoesNotContain("FLOOR", DeclaredPart(outcome.Basis), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A pilot flown at the declared resolution says it was flown through the run's own field, not
+    /// that it is a floor from a coarser one.
+    /// </summary>
+    [Fact]
+    public void ADeclaredPilotIsNotCalledAFloor()
+    {
+        // A ceiling short enough that the pilot's window ends before the ion arrives, so its cost
+        // is scaled from part of the flight - the branch whose basis says what field it was flown in.
+        var lens = Einzel.Library.DeviceTemplates.Read("einzel-lens");
+        const string Declared = "\"maximumFlightTime\": { \"value\": 1, \"unit\": \"ms\" }";
+
+        Assert.Contains(Declared, lens, StringComparison.Ordinal);
+
+        var model = Write(
+            "lens-" + Guid.NewGuid().ToString("N")[..6],
+            lens.Replace(Declared, "\"maximumFlightTime\": { \"value\": 20, \"unit\": \"us\" }", StringComparison.Ordinal));
+        var failed = new EstimateCommand.Pilot(0.0, "not measured: no field at that coarsening, for a test", false, 0.0);
+
+        EstimateOutcome outcome;
+
+        using (EstimateCommand.PilotsForTestBy(coarsening => coarsening > 1.0 ? failed : null))
+        {
+            outcome = EstimateCommand.Execute(model, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(outcome.Basis);
+
+        Assert.True(outcome.TrajectoryMeasured);
+        Assert.Contains("flown at the declared resolution", outcome.Basis, StringComparison.Ordinal);
+        Assert.Contains("solved at the declared mesh", outcome.Basis, StringComparison.Ordinal);
+        Assert.DoesNotContain("FLOOR", DeclaredPart(outcome.Basis), StringComparison.Ordinal);
+    }
+
+    // The basis from where it says the pilot was flown as declared.
+    private static string DeclaredPart(string basis)
+    {
+        var at = basis.IndexOf("declared resolution", StringComparison.Ordinal);
+        return at < 0 ? string.Empty : basis[at..];
+    }
+
+    /// <summary>
     /// What the phases' cost covers is the time actually flown and the time charged at the
     /// dearest rate, not every phase's whole duration.
     /// </summary>

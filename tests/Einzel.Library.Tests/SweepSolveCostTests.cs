@@ -40,21 +40,38 @@ public sealed class SweepSolveCostTests(ITestOutputHelper output)
         return validation.Model!;
     }
 
-    /// <summary>Cheapest of several, because the property is a floor.</summary>
+    /// <summary>
+    /// The cheapest of several timings of each piece of work, taken in interleaved rounds.
+    /// </summary>
     /// <remarks>
-    /// The same statistic <c>AllocationDoesNotGrowWithStepCount</c> settled on, for the
-    /// same reason: the runtime charges one-off costs to whichever window they fire in,
-    /// and what is being measured is the work itself, so the minimum is the right one.
+    /// <para>
+    /// The minimum because the property is a floor - the statistic
+    /// <c>AllocationDoesNotGrowWithStepCount</c> settled on, for the same reason: the runtime
+    /// charges one-off costs to whichever window they fire in, and what is being measured is
+    /// the work itself.
+    /// </para>
+    /// <para>
+    /// <b>Interleaved, because the test is a ratio.</b> Timing each piece three times in a row
+    /// let a burst of load land on one piece and not the others: on a Windows CI runner the
+    /// solve came out at 23.2 ms while the 3- and 21-member sweeps came out at 219.8 and
+    /// 627.9 ms, seven times this workstation's 30 and 77 against a third of its 68 ms solve
+    /// - so the marginal member read 0.98 solves against 0.04 here, on a build that does not
+    /// solve per member (the same 0.04 on <c>main</c>). Taken round by round, a load that
+    /// lasts long enough to slow one piece slows its neighbours in the same round too.
+    /// </para>
     /// </remarks>
-    private static double Cheapest(Action work, int of = 3)
+    private static double[] CheapestInterleaved(int rounds, params Action[] work)
     {
-        var best = double.PositiveInfinity;
+        var best = Enumerable.Repeat(double.PositiveInfinity, work.Length).ToArray();
 
-        for (var k = 0; k < of; k++)
+        for (var round = 0; round < rounds; round++)
         {
-            var clock = System.Diagnostics.Stopwatch.StartNew();
-            work();
-            best = Math.Min(best, clock.Elapsed.TotalSeconds);
+            for (var k = 0; k < work.Length; k++)
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                work[k]();
+                best[k] = Math.Min(best[k], clock.Elapsed.TotalSeconds);
+            }
         }
 
         return best;
@@ -89,10 +106,13 @@ public sealed class SweepSolveCostTests(ITestOutputHelper output)
         // Warm the path so the first timed window is not paying for jitting it.
         FiguresOfMerit.Evaluator("resolvingPower", energySpread: 0.03, ions: 3)(model);
 
-        var solve = Cheapest(() => FieldAssembly.Build(model));
+        var timed = CheapestInterleaved(
+            7,
+            () => FieldAssembly.Build(model),
+            () => FiguresOfMerit.Evaluator("resolvingPower", 0.03, 3)(model),
+            () => FiguresOfMerit.Evaluator("resolvingPower", 0.03, 21)(model));
 
-        var few = Cheapest(() => FiguresOfMerit.Evaluator("resolvingPower", 0.03, 3)(model));
-        var many = Cheapest(() => FiguresOfMerit.Evaluator("resolvingPower", 0.03, 21)(model));
+        var (solve, few, many) = (timed[0], timed[1], timed[2]);
 
         var marginal = (many - few) / (21 - 3);
 
@@ -103,7 +123,7 @@ public sealed class SweepSolveCostTests(ITestOutputHelper output)
             + $"({marginal / solve:F2} solves)");
 
         // Half a solve, which sits between the two states rather than hard against one:
-        // measured at 0.18 solves hoisted and 1.16 with the solve put back in the loop, so
+        // measured at 0.18 solves hoisted and 1.27 with the solve put back in the loop, so
         // a factor of about six separates them. Solving per member costs a whole solve per
         // member by construction, so any bound under one catches it.
         Assert.True(

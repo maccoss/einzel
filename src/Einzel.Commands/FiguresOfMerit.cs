@@ -97,14 +97,21 @@ public enum FlightBasis
 /// a result.
 /// </param>
 /// <param name="Class">
-/// <param name="Basis">How many flights one evaluation of it costs.</param>
 /// Which of §12's families it belongs to, or <see cref="AccuracyClass.None"/> where it
 /// is not one of §12's figures at all.
+/// </param>
+/// <param name="Basis">How many flights one evaluation of it costs.</param>
+/// <param name="ReadsTheRun">
+/// Whether it is read off the run itself - a diffusive run, walked phase by phase through a
+/// sequenced model - rather than off flights of its own; see
+/// <see cref="FiguresOfMerit.ReadsTheSequencedRun"/>. Declared on the entry, so a figure added to
+/// the catalogue says it here rather than in a list kept somewhere else.
 /// </param>
 public sealed record FigureOfMeritInfo(
     string Name, string Unit, string Description, bool LargerIsBetter,
     AccuracyClass Class = AccuracyClass.None,
-    FlightBasis Basis = FlightBasis.Ensemble)
+    FlightBasis Basis = FlightBasis.Ensemble,
+    [property: System.Text.Json.Serialization.JsonIgnore] bool ReadsTheRun = false)
 {
     /// <summary>
     /// The physical dimension, derived from the unit rather than stated beside it.
@@ -189,9 +196,9 @@ public static class FiguresOfMerit
         new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false, AccuracyClass.Trajectory, FlightBasis.Cloud),
         new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false, AccuracyClass.Trajectory, FlightBasis.Cloud),
         new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true, AccuracyClass.Statistical, FlightBasis.Ensemble),
-        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
-        new("radialSpread", "mm", "Population-weighted standard deviation of a diffusive run's density across the direction of travel, about the packet's own centroid - radial in an axisymmetric solve, transverse in a cross-section. What confinement is measured by: a guide that holds its ions keeps this bounded, and one that does not lets it grow as the square root of time. Lower is tighter, but a floor set by the temperature and the well depth means zero is not the target.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
-        new("mobilityResolvingPower", "1", "Mobility resolving power K/dK of a trapped ion mobility analyser's elution scan, read as V/dV: the ramped parameter's value at the peak of the arrival-time distribution, over how far that parameter moves during the peak's full width at half maximum. The peak is the ion-weighted mean arrival and the width is the Gaussian-equivalent 2 sqrt(2 ln 2) sigma, because the arrivals are binned at the density solver's own step and a literal half-maximum of that histogram is lumpy. Equals K/dK on the assumption that the release parameter goes as 1/K, which holds when it scales a field linear in position - a tunnel's exit potential does. Needs a diffusive model whose sequence ramps exactly one parameter; a held field releases nothing and has no scan to resolve against.", true, AccuracyClass.Boundary, FlightBasis.Cloud),
+        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical, FlightBasis.Cloud, ReadsTheRun: true),
+        new("radialSpread", "mm", "Population-weighted standard deviation of a diffusive run's density across the direction of travel, about the packet's own centroid - radial in an axisymmetric solve, transverse in a cross-section. What confinement is measured by: a guide that holds its ions keeps this bounded, and one that does not lets it grow as the square root of time. Lower is tighter, but a floor set by the temperature and the well depth means zero is not the target.", false, AccuracyClass.Statistical, FlightBasis.Cloud, ReadsTheRun: true),
+        new("mobilityResolvingPower", "1", "Mobility resolving power K/dK of a trapped ion mobility analyser's elution scan, read as V/dV: the ramped parameter's value at the peak of the arrival-time distribution, over how far that parameter moves during the peak's full width at half maximum. The peak is the ion-weighted mean arrival and the width is the Gaussian-equivalent 2 sqrt(2 ln 2) sigma, because the arrivals are binned at the density solver's own step and a literal half-maximum of that histogram is lumpy. Equals K/dK on the assumption that the release parameter goes as 1/K, which holds when it scales a field linear in position - a tunnel's exit potential does. Needs a diffusive model whose sequence ramps exactly one parameter; a held field releases nothing and has no scan to resolve against.", true, AccuracyClass.Boundary, FlightBasis.Cloud, ReadsTheRun: true),
         new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
         new("focusingC1", "1", "Magnitude of the first-order time-energy coefficient c1 in T/T0 = 1 + c1 d + c2 d^2 + ..., where d is the fractional energy offset. Zero is a first-order energy focus, which is what a multi-reflection analyser is tuned to; a mirror with c1 uncancelled has a resolving power falling as one over the energy spread rather than as its square. Reported as a magnitude because the target is zero from either side, and because an optimiser minimising a signed coefficient would drive it to minus infinity. Measured from a deterministic energy scan, never from a declared cloud - the scan is designed rather than drawn.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
         new("focusingC2", "1", "The same for the second-order coefficient c2. A single-stage mirror at its first-order focus has c2 of order one half; a two-stage mirror cancels it too and its resolving power falls only as the cube of the energy spread. Minimise this AFTER c1, or combine the two in a Python objective - a weighted sum of the two is a design choice rather than a figure this build should pick for you.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
@@ -1303,11 +1310,12 @@ public static class FiguresOfMerit
     /// <remarks>
     /// What a study's estimate asks, because one evaluation of such a figure over a sequenced
     /// model is a whole sequenced run, flying the sequence's packet; every other figure flies its
-    /// own ions through the instrument and does not walk the sequence. Kept beside
-    /// <see cref="DiffusiveRun"/>: a figure that starts reading it belongs here too.
+    /// own ions through the instrument and does not walk the sequence. Asked of the catalogue
+    /// entry's <see cref="FigureOfMeritInfo.ReadsTheRun"/>: a figure that starts reading
+    /// <see cref="DiffusiveRun"/> says so where it is registered.
     /// </remarks>
     internal static bool ReadsTheSequencedRun(string? figureOfMerit) =>
-        figureOfMerit is "transitTime" or "mobilityResolvingPower" or "radialSpread";
+        Array.Exists(Catalogue, figure => figure.ReadsTheRun && figure.Name == figureOfMerit);
 
     /// <summary>Runs a diffusive model the way <c>einzel run</c> would, and returns its arrivals.</summary>
     /// <remarks>

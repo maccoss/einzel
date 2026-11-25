@@ -324,7 +324,6 @@ public static class TrajectoryIntegrator
             // simply cut to land on it. The next step then starts in the new state,
             // with the derivative recomputed there.
             var switchAt = double.PositiveInfinity;
-            var switchDue = false;
 
             if (driven is not null)
             {
@@ -333,7 +332,6 @@ public static class TrajectoryIntegrator
                 if (double.IsFinite(switchAt) && switchAt - time.Total <= step)
                 {
                     step = switchAt - time.Total;
-                    switchDue = true;
                 }
             }
 
@@ -377,9 +375,36 @@ public static class TrajectoryIntegrator
 
             if (step < settings.MinimumStep)
             {
-                outcome = time.Total >= settings.MaximumFlightTime
-                    ? TrajectoryOutcome.MaximumFlightTimeReached
-                    : TrajectoryOutcome.StepSizeUnderflow;
+                // A CEILING CLOSER THAN THE SMALLEST STEP IS REACHED. Whatever left the clock
+                // there - an analytic drift whose run over speed misses the ceiling by an ulp, a
+                // step snapped onto a switch an ulp before it - no step can be taken across what
+                // is left, and no step needs to be: the flight has used its time. Asked as
+                // "reached or past" this was an underflow an ulp short of the ceiling.
+                if (settings.MaximumFlightTime - time.Total < settings.MinimumStep)
+                {
+                    outcome = TrajectoryOutcome.MaximumFlightTimeReached;
+                    break;
+                }
+
+                // And a switch closer than the smallest step is reached the same way: the clock
+                // is set onto it, exactly as the field reported it, and the flight goes on in the
+                // phase starting there - so the next switch asked for is the one after, and the
+                // derivative and the member measures are the new phase's. The ion moves by less
+                // than the smallest step's worth in the time skipped.
+                if (double.IsFinite(switchAt) && switchAt - time.Total < settings.MinimumStep)
+                {
+                    time.Restart(switchAt);
+                    members?.Forget();
+                    derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
+                    fieldEvaluations++;
+
+                    // The step had been cut to the switch; the new phase starts from a proposal
+                    // of its own, as a flight does, and is capped again at the top of the loop.
+                    step = Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep);
+                    continue;
+                }
+
+                outcome = TrajectoryOutcome.StepSizeUnderflow;
                 break;
             }
 
@@ -506,7 +531,11 @@ public static class TrajectoryIntegrator
             {
                 time.Restart(switchAt);
             }
-            else if (endsOnCeiling && time.Total < settings.MaximumFlightTime)
+
+            // And onto the ceiling, whether or not the step also ended on a switch: a switch and
+            // the ceiling can be equal by difference from where the step started and still differ
+            // by an ulp, and a clock left on the switch is a flight that has not reached its time.
+            if (endsOnCeiling && time.Total < settings.MaximumFlightTime)
             {
                 time.Restart(settings.MaximumFlightTime);
             }
@@ -520,8 +549,10 @@ public static class TrajectoryIntegrator
                 in state, species, field, initialEnergy, energyScale, ref maximumEnergyDrift, ref fieldEvaluations);
 
             // A step that ended on a sequencer switch ends where the field changes state, so the
-            // measures read at its end are not the next step's start (MemberScratch).
-            if (switchDue)
+            // measures read at its end are not the next step's start (MemberScratch). Asked of the
+            // step that was taken, not of the cut once made to the switch: a collision closer than
+            // the switch cuts the step again, and that step ends where nothing changed.
+            if (endsOnSwitch)
             {
                 members?.Forget();
             }

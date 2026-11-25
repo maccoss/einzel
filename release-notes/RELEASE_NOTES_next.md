@@ -496,7 +496,15 @@ become a feature release without being renamed twice.
   (`VALUE_OUT_OF_BOUNDS`, exit 1): one that rounds to nothing against the time before it, which
   passed validation and ended in an internal error, and one shorter than the smallest step.
 - **A flight cut to its maximum flight time ends there**, where the sum of its steps could leave
-  it an ulp short and end it as a step-size underflow.
+  it an ulp short and end it as a step-size underflow - whether the steps, an analytic drift or a
+  step ending on a switch and the ceiling together left it there. A switch closer than the
+  smallest step is reached rather than ending the flight.
+- **A space-charge packet lands on a sequence switch** as a single ion does, where it took
+  dozens of refused steps at each switch and crossed it on the smallest step.
+- **A phase duration that converts to infinity is refused as not finite**, and a phase refused
+  for another reason still counts toward the next phase's start.
+- **`einzel estimate` does not solve a dear model at its declared resolution to cost a pilot**,
+  and its pilot through a sequenced phase flies the leg the run flies.
 - **The solver-behaviour version is advanced to 3**, so older numerical results are not
   reported current after these corrections. It also covers the landing of a step on a
   composite field's member discontinuities, reworked on main at version 2 (the render-surface

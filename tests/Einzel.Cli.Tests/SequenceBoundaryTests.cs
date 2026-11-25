@@ -103,6 +103,100 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
         }
     }
 
+    /// <summary>
+    /// A phase refused for something other than its duration still lasts what it says, so the
+    /// next phase's length is measured against the time it really starts at.
+    /// </summary>
+    /// <remarks>
+    /// A tenth of a femtosecond after three seconds is no time at all - three plus 1e-17 is three -
+    /// and after nothing it is a resolvable phase. Skipped in the running total because the phase
+    /// before it named a mode that does not exist, the blip was measured from zero and passed.
+    /// </remarks>
+    [Fact]
+    public void APhaseRefusedForItsModeStillCountsTowardTheNextOnesStart()
+    {
+        var path = Model("""
+            [ { "name": "hold", "duration": { "value": 3, "unit": "s" }, "mode": "hover", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "blip", "duration": { "value": 1e-17, "unit": "s" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+            """);
+
+        var (exit, stdout, stderr) = Run("validate", path, "--json");
+
+        output.WriteLine($"exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+
+        var paths = JsonNode.Parse(stdout)!["errors"]!.AsArray().Select(e => e!["path"]!.GetValue<string>()).ToList();
+
+        Assert.Contains("/sequence/0/mode", paths);
+        Assert.Contains("/sequence/1/duration", paths);
+    }
+
+    /// <summary>A duration that is not a finite number is refused as not finite, at the duration.</summary>
+    /// <remarks>
+    /// 1e306 hours is a finite number of hours and infinitely many seconds: the document's value is
+    /// checked finite before it is converted, and the conversion overflows. Infinity is positive,
+    /// and infinity minus the time before it is no shorter than the smallest step, so it passed
+    /// both checks and reached the run as a phase with no end.
+    /// </remarks>
+    [Fact]
+    public void ADurationThatIsNotFiniteIsRefused()
+    {
+        var path = Model("""
+            [ { "name": "hold", "duration": { "value": 1e306, "unit": "h" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+            """);
+
+        var (exit, stdout, stderr) = Run("validate", path, "--json");
+
+        output.WriteLine($"exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+
+        var error = JsonNode.Parse(stdout)!["errors"]![0]!;
+
+        Assert.Equal("/sequence/0/duration", error["path"]!.GetValue<string>());
+        Assert.Contains("finite", error["constraint"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The estimate's pilot through a phase flies the leg the run flies - the phase's end less
+    /// where the run started it - not the declared duration, which differs from that by the
+    /// rounding of the sum.
+    /// </summary>
+    /// <remarks>
+    /// After 0.1 microseconds, 1.3 more ends 1.3000000000000003 microseconds later, so the
+    /// second leg is an ulp longer than its declared duration; a pilot bounded by the duration stops short of the switch the leg
+    /// lands on, and one bounded by a duration longer than the leg flies past it into a phase the
+    /// leg never enters.
+    /// </remarks>
+    [Fact]
+    public void APilotFliesTheLegTheRunFlies()
+    {
+        var path = Model("""
+            [ { "name": "a", "duration": { "value": 0.1, "unit": "us" }, "mode": "trajectory", "set": { "pushField": { "value": 1000, "unit": "V/m" } } },
+              { "name": "b", "duration": { "value": 1.3, "unit": "us" }, "mode": "trajectory", "set": { "pushField": { "value": 2000, "unit": "V/m" } } },
+              { "name": "c", "duration": { "value": 0.3, "unit": "us" }, "mode": "trajectory", "set": { "pushField": { "value": 3000, "unit": "V/m" } } } ]
+            """);
+
+        var model = Core.Model.ModelValidator.Validate(Io.ModelJson.Parse(File.ReadAllText(path)), null, _root).Model!;
+
+        // As SequencedRun walks it: each leg from the end of the one before.
+        var started = 0.0;
+        var differs = 0;
+
+        foreach (var phase in model.Phases)
+        {
+            var leg = phase.EndsAtSeconds - started;
+            differs += leg != phase.DurationSeconds ? 1 : 0;
+
+            Assert.Equal(leg, EstimateCommand.Leg(phase, Core.Model.CompiledPhase.StartOf(model.Phases, phase)));
+
+            started = phase.EndsAtSeconds;
+        }
+
+        Assert.True(differs > 0, "the durations chosen must make some leg differ from its duration");
+    }
+
     private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)
     {
         var stdout = new StringWriter();
