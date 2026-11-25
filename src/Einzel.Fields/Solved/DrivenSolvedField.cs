@@ -344,15 +344,11 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// <returns>The stage index.</returns>
     private int StageAt(double timeSeconds, bool before = false)
     {
-        for (var k = 0; k < _boundaries.Length; k++)
-        {
-            if (timeSeconds < _boundaries[k] || (before && timeSeconds == _boundaries[k]))
-            {
-                return k;
-            }
-        }
+        var index = before
+            ? SortedInstants.FirstAtOrAfter(_boundaries, timeSeconds)
+            : SortedInstants.FirstAfter(_boundaries, timeSeconds);
 
-        return _boundaries.Length - 1;
+        return index < _boundaries.Length ? index : _boundaries.Length - 1;
     }
 
     /// <inheritdoc/>
@@ -367,24 +363,8 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
         // The boundaries are in order, so the first past the instant is found by halving: a leg
         // of a long staircase reads its switches a window at a time, and a scan from the start for
         // each made reading a window cost the whole timeline.
-        var low = 0;
-        var high = _boundaries.Length;
-
-        while (low < high)
-        {
-            var middle = (low + high) >>> 1;
-
-            if (_boundaries[middle] > timeSeconds)
-            {
-                high = middle;
-            }
-            else
-            {
-                low = middle + 1;
-            }
-        }
-
-        return low < _boundaries.Length ? _boundaries[low] : double.PositiveInfinity;
+        var after = SortedInstants.FirstAfter(_boundaries, timeSeconds);
+        return after < _boundaries.Length ? _boundaries[after] : double.PositiveInfinity;
     }
 
     /// <summary>

@@ -287,21 +287,25 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
             return Vec3.Zero;
         }
 
-        var field = before
-            ? _driven.ElectricFieldBefore(in position, timeSeconds)
-            : _driven.ElectricFieldAt(in position, timeSeconds);
+        var field = InnerField(in position, timeSeconds, before);
 
         if (scale >= 1.0)
         {
             return field;
         }
 
-        var potential = before
-            ? _driven.PotentialBefore(in position, timeSeconds)
-            : _driven.PotentialAt(in position, timeSeconds);
-
-        return (field * scale) - (Region.ScaleGradient(in position) * potential);
+        return (field * scale) - (Region.ScaleGradient(in position) * InnerPotential(in position, timeSeconds, before));
     }
+
+    // The wrapped field at an instant, or from before it.
+    private Vec3 InnerField(in Vec3 position, double timeSeconds, bool before) => before
+        ? _driven.ElectricFieldBefore(in position, timeSeconds)
+        : _driven.ElectricFieldAt(in position, timeSeconds);
+
+    // The wrapped potential at an instant, or from before it.
+    private double InnerPotential(in Vec3 position, double timeSeconds, bool before) => before
+        ? _driven.PotentialBefore(in position, timeSeconds)
+        : _driven.PotentialAt(in position, timeSeconds);
 
     /// <summary>The bounded potential at an instant, or at a switch from before it.</summary>
     /// <param name="position">The point.</param>
@@ -317,8 +321,6 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
             return 0.0;
         }
 
-        return scale * (before
-            ? _driven.PotentialBefore(in position, timeSeconds)
-            : _driven.PotentialAt(in position, timeSeconds));
+        return scale * InnerPotential(in position, timeSeconds, before);
     }
 }

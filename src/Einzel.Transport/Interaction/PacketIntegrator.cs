@@ -291,6 +291,24 @@ public static class PacketIntegrator
                 continue;
             }
 
+            // ON THE SWITCH, EXACTLY, and on the ceiling: the step was the difference, but the sum
+            // need not give the instant back to the bit. A clock an ulp short of a switch is
+            // asked for the same switch next, and the derivatives below would be built from the
+            // phase that has ended. Only where the sum missed, so every packet that never needed
+            // this is bit-identical. Decided before the members are, so one that strikes or stops
+            // at the step's end records the same instant as one still in flight.
+            var stepEnd = time + step;
+
+            if (endsOnSwitch && stepEnd != switchAt)
+            {
+                stepEnd = switchAt;
+            }
+
+            if (endsOnCeiling && stepEnd < settings.MaximumFlightTime)
+            {
+                stepEnd = settings.MaximumFlightTime;
+            }
+
             // Landing on the stopping surface: each macroparticle crosses at its
             // own instant inside the step, so the crossing is bracketed per ion
             // rather than for the packet. What is shared is the step, not the exit.
@@ -310,7 +328,7 @@ public static class PacketIntegrator
 
                     active[k] = false;
                     outcome[k] = TrajectoryOutcome.StopConditionMet;
-                    flightTime[k] = time + (fraction * step);
+                    flightTime[k] = fraction >= 1.0 ? stepEnd : time + (fraction * step);
                     state[k] = Interpolate(state[k], trial[k], fraction);
                     continue;
                 }
@@ -319,7 +337,7 @@ public static class PacketIntegrator
                 {
                     active[k] = false;
                     outcome[k] = TrajectoryOutcome.StruckElectrode;
-                    flightTime[k] = time + step;
+                    flightTime[k] = stepEnd;
                     state[k] = trial[k];
                     struck[k] = bounded.ConductorAt(trial[k].Position);
                     continue;
@@ -329,23 +347,8 @@ public static class PacketIntegrator
                 derivative[k] = trialDerivative[k];
             }
 
-            time += step;
+            time = stepEnd;
             steps++;
-
-            // ON THE SWITCH, EXACTLY, and on the ceiling: the step was the difference, but the sum
-            // need not give the instant back to the bit. A clock an ulp short of a switch is
-            // asked for the same switch next, and the derivatives below would be built from the
-            // phase that has ended. Only where the sum missed, so every packet that never needed
-            // this is bit-identical.
-            if (endsOnSwitch && time != switchAt)
-            {
-                time = switchAt;
-            }
-
-            if (endsOnCeiling && time < settings.MaximumFlightTime)
-            {
-                time = settings.MaximumFlightTime;
-            }
 
             if (collisions is not null)
             {

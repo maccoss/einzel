@@ -1,16 +1,20 @@
 namespace Einzel.Core.Numerics;
 
-/// <summary>What the trajectory integrator can resolve, stated where validation can read it too.</summary>
+/// <summary>What the trajectory integrator can resolve.</summary>
 /// <remarks>
-/// In Core rather than beside the integrator because validation runs before any transport is
-/// built and must refuse what the integrator would not be able to take: a sequence phase shorter
-/// than the smallest step reaches the run as a leg that underflows at once.
+/// <para>
+/// The default of <c>IntegrationSettings.MinimumStep</c>, which is what governs a flight: a step
+/// cut shorter than it is refused as an underflow, except where what is left is the flight's
+/// ceiling or a sequencer switch, which the integrator then reaches without a step.
+/// </para>
+/// <para>
+/// Validation does not use it. A sequence phase shorter than the smallest step was once refused at
+/// its duration, because such a leg underflowed at once; now the integrator reaches a switch or a
+/// ceiling closer than that step, such a phase runs, and only a phase of no length is refused.
+/// </para>
 /// </remarks>
 public static class IntegrationLimits
 {
-    /// <summary>
-    /// The smallest step the integrator takes, in seconds; the default of its settings and the
-    /// shortest phase validation accepts.
-    /// </summary>
+    /// <summary>The smallest step the trajectory integrator takes by default, in seconds.</summary>
     public const double MinimumStepSeconds = 1e-18;
 }

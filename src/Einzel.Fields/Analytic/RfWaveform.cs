@@ -124,12 +124,7 @@ public abstract record RfWaveform
         /// <exception cref="ArgumentOutOfRangeException">The duty cycle is not in (0, 1).</exception>
         public override double At(double phase)
         {
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(DutyCycle);
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(DutyCycle, 1.0);
-
-            // Wrapped rather than assumed in range: a phase arrives from an
-            // accumulated flight time and will not be tidy.
-            var wrapped = phase - Math.Floor(phase);
+            var wrapped = Wrapped(phase);
             return wrapped < DutyCycle ? 1.0 : -1.0;
         }
 
@@ -141,11 +136,21 @@ public abstract record RfWaveform
         /// <exception cref="ArgumentOutOfRangeException">The duty cycle is not in (0, 1).</exception>
         public override double Before(double phase)
         {
+            var wrapped = Wrapped(phase);
+            return wrapped > 0.0 && wrapped <= DutyCycle ? 1.0 : -1.0;
+        }
+
+        /// <summary>The phase within its cycle, once the duty cycle is checked.</summary>
+        /// <remarks>
+        /// Wrapped rather than assumed in range: a phase arrives from an accumulated flight time
+        /// and will not be tidy.
+        /// </remarks>
+        private double Wrapped(double phase)
+        {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(DutyCycle);
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(DutyCycle, 1.0);
 
-            var wrapped = phase - Math.Floor(phase);
-            return wrapped > 0.0 && wrapped <= DutyCycle ? 1.0 : -1.0;
+            return phase - Math.Floor(phase);
         }
 
         /// <inheritdoc/>

@@ -109,6 +109,78 @@ public sealed class PacketSwitchLandingTests(ITestOutputHelper output)
         Assert.Equal(0, missed);
     }
 
+    /// <summary>
+    /// A member that strikes metal on the step that lands on a switch records the switch, as a
+    /// member still in flight is set onto it, not the ulp short of it the sum of the steps gives.
+    /// </summary>
+    /// <remarks>
+    /// The wall appears only once the field has been asked from before a switch - which only the
+    /// step cut to a switch does - so every member strikes on exactly that step.
+    /// </remarks>
+    [Fact]
+    public void AMemberStruckOnTheSwitchStepRecordsTheSwitch()
+    {
+        var random = new Random(20261124);
+        var missed = 0;
+
+        for (var draw = 0; draw < 400; draw++)
+        {
+            var first = Math.Exp(random.NextDouble() * Math.Log(1e3)) * 1e-8;
+            var second = first * (1.0 + random.NextDouble());
+            var field = new WallAfterSwitch(
+                new SequencedField([Uniform(1e3), Uniform(2e6), Uniform(1e3)], [first, second, second * 2.0]),
+                first);
+            var launch = new[] { new PhaseState(Vec3.Zero, Vec3.Zero), new PhaseState(new Vec3(0.0, 1e-3, 0.0), new Vec3(5.0, 0.0, 0.0)) };
+
+            var result = PacketIntegrator.Fly(
+                launch, Ion, field, interaction: null, new IntegrationSettings { MaximumFlightTime = second * 1.5 }, Never);
+
+            foreach (var member in result.Members)
+            {
+                Assert.Equal(TrajectoryOutcome.StruckElectrode, member.Outcome);
+                missed += member.FlightTimeSeconds == first ? 0 : 1;
+            }
+        }
+
+        output.WriteLine($"{missed} members struck at another instant than the switch");
+
+        Assert.Equal(0, missed);
+    }
+
+    // A sequenced field whose metal fills space once it has been asked from before a given switch.
+    private sealed class WallAfterSwitch(ITimeVaryingField inner, double wallSwitch) : ITimeVaryingField, IConductorBounded
+    {
+        private bool _armed;
+
+        public double ResolutionLength => inner.ResolutionLength;
+
+        public double OscillatingResolutionLength => inner.OscillatingResolutionLength;
+
+        public double ShortestPeriodSeconds => inner.ShortestPeriodSeconds;
+
+        public double SignedDistanceToConductor(in Vec3 position) => _armed ? -1.0 : 1.0;
+
+        public string? ConductorAt(in Vec3 position) => _armed ? "wall" : null;
+
+        public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => inner.ElectricFieldAt(position, timeSeconds);
+
+        public double PotentialAt(in Vec3 position, double timeSeconds) => inner.PotentialAt(position, timeSeconds);
+
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds)
+        {
+            _armed |= switchSeconds == wallSwitch;
+            return inner.ElectricFieldBefore(position, switchSeconds);
+        }
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds) => inner.PotentialBefore(position, switchSeconds);
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => inner.ElectricFieldAt(position);
+
+        public double PotentialAt(in Vec3 position) => inner.PotentialAt(position);
+
+        public double NextSwitchAfter(double timeSeconds) => inner.NextSwitchAfter(timeSeconds);
+    }
+
     // Counts the ordinary evaluations made within a femtosecond short of a declared switch.
     private sealed class Recording(ITimeVaryingField inner, double[] switches) : ITimeVaryingField
     {

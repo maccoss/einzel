@@ -29,7 +29,7 @@ namespace Einzel.Fields;
 public sealed class SequencedField : ITimeVaryingField
 {
     private readonly IReadOnlyList<IElectrostaticField> _states;
-    private readonly IReadOnlyList<double> _boundaries;
+    private readonly double[] _boundaries;
 
     // Which state this field is in, held. Null means "read it from the sample time".
     // See AtOperatingPoint: for a sequence the operating point IS the state selection,
@@ -53,7 +53,7 @@ public sealed class SequencedField : ITimeVaryingField
         }
 
         _states = states;
-        _boundaries = boundaries;
+        _boundaries = [.. boundaries];
         _operatingPoint = operatingPoint;
     }
 
@@ -98,7 +98,7 @@ public sealed class SequencedField : ITimeVaryingField
         }
 
         _states = states;
-        _boundaries = boundaries;
+        _boundaries = [.. boundaries];
     }
 
     /// <inheritdoc/>
@@ -144,15 +144,11 @@ public sealed class SequencedField : ITimeVaryingField
         before &= _operatingPoint is null;
         timeSeconds = _operatingPoint ?? timeSeconds;
 
-        for (var i = 0; i < _boundaries.Count; i++)
-        {
-            if (timeSeconds < _boundaries[i] || (before && timeSeconds == _boundaries[i]))
-            {
-                return _states[i];
-            }
-        }
+        var index = before
+            ? SortedInstants.FirstAtOrAfter(_boundaries, timeSeconds)
+            : SortedInstants.FirstAfter(_boundaries, timeSeconds);
 
-        return _states[^1];
+        return index < _boundaries.Length ? _states[index] : _states[^1];
     }
 
     /// <inheritdoc/>
@@ -350,24 +346,8 @@ public sealed class SequencedField : ITimeVaryingField
         // The boundaries are in order, so the first past the instant is found by halving: a leg
         // of a long staircase reads its switches a window at a time, and a scan from the start for
         // each made reading a window cost the whole timeline.
-        var low = 0;
-        var high = _boundaries.Count;
-
-        while (low < high)
-        {
-            var middle = (low + high) >>> 1;
-
-            if (_boundaries[middle] > timeSeconds)
-            {
-                high = middle;
-            }
-            else
-            {
-                low = middle + 1;
-            }
-        }
-
-        return low < _boundaries.Count ? _boundaries[low] : double.PositiveInfinity;
+        var after = SortedInstants.FirstAfter(_boundaries, timeSeconds);
+        return after < _boundaries.Length ? _boundaries[after] : double.PositiveInfinity;
     }
 
     /// <inheritdoc/>

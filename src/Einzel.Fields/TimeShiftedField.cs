@@ -218,52 +218,6 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// <summary>The most switches a window holds.</summary>
     private const int WindowSize = 4096;
 
-    /// <summary>The first held switch whose reported value is not below an instant on the leg's clock.</summary>
-    private static int FirstNotBelow(double[] reported, double timeSeconds)
-    {
-        var low = 0;
-        var high = reported.Length;
-
-        while (low < high)
-        {
-            var middle = (low + high) >>> 1;
-
-            if (reported[middle] < timeSeconds)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-
-        return low;
-    }
-
-    /// <summary>The first held switch whose reported value is past an instant on the leg's clock.</summary>
-    private static int FirstAbove(double[] reported, double timeSeconds)
-    {
-        var low = 0;
-        var high = reported.Length;
-
-        while (low < high)
-        {
-            var middle = (low + high) >>> 1;
-
-            if (reported[middle] <= timeSeconds)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-
-        return low;
-    }
-
     /// <summary>Where this leg starts on the instrument's timeline, in seconds.</summary>
     public double OffsetSeconds => _offsetSeconds;
 
@@ -311,7 +265,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     private double OnTheInstrument(double timeSeconds, bool before)
     {
         var window = WindowFor(timeSeconds);
-        var at = FirstNotBelow(window.Reported, timeSeconds);
+        var at = SortedInstants.FirstAtOrAfter(window.Reported, timeSeconds);
 
         return at < window.Reported.Length && window.Reported[at] == timeSeconds
             ? (before ? window.First[at] : window.Last[at])
@@ -418,7 +372,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     public double NextSwitchAfter(double timeSeconds)
     {
         var window = WindowFor(timeSeconds);
-        var after = FirstAbove(window.Reported, timeSeconds);
+        var after = SortedInstants.FirstAfter(window.Reported, timeSeconds);
 
         return after < window.Reported.Length ? window.Reported[after] : double.PositiveInfinity;
     }

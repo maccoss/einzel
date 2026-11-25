@@ -234,6 +234,31 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
         Assert.Contains("/sequence/1/mode", paths);
     }
 
+    /// <summary>
+    /// A refused duration and a later phase that would vanish after it are both reported in one
+    /// validation, the second saying what it assumed of the first.
+    /// </summary>
+    [Fact]
+    public void ARefusedDurationAndAVanishingPhaseAfterItAreBothReported()
+    {
+        var path = Model("""
+            [ { "name": "hold", "duration": { "value": -1, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "blip", "duration": { "value": 1e-30, "unit": "s" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+            """);
+
+        var (exit, stdout, stderr) = Run("validate", path, "--json");
+
+        output.WriteLine($"exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+
+        var errors = JsonNode.Parse(stdout)!["errors"]!.AsArray();
+        var second = errors.Single(e => e!["path"]!.GetValue<string>() == "/sequence/1/duration")!;
+
+        Assert.Contains(errors, e => e!["path"]!.GetValue<string>() == "/sequence/0/duration");
+        Assert.Contains("assuming phase 0 lasts 1E-06 s", second["constraint"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
     /// <summary>A duration that is not a finite number is refused as not finite, at the duration.</summary>
     /// <remarks>
     /// 1e306 hours is a finite number of hours and infinitely many seconds: the document's value is

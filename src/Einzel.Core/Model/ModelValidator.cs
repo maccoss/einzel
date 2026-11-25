@@ -1683,6 +1683,14 @@ public static class ModelValidator
             return phases;
         }
 
+        // A REFUSED DURATION LEAVES THE PHASES AFTER IT TO BE MEASURED AGAINST SOMETHING. A negative
+        // one is taken at its magnitude - the fix it most likely wants - and every later refusal
+        // says it assumed that, so one validation reports both mistakes. One with no usable
+        // magnitude (zero, or no number at all) leaves the time unknown, and the later phases'
+        // lengths are not judged against a start nobody can state.
+        string? assumed = null;
+        var unknown = false;
+
         for (var k = 0; k < declared.Count; k++)
         {
             var stage = declared[k];
@@ -1698,6 +1706,18 @@ public static class ModelValidator
 
             if (duration is null || !double.IsFinite(duration.Value.SiValue) || duration.Value.SiValue <= 0.0)
             {
+                if (duration is { } refused && double.IsFinite(refused.SiValue) && refused.SiValue < 0.0 && !unknown)
+                {
+                    elapsed += -refused.SiValue;
+                    assumed ??= string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $" (assuming phase {k} lasts {-refused.SiValue:G6} s once its own duration is fixed)");
+                }
+                else
+                {
+                    unknown = true;
+                }
+
                 if (duration is not null)
                 {
                     var finite = double.IsFinite(duration.Value.SiValue);
@@ -1740,7 +1760,7 @@ public static class ModelValidator
             // Refused, and the rest of the phase still checked: a document with a phase of no
             // length and a mistake in its set, its ramp or its mode has two mistakes, and reporting
             // one makes it take two rounds to fix. Kept out of the schedule at the end.
-            var tooShort = !(length > 0.0);
+            var tooShort = !unknown && !(length > 0.0);
 
             if (tooShort)
             {
@@ -1751,7 +1771,7 @@ public static class ModelValidator
                     Constraint = string.Create(
                         System.Globalization.CultureInfo.InvariantCulture,
                         $"a phase must end after it starts, and added up as the run adds it to the "
-                        + $"{before:G6} s before it, this one lasts no time at all - its end is its start"),
+                        + $"{before:G6} s before it, this one lasts no time at all - its end is its start{assumed}"),
                     Observed = new ObservedValue(duration.Value.SiValue, "s"),
                     Suggestion = "make the phase long enough to be resolved against the time before "
                         + "it, or remove it",

@@ -398,7 +398,7 @@ public static class SequencedRun
                     // Subtract the same absolute instants as TimeShiftedField does.
                     // The declared duration can differ by a few ulps and otherwise
                     // leaves an unrepresentable sliver after the last switch.
-                    states!, species, field, detector, started, phase.EndsAtSeconds - started, model,
+                    states!, species, field, detector, started, phase.EndsAtSeconds, model,
                     gas, perTrajectory, outcomes.Count, warnings);
 
                 states = flying;
@@ -730,14 +730,16 @@ public static class SequencedRun
         IElectrostaticField field,
         TrajectoryStopFunction detector,
         double startedAt,
-        double durationSeconds,
+        double endsAtSeconds,
         CompiledModel model,
         BackgroundGas gas,
         double perTrajectory,
         int phaseIndex,
         List<ValidityWarning> warnings)
     {
-        var seen = Instant(field, startedAt, startedAt + durationSeconds);
+        // Bounded at the phase's own end, as the schedule states it.
+        var seen = Instant(field, startedAt, endsAtSeconds);
+        var durationSeconds = endsAtSeconds - startedAt;
 
         var settings = new IntegrationSettings
         {

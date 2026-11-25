@@ -514,8 +514,9 @@ become a feature release without being renamed twice.
   is reported once.
 - **Two sequence switches closer together than a leg's clock can tell apart** are no longer lost:
   the leg holds the state before the first and after the last, and says so.
-- **`einzel estimate` takes `--project` for a study**, and bills a figure that does not walk the
-  sequence its solves and flights alone.
+- **`einzel estimate` takes `--project` for a study**, refuses it for a model, refuses a study
+  whose extension the project does not hold, and bills a figure that does not walk the sequence
+  its solves and its flights through the whole instrument.
 - **`einzel estimate` bills an extension objective as the sequenced run** when its manifest
   declares a figure that reads it.
 - **A phase duration that converts to infinity is refused as not finite**, and a phase refused

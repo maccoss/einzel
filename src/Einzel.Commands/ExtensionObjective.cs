@@ -35,22 +35,30 @@ public static class ExtensionObjective
     public static bool Names(string? name) =>
         name is not null && name.StartsWith(Prefix, StringComparison.Ordinal);
 
-    /// <summary>The built-in figures an installed extension's manifest declares, or none if it is not installed.</summary>
+    /// <summary>The built-in figures an installed extension's manifest declares.</summary>
     /// <param name="name">The figure-of-merit name, including the prefix.</param>
     /// <param name="extensionsRoot">The project's extensions directory.</param>
     /// <returns>The declared figures, in manifest order.</returns>
+    /// <exception cref="EinzelException">
+    /// No extension by that name is installed there - the study would refuse it, and an estimate
+    /// that billed it as an ordinary figure would cost a study that cannot run.
+    /// </exception>
     internal static IReadOnlyList<string> DeclaredFigures(string name, string extensionsRoot)
     {
-        if (!Names(name) || !Directory.Exists(extensionsRoot))
-        {
-            return [];
-        }
-
         var wanted = name[Prefix.Length..];
 
-        return ExtensionCatalogue.Discover(extensionsRoot)
+        var installed = (Directory.Exists(extensionsRoot) ? ExtensionCatalogue.Discover(extensionsRoot) : [])
             .FirstOrDefault(e => string.Equals(e.Manifest.Name, wanted, StringComparison.Ordinal))
-            ?.Manifest.Figures ?? [];
+            ?? throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/figureOfMerit",
+                Constraint = $"no extension named '{wanted}' is installed in {extensionsRoot}",
+                Suggestion = "pass the project the study runs in with --project, run 'einzel ext list' "
+                    + $"there to see what is installed, or 'einzel ext register {wanted}' to scaffold one",
+            });
+
+        return installed.Manifest.Figures;
     }
 
     /// <summary>

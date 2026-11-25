@@ -4898,10 +4898,20 @@ Two findings from Stage 1 that bear on the spec:
   longer refuses a phase shorter than the integrator's smallest step - measured to run, as a leg
   and as one staged flight - and refuses only a phase of no time at all; one mistake on the
   parameter surface met by five phases is one error. A study figure that does not walk the
-  sequence is billed its solves and its flights, not the density the run steps (3.00 s an
-  evaluation whether the drift is 1 or 100 times longer, where a transit goes from 79 to 1,532 s).
-  `einzel estimate` takes `--project` for a study, as the study verbs do. And a Windows CI failure
+  sequence is billed its solves and its flights through the whole instrument, launch to ceiling,
+  not the density the run steps (the same cost whether the drift is 1 or 100 times longer, where
+  a transit goes from 79 to 1,532 s; ten times the ceiling, ten times the flight). `einzel
+  estimate` takes `--project` for a study, as the study verbs do, refuses it for a model, and
+  refuses a study whose extension the project does not hold. And a Windows CI failure
   of `AQueryNeitherScansNorAllocates` (4,160 bytes once, over 30,000 queries) was one-off runtime
   work landing in the measured window, not a query allocating: the measurement now warms the
   path and takes the cheapest of five windows, and a per-query allocation would still be thirty
   thousand of them.
+
+  **The sixth review.** A packet member that strikes or stops at the end of a step landed on a
+  switch records the switch, as the members still in flight do: 42 of 800 used to record an ulp
+  short. A refused negative duration is taken at its magnitude for the phases after it, so one
+  validation reports both it and a later phase that would vanish, the second saying what it
+  assumed. Every switch lookup shares one bisection (`SortedInstants`), held to the scans it
+  replaced on boundaries, ulps either side and NaN. A trajectory leg is bounded at its phase's own
+  end; `start + (end - start)` equals `end` for these, so that is clarity rather than a fix.

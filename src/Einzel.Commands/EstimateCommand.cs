@@ -631,6 +631,11 @@ public static class EstimateCommand
 
             var span = spanSeconds ?? coarse.MaximumFlightTimeSi;
 
+            if (ForcedPilotOverSpan.Value?.Invoke(span) is { } spanned)
+            {
+                return spanned;
+            }
+
             // Inside the phase flown: past its end the field is the next phase's. Measured as the
             // run measures its leg - the phase's end on the instrument's timeline less when it
             // starts - rather than the declared duration, which differs from that by the rounding
@@ -767,6 +772,32 @@ public static class EstimateCommand
         var before = ForcedPilot.Value;
         ForcedPilot.Value = pilot;
         return new Restore(before);
+    }
+
+    /// <summary>
+    /// Set within a test, through <see cref="PilotsForTestOverSpan"/>, to what a pilot over a span of
+    /// simulated time reports - or null for that pilot to be flown.
+    /// </summary>
+    private static readonly AsyncLocal<Func<double, Pilot?>?> ForcedPilotOverSpan = new();
+
+    /// <summary>
+    /// Makes each pilot flight in the calling flow report what <paramref name="pilot"/> says for the
+    /// span of simulated time it is scaled to, until disposed - so a test can see which flight was
+    /// piloted, not only that one was.
+    /// </summary>
+    /// <param name="pilot">What a pilot over a span reports, or null to fly it.</param>
+    /// <returns>What restores the pilots that were in force before, when disposed.</returns>
+    internal static IDisposable PilotsForTestOverSpan(Func<double, Pilot?> pilot)
+    {
+        var before = ForcedPilotOverSpan.Value;
+        ForcedPilotOverSpan.Value = pilot;
+        return new RestoreOverSpan(before);
+    }
+
+    private sealed class RestoreOverSpan(Func<double, Pilot?>? before) : IDisposable
+    {
+        /// <inheritdoc/>
+        public void Dispose() => ForcedPilotOverSpan.Value = before;
     }
 
     /// <summary>Puts back the pilots that were in force when the override was taken, nested or not.</summary>
@@ -1449,7 +1480,8 @@ public static class EstimateCommand
         Core.Model.ModelDocument document,
         string? directory,
         double nominal,
-        List<IReadOnlyDictionary<string, Core.Units.Quantity>> samples)
+        List<IReadOnlyDictionary<string, Core.Units.Quantity>> samples,
+        bool wholeInstrument = false)
     {
         // No early return on an empty list: the nominal is measured the same way whether or
         // not there are extremes to go with it, which is what keeps the flight term one
@@ -1482,7 +1514,7 @@ public static class EstimateCommand
                 // whole duration, as the model's own estimate is - not from zero over the whole
                 // flight, which would fly whatever comes first and scale it to everything.
                 var spans = Spans(compiled);
-                var (seconds, _, measured, _) = spans.TrajectoryPhases.Count > 0
+                var (seconds, _, measured, _) = spans.TrajectoryPhases.Count > 0 && !wholeInstrument
                     ? Pilots(compiled, spans, coarsening: 1.0, whole: true)
                     : PilotFlight(compiled, 1.0, compiled.MaximumFlightTimeSi);
 
@@ -1655,18 +1687,6 @@ public static class EstimateCommand
             && Spans(sequenced) is { TrajectoryPhases.Count: > 0 }
             && calibrate;
 
-        // NOT "the model's pilot measured something": where it failed its trajectory figure is
-        // zero, and gating the re-flight on that left a study billing no flights at all.
-        var (flight, spread, sampled) = wholeRun && !sequencedFlights
-            ? (0.0, string.Empty, model.TrajectoryMeasured)
-            : SampledFlight(
-                document,
-                directory,
-                model.TrajectorySeconds,
-                evaluations >= ExtremeSamplingThreshold ? Extremes(study) : []);
-
-        var flown = validation.Model is { } compiledModel ? Flown(compiledModel, Spans(compiledModel)) : 1;
-
         // WHAT ONE EVALUATION FLIES. The model's own figure carries its cloud's flights (`flown`
         // of them, one packet under space charge, whose lockstep cost is already in that figure).
         // A figure read off the sequenced run - a transit, a mobility resolving power - IS that
@@ -1676,6 +1696,23 @@ public static class EstimateCommand
         // re-billed as independent flights.
         var runsTheSequence = sequencedFlights
             && (validation.Model!.ModelsSpaceCharge || ReadsTheSequencedRun(study.FigureOfMerit, absolute, projectRoot));
+
+        // NOT "the model's pilot measured something": where it failed its trajectory figure is
+        // zero, and gating the re-flight on that left a study billing no flights at all.
+        //
+        // AND THE FLIGHT THE EVALUATION MAKES: a figure outside the sequence flies each ion through
+        // the whole instrument, from launch to the flight's ceiling, so that is the flight
+        // piloted - not the sequence's trajectory phases, which it never walks.
+        var (flight, spread, sampled) = wholeRun && !sequencedFlights
+            ? (0.0, string.Empty, model.TrajectoryMeasured)
+            : SampledFlight(
+                document,
+                directory,
+                model.TrajectorySeconds,
+                evaluations >= ExtremeSamplingThreshold ? Extremes(study) : [],
+                wholeInstrument: sequencedFlights && !runsTheSequence);
+
+        var flown = validation.Model is { } compiledModel ? Flown(compiledModel, Spans(compiledModel)) : 1;
         var billed = runsTheSequence ? flown : members;
 
         // A FIGURE THAT DOES NOT WALK THE SEQUENCE DOES NOT STEP ITS DENSITY. It solves the field
@@ -1698,8 +1735,9 @@ public static class EstimateCommand
 
         var each = sequencedFlights && !runsTheSequence
             ? $"solves the field ({solves:F2} s) and flies the {billed} trajector{(billed == 1 ? "y" : "ies")} "
-            + "its figure of merit flies outside the sequence, piloted where the study goes - it "
-            + "does not walk the sequence, so the density the run steps is not billed"
+            + "its figure of merit flies outside the sequence, each piloted through the whole "
+            + "instrument from launch to the flight's ceiling where the study goes - it does not "
+            + "walk the sequence, so the density the run steps is not billed"
             : sequencedFlights
             ? "is one whole run of the model, its trajectory phases piloted phase by phase over "
             + "their own durations where the study goes rather than at the declared values alone, "

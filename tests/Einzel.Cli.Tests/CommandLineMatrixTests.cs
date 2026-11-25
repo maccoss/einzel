@@ -135,6 +135,7 @@ public sealed class CommandLineMatrixTests(ITestOutputHelper output) : IDisposab
         [("probe", "samples")] = [Model, "--line-mm", "0,0,0", "--to-mm", "10,0,0"],
         [("probe", "csv")] = [Model, "--line-mm", "0,0,0", "--to-mm", "10,0,0", "--dry-run"],
         [("run", "progress")] = [Model],
+        [("estimate", "project")] = ["{root}/studies/scan.json", "--no-calibrate"],
         [("export", "box-mm")] = [Model, "--dry-run", "--composite"],
         [("export", "step-mm")] = [Model, "--dry-run", "--composite"],
         [("export", "at-us")] = [Model, "--dry-run", "--composite"],

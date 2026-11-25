@@ -590,6 +590,97 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// <c>--project</c> on a model's estimate is refused by name, and a study naming an extension
+    /// the project does not hold is refused rather than billed as an ordinary figure.
+    /// </summary>
+    [Fact]
+    public void ProjectIsReadOrRefused()
+    {
+        var model = Model("tube-entered", document =>
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }"""));
+        var study = Write("study-missing", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "ext:nowhere", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+        var empty = Path.Combine(_root, "empty-project");
+        Directory.CreateDirectory(empty);
+
+        (int Exit, string Out) Estimate(params string[] args)
+        {
+            var stdout = new StringWriter();
+            var previous = Console.Out;
+
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                try
+                {
+                    Console.SetOut(stdout);
+                    return (Program.Main(["estimate", .. args, "--json"]), stdout.ToString());
+                }
+                finally
+                {
+                    Console.SetOut(previous);
+                }
+            }
+        }
+
+        var (modelExit, modelOut) = Estimate(model, "--project", empty);
+        var (studyExit, studyOut) = Estimate(study, "--project", empty, "--threshold", "1e12");
+
+        output.WriteLine($"model: exit {modelExit} {modelOut.Trim()}");
+        output.WriteLine($"study: exit {studyExit} {studyOut.Trim()}");
+
+        Assert.Equal(1, modelExit);
+        Assert.Contains("/args/--project", modelOut, StringComparison.Ordinal);
+        Assert.NotEqual(0, studyExit);
+        Assert.Contains(
+            JsonNode.Parse(studyOut)!["errors"]!.AsArray(),
+            e => e!["constraint"]!.GetValue<string>().Contains("no extension named 'nowhere'", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A figure that does not walk the sequence flies each ion through the whole instrument, launch
+    /// to ceiling, and is billed that flight - not the sequence's short trajectory phase.
+    /// </summary>
+    /// <remarks>
+    /// Each pilot reports a second per simulated microsecond it is scaled to, so the bill shows
+    /// which flight was piloted. A ceiling ten times longer is ten times the flight; the trajectory
+    /// phase, 0.05 us of it, does not change at all.
+    /// </remarks>
+    [Fact]
+    public void AFigureOutsideTheSequenceIsBilledTheWholeFlight()
+    {
+        double PerEvaluation(double ceilingMicroseconds)
+        {
+            var model = Model("tube-entered", document =>
+            {
+                document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+                document["transport"]!["maximumFlightTime"] = JsonNode.Parse(string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture, $$"""{ "value": {{ceilingMicroseconds}}, "unit": "us" }"""));
+            });
+            var study = Write($"study-ceiling-{ceilingMicroseconds}", $$"""
+                { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "flightTime", "ions": 9,
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            using (EstimateCommand.PilotsForTestOverSpan(span => new(span * 1e6, "a second a microsecond, for a test", true, span)))
+            {
+                return EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12).Study!.SecondsPerEvaluation;
+            }
+        }
+
+        var shorter = PerEvaluation(6.0);
+        var longer = PerEvaluation(60.0);
+
+        output.WriteLine($"ceiling 6 us: {shorter:F3} s an evaluation; 60 us: {longer:F3} s");
+
+        // Three flights an evaluation (flightTime's ladder) of 54 more microseconds each.
+        Assert.Equal(3 * 54.0, longer - shorter, 1.0);
+    }
+
+    /// <summary>
     /// A figure that does not walk the sequence is not billed the density the sequence steps: a
     /// drift phase a hundred times longer leaves its evaluation where it was, and moves a transit's.
     /// </summary>
