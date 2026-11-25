@@ -2886,6 +2886,12 @@ published numbers.
   gap between electrodes leaves the solve domain, flies straight on, and is counted as arrived when
   it crosses the plane - at radii of tens of millimetres in the lens gallery's gas runs (rms radii
   of 57 to 134 mm before the gallery cut them by hand). Transmission includes those escapees.
+- **Landing on a member's surface is still a sign test patched case by case** (reported,
+  2026-11-24, by the forty-second review of the `render surface` branch; not fixed). A member
+  finite only inside a box reads +infinity outside it, and the integrator recovers an inner
+  crossing that a box landing hides by re-reading the members at the inner side of the bracket.
+  A redesign that bisects on each member's altitude above its own surface, rather than on signs
+  gated by another member, would remove the special cases; out of that branch's scope.
 - **The shell's journal breaks Amendment 25 as implemented** (confirmed): an edit is recorded
   as `einzel validate <model>` and undo as `einzel undo`, which is not a verb. The spelling
   that reproduces an edit, `einzel outline <model> --set name=value`, exists.

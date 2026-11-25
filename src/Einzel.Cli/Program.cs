@@ -184,7 +184,7 @@ public static class Program
             "agents-md" => AgentsMd(options),
             "agents" => Agents(args, options),
             "doctor" => Doctor(options),
-            _ => Unknown(args[0]),
+            _ => Unknown(args[0], options),
         };
     }
 
@@ -306,11 +306,15 @@ public static class Program
             {
                 // Whether the file is a study decides what a bare --snapshots is told, and asking
                 // means reading it: done only for an argument that can name a file. A blank one is
-                // the mistake to report, and is, below.
-                if (StudyDecidesTheSuggestion(key, flag) && !NamesAFile(options))
+                // the mistake to report, and is, below. With no argument at all there is nothing to
+                // read and nothing else to report first, so the flag is refused here by name:
+                // skipping it too left `estimate --snapshots` to the usage, which said nothing about it.
+                if (StudyDecidesTheSuggestion(key, flag) && options.Positional.Count > 0 && !NamesAFile(options))
                 {
                     continue;
                 }
+
+                var study = StudyDecidesTheSuggestion(key, flag) && NamesAFile(options) && IsStudy(options.Positional[0]);
 
                 refusal = new EinzelError
                 {
@@ -319,7 +323,7 @@ public static class Program
                     Constraint = emptied
                         ? $"--{flag} takes a value, and the one given is empty"
                         : $"--{flag} takes a value, and none was given (the next argument is a flag, or there is none)",
-                    Suggestion = StudyDecidesTheSuggestion(key, flag) && IsStudy(options.Positional[0])
+                    Suggestion = study
                         ? "leave out --snapshots: a study records no instants"
                         : $"give --{flag} its value, as --{flag} <value>",
                 };
@@ -363,7 +367,58 @@ public static class Program
             };
         }
 
+        // Too few arguments: under --json, refused here, because each verb's own answer is its
+        // usage on stderr and an agent was left an empty stdout to parse. Without --json the
+        // verb still prints that usage, which says what the arguments are - the better answer
+        // for a person, and the one `einzel <verb>` has always given.
+        if (refusal is null && options.Has("json") && options.Positional.Count < flags.Required)
+        {
+            var words = key.Count(c => c == ' ');
+            var need = flags.Required - words;
+            var given = Math.Max(0, options.Positional.Count - words);
+
+            refusal = new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/args",
+                Constraint = $"{key} needs {need} argument{(need == 1 ? string.Empty : "s")} and was given {given}",
+                Suggestion = $"'einzel {key} --help' says what {(need == 1 ? "it is" : "they are")}",
+            };
+        }
+
         return refusal;
+    }
+
+    /// <summary>
+    /// A verb's usage, on stderr, for a command line it cannot run - and under <c>--json</c> the
+    /// refusal as JSON on stdout too, so an agent is not left an empty stream to parse.
+    /// </summary>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="usage">The usage text, written as it is.</param>
+    /// <param name="constraint">What the command line lacks, for the JSON refusal.</param>
+    /// <param name="path">Where the refusal is located.</param>
+    /// <returns>The validation-failure exit code.</returns>
+    /// <remarks>
+    /// For what <see cref="CommandLineProblem(string[], CommandLine)"/> cannot see from the registry:
+    /// a verb with no table (<c>render</c> alone, an unknown command) and a requirement between
+    /// flags (<c>probe</c> needs one of <c>--at-mm</c> and <c>--line-mm</c>).
+    /// </remarks>
+    private static int UsageRefusal(CommandLine options, string usage, string constraint, string path = "/args")
+    {
+        Console.Error.Write(usage);
+        WriteRefusal(
+            options.Has("json"),
+            [
+                new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = path,
+                    Constraint = constraint,
+                    Suggestion = "the usage is on stderr; 'einzel --help' lists the verbs",
+                },
+            ]);
+
+        return (int)ExitCode.ValidationFailure;
     }
 
     /// <summary>
@@ -600,12 +655,8 @@ public static class Program
     private static bool NamesAFile(CommandLine options) =>
         options.Positional.Count > 0 && !string.IsNullOrWhiteSpace(options.Positional[0]);
 
-    private static int Unknown(string verb)
-    {
-        Console.Error.WriteLine($"unknown command '{verb}'");
-        Console.Error.Write(Usage);
-        return (int)ExitCode.ValidationFailure;
-    }
+    private static int Unknown(string verb, CommandLine options) =>
+        UsageRefusal(options, $"unknown command '{verb}'\n" + Usage, $"'{verb}' is not a command einzel has", "/args/0");
 
     /// <summary>The exit code for a refusal, by the class of its error (CLI-3).</summary>
     private static ExitCode ExitFor(EinzelError error) => error.Code switch
@@ -1119,9 +1170,11 @@ public static class Program
 
         if (kind is null || name is null)
         {
-            Console.Error.WriteLine("give one of --from-template <name> or --from-example <name>");
-            Console.Error.WriteLine("run 'einzel templates' or 'einzel examples' to see what there is");
-            return (int)ExitCode.ValidationFailure;
+            return UsageRefusal(
+                options,
+                "give one of --from-template <name> or --from-example <name>\n"
+                + "run 'einzel templates' or 'einzel examples' to see what there is\n",
+                "new needs one of --from-template <name> or --from-example <name>");
         }
 
         // Located at the flag that named it, as every other flag error is (FlagPath).
@@ -1169,18 +1222,19 @@ public static class Program
             "tasks" => AgentTasks(options),
             "setup" => AgentSetup(options),
             "score" => AgentScore(options),
-            _ => AgentUsage(action),
+            _ => AgentUsage(action, options),
         };
     }
 
-    private static int AgentUsage(string action)
-    {
-        Console.Error.WriteLine($"unknown agents action '{action}'");
-        Console.Error.WriteLine("usage: einzel agents tasks [name]");
-        Console.Error.WriteLine("       einzel agents setup <task> <dir>");
-        Console.Error.WriteLine("       einzel agents score <task> <dir>");
-        return (int)ExitCode.ValidationFailure;
-    }
+    private static int AgentUsage(string action, CommandLine options) =>
+        UsageRefusal(
+            options,
+            $"unknown agents action '{action}'\n"
+            + "usage: einzel agents tasks [name]\n"
+            + "       einzel agents setup <task> <dir>\n"
+            + "       einzel agents score <task> <dir>\n",
+            $"'{action}' is not an action agents has",
+            "/args/1");
 
     private static int AgentTasks(CommandLine options)
     {
@@ -1863,8 +1917,14 @@ public static class Program
 
         if (options.Positional.Count == 0 || hasPoint == hasLine)
         {
-            Console.Error.Write(ProbeUsage);
-            return (int)ExitCode.ValidationFailure;
+            return UsageRefusal(
+                options,
+                ProbeUsage,
+                options.Positional.Count == 0
+                    ? "probe needs a model"
+                    : hasPoint
+                        ? "probe takes one of --at-mm and --line-mm, and was given both"
+                        : "probe needs one of --at-mm x,y,z and --line-mm x,y,z");
         }
 
         var fromFlag = hasPoint ? "at-mm" : "line-mm";
@@ -2491,7 +2551,7 @@ public static class Program
             Console.Error.WriteLine(
                 "  --width-mm  the page width in millimetres of paper (160 is a page, 80 a column), not a window onto the model");
 
-            return (int)ExitCode.ValidationFailure;
+            return UsageRefusal(options, string.Empty, kind is null && positional.Count == 0 ? "render needs a kind and a model" : "render section needs a model");
         }
 
         // TryParse rather than Parse: "5us" is the caller's mistake, and Parse threw it through
@@ -2988,9 +3048,11 @@ public static class Program
             return ExtRegister(options);
         }
 
-        Console.Error.WriteLine($"unknown 'ext' action '{action}'");
-        Console.Error.WriteLine("usage: einzel ext list | test <name> | register <name>");
-        return (int)ExitCode.ValidationFailure;
+        return UsageRefusal(
+            options,
+            $"unknown 'ext' action '{action}'\nusage: einzel ext list | test <name> | register <name>\n",
+            $"'{action}' is not an action ext has",
+            "/args/1");
     }
 
     private static ProjectLayout ExtProject(CommandLine options) =>

@@ -478,6 +478,55 @@ public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.Equal(0.25, FirstLandingX(launch, new FaceAtTheMidpoint(), 1.0, 2.0), 9);
     }
 
+    // A box face at 0.5 and an inner member, gated by it, whose surface is 2e-10 inside the face:
+    // nearer the face than one part in 10^9 of the landing, which the first probe hits exactly.
+    private sealed class InnerHairInsideTheFace : IElectrostaticField
+    {
+        public const double Inner = 0.5 - 2e-10;
+
+        public Vec3 ElectricFieldAt(in Vec3 position) => default;
+
+        public double PotentialAt(in Vec3 position) => 0.0;
+
+        public int DiscontinuityMembers => 2;
+
+        public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+        {
+            // Zero over a band of 1e-12, far narrower than the inner surface's 2e-10, so a probe at
+            // the step's midpoint is on the face whatever the last bit of the step.
+            var box = Math.Abs(position.X - 0.5) < 1e-12 ? 0.0 : position.X - 0.5;
+            return member == 0 ? box : box <= 0.0 ? Inner - position.X : double.PositiveInfinity;
+        }
+
+        public void DiscontinuityMemberGates(Span<int> gates)
+        {
+            gates[0] = -1;
+            gates[1] = 0;
+        }
+    }
+
+    /// <summary>
+    /// An inner surface closer to the box face than any fixed fraction of the step is still landed
+    /// on, where the bisection's first probe falls exactly on the face.
+    /// </summary>
+    /// <remarks>
+    /// With no start-side probe the re-check read the members at the landing times (1 - 1e-9) - 5e-10
+    /// short of the face at 0.5, still in front of an inner surface 2e-10 short of it - so it found
+    /// nothing changed and the inner jump was straddled. It now bisects up to the landing again,
+    /// counting the face as past, and reads at the last start-side probe, which is as close to the
+    /// face as the bisection resolves.
+    /// </remarks>
+    [Fact]
+    public void AnInnerSurfaceAHairInsideAFaceTheFirstProbeHitsIsLandedOn()
+    {
+        var launch = new PhaseState(new Vec3(0.0, 0.0, 0.0), new Vec3(1.0, 0.0, 0.0));
+        var first = FirstLandingX(launch, new InnerHairInsideTheFace(), 1.0, 2.0);
+
+        output.WriteLine($"first landing at {first:R}, inner surface at {InnerHairInsideTheFace.Inner:R}");
+
+        Assert.Equal(InnerHairInsideTheFace.Inner, first, 13);
+    }
+
     // Two planes, the second reading exactly zero over a band around it - so a probe there reads as
     // on it - and no field.
     private sealed class TwoPlanes(double first, double second) : IElectrostaticField

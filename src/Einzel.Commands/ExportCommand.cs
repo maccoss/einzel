@@ -634,7 +634,7 @@ public static class ExportCommand
                 [
                     .. GeometryBuilder3D.SolveChannels(geometry).Select(c => new Channel(
                         c.Index, c.Report, c.Holding,
-                        (array, provenance) => Io.VtuWriter.WriteScalarField(c.Potential, array, provenance))),
+                        (writer, array, provenance) => Io.VtuWriter.WriteScalarField(writer, c.Potential, array, provenance))),
                 ]);
         }
         else
@@ -655,7 +655,7 @@ public static class ExportCommand
                 [
                     .. GeometryBuilder.SolveChannels(solve).Select(c => new Channel(
                         c.Index, c.Report, c.Holding,
-                        (array, provenance) => Io.VtuWriter.WriteScalarField(c.Potential, array, provenance))),
+                        (writer, array, provenance) => Io.VtuWriter.WriteScalarField(writer, c.Potential, array, provenance))),
                 ]);
         }
 
@@ -689,12 +689,15 @@ public static class ExportCommand
     /// <param name="Index">Which channel, in the order the decomposition found them.</param>
     /// <param name="Report">How its solve went.</param>
     /// <param name="Holding">What each declared electrode held, in declaration order.</param>
-    /// <param name="Write">Writes the channel's potential as ImageData.</param>
+    /// <param name="Write">
+    /// Streams the channel's potential as ImageData, given the writer, the array's name and the
+    /// provenance lines.
+    /// </param>
     private sealed record Channel(
         int Index,
         SolveReport Report,
         IReadOnlyList<double> Holding,
-        Func<string, IReadOnlyList<string>, string> Write);
+        Action<TextWriter, string, IReadOnlyList<string>> Write);
 
     /// <summary>
     /// Refuses an unconverged element, then stages one file per channel in the export's set, with
@@ -782,12 +785,29 @@ public static class ExportCommand
             // engine saying the numbers may not describe the document (GRD-3).
             provenance.AddRange(found.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
 
-            // Staged now, one file's text at a time, and put in place with the rest at the end.
-            staged.Stage(null, channelPath, stream => stream.Write(ArtifactFiles.Utf8(channel.Write(array, provenance))));
+            // Staged now, one file at a time, and put in place with the rest at the end.
+            StageText(staged, channelPath, writer => channel.Write(writer, array, provenance));
         }
 
         return written;
     }
+
+    /// <summary>Stages one text file in a set, written through to its staging file as it is formed.</summary>
+    /// <param name="staged">The set.</param>
+    /// <param name="path">The file's destination.</param>
+    /// <param name="write">Writes the text.</param>
+    /// <remarks>
+    /// UTF-8 without a mark, the bytes <see cref="ArtifactFiles.Utf8"/> gives for the same text.
+    /// Not formed as a string first: a volume's text is about 24 bytes a node, and building it as
+    /// a string and then as a byte array held it about three times over, at the size where that
+    /// matters.
+    /// </remarks>
+    internal static void StageText(ArtifactFiles.Staged staged, string path, Action<TextWriter> write) =>
+        staged.Stage(null, path, stream =>
+        {
+            using var writer = new StreamWriter(stream, ArtifactFiles.Utf8Encoding, 1 << 16, leaveOpen: true);
+            write(writer);
+        });
 
     /// <summary>What a solve claims about the space it did not mesh, for the header.</summary>
     /// <remarks>

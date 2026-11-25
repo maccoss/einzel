@@ -852,7 +852,10 @@ public static class TrajectoryIntegrator
         // sign from the start joins the marked set and the bisection is repeated over the step as far
         // as that landing. The inner side is the bisection's last probe on the start side; where it
         // had none - its first probe fell exactly on the surface, or every probe was past - the
-        // members are read just short of the landing instead.
+        // bracket up to the landing is bisected again with a probe on the surface counted as past,
+        // so the inner side is the last start-side probe below the landing, as close to it as the
+        // bisection resolves. A read at a fixed fraction short of the landing - it was one part in
+        // 10^9 - is short of an inner surface closer to the face than that, and straddled it.
         members.InsideRead = false;
         var landing = LandingStep(
             in state, in derivative, step, field, chargeToMass, new Members(field, marked, members), timeSeconds,
@@ -862,14 +865,16 @@ public static class TrajectoryIntegrator
         {
             if (!members.InsideRead)
             {
-                DormandPrince54.Step(
-                    in state, in derivative, landing * (1.0 - 1e-9), field, chargeToMass,
-                    out var shortOf, out _, out _, out _, timeSeconds);
-                fieldEvaluations += 6;
+                LandingStep(
+                    in state, in derivative, landing, field, chargeToMass, new Members(field, marked, members, onIsPast: true), timeSeconds,
+                    ref fieldEvaluations);
 
-                var at = shortOf.Position;
-                field.MemberDistancesToDiscontinuity(in at, members.Inside);
-                fieldEvaluations++;
+                // No probe on the start side even below the landing: nothing between the start and
+                // the landing to read but the start, whose members are what the marked set began from.
+                if (!members.InsideRead)
+                {
+                    return landing;
+                }
             }
 
             var inside = members.Inside;
@@ -917,8 +922,9 @@ public static class TrajectoryIntegrator
     // earliest of them. Every member is asked whether it is past before any is asked whether it is
     // exactly on its surface: a probe exactly on a later member's surface, with an earlier member
     // already past, is past - returned as on, it landed on the later surface and straddled the
-    // earlier. An infinity reads by its sign.
-    private readonly struct Members(IElectrostaticField field, double[] marked, MemberScratch scratch) : ILandingSurface
+    // earlier. An infinity reads by its sign. With onIsPast, a probe on a surface is past too: the
+    // bisection then closes on the surface from the start side, for the inner side of its bracket.
+    private readonly struct Members(IElectrostaticField field, double[] marked, MemberScratch scratch, bool onIsPast = false) : ILandingSurface
     {
         public int Side(in PhaseState state)
         {
@@ -947,7 +953,7 @@ public static class TrajectoryIntegrator
 
             if (on)
             {
-                return 0;
+                return onIsPast ? -1 : 0;
             }
 
             // On the start side: this reading becomes the inner side of the bracket so far, by

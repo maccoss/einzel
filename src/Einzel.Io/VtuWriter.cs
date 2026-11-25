@@ -206,57 +206,43 @@ public static class VtuWriter
     private static string WritePlane(
         Grid2D grid, string name, IReadOnlyList<string>? provenance, Func<int, int, double> at)
     {
+        using var text = new StringWriter(CultureInfo.InvariantCulture);
+        WritePlane(text, grid, name, provenance, at);
+        return text.ToString();
+    }
+
+    /// <summary>Streams one scalar over a plane grid as VTK ImageData.</summary>
+    private static void WritePlane(
+        TextWriter writer, Grid2D grid, string name, IReadOnlyList<string>? provenance, Func<int, int, double> at)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
         var invariant = CultureInfo.InvariantCulture;
-        var text = new StringBuilder(grid.NodeCount * 24);
+        var buffer = new char[32];
 
-        text.Append("<?xml version=\"1.0\"?>\n");
-
-        if (provenance is { Count: > 0 })
-        {
-            text.Append("<!--\n");
-
-            foreach (var line in provenance)
-            {
-                text.Append("  ").Append(line.Replace("--", "- -", StringComparison.Ordinal)).Append('\n');
-            }
-
-            text.Append("-->\n");
-        }
-
-        var extent = $"0 {grid.CountX - 1} 0 {grid.CountY - 1} 0 0";
-
-        text.Append("<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">\n");
-        text.Append(
-            invariant,
-            $"  <ImageData WholeExtent=\"{extent}\" Origin=\"{grid.OriginX:G17} {grid.OriginY:G17} 0\" Spacing=\"{grid.SpacingX:G17} {grid.SpacingY:G17} 1\">\n");
-        text.Append(invariant, $"    <Piece Extent=\"{extent}\">\n");
-        text.Append(invariant, $"      <PointData Scalars=\"{name}\">\n");
-        text.Append(invariant, $"        <DataArray type=\"Float64\" Name=\"{name}\" format=\"ascii\">\n");
+        WriteHeader(
+            writer,
+            name,
+            provenance,
+            string.Create(invariant, $"0 {grid.CountX - 1} 0 {grid.CountY - 1} 0 0"),
+            string.Create(invariant, $"{grid.OriginX:G17} {grid.OriginY:G17} 0"),
+            string.Create(invariant, $"{grid.SpacingX:G17} {grid.SpacingY:G17} 1"));
 
         // Row-major, x fastest: the order VTK reads an extent in, and the order
         // the field already stores its nodes.
         for (var j = 0; j < grid.CountY; j++)
         {
-            text.Append("          ");
+            writer.Write("          ");
 
             for (var i = 0; i < grid.CountX; i++)
             {
-                text.Append(invariant, $"{at(i, j):G17} ");
+                WriteValue(writer, buffer, at(i, j));
             }
 
-            text.Append('\n');
+            writer.Write('\n');
         }
 
-        text.Append("        </DataArray>\n");
-        text.Append("      </PointData>\n");
-        text.Append("      <CellData/>\n");
-        text.Append("    </Piece>\n");
-        text.Append("  </ImageData>\n");
-        text.Append("</VTKFile>\n");
-
-        return text.ToString();
+        WriteFooter(writer);
     }
 
     /// <summary>Writes a solved three-dimensional field as VTK ImageData.</summary>
@@ -276,64 +262,134 @@ public static class VtuWriter
     public static string WriteScalarField(
         ScalarField3D field, string name, IReadOnlyList<string>? provenance = null)
     {
+        using var text = new StringWriter(CultureInfo.InvariantCulture);
+        WriteScalarField(text, field, name, provenance);
+        return text.ToString();
+    }
+
+    /// <summary>Streams a solved three-dimensional field as VTK ImageData.</summary>
+    /// <param name="writer">Where the document goes.</param>
+    /// <param name="field">The potential, on its grid.</param>
+    /// <param name="name">The name the array takes in ParaView.</param>
+    /// <param name="provenance">Provenance lines recorded as an XML comment.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="writer"/> or <paramref name="field"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is null or blank.</exception>
+    /// <remarks>
+    /// The document <see cref="WriteScalarField(ScalarField3D, string, IReadOnlyList{string}?)"/>
+    /// returns, character for character, written as it is formed: a volume's text is about 24
+    /// bytes a node, and building it as a string and then as bytes held it three times over.
+    /// </remarks>
+    public static void WriteScalarField(
+        TextWriter writer, ScalarField3D field, string name, IReadOnlyList<string>? provenance = null)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(field);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
         var grid = field.Grid;
         var invariant = CultureInfo.InvariantCulture;
-        var text = new StringBuilder((int)Math.Min(grid.NodeCount * 24L, 1 << 28));
+        var buffer = new char[32];
 
-        text.Append("<?xml version=\"1.0\"?>\n");
-
-        if (provenance is { Count: > 0 })
-        {
-            text.Append("<!--\n");
-
-            foreach (var line in provenance)
-            {
-                text.Append("  ").Append(line.Replace("--", "- -", StringComparison.Ordinal)).Append('\n');
-            }
-
-            text.Append("-->\n");
-        }
-
-        var extent = $"0 {grid.CountX - 1} 0 {grid.CountY - 1} 0 {grid.CountZ - 1}";
-
-        var origin = $"{grid.OriginX:G17} {grid.OriginY:G17} {grid.OriginZ:G17}";
-        var spacing = $"{grid.SpacingX:G17} {grid.SpacingY:G17} {grid.SpacingZ:G17}";
-
-        text.Append("<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">\n");
-        text.Append(
-            invariant,
-            $"  <ImageData WholeExtent=\"{extent}\" Origin=\"{origin}\" Spacing=\"{spacing}\">\n");
-        text.Append(invariant, $"    <Piece Extent=\"{extent}\">\n");
-        text.Append(invariant, $"      <PointData Scalars=\"{name}\">\n");
-        text.Append(invariant, $"        <DataArray type=\"Float64\" Name=\"{name}\" format=\"ascii\">\n");
+        WriteHeader(
+            writer,
+            name,
+            provenance,
+            string.Create(invariant, $"0 {grid.CountX - 1} 0 {grid.CountY - 1} 0 {grid.CountZ - 1}"),
+            string.Create(invariant, $"{grid.OriginX:G17} {grid.OriginY:G17} {grid.OriginZ:G17}"),
+            string.Create(invariant, $"{grid.SpacingX:G17} {grid.SpacingY:G17} {grid.SpacingZ:G17}"));
 
         // x fastest, then y, then z: the order VTK reads an extent in.
         for (var k = 0; k < grid.CountZ; k++)
         {
             for (var j = 0; j < grid.CountY; j++)
             {
-                text.Append("          ");
+                writer.Write("          ");
 
                 for (var i = 0; i < grid.CountX; i++)
                 {
-                    text.Append(invariant, $"{field[i, j, k]:G17} ");
+                    WriteValue(writer, buffer, field[i, j, k]);
                 }
 
-                text.Append('\n');
+                writer.Write('\n');
             }
         }
 
-        text.Append("        </DataArray>\n");
-        text.Append("      </PointData>\n");
-        text.Append("      <CellData/>\n");
-        text.Append("    </Piece>\n");
-        text.Append("  </ImageData>\n");
-        text.Append("</VTKFile>\n");
+        WriteFooter(writer);
+    }
 
-        return text.ToString();
+    /// <summary>Streams a solved plane field as VTK ImageData.</summary>
+    /// <param name="writer">Where the document goes.</param>
+    /// <param name="field">The potential, on its grid.</param>
+    /// <param name="name">The name the array takes in ParaView.</param>
+    /// <param name="provenance">Provenance lines recorded as an XML comment.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="writer"/> or <paramref name="field"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is null or blank.</exception>
+    /// <remarks>
+    /// The document <see cref="WriteScalarField(ScalarField2D, string, IReadOnlyList{string}?)"/>
+    /// returns, character for character, written as it is formed.
+    /// </remarks>
+    public static void WriteScalarField(
+        TextWriter writer, ScalarField2D field, string name, IReadOnlyList<string>? provenance = null)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(field);
+
+        WritePlane(writer, field.Grid, name, provenance, (i, j) => field[i, j]);
+    }
+
+    /// <summary>The XML declaration, the provenance comment and the elements before the values.</summary>
+    private static void WriteHeader(
+        TextWriter writer, string name, IReadOnlyList<string>? provenance, string extent, string origin, string spacing)
+    {
+        writer.Write("<?xml version=\"1.0\"?>\n");
+
+        if (provenance is { Count: > 0 })
+        {
+            writer.Write("<!--\n");
+
+            foreach (var line in provenance)
+            {
+                writer.Write("  ");
+                writer.Write(line.Replace("--", "- -", StringComparison.Ordinal));
+                writer.Write('\n');
+            }
+
+            writer.Write("-->\n");
+        }
+
+        writer.Write("<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">\n");
+        writer.Write(string.Concat("  <ImageData WholeExtent=\"", extent, "\" Origin=\"", origin, "\" Spacing=\"", spacing, "\">\n"));
+        writer.Write(string.Concat("    <Piece Extent=\"", extent, "\">\n"));
+        writer.Write(string.Concat("      <PointData Scalars=\"", name, "\">\n"));
+        writer.Write(string.Concat("        <DataArray type=\"Float64\" Name=\"", name, "\" format=\"ascii\">\n"));
+    }
+
+    /// <summary>One value and the space after it, round-trip and invariant, through one buffer.</summary>
+    private static void WriteValue(TextWriter writer, char[] buffer, double value)
+    {
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (value.TryFormat(buffer, out var written, "G17", invariant))
+        {
+            writer.Write(buffer, 0, written);
+        }
+        else
+        {
+            writer.Write(value.ToString("G17", invariant));
+        }
+
+        writer.Write(' ');
+    }
+
+    /// <summary>The elements after the values.</summary>
+    private static void WriteFooter(TextWriter writer)
+    {
+        writer.Write("        </DataArray>\n");
+        writer.Write("      </PointData>\n");
+        writer.Write("      <CellData/>\n");
+        writer.Write("    </Piece>\n");
+        writer.Write("  </ImageData>\n");
+        writer.Write("</VTKFile>\n");
     }
 
     /// <summary>Writes the composite field sampled on a regular grid as VTK ImageData.</summary>

@@ -407,7 +407,13 @@ public static class ArtifactFiles
     /// <summary>Text as the bytes <see cref="WriteText"/> writes.</summary>
     /// <param name="text">The text.</param>
     /// <returns>UTF-8, no byte-order mark.</returns>
-    public static byte[] Utf8(string text) => new System.Text.UTF8Encoding(false).GetBytes(text);
+    public static byte[] Utf8(string text) => Utf8Encoding.GetBytes(text);
+
+    /// <summary>
+    /// UTF-8 without a byte-order mark, the encoding <see cref="Utf8"/> uses: for a writer that
+    /// streams a large file rather than forming it as a string first.
+    /// </summary>
+    public static System.Text.Encoding Utf8Encoding { get; } = new System.Text.UTF8Encoding(false);
 
     /// <summary>
     /// Refuses a set of destinations any of which cannot be a file, is a file the command reads,

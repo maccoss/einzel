@@ -94,4 +94,37 @@ public sealed class StageGeometryTests
                 && e.Constraint.Contains("'second'", StringComparison.Ordinal)
                 && e.Constraint.Contains("its plane", StringComparison.Ordinal));
     }
+
+    /// <summary>
+    /// Whether a phase moves an element is asked of the compile the per-phase loop already makes:
+    /// each phase adds one compile of the element, not two.
+    /// </summary>
+    /// <remarks>
+    /// The check compiled the element off every phase's surfaces and then the loop compiled it off
+    /// the same surfaces again, so validating a sequence of N phases compiled a half-space 2N + 1
+    /// times. Counted as the difference one phase more makes, so whatever else validation compiles
+    /// cancels.
+    /// </remarks>
+    [Fact]
+    public void EachPhaseCompilesTheElementOnce()
+    {
+        int Compiles(int phases)
+        {
+            var document = Mirror("""{ "cap": { "value": 3, "unit": "kV" } }""");
+            var sequence = document["sequence"]!.AsArray();
+
+            while (sequence.Count < phases)
+            {
+                sequence.Add(JsonNode.Parse(
+                    $$"""{ "name": "more{{sequence.Count}}", "duration": { "value": 1, "unit": "us" }, "set": { "cap": { "value": {{sequence.Count}}, "unit": "kV" } } }"""));
+            }
+
+            var before = ModelValidator.AnalyticCompiles;
+            Assert.True(Validate(document).IsValid);
+            return ModelValidator.AnalyticCompiles - before;
+        }
+
+        Assert.Equal(1, Compiles(3) - Compiles(2));
+        Assert.Equal(1, Compiles(4) - Compiles(3));
+    }
 }

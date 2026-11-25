@@ -37,6 +37,16 @@ public sealed record VerbFlags(
     int Positionals,
     IReadOnlySet<string> Optional)
 {
+    /// <summary>
+    /// The fewest positional arguments the verb needs, its sub-verb included: a model, a study, a
+    /// name. Zero for a verb whose argument has a default (<c>test</c> reads the current folder).
+    /// </summary>
+    /// <remarks>
+    /// Read by <c>Program.CommandLineProblem</c> under <c>--json</c>, where a verb given too few
+    /// printed its usage to stderr and left an agent nothing on stdout to parse.
+    /// </remarks>
+    public int Required { get; init; }
+
     /// <summary>Whether the verb knows this flag at all.</summary>
     /// <param name="flag">The flag, without its dashes.</param>
     /// <returns>True for a switch, a flag that takes a value or may, a refused spelling, or a global flag.</returns>
@@ -100,51 +110,51 @@ public sealed record VerbFlags(
     public static readonly IReadOnlyDictionary<string, VerbFlags> ByVerb = new Dictionary<string, VerbFlags>(StringComparer.Ordinal)
     {
         ["init"] = Of(["dry-run"], ["vcs"], 1),
-        ["new"] = Of(["dry-run"], ["from-example", "from-template"], 1),
-        ["validate"] = Of([], [], 1),
-        ["outline"] = Of(["dry-run"], ["set"], 1),
+        ["new"] = Of(["dry-run"], ["from-example", "from-template"], 1, required: 1),
+        ["validate"] = Of([], [], 1, required: 1),
+        ["outline"] = Of(["dry-run"], ["set"], 1, required: 1),
         ["project"] = Of([], ["project"], 1),
-        ["estimate"] = Of(["no-calibrate"], ["threshold", "snapshots"], 1),
-        ["solve"] = Of([], [], 1),
-        ["probe"] = Of(["dry-run"], ["at-mm", "line-mm", "to-mm", "samples", "at-us", "csv"], 1, ["at", "line", "to"]),
-        ["run"] = Of(["vtu"], ["project"], 1, optional: ["progress"]),
-        ["sweep"] = Of(["dry-run"], ["project"], 1),
-        ["optimise"] = Of(["dry-run"], ["project"], 1),
-        ["optimize"] = Of(["dry-run"], ["project"], 1),
-        ["scan"] = Of(["dry-run"], ["project"], 1),
-        ["boundary"] = Of(["dry-run"], ["project"], 1),
-        ["preview"] = Of([], [], 1),
+        ["estimate"] = Of(["no-calibrate"], ["threshold", "snapshots"], 1, required: 1),
+        ["solve"] = Of([], [], 1, required: 1),
+        ["probe"] = Of(["dry-run"], ["at-mm", "line-mm", "to-mm", "samples", "at-us", "csv"], 1, ["at", "line", "to"], required: 1),
+        ["run"] = Of(["vtu"], ["project"], 1, optional: ["progress"], required: 1),
+        ["sweep"] = Of(["dry-run"], ["project"], 1, required: 1),
+        ["optimise"] = Of(["dry-run"], ["project"], 1, required: 1),
+        ["optimize"] = Of(["dry-run"], ["project"], 1, required: 1),
+        ["scan"] = Of(["dry-run"], ["project"], 1, required: 1),
+        ["boundary"] = Of(["dry-run"], ["project"], 1, required: 1),
+        ["preview"] = Of([], [], 1, required: 1),
         ["test"] = Of([], ["project"], 1),
         ["verify"] = Of([], ["project"], 1),
         ["report"] = Of(["dry-run"], ["out", "project"], 1),
-        ["export"] = Of(["composite", "dry-run", "mesh"], ["at-us", "box-mm", "project", "step-mm"], 1),
-        ["compare"] = Of([], ["ions"], 1),
+        ["export"] = Of(["composite", "dry-run", "mesh"], ["at-us", "box-mm", "project", "step-mm"], 1, required: 1),
+        ["compare"] = Of([], ["ions"], 1, required: 1),
         ["schema"] = Of(["study", "units"], [], 0),
         ["templates"] = Of([], [], 1),
         ["examples"] = Of([], [], 1),
         ["agents-md"] = Of(["dry-run"], ["project"], 1),
         ["agents"] = Of([], [], 0),
-        ["agents tasks"] = Of([], [], 2),
-        ["agents setup"] = Of(["dry-run"], [], 3),
-        ["agents score"] = Of([], [], 3),
+        ["agents tasks"] = Of([], [], 2, required: 1),
+        ["agents setup"] = Of(["dry-run"], [], 3, required: 3),
+        ["agents score"] = Of([], [], 3, required: 3),
         ["doctor"] = Of([], ["project"], 1),
         ["ext"] = Of([], ["project"], 0),
-        ["ext list"] = Of([], ["project"], 1),
-        ["ext test"] = Of([], ["input", "project"], 2),
-        ["ext register"] = Of(["dry-run"], ["kind", "project"], 2),
+        ["ext list"] = Of([], ["project"], 1, required: 1),
+        ["ext test"] = Of([], ["input", "project"], 2, required: 2),
+        ["ext register"] = Of(["dry-run"], ["kind", "project"], 2, required: 2),
         ["render section"] = Of(
             ["dry-run", "no-trajectory"],
             ["at-us", "caption", "equipotentials", "format", "out", "project", "width-mm"],
             2,
-            optional: ["progress"]),
-        ["render still"] = Of(["dry-run", "no-scale", "see-through"], ["height-px", "out", "project", "view", "width-px"], 2),
+            optional: ["progress"], required: 2),
+        ["render still"] = Of(["dry-run", "no-scale", "see-through"], ["height-px", "out", "project", "view", "width-px"], 2, required: 2),
         ["render surface"] = Of(
             ["cycle-mean", "dry-run", "no-scale"],
             ["at-us", "box-mm", "csv", "height", "height-mm-per-ev", "height-mm-per-v", "height-px", "mesh-lines",
                 "offset-mm", "out", "plane", "project", "relief", "samples", "view", "width-px"],
             2,
-            ["offset", "box", "at", "height-mm"]),
-        ["render animation"] = Of(["dry-run"], ["caption", "format", "fps", "out", "project", "width-mm"], 2, optional: ["progress"]),
+            ["offset", "box", "at", "height-mm"], required: 2),
+        ["render animation"] = Of(["dry-run"], ["caption", "format", "fps", "out", "project", "width-mm"], 2, optional: ["progress"], required: 2),
     };
 
     /// <summary>The flags of the verb a command line names, or null where it names none this knows.</summary>
@@ -172,7 +182,7 @@ public sealed record VerbFlags(
         if (IsImplicitSection(args, sub))
         {
             var section = ByVerb["render section"];
-            return ("render section", section with { Positionals = section.Positionals - 1 });
+            return ("render section", section with { Positionals = section.Positionals - 1, Required = section.Required - 1 });
         }
 
         var key = sub is not null ? args[0] + " " + sub : args[0];
@@ -311,11 +321,14 @@ public sealed record VerbFlags(
     }
 
     private static VerbFlags Of(
-        string[] switches, string[] values, int positionals, string[]? refused = null, string[]? optional = null) =>
+        string[] switches, string[] values, int positionals, string[]? refused = null, string[]? optional = null, int required = 0) =>
         new(
             new HashSet<string>(switches, StringComparer.Ordinal),
             new HashSet<string>(values, StringComparer.Ordinal),
             new HashSet<string>(refused ?? [], StringComparer.Ordinal),
             positionals,
-            new HashSet<string>(optional ?? [], StringComparer.Ordinal));
+            new HashSet<string>(optional ?? [], StringComparer.Ordinal))
+        {
+            Required = required,
+        };
 }
