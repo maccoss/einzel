@@ -470,7 +470,9 @@ become a feature release without being renamed twice.
   whose pilots could be flown is gated rather than billed without its flights
   (`trajectoryMeasured: false`). `--snapshots 00` is accepted for a study, as `0` is, and a
   refusal of the flag is located at `/args/--snapshots`. A study over a sequenced model bills
-  the flights its figure of merit asks for rather than the model's cloud.
+  the flights one evaluation makes: the sequence's cloud (one packet under space charge) for a
+  figure read off the sequenced run, the figure's own ions otherwise. A pilot that fails through
+  the coarsened field is flown again at the declared resolution before the gate refuses.
 - **A sequenced run is estimated phase by phase**: each trajectory phase by a pilot flown
   through its own field over its own duration, diffusive phases by density steps over theirs, and the basis says both. A
   trajectory model entering a diffusive phase was billed nothing for its density, and a
@@ -483,8 +485,52 @@ become a feature release without being renamed twice.
 - **A diffusive run no longer allocates in its stepping loop.** Reading the face offsets built
   a new array four times a node a step - 224 bytes of garbage a node a step, a generation
   collected every step on a large grid. No number changes.
-- **The solver-behaviour version is advanced to 2**, so older numerical results are not
-  reported current after these corrections. The package version is unchanged.
+- **A trajectory leg that ends where the field switches runs to the switch.** A sequenced run
+  whose trajectory phase was followed by one that changes the field, with ions still in flight,
+  stopped with a step-size underflow about an attosecond before the switch and refused the
+  run. The step that lands on a switch now samples the phase it belongs to at its end, rather
+  than the one starting; a sequenced flight that lands on a switch moves in its last digits
+  (the analytic sequenced example now agrees with its closed form to 3e-16, from 4.6e-13), and
+  every flight that meets no switch is bit-identical.
+- **A phase the integrator cannot resolve is refused as a model error** at its duration
+  (`VALUE_OUT_OF_BOUNDS`, exit 1): one that rounds to nothing against the time before it, which
+  passed validation and ended in an internal error, and one shorter than the smallest step.
+- **A flight cut to its maximum flight time ends there**, where the sum of its steps could leave
+  it an ulp short and end it as a step-size underflow - whether the steps, an analytic drift or a
+  step ending on a switch and the ceiling together left it there. A switch closer than the
+  smallest step is reached rather than ending the flight.
+- **A space-charge packet lands on a sequence switch** as a single ion does, where it took
+  dozens of refused steps at each switch and crossed it on the smallest step.
+- **A rectangular drive whose edge lies on a sequence switch is landed on** without a run of
+  refused steps, and a field held at an operating point is one state on both sides of every
+  boundary.
+- **Validation reports every mistake in a sequence's phases in one round**, where a phase after
+  the first mistake had its set, ramp and mode left unchecked.
+- **A detector, electrode or field discontinuity reached exactly at a sequence switch** is met
+  by the step that reached it, in the phase ending there, where it used to be re-integrated with
+  the next phase's field at its end.
+- **A phase shorter than the trajectory integrator's smallest step is no longer refused**: it
+  runs. Only a phase that lasts no time at all is refused, and one mistake met by several phases
+  is reported once.
+- **Two sequence switches closer together than a leg's clock can tell apart** are no longer lost:
+  the leg holds the state before the first and after the last, and says so when a flight reaches
+  that instant.
+- **A sequenced analytic element bounded to a region lands on its switches**, where a flight used
+  to step across them.
+- **`einzel estimate` takes `--project` for a study**, refuses it for a model, refuses a study
+  whose extension the project does not hold, and bills a figure that does not walk the sequence
+  its solves and its flights through the whole instrument.
+- **`einzel estimate` bills an extension objective as the sequenced run** when its manifest
+  declares a figure that reads it.
+- **A phase duration that converts to infinity is refused as not finite**, and a phase refused
+  for another reason still counts toward the next phase's start.
+- **`einzel estimate` does not solve a dear model at its declared resolution to cost a pilot**,
+  and its pilot through a sequenced phase flies the leg the run flies.
+- **The solver-behaviour version is advanced to 3**, so older numerical results are not
+  reported current after these corrections. It also covers the landing of a step on a
+  composite field's member discontinuities, reworked on main at version 2 (the render-surface
+  work); main did not advance it, so 3 is the first number under which both are in. The
+  package version is unchanged.
 
 ## Known limits
 

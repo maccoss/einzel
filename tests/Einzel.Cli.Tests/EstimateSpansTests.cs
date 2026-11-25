@@ -505,6 +505,525 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         Assert.Equal([0.0, Math.BitDecrement(3e-6), 6e-6, Math.BitDecrement(7e-6)], instants);
     }
 
+    /// <summary>
+    /// A study over a sequenced model bills what one evaluation flies: a figure read off the
+    /// sequenced run flies the sequence's cloud, and any other flies its own ions outside it.
+    /// </summary>
+    /// <param name="figure">The study's figure of merit.</param>
+    /// <param name="flights">The flights one evaluation makes.</param>
+    [Theory]
+    [InlineData("transitTime", 2000)]
+    [InlineData("flightTime", 3)]
+    public void ASequencedStudyBillsTheFlightsAnEvaluationMakes(string figure, int flights)
+    {
+        var model = Model("tube-entered", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+            document["source"]!["cloud"]!["ions"] = 2000;
+        });
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "{{figure}}", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        EstimateOutcome costed;
+
+        using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+        {
+            costed = EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(costed.Basis);
+
+        Assert.Equal(flights, costed.Study!.Members);
+    }
+
+    /// <summary>
+    /// A study kept outside its project is estimated against the project <c>--project</c> names,
+    /// as the study verbs run it, so its extension objective is found there.
+    /// </summary>
+    [Fact]
+    public void AStudyOutsideItsProjectFindsItsExtensionThroughProject()
+    {
+        var project = Path.Combine(_root, "project");
+        Directory.CreateDirectory(Path.Combine(project, "models"));
+        Assert.Equal(0, Program.Main(["ext", "register", "transitwatch", "--project", project]));
+
+        var manifestPath = Path.Combine(project, "extensions", "transitwatch", "extension.json");
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["figures"] = new JsonArray("transitTime");
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+
+        var model = Model("tube-entered", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+            document["source"]!["cloud"]!["ions"] = 2000;
+        });
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "ext:transitwatch", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        var stdout = new StringWriter();
+        var previous = Console.Out;
+        int exit;
+
+        using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+        {
+            try
+            {
+                Console.SetOut(stdout);
+                exit = Program.Main(["estimate", study, "--project", project, "--threshold", "1e12", "--json"]);
+            }
+            finally
+            {
+                Console.SetOut(previous);
+            }
+        }
+
+        output.WriteLine($"exit {exit}");
+
+        Assert.Equal(0, exit);
+        Assert.Equal(2000, JsonNode.Parse(stdout.ToString())!["study"]!["members"]!.GetValue<int>());
+    }
+
+    /// <summary>
+    /// <c>--project</c> on a model's estimate is refused by name, and a study naming an extension
+    /// the project does not hold is refused rather than billed as an ordinary figure.
+    /// </summary>
+    [Fact]
+    public void ProjectIsReadOrRefused()
+    {
+        var model = Model("tube-entered", document =>
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }"""));
+        var study = Write("study-missing", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "ext:nowhere", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+        var empty = Path.Combine(_root, "empty-project");
+        Directory.CreateDirectory(empty);
+
+        (int Exit, string Out) Estimate(params string[] args)
+        {
+            var stdout = new StringWriter();
+            var previous = Console.Out;
+
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                try
+                {
+                    Console.SetOut(stdout);
+                    return (Program.Main(["estimate", .. args, "--json"]), stdout.ToString());
+                }
+                finally
+                {
+                    Console.SetOut(previous);
+                }
+            }
+        }
+
+        var (modelExit, modelOut) = Estimate(model, "--project", empty);
+        var (studyExit, studyOut) = Estimate(study, "--project", empty, "--threshold", "1e12");
+
+        output.WriteLine($"model: exit {modelExit} {modelOut.Trim()}");
+        output.WriteLine($"study: exit {studyExit} {studyOut.Trim()}");
+
+        Assert.Equal(1, modelExit);
+        Assert.Contains("/args/--project", modelOut, StringComparison.Ordinal);
+        Assert.NotEqual(0, studyExit);
+        Assert.Contains(
+            JsonNode.Parse(studyOut)!["errors"]!.AsArray(),
+            e => e!["constraint"]!.GetValue<string>().Contains("no extension named 'nowhere'", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A study naming an extension the project does not hold is refused whether or not the
+    /// estimate calibrates.
+    /// </summary>
+    [Fact]
+    public void AMissingExtensionIsRefusedWithoutCalibrating()
+    {
+        var model = Model("tube-entered", document =>
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }"""));
+        var study = Write("study-uncalibrated", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "ext:nowhere", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+        var empty = Path.Combine(_root, "empty-uncalibrated");
+        Directory.CreateDirectory(empty);
+
+        var refused = Assert.Throws<Core.Errors.EinzelException>(
+            () => EstimateCommand.ForStudy(study, calibrate: false, threshold: 1e12, projectRoot: empty));
+
+        output.WriteLine(refused.Error.Constraint);
+
+        Assert.Equal("/figureOfMerit", refused.Error.Path);
+    }
+
+    /// <summary>
+    /// Space charge does not make a figure walk the sequence: flightTime on a pushed sequenced model
+    /// is billed its flights, not the density the run steps.
+    /// </summary>
+    [Fact]
+    public void SpaceChargeDoesNotBillAFigureTheDensity()
+    {
+        double PerEvaluation(double driftFactor)
+        {
+            var model = Model("tube-entered", document =>
+            {
+                document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+                document["transport"]!["spaceCharge"] = "direct";
+                var drift = document["sequence"]![1]!["duration"]!["value"]!.GetValue<double>();
+                document["sequence"]![1]!["duration"]!["value"] = drift * driftFactor;
+            });
+            var study = Write($"study-pushed-{driftFactor}", $$"""
+                { "schemaVersion": "0.1", "name": "pushed", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "flightTime", "ions": 9,
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                return EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12).Study!.SecondsPerEvaluation;
+            }
+        }
+
+        var shorter = PerEvaluation(1.0);
+        var longer = PerEvaluation(100.0);
+
+        output.WriteLine($"flightTime under space charge: {shorter:F3} -> {longer:F3} s an evaluation");
+
+        Assert.True(Math.Abs(longer - shorter) < 0.25, $"{longer - shorter:F3} s for a drift the figure never steps");
+    }
+
+    /// <summary>
+    /// A figure that does not walk the sequence flies each ion through the whole instrument, launch
+    /// to ceiling, and is billed that flight - not the sequence's short trajectory phase.
+    /// </summary>
+    /// <remarks>
+    /// Each pilot reports a second per simulated microsecond it is scaled to, so the bill shows
+    /// which flight was piloted. A ceiling ten times longer is ten times the flight; the trajectory
+    /// phase, 0.05 us of it, does not change at all.
+    /// </remarks>
+    [Fact]
+    public void AFigureOutsideTheSequenceIsBilledTheWholeFlight()
+    {
+        double PerEvaluation(double ceilingMicroseconds)
+        {
+            var model = Model("tube-entered", document =>
+            {
+                document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+                document["transport"]!["maximumFlightTime"] = JsonNode.Parse(string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture, $$"""{ "value": {{ceilingMicroseconds}}, "unit": "us" }"""));
+            });
+            var study = Write($"study-ceiling-{ceilingMicroseconds}", $$"""
+                { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "flightTime", "ions": 9,
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            using (EstimateCommand.PilotsForTestOverSpan(span => new(span * 1e6, "a second a microsecond, for a test", true, span)))
+            {
+                return EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12).Study!.SecondsPerEvaluation;
+            }
+        }
+
+        var shorter = PerEvaluation(6.0);
+        var longer = PerEvaluation(60.0);
+
+        output.WriteLine($"ceiling 6 us: {shorter:F3} s an evaluation; 60 us: {longer:F3} s");
+
+        // Three flights an evaluation (flightTime's ladder) of 54 more microseconds each.
+        Assert.Equal(3 * 54.0, longer - shorter, 1.0);
+    }
+
+    /// <summary>
+    /// A figure that does not walk the sequence is not billed the density the sequence steps: a
+    /// drift phase a hundred times longer leaves its evaluation where it was, and moves a transit's.
+    /// </summary>
+    [Fact]
+    public void AFigureOutsideTheSequenceIsNotBilledItsDensity()
+    {
+        double PerEvaluation(string figure, double driftFactor)
+        {
+            var model = Model("tube-entered", document =>
+            {
+                document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+                var drift = document["sequence"]![1]!["duration"]!["value"]!.GetValue<double>();
+                document["sequence"]![1]!["duration"]!["value"] = drift * driftFactor;
+            });
+            var study = Write($"study-{figure}-{driftFactor}", $$"""
+                { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "{{figure}}", "ions": 9,
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                return EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12).Study!.SecondsPerEvaluation;
+            }
+        }
+
+        var shortFlight = PerEvaluation("flightTime", 1.0);
+        var longFlight = PerEvaluation("flightTime", 100.0);
+        var shortTransit = PerEvaluation("transitTime", 1.0);
+        var longTransit = PerEvaluation("transitTime", 100.0);
+
+        output.WriteLine($"flightTime {shortFlight:F3} -> {longFlight:F3} s; transitTime {shortTransit:F3} -> {longTransit:F3} s");
+
+        // The transit is the run, and pays for a longer drift; the flight time is not, and does not.
+        Assert.True(longTransit - shortTransit > 1.0, "the drift's density must cost enough to see");
+        Assert.True(Math.Abs(longFlight - shortFlight) < 0.25, $"{longFlight - shortFlight:F3} s for a longer drift the figure never steps");
+    }
+
+    /// <summary>
+    /// An extension objective is billed by what its manifest declares: one handed a transit is
+    /// handed a whole sequenced run per evaluation, and flies the sequence's cloud.
+    /// </summary>
+    /// <param name="declared">The built-in figure the extension's manifest declares.</param>
+    /// <param name="flights">The flights one evaluation makes.</param>
+    [Theory]
+    [InlineData("transitTime", 2000)]
+    [InlineData("flightTime", 9)]
+    public void AnExtensionIsBilledByTheFiguresItDeclares(string declared, int flights)
+    {
+        // A project: the extension lives in its extensions directory, found by the models one.
+        Directory.CreateDirectory(Path.Combine(_root, "models"));
+        Assert.Equal(0, Program.Main(["ext", "register", "transitwatch", "--project", _root]));
+
+        var manifestPath = Path.Combine(_root, "extensions", "transitwatch", "extension.json");
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["figures"] = new JsonArray(declared);
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+
+        var model = Model("tube-entered", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+            document["source"]!["cloud"]!["ions"] = 2000;
+        });
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "ext:transitwatch", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        EstimateOutcome costed;
+
+        using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+        {
+            costed = EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine($"declares {declared}: {costed.Study!.Members} flights an evaluation");
+
+        Assert.Equal(flights, costed.Study!.Members);
+    }
+
+    /// <summary>
+    /// Under space charge a sequenced evaluation advances one packet, whatever the figure asks
+    /// for, and is not re-billed as that many independent flights.
+    /// </summary>
+    [Fact]
+    public void ASpaceChargeSequenceIsBilledAsItsPacket()
+    {
+        var model = Model("tube-entered", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+            document["transport"]!["spaceCharge"] = "direct";
+        });
+
+        double PerEvaluation(int ions, out StudyEstimate estimated)
+        {
+            var path = Write($"study{ions}", $$"""
+                { "schemaVersion": "0.1", "name": "charged", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "transmission", "ions": {{ions}},
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                estimated = EstimateCommand.ForStudy(path, calibrate: true, threshold: 1e12).Study!;
+            }
+
+            return estimated.SecondsPerEvaluation;
+        }
+
+        var many = PerEvaluation(1000, out var manyStudy);
+        var few = PerEvaluation(10, out _);
+
+        output.WriteLine($"{many:F3} s an evaluation at 1000 ions, {few:F3} at 10, {manyStudy.Members} flights");
+
+        Assert.Equal(1, manyStudy.Members);
+        Assert.True(Math.Abs(many - few) < 1.0, $"a packet was billed as independent flights: {many - few:F1} s apart");
+    }
+
+    /// <summary>
+    /// A pilot that cannot be flown through the coarsened field is flown again at the declared
+    /// resolution before the gate refuses anything, and the basis says why.
+    /// </summary>
+    [Fact]
+    public void ACoarsenedPilotThatFailsIsFlownAsDeclared()
+    {
+        var model = Model("tube-entered");
+        var failed = new EstimateCommand.Pilot(0.0, "not measured: no field at that coarsening, for a test", false, 0.0);
+        var flown = new EstimateCommand.Pilot(0.5, "half a second, for a test", true, 1.0);
+
+        EstimateOutcome retried;
+
+        using (EstimateCommand.PilotsForTestBy(coarsening => coarsening > 1.0 ? failed : flown))
+        {
+            retried = EstimateCommand.Execute(model, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(retried.Basis);
+
+        Assert.True(retried.TrajectoryMeasured);
+        Assert.False(retried.AboveThreshold);
+        Assert.Contains("flown at the declared resolution", retried.Basis, StringComparison.Ordinal);
+
+        // The control: where the declared resolution fails too, the cost is unknown and gated.
+        EstimateOutcome neither;
+
+        using (EstimateCommand.PilotsForTestBy(_ => failed))
+        {
+            neither = EstimateCommand.Execute(model, calibrate: true, threshold: 1e12);
+        }
+
+        Assert.False(neither.TrajectoryMeasured);
+        Assert.True(neither.AboveThreshold);
+        Assert.Contains("nor at the declared resolution", neither.Basis, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A failed coarse pilot is not flown again at the declared resolution where that solve is
+    /// itself dear: the estimate would be doing the run's whole solve to cost it. The failure is
+    /// reported, and the gate refuses.
+    /// </summary>
+    /// <remarks>
+    /// The Astral's declared volume solve takes seconds, over the second an estimate spends on a
+    /// pilot. Asked of which coarsenings a pilot was requested at, so a declared-resolution attempt
+    /// shows whatever it reports.
+    /// </remarks>
+    [Fact]
+    public void ADearDeclaredSolveIsNotFlownForAPilot()
+    {
+        var model = Write("astral-" + Guid.NewGuid().ToString("N")[..6], Einzel.Library.DeviceTemplates.Read("astral-3d"));
+        var failed = new EstimateCommand.Pilot(0.0, "not measured: no field at that coarsening, for a test", false, 0.0);
+        var asked = new System.Collections.Concurrent.ConcurrentBag<double>();
+
+        EstimateOutcome outcome;
+
+        using (EstimateCommand.PilotsForTestBy(coarsening =>
+        {
+            asked.Add(coarsening);
+            return failed;
+        }))
+        {
+            outcome = EstimateCommand.Execute(model, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(outcome.Basis);
+
+        Assert.DoesNotContain(1.0, asked);
+        Assert.False(outcome.TrajectoryMeasured);
+        Assert.True(outcome.AboveThreshold);
+        Assert.Contains("not flown at the declared resolution", outcome.Basis, StringComparison.Ordinal);
+        Assert.DoesNotContain("FLOOR", DeclaredPart(outcome.Basis), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A pilot flown at the declared resolution says it was flown through the run's own field, not
+    /// that it is a floor from a coarser one.
+    /// </summary>
+    [Fact]
+    public void ADeclaredPilotIsNotCalledAFloor()
+    {
+        // A ceiling short enough that the pilot's window ends before the ion arrives, so its cost
+        // is scaled from part of the flight - the branch whose basis says what field it was flown in.
+        var lens = Einzel.Library.DeviceTemplates.Read("einzel-lens");
+        const string Declared = "\"maximumFlightTime\": { \"value\": 1, \"unit\": \"ms\" }";
+
+        Assert.Contains(Declared, lens, StringComparison.Ordinal);
+
+        var model = Write(
+            "lens-" + Guid.NewGuid().ToString("N")[..6],
+            lens.Replace(Declared, "\"maximumFlightTime\": { \"value\": 20, \"unit\": \"us\" }", StringComparison.Ordinal));
+        var failed = new EstimateCommand.Pilot(0.0, "not measured: no field at that coarsening, for a test", false, 0.0);
+
+        EstimateOutcome outcome;
+
+        using (EstimateCommand.PilotsForTestBy(coarsening => coarsening > 1.0 ? failed : null))
+        {
+            outcome = EstimateCommand.Execute(model, calibrate: true, threshold: 1e12);
+        }
+
+        output.WriteLine(outcome.Basis);
+
+        Assert.True(outcome.TrajectoryMeasured);
+        Assert.Contains("flown at the declared resolution", outcome.Basis, StringComparison.Ordinal);
+        Assert.Contains("solved at the declared mesh", outcome.Basis, StringComparison.Ordinal);
+        Assert.DoesNotContain("FLOOR", DeclaredPart(outcome.Basis), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// What a declared-resolution solve is estimated to cost counts one solve per basis channel,
+    /// which a driven geometry has more than one of.
+    /// </summary>
+    /// <remarks>
+    /// The funnel's RF and its DC chain put the rings up and down in different proportions, so
+    /// they are two patterns and two solves over the same mesh; one solve per element billed half
+    /// of it.
+    /// </remarks>
+    [Fact]
+    public void ADeclaredSolveIsChargedPerBasisChannel()
+    {
+        var document = Einzel.Library.DeviceTemplates.Read("ion-funnel");
+        var model = Core.Model.ModelValidator.Validate(Io.ModelJson.Parse(document)).Model!;
+        var plane = model.Fields.Single(f => f.Solve is not null).Solve!;
+        var channels = Fields.Solved.GeometryBuilder.SolveChannels(plane).Count;
+        var nodes = Fields.Solved.GeometryBuilder.BuildGrid(plane).NodeCount;
+
+        var seconds = EstimateCommand.DeclaredSolveSeconds(model, 1e6, 1e6);
+
+        output.WriteLine($"{nodes:N0} nodes, {channels} channels: {seconds:G6} s at a second a node");
+
+        Assert.True(channels > 1, "the geometry must solve more than one channel for this to discriminate");
+        Assert.Equal((double)nodes * channels, seconds, 1e-9 * nodes * channels);
+    }
+
+    // The basis from where it says the pilot was flown as declared.
+    private static string DeclaredPart(string basis)
+    {
+        var at = basis.IndexOf("declared resolution", StringComparison.Ordinal);
+        return at < 0 ? string.Empty : basis[at..];
+    }
+
+    /// <summary>
+    /// A phase whose pilot could not be measured is charged at the dearest rate measured, per
+    /// simulated second the measured pilot actually flew rather than per second of its phase.
+    /// </summary>
+    [Fact]
+    public void AnUnmeasuredPhaseIsChargedPerSecondFlown()
+    {
+        var phases = new[]
+        {
+            new Core.Model.CompiledPhase("early", 2e-6, "trajectory", 2e-6, []),
+            new Core.Model.CompiledPhase("bad", 3e-6, "trajectory", 5e-6, []),
+        };
+
+        var cost = EstimateCommand.PhasePilots(
+            phases, phase => phase.Name == "early" ? new(4.0, "arrived", true, 1e-6) : new(0.0, "not measured", false, 0.0));
+
+        // Four seconds for the microsecond flown before the ion arrived is four million seconds a
+        // simulated second, and the failed phase's three microseconds charged at that: sixteen.
+        // Per second of its phase it would have been ten.
+        Assert.Equal(16.0, cost.Seconds, 9);
+    }
+
     /// <summary>Two phases declared alike are two phases, and both are piloted.</summary>
     [Fact]
     public void PhasesDeclaredAlikeAreEachPiloted()

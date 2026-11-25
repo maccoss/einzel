@@ -29,7 +29,7 @@ namespace Einzel.Fields;
 public sealed class SequencedField : ITimeVaryingField
 {
     private readonly IReadOnlyList<IElectrostaticField> _states;
-    private readonly IReadOnlyList<double> _boundaries;
+    private readonly double[] _boundaries;
 
     // Which state this field is in, held. Null means "read it from the sample time".
     // See AtOperatingPoint: for a sequence the operating point IS the state selection,
@@ -53,7 +53,7 @@ public sealed class SequencedField : ITimeVaryingField
         }
 
         _states = states;
-        _boundaries = boundaries;
+        _boundaries = [.. boundaries];
         _operatingPoint = operatingPoint;
     }
 
@@ -98,7 +98,7 @@ public sealed class SequencedField : ITimeVaryingField
         }
 
         _states = states;
-        _boundaries = boundaries;
+        _boundaries = [.. boundaries];
     }
 
     /// <inheritdoc/>
@@ -131,19 +131,45 @@ public sealed class SequencedField : ITimeVaryingField
     /// </remarks>
     /// <param name="timeSeconds">The instant, on the instrument's timeline.</param>
     /// <returns>The state in force there.</returns>
-    private IElectrostaticField At(double timeSeconds)
+    private IElectrostaticField At(double timeSeconds) => At(timeSeconds, before: false);
+
+    /// <summary>The state that holds at an instant, or that is ending there.</summary>
+    /// <param name="timeSeconds">The instant, on the instrument's timeline.</param>
+    /// <param name="before">Whether a time on a boundary is given the phase ending there.</param>
+    /// <returns>The state.</returns>
+    private IElectrostaticField At(double timeSeconds, bool before)
     {
+        // A held field is one state at every instant: the operating point selects it, and there
+        // is no switch to be before.
+        before &= _operatingPoint is null;
         timeSeconds = _operatingPoint ?? timeSeconds;
 
-        for (var i = 0; i < _boundaries.Count; i++)
-        {
-            if (timeSeconds < _boundaries[i])
-            {
-                return _states[i];
-            }
-        }
+        var index = before
+            ? SortedInstants.FirstAtOrAfter(_boundaries, timeSeconds)
+            : SortedInstants.FirstAfter(_boundaries, timeSeconds);
 
-        return _states[^1];
+        return index < _boundaries.Length ? _states[index] : _states[^1];
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>On a boundary, the state that is ending, sampled from its own side.</remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds)
+    {
+        var state = At(switchSeconds, before: true);
+
+        return state is ITimeVaryingField driven
+            ? driven.ElectricFieldBefore(in position, switchSeconds)
+            : state.ElectricFieldAt(in position);
+    }
+
+    /// <inheritdoc/>
+    public double PotentialBefore(in Vec3 position, double switchSeconds)
+    {
+        var state = At(switchSeconds, before: true);
+
+        return state is ITimeVaryingField driven
+            ? driven.PotentialBefore(in position, switchSeconds)
+            : state.PotentialAt(in position);
     }
 
     /// <inheritdoc/>
@@ -311,15 +337,16 @@ public sealed class SequencedField : ITimeVaryingField
     /// </remarks>
     public double NextSwitchAfter(double timeSeconds)
     {
-        foreach (var boundary in _boundaries)
+        // Held at an operating point it is one state at every instant, and has no switch.
+        if (_operatingPoint is not null)
         {
-            if (boundary > timeSeconds)
-            {
-                return boundary;
-            }
+            return double.PositiveInfinity;
         }
 
-        return double.PositiveInfinity;
+        // The boundaries are in order, so the first past the instant is found by halving: a leg
+        // of a long staircase reads its switches a window at a time, and a scan from the start for
+        // each made reading a window cost the whole timeline.
+        return SortedInstants.NextAfter(_boundaries, timeSeconds);
     }
 
     /// <inheritdoc/>

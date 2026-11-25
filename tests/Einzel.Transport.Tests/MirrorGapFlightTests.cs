@@ -667,6 +667,11 @@ public sealed class MirrorGapFlightTests(Xunit.Abstractions.ITestOutputHelper ou
 
         public double PotentialAt(in Vec3 position, double timeSeconds) => 0.0;
 
+        // No field on either side of the switch, as at any other instant.
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => default;
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds) => 0.0;
+
         public double ShortestPeriodSeconds => double.PositiveInfinity;
 
         public double NextSwitchAfter(double timeSeconds) =>

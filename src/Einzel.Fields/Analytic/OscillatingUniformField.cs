@@ -108,6 +108,20 @@ public sealed class OscillatingUniformField : ITimeVaryingField
         _amplitude * _waveform.At(timeSeconds * _frequencyHz);
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The waveform's left limit: the same as the field at the instant for a sinusoid or a
+    /// Fourier series, and the level ending there where a rectangular wave's edge lies on the
+    /// switch.
+    /// </remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) =>
+        _amplitude * _waveform.Before(switchSeconds * _frequencyHz);
+
+    /// <inheritdoc/>
+    /// <remarks>The waveform's left limit, as for the field.</remarks>
+    public double PotentialBefore(in Vec3 position, double switchSeconds) =>
+        -Vec3.Dot(_amplitude, position) * _waveform.Before(switchSeconds * _frequencyHz);
+
+    /// <inheritdoc/>
     public double PotentialAt(in Vec3 position, double timeSeconds) =>
         -Vec3.Dot(_amplitude, position) * _waveform.At(timeSeconds * _frequencyHz);
 

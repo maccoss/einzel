@@ -17,6 +17,7 @@
     <!-- The unculled volume-mask loops are the reference the culled ones are checked
          against on every shipped template (CMP-1), and the templates live in Library. -->
     <InternalsVisibleTo Include="Einzel.Library.Tests" />
+    <InternalsVisibleTo Include="Einzel.Fields.Tests" />
   </ItemGroup>
 
 </Project>

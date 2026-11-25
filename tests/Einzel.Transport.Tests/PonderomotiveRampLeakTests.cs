@@ -114,6 +114,10 @@ public sealed class PonderomotiveRampLeakTests(ITestOutputHelper output)
         public double PotentialAt(in Vec3 position, double timeSeconds) =>
             -Vec3.Dot(ElectricFieldAt(in position, timeSeconds), position);
 
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => ElectricFieldAt(in position, switchSeconds);
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds) => PotentialAt(in position, switchSeconds);
+
         public Vec3 ElectricFieldAt(in Vec3 position) => ElectricFieldAt(in position, 0.0);
 
         public double PotentialAt(in Vec3 position) => PotentialAt(in position, 0.0);

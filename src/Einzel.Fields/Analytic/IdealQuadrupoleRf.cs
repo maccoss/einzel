@@ -198,8 +198,17 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     /// <summary>The potential applied to the x pair at an instant, in volts.</summary>
     /// <param name="timeSeconds">The instant.</param>
     /// <returns>The potential.</returns>
-    public double DriveAt(double timeSeconds) =>
-        DirectVolts + (AmplitudeVolts * Waveform.At(AngularFrequency * timeSeconds / (2.0 * Math.PI)));
+    public double DriveAt(double timeSeconds) => Drive(timeSeconds, before: false);
+
+    /// <summary>The potential on the x pair at an instant, or as it is approached from before.</summary>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether the drive's left limit is wanted: the level ending at a rectangular edge.</param>
+    /// <returns>The potential.</returns>
+    private double Drive(double timeSeconds, bool before)
+    {
+        var phase = AngularFrequency * timeSeconds / (2.0 * Math.PI);
+        return DirectVolts + (AmplitudeVolts * (before ? Waveform.Before(phase) : Waveform.At(phase)));
+    }
 
     /// <summary>
     /// The Mathieu a a given drive produces, including any the waveform's own mean
@@ -235,19 +244,34 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     }
 
     /// <inheritdoc/>
-    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
+    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => Field(in position, Drive(timeSeconds, before: false));
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The drive's left limit: the field at the instant for a sinusoid, and the level ending
+    /// there where a rectangular wave's edge lies on the switch.
+    /// </remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => Field(in position, Drive(switchSeconds, before: true));
+
+    /// <inheritdoc/>
+    /// <remarks>The drive's left limit, as for the field.</remarks>
+    public double PotentialBefore(in Vec3 position, double switchSeconds) => Potential(in position, Drive(switchSeconds, before: true));
+
+    /// <inheritdoc/>
+    public double PotentialAt(in Vec3 position, double timeSeconds) => Potential(in position, Drive(timeSeconds, before: false));
+
+    // E = -grad Phi, and Phi = drive (u^2 - v^2) / r0^2 in the transverse pair.
+    private Vec3 Field(in Vec3 position, double drive)
     {
-        // E = -grad Phi, and Phi = drive (u^2 - v^2) / r0^2 in the transverse pair.
         var (u, v) = Transverse(in position);
-        var scale = 2.0 * DriveAt(timeSeconds) / _inscribedRadiusSquared;
+        var scale = 2.0 * drive / _inscribedRadiusSquared;
         return FromTransverse(-scale * u, scale * v);
     }
 
-    /// <inheritdoc/>
-    public double PotentialAt(in Vec3 position, double timeSeconds)
+    private double Potential(in Vec3 position, double drive)
     {
         var (u, v) = Transverse(in position);
-        return DriveAt(timeSeconds) * ((u * u) - (v * v)) / _inscribedRadiusSquared;
+        return drive * ((u * u) - (v * v)) / _inscribedRadiusSquared;
     }
 
     /// <inheritdoc/>

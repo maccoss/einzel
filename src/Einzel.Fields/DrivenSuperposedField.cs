@@ -279,6 +279,36 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
     }
 
     /// <inheritdoc/>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds)
+    {
+        var total = Vec3.Zero;
+
+        foreach (var element in _elements)
+        {
+            total += element is ITimeVaryingField driven
+                ? driven.ElectricFieldBefore(in position, switchSeconds)
+                : element.ElectricFieldAt(in position);
+        }
+
+        return total;
+    }
+
+    /// <inheritdoc/>
+    public double PotentialBefore(in Vec3 position, double switchSeconds)
+    {
+        var total = 0.0;
+
+        foreach (var element in _elements)
+        {
+            total += element is ITimeVaryingField driven
+                ? driven.PotentialBefore(in position, switchSeconds)
+                : element.PotentialAt(in position);
+        }
+
+        return total;
+    }
+
+    /// <inheritdoc/>
     /// <remarks>The value at the start of the cycle, as every driven field reports.</remarks>
     public Vec3 ElectricFieldAt(in Vec3 position) => ElectricFieldAt(in position, 0.0);
 

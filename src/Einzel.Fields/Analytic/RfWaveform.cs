@@ -27,6 +27,16 @@ public abstract record RfWaveform
     /// <returns>The dimensionless drive value.</returns>
     public abstract double At(double phase);
 
+    /// <summary>The waveform's value as a phase is approached from below: its left limit.</summary>
+    /// <param name="phase">Phase through the cycle.</param>
+    /// <returns>The dimensionless drive value just before the phase.</returns>
+    /// <remarks>
+    /// The same as <see cref="At"/> for a continuous waveform. A rectangular wave jumps at its
+    /// edges, and a step that ends on a sequencer switch lying on an edge belongs to the level
+    /// before it: <see cref="At"/> there is the level after, which is the next phase's.
+    /// </remarks>
+    public virtual double Before(double phase) => At(phase);
+
     /// <summary>
     /// The mean value over a cycle, which acts as a DC component.
     /// </summary>
@@ -114,13 +124,33 @@ public abstract record RfWaveform
         /// <exception cref="ArgumentOutOfRangeException">The duty cycle is not in (0, 1).</exception>
         public override double At(double phase)
         {
+            var wrapped = Wrapped(phase);
+            return wrapped < DutyCycle ? 1.0 : -1.0;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// On an edge, the level ending there: the positive level up to and including the duty
+        /// point, the negative level up to and including the start of the next cycle.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The duty cycle is not in (0, 1).</exception>
+        public override double Before(double phase)
+        {
+            var wrapped = Wrapped(phase);
+            return wrapped > 0.0 && wrapped <= DutyCycle ? 1.0 : -1.0;
+        }
+
+        /// <summary>The phase within its cycle, once the duty cycle is checked.</summary>
+        /// <remarks>
+        /// Wrapped rather than assumed in range: a phase arrives from an accumulated flight time
+        /// and will not be tidy.
+        /// </remarks>
+        private double Wrapped(double phase)
+        {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(DutyCycle);
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(DutyCycle, 1.0);
 
-            // Wrapped rather than assumed in range: a phase arrives from an
-            // accumulated flight time and will not be tidy.
-            var wrapped = phase - Math.Floor(phase);
-            return wrapped < DutyCycle ? 1.0 : -1.0;
+            return phase - Math.Floor(phase);
         }
 
         /// <inheritdoc/>

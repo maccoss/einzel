@@ -4733,3 +4733,213 @@ Two findings from Stage 1 that bear on the spec:
   face-operator reuse test, which asserts a re-assembly allocates nothing, read 7,344 bytes in one
   window of a Debug run of the whole suite and none on repeat: it now takes the least of five
   windows, as the allocation tests here already do, and still requires zero.
+
+  **An eighteenth review, landed after the merge.** A study over a sequenced model now bills what one evaluation flies.
+  A figure read off the sequenced run (`transitTime`, `mobilityResolvingPower`; the registry
+  entry's `ReadsTheRun`, held to the source by a test; `radialSpread` refuses a sequenced model,
+  and an `ext:` objective counts when its manifest declares such a figure) is a whole sequenced run
+  and flies the sequence's cloud; under space charge that is one packet, billed as the model's
+  lockstep cost and not as a thousand independent flights. Any other figure flies its own ions
+  outside the sequence - `flightTime` on a 2,000-ion sequenced cloud flies its three-rung ladder,
+  not the cloud, because `Single` integrates through the instrument and never walks the
+  sequence - and is billed those. A pilot that cannot be measured through the coarsened field is
+  flown again at the declared resolution before the gate refuses - only where that solve, one per
+  basis channel, is estimated within a second - and the basis says which; otherwise, or where that
+  fails too, the cost is unknown. A phase whose pilot failed is charged at the dearest rate
+  measured per simulated second the measured pilots actually flew, not per second of their phases. The conductor scan refuses a shape it has no box for. A diffusive
+  leg is handed a density or a packet, never both, and the caller hands the packet over visibly.
+  The export's grid arrays stay with the allocator: a watch runs only in a measuring child or in
+  `Einzel.Fields.Tests`, neither of which exports, and an allocation on any other thread is counted
+  apart as off-thread rather than read as the build's.
+
+- **A step that lands on a switch belongs to the phase ending there, and a trajectory leg now
+  reaches its switch.** A sequenced run whose trajectory phase was followed by one that changes
+  the field, with ions still in flight, stopped with `StepSizeUnderflow` about an attosecond
+  short of the switch - `9.99999999992e-8 s of 1e-7 s` - and refused the whole run. Traced, not
+  guessed: the integrator cuts a step to end exactly on a switch, and Dormand-Prince's last two
+  stages sit at the step's end (`C6 = C7 = 1`), where a time on a boundary belongs to the phase
+  starting. So the step that wholly belongs to the phase ending sampled the next one at its end,
+  the error estimate read the jump as error and refused it, and each retry approached the
+  switch by a shorter accepted step - seventy-seven accepted and twenty-eight refused in the last
+  nanosecond - until one underflowed. A field that meets no switch never sees this. A staged
+  single-mode run usually came through it, by the same run of refusals: a facing pair crossing a
+  switch in `SwitchCrossingTests` took 112 accepted steps and takes 47, and that test now asks for
+  a time past the switch instead of a step count that was counting the defect.
+
+  `ITimeVaryingField.ElectricFieldBefore` asks a field for the left limit at an instant: the
+  phase ending, on a boundary, and the level ending at a rectangular drive's edge. It has no
+  default, so a wrapper cannot forget it; the sequenced field and the staged solved field answer
+  by side, a held field answers with its one state, and the composites forward it. **By side, not
+  by an instant a hair earlier**: on a shifted leg an ulp of the leg's clock is far smaller than an
+  ulp of the instrument's - a leg from 1.40141743e-6 to 3.00152224e-5 s maps its own end an ulp
+  *past* the instrument's - so `TimeShiftedField` recognises a switch it reported by identity:
+  an instant equal to `boundary - offset` is that boundary, found in the leg's own switches, read
+  once and bounded at the leg's end. The step cut to a switch - and a detector, electrode or
+  discontinuity landed on at its end - asks its end stages from before and hands on the next
+  phase's derivative.
+
+  **The reference flights and the corpus are bit-identical except where a step lands on a
+  switch.** The scaffolded reflectron, the planar mirror pair, the einzel lens and the rectilinear
+  trap fly the same digits and step counts, and 40 of the 42 corpus examples give identical
+  `run --json`; the two that differ are the two that switch. `sequenced-uniform` moved from
+  5.2193585800816775 to 5.219358580084054 µs against a closed form of 5.2193585800840523 - from
+  4.6e-13 to 3e-16 - and `sequenced-extraction` by 6e-12 relative, inside its plates' 1e-7
+  fringe. The solver-behaviour version goes to 3, since a staged flight's numbers moved.
+
+- **A phase that ends where it begins is refused as a model error, at its duration.** A phase
+  short enough to vanish in the sum of the ones before it - a 1e-30 µs phase after 6 µs - has a
+  positive duration and an end equal to its start, so it passed validation and the sequenced
+  field then refused two boundaries at one instant with an `ArgumentException`: `INTERNAL_ERROR`,
+  exit 6, "a defect in einzel" for a document whose mistake is a duration. Validation now adds the
+  durations up from zero exactly as the schedule and both sequenced fields do, and refuses a
+  phase whose end does not exceed its start as `VALUE_OUT_OF_BOUNDS` at `/sequence/<index>/duration`
+  (AGT-3), exit 1, from `validate` and `run` alike. A zero duration was already refused at the same
+  path ("a stage must last a positive time") and is pinned beside it. The field's own check stays,
+  as the backstop for a caller that builds one without validating.
+
+  **The first review of that fix, and why it was still arithmetic.** It asked the field "from
+  before" at the step's end time - `x + (b - x)`, a sum that misses `b` in about one draw in twenty
+  - so whether the ending phase was asked still depended on the sum landing. The switch is now
+  carried by identity: the integrator hands the end stages and the handed-on derivative the switch
+  exactly as the field reported it, the field compares it with its own boundaries by equality, and
+  where the sum of the steps missed the switch the clock is set to it, so the next switch asked for
+  is the one after. A shifted leg reports a switch as `boundary - offset` and recognises it by that
+  same expression, which picks the right one of two boundaries three ulps apart, where snapping by
+  distance could not. Four hundred random switch instants on a sequenced field and twelve random
+  stage lengths on a solved one now take no more steps than the same flights stitched from their
+  phases; the two ways the review predicted it could fail - the sum, and the clock left an ulp short -
+  each fail that random test when restored. **A third came out of writing it**: the ceiling has the
+  same defect. A flight cut to its `MaximumFlightTime` that the steps' sum leaves an ulp short is
+  offered a step of an ulp and ends as an underflow - 1 of the first 11 random ceilings did - and
+  the clock is set to the ceiling in that case too. Both snaps happen only where the sum missed, so
+  every flight that landed is untouched: the four reference flights and all 42 corpus examples are
+  identical to the commit before.
+
+  `ElectricFieldBefore` and `PotentialBefore` have no default now, so a wrapper cannot forget them:
+  the compiler named the four test wrappers that had. A phase is refused at its duration only
+  where it rounds to nothing against the time before it; a phase shorter than the integrator's
+  smallest step runs, flown as a separate leg or within one staged flight, because the integrator
+  reaches a switch or a ceiling closer than that step. The extra field evaluation a landing step makes, and the one a magnetic step always
+  made, are counted (`DormandPrince54.Evaluations`), checked against a field that counts what it
+  is asked. The diffusive leg takes the caller's packet by reference again, with no second variable.
+
+  **The second review found the ceiling snap was only half the fix, and the packet integrator had
+  none of it.** An ulp short of the ceiling is reached by more than one road: an analytic drift's
+  run over speed lands there (0.3 m at 3000 m/s is 1.4e-20 s short of 1e-4 s, and where the
+  field-free region ends inside the next 1e-13 m no second drift is taken), and a step that ends on
+  a switch and on the ceiling - equal by difference from where it started, an ulp apart - was set
+  back onto the switch and not then onto the ceiling. Both left less than the smallest step and
+  ended as `StepSizeUnderflow`. The fix is general rather than a third snap: **less than the
+  smallest step from the ceiling is the ceiling**, and a switch closer than the smallest step is
+  reached - the clock set onto it and the flight gone on in the next phase - rather than being an
+  underflow before the first step. The packet integrator, which flies space charge, cut no step to
+  a switch at all: a sequenced packet crossing one into a field two thousand times stronger took
+  **58 to 103 refused steps** at it and then crossed it on the smallest step. It now cuts, asks the
+  phase ending, and sets its clock as the single-ion path does - **0 refused**. A leg's switches are
+  read a window at a time - the first time a query needs them, up to the first switch past the
+  leg's end or a window's worth, and again from where a query passes them - so a query is a
+  binary search, allocation-free, rather than sixteen decrements and a scan per stage; 35,610 instants on and around every switch of sixty
+  random legs answer exactly as the scan did. Validation counts a phase's duration toward the next
+  one's start even when it refuses that phase for something else, and refuses a duration that
+  converts to infinity (1e306 hours) as not finite, which passed both checks before. The estimate's
+  pilot flies the leg the run flies, end less start, not the declared duration; and it no longer
+  falls back to a declared-resolution pilot whose solve is estimated past a second - on the Astral
+  that fallback was the run's whole solve inside `estimate` - nor calls a declared-resolution
+  pilot a floor from a coarser field.
+
+  **A sweep-cost test that failed on Windows CI was the runner, not this branch.** One more energy
+  member cost 22.7 ms against a 23.2 ms solve there; locally it is **2.5-2.7 ms a member on both
+  this branch and `main`** (0.04 solves). The three timings were each cheapest-of-three in a row,
+  so a burst of load could slow one and not the others - CI's sweeps came out seven times this
+  machine's while its solve came out a third. They are now taken interleaved, round by round,
+  cheapest of seven: **0.18 solves** as the code stands, **1.27** with the solve put back in the
+  member loop.
+
+  **The third review: a held field had two states, and a rectangular edge had one side.** A field
+  held at an operating point is one state at every instant - that is what holding it is for - but
+  asked from before a switch, the sequenced and the staged solved field gave the state ending
+  there, so a field held on a boundary answered with two states; and a held field still reported
+  the switches it no longer has. Both now ignore "before" and report no switch when held. And every
+  waveform's "from before" was the value at the instant, which for a rectangular wave on its edge
+  is the level after it: a 1 MHz square wave whose edge lies on a stage switch took **27 refused
+  steps** there and takes **0**. `RfWaveform.Before` is the left limit, and the oscillating uniform
+  field, the ideal quadrupole and the staged solve's drive terms ask it. A leg's switches are read
+  the first time they are asked for rather than when the leg is made - the ramped diffusive path
+  makes a leg every density step and asks it nothing, and making one went from **3,216 bytes to
+  40**, the leg itself. `radialSpread` is no longer counted as reading the sequenced run: it
+  refuses a sequenced model. The estimate's declared-solve budget charges one solve per basis
+  channel. And a phase refused as too short still has its set, ramp and mode checked - which
+  needed each phase's parameters resolved against its own errors, since the parameter surface
+  refuses to resolve into a list that already holds any error at all, so every phase after a first
+  mistake was silently skipped.
+
+  **The fourth review: a surface met at a switch is the step that met it.** A detector, an electrode
+  or a field discontinuity reached exactly at the end of the step cut to a switch was landed on by
+  re-running that step with no switch, so its last stages sampled the next phase: an ion struck a
+  wall with **7,063 m/s** from a field-free phase that left it at 3,000. The landing is now the
+  step, asked of the phase ending, with the clock set onto the switch. A leg's switches stop at
+  the first one past the leg's end, so a five-phase leg of a 200,000-phase staircase reads its own
+  seven or so where it used to give up holding and scan the instrument on every query. An `ext:`
+  objective is billed as the sequenced run when its manifest declares a figure that reads it. **Not changed, deliberately**: ordinary field evaluations on a leg still go through the
+  switch lookup rather than adding the offset, because the derivative handed on at a switch is
+  asked through that same evaluation, and where `(boundary - offset) + offset` rounds below the
+  boundary it would be the phase that has ended; the lookup is one binary search over the leg's
+  few switches and allocates nothing.
+
+  **The fifth review.** A leg reads its switches a window at a time - up to 4,096, or to the first
+  past its end - and reads the next window when an instant passes the last; nothing scans the
+  instrument per evaluation any more, and an unbounded leg over a 70,000-switch staircase asks it
+  **8,192** times over 100,000 evaluations where it asked two or so per evaluation. The sequenced
+  field and the staged solve find their next switch by halving. Two instrument switches closer
+  than the leg's clock can tell apart (one ulp apart, offset 1.08e-7 s) report at one leg instant:
+  the leg used to hand the inner field the first of them and report no switch after it, flying
+  the one-ulp phase between them for the rest of the leg; it now takes the state before the first
+  and after the last there, and the run says so (`sequence.switches-collapsed`). Validation no
+  longer refuses a phase shorter than the integrator's smallest step - measured to run, as a leg
+  and as one staged flight - and refuses only a phase of no time at all; one mistake on the
+  parameter surface met by five phases is one error. A study figure that does not walk the
+  sequence is billed its solves and its flights through the whole instrument, launch to ceiling,
+  not the density the run steps (the same cost whether the drift is 1 or 100 times longer, where
+  a transit goes from 79 to 1,532 s; ten times the ceiling, ten times the flight). `einzel
+  estimate` takes `--project` for a study, as the study verbs do, refuses it for a model, and
+  refuses a study whose extension the project does not hold. And a Windows CI failure
+  of `AQueryNeitherScansNorAllocates` (4,160 bytes once, over 30,000 queries) was one-off runtime
+  work landing in the measured window, not a query allocating: the measurement now warms the
+  path and takes the cheapest of five windows, and a per-query allocation would still be thirty
+  thousand of them.
+
+  **The sixth review.** A packet member that strikes or stops at the end of a step landed on a
+  switch records the switch, as the members still in flight do: 42 of 800 used to record an ulp
+  short. A refused negative duration is taken at its magnitude for the phases after it, so one
+  validation reports both it and a later phase that would vanish, the second saying what it
+  assumed. Every switch lookup shares one bisection (`SortedInstants`), held to the scans it
+  replaced on boundaries, ulps either side and NaN. A trajectory leg is bounded at its phase's own
+  end; `start + (end - start)` equals `end` for these, so that is clarity rather than a fix.
+
+  **The seventh review.** A phase whose duration is refused still has its set, ramp and mode
+  checked. A mistake on the parameter surface met by several phases is one error that names every
+  phase that met it. A switch past a leg's end that shares the leg's last instant with one before
+  it is no longer counted as a collapse the leg meets, and a first query past a window's worth of
+  switches reads from the instant itself, where it used to find no switch at all. A packet that
+  crosses a switch closer than the smallest step starts the next phase from a proposal of its own,
+  as a single ion does, rather than growing back from a tenth of an attosecond. The minimum step's
+  default lives in `IntegrationSettings` again; nothing else read the constant.
+
+  **And the sweep-cost test stopped timing.** It failed on Windows CI a second time, after the
+  round-two hardening, reading one more member at 15.5 ms against a 21.1 ms solve on a build that
+  solves once. Whether a sweep solves once or once per member is a count, so it now counts field
+  assemblies (`FieldAssembly.CountBuildsForTest`, per flow so parallel tests do not mix): one for
+  three members and one for twenty-one, against three and twenty-one with the solve back in the
+  loop. The timings are still printed, as information.
+
+  **The eighth review.** A collapse is said when a flight reaches the instant it skips, not when a
+  leg's switches are read, so a run whose ions all stop short of it says nothing. A study naming
+  an extension the project does not hold is refused with or without `--no-calibrate`. Space charge
+  no longer makes a figure walk the sequence in the estimate: flightTime on a pushed sequenced model
+  is billed its own flights, and a cloud figure one packet through the instrument and its self
+  field, neither the density the run steps. A zero duration advances the time by exactly zero,
+  which is known, so a later phase that vanishes is still refused in the same round. A bounded
+  sequenced field reports its switches; left to the interface's default it reported none, and a
+  flight stepped across them. `PotentialBefore` has a default (the potential at the instant), since
+  only a region's fringe reads it. Rectangular drives' edges as switches are left for their own
+  change, in SPEC.md's list: they move every digital-drive result.

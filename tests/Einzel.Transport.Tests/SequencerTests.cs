@@ -68,6 +68,31 @@ public sealed class SequencerTests(ITestOutputHelper output)
 
     private static PhaseState Start => new(new Vec3(0.0, 0.0, 0.0), new Vec3(0.0, 0.0, 0.0));
 
+    /// <summary>
+    /// A staged solved field, asked from before a stage boundary, answers with the stage ending
+    /// there; asked at it, with the stage starting.
+    /// </summary>
+    [Fact]
+    public void FromBeforeAStageBoundaryIsTheStageEnding()
+    {
+        var field = (ITimeVaryingField)GeometryBuilder.Build(
+            Geometry(
+                200.0,
+                [
+                    new CompiledStage("push", 1e-6, [Plate(200.0)]),
+                    new CompiledStage("pull", 1e-6, [Plate(-200.0)]),
+                ])).Field;
+        var at = new Vec3(0.0, 0.0, 0.0);
+
+        var ending = field.ElectricFieldBefore(at, 1e-6).X;
+        var starting = field.ElectricFieldAt(at, 1e-6).X;
+
+        output.WriteLine($"from before {ending:G6} V/m, at {starting:G6} V/m");
+
+        Assert.Equal(field.ElectricFieldAt(at, 0.5e-6).X, ending);
+        Assert.Equal(-ending, starting, 9);
+    }
+
     [Fact]
     public void ASequencedRunEqualsTheSameFlightStitchedFromTwoRuns()
     {

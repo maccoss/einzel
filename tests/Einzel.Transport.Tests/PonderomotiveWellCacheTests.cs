@@ -456,6 +456,20 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
             return Inner.PotentialAt(in position, timeSeconds);
         }
 
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds)
+        {
+            Interlocked.Increment(ref (sink ?? this)._fields);
+
+            return Inner.ElectricFieldBefore(in position, switchSeconds);
+        }
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds)
+        {
+            Interlocked.Increment(ref (sink ?? this)._potentials);
+
+            return Inner.PotentialBefore(in position, switchSeconds);
+        }
+
         public Vec3 ElectricFieldAt(in Vec3 position)
         {
             Interlocked.Increment(ref (sink ?? this)._fields);

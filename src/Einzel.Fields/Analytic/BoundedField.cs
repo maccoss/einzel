@@ -229,6 +229,14 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The inner field's switches: a region is a shape in space and changes nothing about when the
+    /// field switches. Left to the interface's default, a bounded sequenced element reported none,
+    /// and a flight stepped straight across every switch in it.
+    /// </remarks>
+    public double NextSwitchAfter(double timeSeconds) => _driven.NextSwitchAfter(timeSeconds);
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// The region scales a potential by a factor of position alone, so it commutes with an
     /// average over time and can be applied to the mean rather than to every sample.
     /// </remarks>
@@ -262,7 +270,23 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
     }
 
     /// <inheritdoc />
-    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
+    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => Field(in position, timeSeconds, before: false);
+
+    /// <inheritdoc />
+    public double PotentialAt(in Vec3 position, double timeSeconds) => Potential(in position, timeSeconds, before: false);
+
+    /// <inheritdoc />
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => Field(in position, switchSeconds, before: true);
+
+    /// <inheritdoc />
+    public double PotentialBefore(in Vec3 position, double switchSeconds) => Potential(in position, switchSeconds, before: true);
+
+    /// <summary>The bounded field at an instant, or at a switch from before it.</summary>
+    /// <param name="position">The point.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a switch is approached from before.</param>
+    /// <returns>The field.</returns>
+    private Vec3 Field(in Vec3 position, double timeSeconds, bool before)
     {
         var scale = Region.Scale(in position);
 
@@ -271,20 +295,40 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
             return Vec3.Zero;
         }
 
-        var field = _driven.ElectricFieldAt(in position, timeSeconds);
+        var field = InnerField(in position, timeSeconds, before);
 
         if (scale >= 1.0)
         {
             return field;
         }
 
-        return (field * scale) - (Region.ScaleGradient(in position) * _driven.PotentialAt(in position, timeSeconds));
+        return (field * scale) - (Region.ScaleGradient(in position) * InnerPotential(in position, timeSeconds, before));
     }
 
-    /// <inheritdoc />
-    public double PotentialAt(in Vec3 position, double timeSeconds)
+    // The wrapped field at an instant, or from before it.
+    private Vec3 InnerField(in Vec3 position, double timeSeconds, bool before) => before
+        ? _driven.ElectricFieldBefore(in position, timeSeconds)
+        : _driven.ElectricFieldAt(in position, timeSeconds);
+
+    // The wrapped potential at an instant, or from before it.
+    private double InnerPotential(in Vec3 position, double timeSeconds, bool before) => before
+        ? _driven.PotentialBefore(in position, timeSeconds)
+        : _driven.PotentialAt(in position, timeSeconds);
+
+    /// <summary>The bounded potential at an instant, or at a switch from before it.</summary>
+    /// <param name="position">The point.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a switch is approached from before.</param>
+    /// <returns>The potential.</returns>
+    private double Potential(in Vec3 position, double timeSeconds, bool before)
     {
         var scale = Region.Scale(in position);
-        return scale <= 0.0 ? 0.0 : scale * _driven.PotentialAt(in position, timeSeconds);
+
+        if (scale <= 0.0)
+        {
+            return 0.0;
+        }
+
+        return scale * InnerPotential(in position, timeSeconds, before);
     }
 }

@@ -359,7 +359,7 @@ public static class SequencedRun
                             Math.Max(model.Cloud.Ions, 1),
                             species,
                             gas,
-                            Instant(field, started),
+                            Instant(field, started, phase.EndsAtSeconds),
                             Mobility(model, gas, species),
                             model.Cloud.Seed);
                     }
@@ -398,7 +398,7 @@ public static class SequencedRun
                     // Subtract the same absolute instants as TimeShiftedField does.
                     // The declared duration can differ by a few ulps and otherwise
                     // leaves an unrepresentable sliver after the last switch.
-                    states!, species, field, detector, started, phase.EndsAtSeconds - started, model,
+                    states!, species, field, detector, started, phase.EndsAtSeconds, model,
                     gas, perTrajectory, outcomes.Count, warnings);
 
                 states = flying;
@@ -618,6 +618,8 @@ public static class SequencedRun
         Mobility mobility,
         BackgroundGas gas)
     {
+        // Unbounded and safe: the leg is asked only time-free questions and its cycle average, and
+        // `Effective` holds it at once, so it never reads a switch.
         var at = Instant(field, atSeconds);
         _ = DiffusionRun.Effective(ref at, species, mobility, gas, atSeconds);
         return at.PotentialAt(in probe);
@@ -631,9 +633,10 @@ public static class SequencedRun
     /// element bit-identical. Shared with the estimate's pilot, so that the two cannot
     /// disagree about which instrument a trajectory phase flies through.
     /// </remarks>
-    internal static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
+    internal static IElectrostaticField Instant(
+        IElectrostaticField field, double atSeconds, double endsAtSeconds = double.PositiveInfinity) =>
         field is ITimeVaryingField driven && atSeconds > 0.0
-            ? new TimeShiftedField(driven, atSeconds)
+            ? new TimeShiftedField(driven, atSeconds, endsAtSeconds)
             : field;
 
     private static PhaseState Launch(CompiledModel model) =>
@@ -727,14 +730,16 @@ public static class SequencedRun
         IElectrostaticField field,
         TrajectoryStopFunction detector,
         double startedAt,
-        double durationSeconds,
+        double endsAtSeconds,
         CompiledModel model,
         BackgroundGas gas,
         double perTrajectory,
         int phaseIndex,
         List<ValidityWarning> warnings)
     {
-        var seen = Instant(field, startedAt);
+        // Bounded at the phase's own end, as the schedule states it.
+        var seen = Instant(field, startedAt, endsAtSeconds);
+        var durationSeconds = endsAtSeconds - startedAt;
 
         var settings = new IntegrationSettings
         {
@@ -801,6 +806,15 @@ public static class SequencedRun
             warnings.Add(new ValidityWarning("collisions.sequence-leg",
                 $"trajectory phase {phaseIndex + 1}: {samplers.Sum(s => s.Collisions)} collisions "
                 + $"across {states.Length} trajectories", WarningSeverity.Provenance));
+        }
+
+        if (seen is TimeShiftedField { HasCollapsedSwitches: true })
+        {
+            warnings.Add(new ValidityWarning("sequence.switches-collapsed",
+                $"trajectory phase {phaseIndex + 1}: two of the instrument's switches fell within one "
+                + "tick of this leg's clock of each other, so the leg held the state before the first "
+                + "and after the last at that instant, and the phase between them - shorter than the "
+                + "leg can resolve - was not flown", WarningSeverity.Qualified));
         }
 
         foreach (var flight in members)
@@ -978,7 +992,7 @@ public static class SequencedRun
         // Stepping through a snapshot is what this did before, which is the FIFTH time
         // in this project a time-varying quantity reached through a time-free interface
         // has answered at an arbitrary instant rather than failing.
-        var seen = Instant(field, startedAt);
+        var seen = Instant(field, startedAt, phase.EndsAtSeconds);
         var effective = DiffusionRun.Effective(ref seen, species, mobility, gas, startedAt);
 
         // What the wrapper did rides out on the result, as it does on a wholly diffusive
@@ -1046,6 +1060,8 @@ public static class SequencedRun
             {
                 fieldAt = elapsed =>
                 {
+                    // Unbounded and safe: held at its operating point on the next line, where
+                    // it reports no switch and so never reads one.
                     var now = Instant(field, startedAt + elapsed);
                     _ = DiffusionRun.Effective(ref now, species, mobility, gas, startedAt + elapsed);
                     return now;

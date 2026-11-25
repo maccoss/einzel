@@ -323,16 +323,15 @@ public static class TrajectoryIntegrator
             // in space this needs no root-find - the time is known - so the step is
             // simply cut to land on it. The next step then starts in the new state,
             // with the derivative recomputed there.
-            var switchDue = false;
+            var switchAt = double.PositiveInfinity;
 
             if (driven is not null)
             {
-                var switchAt = driven.NextSwitchAfter(time.Total);
+                switchAt = driven.NextSwitchAfter(time.Total);
 
                 if (double.IsFinite(switchAt) && switchAt - time.Total <= step)
                 {
                     step = switchAt - time.Total;
-                    switchDue = true;
                 }
             }
 
@@ -376,17 +375,62 @@ public static class TrajectoryIntegrator
 
             if (step < settings.MinimumStep)
             {
-                outcome = time.Total >= settings.MaximumFlightTime
-                    ? TrajectoryOutcome.MaximumFlightTimeReached
-                    : TrajectoryOutcome.StepSizeUnderflow;
+                // A CEILING CLOSER THAN THE SMALLEST STEP IS REACHED. Whatever left the clock
+                // there - an analytic drift whose run over speed misses the ceiling by an ulp, a
+                // step snapped onto a switch an ulp before it - no step can be taken across what
+                // is left, and no step needs to be: the flight has used its time. Asked as
+                // "reached or past" this was an underflow an ulp short of the ceiling.
+                if (settings.MaximumFlightTime - time.Total < settings.MinimumStep)
+                {
+                    outcome = TrajectoryOutcome.MaximumFlightTimeReached;
+                    break;
+                }
+
+                // And a switch closer than the smallest step is reached the same way: the clock
+                // is set onto it, exactly as the field reported it, and the flight goes on in the
+                // phase starting there - so the next switch asked for is the one after, and the
+                // derivative and the member measures are the new phase's. The ion moves by less
+                // than the smallest step's worth in the time skipped.
+                if (double.IsFinite(switchAt) && switchAt - time.Total < settings.MinimumStep)
+                {
+                    time.Restart(switchAt);
+                    members?.Forget();
+                    derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
+                    fieldEvaluations++;
+
+                    // The step had been cut to the switch; the new phase starts from a proposal
+                    // of its own, as a flight does, and is capped again at the top of the loop.
+                    step = Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep);
+                    continue;
+                }
+
+                outcome = TrajectoryOutcome.StepSizeUnderflow;
                 break;
             }
+
+            // A step cut to end exactly on a switch belongs to the phase ending there. Its last
+            // stages are asked that phase, not the one starting: sampled across the jump, the
+            // error estimate read it as error and refused the step, and the next and the next,
+            // each shorter, until one underflowed an attosecond short of the switch - which is
+            // where a trajectory leg ending at a field change with its ions still in flight
+            // stopped. Any other step is untouched.
+            //
+            // Which step that is, is structural: the one whose length is the cut to the switch,
+            // compared with the very expression it was cut to - and the switch is handed on as
+            // the field reported it, so nothing downstream asks whether a sum landed on it.
+            var endsOnSwitch = double.IsFinite(switchAt) && step == switchAt - time.Total;
+
+            // And the same for the ceiling, which a step is cut to in the same way: the sum of the
+            // steps need not land on it either, and an ulp short of it the flight is offered a step
+            // of an ulp, below the smallest, and ends as an underflow rather than at the ceiling.
+            var endsOnCeiling = step == settings.MaximumFlightTime - time.Total;
 
             DormandPrince54.Step(
                 in state, in derivative, step, field, chargeToMass,
                 out var candidate, out var errorPosition, out var errorVelocity, out var candidateDerivative,
-                time.Total);
-            fieldEvaluations += 6;
+                time.Total,
+                endsOnSwitch ? switchAt : double.NaN);
+            fieldEvaluations += DormandPrince54.Evaluations(field, endsOnSwitch);
 
             var error = ErrorNorm(in state, in candidate, in errorPosition, in errorVelocity, settings);
 
@@ -420,12 +464,16 @@ public static class TrajectoryIntegrator
             if (double.IsFinite(conductorStep) && conductorStep <= boundaryStep
                 && !(double.IsFinite(stopStep) && stopStep < conductorStep))
             {
+                var landsOnSwitch = endsOnSwitch && conductorStep == step;
+
                 DormandPrince54.Step(
                     in state, in derivative, conductorStep, field, chargeToMass,
-                    out var absorbed, out _, out _, out _, time.Total);
-                fieldEvaluations += 6;
+                    out var absorbed, out _, out _, out _, time.Total,
+                    landsOnSwitch ? switchAt : double.NaN);
+                fieldEvaluations += DormandPrince54.Evaluations(field, landsOnSwitch);
 
                 time.Add(conductorStep);
+                Land(ref time, landsOnSwitch, switchAt, endsOnCeiling && conductorStep == step, settings);
                 state = absorbed;
                 accepted++;
                 recorder?.Offer(time.Total, in state, force: true);
@@ -438,12 +486,16 @@ public static class TrajectoryIntegrator
 
             if (double.IsFinite(stopStep) && stopStep <= boundaryStep)
             {
+                var landsOnSwitch = endsOnSwitch && stopStep == step;
+
                 DormandPrince54.Step(
                     in state, in derivative, stopStep, field, chargeToMass,
-                    out var landed, out _, out _, out _, time.Total);
-                fieldEvaluations += 6;
+                    out var landed, out _, out _, out _, time.Total,
+                    landsOnSwitch ? switchAt : double.NaN);
+                fieldEvaluations += DormandPrince54.Evaluations(field, landsOnSwitch);
 
                 time.Add(stopStep);
+                Land(ref time, landsOnSwitch, switchAt, endsOnCeiling && stopStep == step, settings);
                 state = landed;
                 accepted++;
                 recorder?.Offer(time.Total, in state, force: true);
@@ -455,12 +507,22 @@ public static class TrajectoryIntegrator
 
             if (double.IsFinite(boundaryStep))
             {
+                var landsOnSwitch = endsOnSwitch && boundaryStep == step;
+
                 DormandPrince54.Step(
                     in state, in derivative, boundaryStep, field, chargeToMass,
-                    out var onBoundary, out _, out _, out _, time.Total);
-                fieldEvaluations += 6;
+                    out var onBoundary, out _, out _, out _, time.Total,
+                    landsOnSwitch ? switchAt : double.NaN);
+                fieldEvaluations += DormandPrince54.Evaluations(field, landsOnSwitch);
 
                 time.Add(boundaryStep);
+                Land(ref time, landsOnSwitch, switchAt, endsOnCeiling && boundaryStep == step, settings);
+
+                if (landsOnSwitch)
+                {
+                    members?.Forget();
+                }
+
                 state = onBoundary;
                 accepted++;
                 recorder?.Offer(time.Total, in state, force: true);
@@ -475,6 +537,19 @@ public static class TrajectoryIntegrator
             }
 
             time.Add(step);
+
+            // ON THE SWITCH, EXACTLY: the step was its length, but adding it need not give the
+            // switch back to the bit, and a clock an ulp short of it is asked for the same switch
+            // again next and offered a step of an ulp. The time is set to the instant the field
+            // reported, so the next switch asked for is the one after.
+            //
+            // Only where the sum missed: where it landed, the running sum is left exactly as it
+            // was, so every flight that never needed this is bit-identical. And onto the ceiling,
+            // whether or not the step also ended on a switch: a switch and the ceiling can be equal
+            // by difference from where the step started and still differ by an ulp, and a clock
+            // left on the switch is a flight that has not reached its time.
+            Land(ref time, endsOnSwitch, switchAt, endsOnCeiling, settings);
+
             state = candidate;
             derivative = candidateDerivative;
             accepted++;
@@ -484,8 +559,10 @@ public static class TrajectoryIntegrator
                 in state, species, field, initialEnergy, energyScale, ref maximumEnergyDrift, ref fieldEvaluations);
 
             // A step that ended on a sequencer switch ends where the field changes state, so the
-            // measures read at its end are not the next step's start (MemberScratch).
-            if (switchDue)
+            // measures read at its end are not the next step's start (MemberScratch). Asked of the
+            // step that was taken, not of the cut once made to the switch: a collision closer than
+            // the switch cuts the step again, and that step ends where nothing changed.
+            if (endsOnSwitch)
             {
                 members?.Forget();
             }
@@ -1029,7 +1106,7 @@ public static class TrajectoryIntegrator
             DormandPrince54.Step(
                 in start, in startDerivative, mid, field, chargeToMass,
                 out var probe, out _, out _, out _, timeSeconds);
-            fieldEvaluations += 6;
+            fieldEvaluations += DormandPrince54.Evaluations(field);
 
             var side = surface.Side(in probe);
 
@@ -1049,6 +1126,30 @@ public static class TrajectoryIntegrator
         }
 
         return high;
+    }
+
+    /// <summary>Sets the clock onto a switch or the ceiling a landing step ended on, where the sum missed.</summary>
+    /// <param name="time">The flight's clock, already advanced by the landing step.</param>
+    /// <param name="onSwitch">Whether the landing step was the step cut to the switch.</param>
+    /// <param name="switchAt">The switch, as the field reported it.</param>
+    /// <param name="onCeiling">Whether the landing step was the step cut to the ceiling.</param>
+    /// <param name="settings">The flight's settings.</param>
+    /// <remarks>
+    /// A surface reached exactly at the end of the step cut to a switch lands on the switch: the
+    /// same step, so the same rule as the plain step - asked of the phase ending, and the clock set
+    /// to the instant the field reported, so the next phase starts there and not an ulp short.
+    /// </remarks>
+    private static void Land(ref CompensatedSum time, bool onSwitch, double switchAt, bool onCeiling, IntegrationSettings settings)
+    {
+        if (onSwitch && time.Total != switchAt)
+        {
+            time.Restart(switchAt);
+        }
+
+        if (onCeiling && time.Total < settings.MaximumFlightTime)
+        {
+            time.Restart(settings.MaximumFlightTime);
+        }
     }
 
     private static double InitialStep(

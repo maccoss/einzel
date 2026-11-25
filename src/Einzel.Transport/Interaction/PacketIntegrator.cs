@@ -172,6 +172,7 @@ public static class PacketIntegrator
         var count = launch.Count;
         var chargeToMass = species.ChargeSi / species.MassSi;
         var bounded = field as IConductorBounded;
+        var driven = field as ITimeVaryingField;
 
         var state = new PhaseState[count];
         var active = new bool[count];
@@ -239,6 +240,17 @@ public static class PacketIntegrator
             step = Math.Min(step, Math.Min(resolutionCap, settings.MaximumFlightTime - time));
             step = Math.Min(step, ToNearestDiscontinuity(state, active, field));
 
+            // A sequencer switches state at known times, as on a single trajectory: the shared
+            // step is cut to land on the switch rather than span it. A step across one samples
+            // two fields as one, and the error estimate refuses it again and again, each time
+            // shorter, until the step reaches the smallest and is accepted across the jump.
+            var switchAt = driven?.NextSwitchAfter(time) ?? double.PositiveInfinity;
+
+            if (double.IsFinite(switchAt) && switchAt - time <= step)
+            {
+                step = switchAt - time;
+            }
+
             if (collisions is not null)
             {
                 // The earliest collision of any active member is the next event the
@@ -259,8 +271,15 @@ public static class PacketIntegrator
                 step = Math.Min(step, toEvent);
             }
 
+            // Structural, as on a single trajectory: the step whose length is the cut to the switch,
+            // compared with the very expression it was cut to. A collision closer than the switch
+            // cut it again, and that step ends where nothing changes.
+            var endsOnSwitch = double.IsFinite(switchAt) && step == switchAt - time;
+            var endsOnCeiling = step == settings.MaximumFlightTime - time;
+
             var error = Advance(
                 state, active, derivative, step, field, chargeToMass, interaction, time,
+                endsOnSwitch ? switchAt : double.NaN,
                 scratch, trial, work, out var trialDerivative, ref imbalance);
 
             var norm = ErrorNorm(error, trial, active, settings);
@@ -270,6 +289,24 @@ public static class PacketIntegrator
                 rejected++;
                 step = Math.Max(settings.MinimumStep, step * Math.Max(0.2, 0.9 * Math.Pow(norm, -0.2)));
                 continue;
+            }
+
+            // ON THE SWITCH, EXACTLY, and on the ceiling: the step was the difference, but the sum
+            // need not give the instant back to the bit. A clock an ulp short of a switch is
+            // asked for the same switch next, and the derivatives below would be built from the
+            // phase that has ended. Only where the sum missed, so every packet that never needed
+            // this is bit-identical. Decided before the members are, so one that strikes or stops
+            // at the step's end records the same instant as one still in flight.
+            var stepEnd = time + step;
+
+            if (endsOnSwitch && stepEnd != switchAt)
+            {
+                stepEnd = switchAt;
+            }
+
+            if (endsOnCeiling && stepEnd < settings.MaximumFlightTime)
+            {
+                stepEnd = settings.MaximumFlightTime;
             }
 
             // Landing on the stopping surface: each macroparticle crosses at its
@@ -291,7 +328,7 @@ public static class PacketIntegrator
 
                     active[k] = false;
                     outcome[k] = TrajectoryOutcome.StopConditionMet;
-                    flightTime[k] = time + (fraction * step);
+                    flightTime[k] = fraction >= 1.0 ? stepEnd : time + (fraction * step);
                     state[k] = Interpolate(state[k], trial[k], fraction);
                     continue;
                 }
@@ -300,7 +337,7 @@ public static class PacketIntegrator
                 {
                     active[k] = false;
                     outcome[k] = TrajectoryOutcome.StruckElectrode;
-                    flightTime[k] = time + step;
+                    flightTime[k] = stepEnd;
                     state[k] = trial[k];
                     struck[k] = bounded.ConductorAt(trial[k].Position);
                     continue;
@@ -310,8 +347,9 @@ public static class PacketIntegrator
                 derivative[k] = trialDerivative[k];
             }
 
-            time += step;
+            time = stepEnd;
             steps++;
+            var taken = step;
 
             if (collisions is not null)
             {
@@ -330,6 +368,16 @@ public static class PacketIntegrator
             Derivatives(
                 state, active, field, chargeToMass, interaction, time, scratch, work.Positions,
                 derivative, work.Parallel, ref imbalance);
+
+            // A step cut to a switch closer than the smallest step says nothing about the scale of
+            // the phase starting there, and growing from it - five-fold a step - would take dozens
+            // of steps to reach that scale again. The new phase starts from a proposal of its own,
+            // as a flight does and as the single-ion path does at such a switch.
+            if (endsOnSwitch && taken < settings.MinimumStep)
+            {
+                step = Math.Min(
+                    Math.Min(InitialStep(settings, derivative, state), resolutionCap), settings.MaximumStep);
+            }
         }
 
         var members = new PacketMember[count];
@@ -512,12 +560,19 @@ public static class PacketIntegrator
         double chargeToMass,
         ISelfField? interaction,
         double time,
+        double switchSeconds,
         Vec3[] scratch,
         PhaseState[] result,
         Workspace work,
         out PhaseDerivative[] resultDerivative,
         ref double imbalance)
     {
+        // The last two stages sit at the step's end, which on a switch is the next phase's first
+        // instant. The step belongs to the phase ending, so there they ask it, at the switch as
+        // the field reported it rather than at time + step, a sum that need not equal it.
+        var endsOnSwitch = !double.IsNaN(switchSeconds);
+        var end = endsOnSwitch ? switchSeconds : time + step;
+
         var count = state.Length;
         var staged = work.Staged;
         var parallel = work.Parallel;
@@ -536,11 +591,13 @@ public static class PacketIntegrator
 
         Stage(state, active, staged, step, work.Terms6);
         Derivatives(
-            staged, active, field, chargeToMass, interaction, time + step, scratch, work.Positions, work.K6, parallel, ref imbalance);
+            staged, active, field, chargeToMass, interaction, end, scratch, work.Positions, work.K6, parallel, ref imbalance,
+            before: endsOnSwitch);
 
         Stage(state, active, result, step, work.TermsResult);
         Derivatives(
-            result, active, field, chargeToMass, interaction, time + step, scratch, work.Positions, work.K7, parallel, ref imbalance);
+            result, active, field, chargeToMass, interaction, end, scratch, work.Positions, work.K7, parallel, ref imbalance,
+            before: endsOnSwitch);
 
         Stage(state, active, staged, step, work.TermsError);
 
@@ -611,7 +668,8 @@ public static class PacketIntegrator
         Vec3[] positions,
         PhaseDerivative[] into,
         bool parallel,
-        ref double imbalance)
+        ref double imbalance,
+        bool before = false)
     {
         for (var k = 0; k < state.Length; k++)
         {
@@ -648,7 +706,7 @@ public static class PacketIntegrator
 
         if (parallel)
         {
-            AppliedInParallel(state, active, field, chargeToMass, time, scratch, into);
+            AppliedInParallel(state, active, field, chargeToMass, time, before, scratch, into);
             return;
         }
 
@@ -669,7 +727,7 @@ public static class PacketIntegrator
                 continue;
             }
 
-            var applied = DormandPrince54.Derivative(in state[k], field, chargeToMass, time);
+            var applied = DormandPrince54.Derivative(in state[k], field, chargeToMass, time, before);
 
             into[k] = new PhaseDerivative(applied.Velocity, applied.Acceleration + scratch[k]);
         }
@@ -686,6 +744,7 @@ public static class PacketIntegrator
         IElectrostaticField field,
         double chargeToMass,
         double time,
+        bool before,
         Vec3[] scratch,
         PhaseDerivative[] into) =>
         System.Threading.Tasks.Parallel.For(0, state.Length, k =>
@@ -696,7 +755,7 @@ public static class PacketIntegrator
                 return;
             }
 
-            var applied = DormandPrince54.Derivative(in state[k], field, chargeToMass, time);
+            var applied = DormandPrince54.Derivative(in state[k], field, chargeToMass, time, before);
 
             into[k] = new PhaseDerivative(applied.Velocity, applied.Acceleration + scratch[k]);
         });

@@ -31,12 +31,41 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     private readonly ITimeVaryingField _inner;
     private readonly double _offsetSeconds;
 
+    // Where the leg ends on the instrument's timeline: a window of switches is read no further
+    // than the first one past it.
+    private readonly double _endsAtSeconds;
+
+    // The window of switches this leg holds, on its own clock and the instrument's, in order: read
+    // the first time a query needs it, and read again from where a query has gone past it, so an
+    // evaluation is a binary search over at most a window's worth and never a scan of the
+    // instrument. Read lazily because the ramped diffusive path builds a leg at every density step
+    // and holds it at once, and the leg it builds is never asked; a held leg's inner field reports
+    // no switch, and reading none allocates nothing. Null until read.
+    private Window? _window;
+
     /// <summary>Wraps a field so t = 0 here is <paramref name="offsetSeconds"/> there.</summary>
     /// <param name="inner">The field as the instrument declares it.</param>
     /// <param name="offsetSeconds">Where this leg starts on the instrument's timeline.</param>
     /// <exception cref="ArgumentNullException"><paramref name="inner"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The offset is negative or not finite.</exception>
     public TimeShiftedField(ITimeVaryingField inner, double offsetSeconds)
+        : this(inner, offsetSeconds, double.PositiveInfinity)
+    {
+    }
+
+    /// <summary>Wraps a field for a leg that ends where it says, so t = 0 here is <paramref name="offsetSeconds"/> there.</summary>
+    /// <param name="inner">The field as the instrument declares it.</param>
+    /// <param name="offsetSeconds">Where this leg starts on the instrument's timeline.</param>
+    /// <param name="endsAtSeconds">
+    /// Where it ends on the instrument's timeline, or infinity for no end: a window of switches is
+    /// read no further than the first one past it, so a leg of a long staircase reads its own few.
+    /// An instant past them is still answered, by reading the next window.
+    /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="inner"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The offset is negative or not finite, or the end is NaN or before the offset.
+    /// </exception>
+    public TimeShiftedField(ITimeVaryingField inner, double offsetSeconds, double endsAtSeconds)
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentOutOfRangeException.ThrowIfNegative(offsetSeconds);
@@ -53,20 +82,233 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
                 nameof(offsetSeconds), offsetSeconds, "the offset must be a finite time");
         }
 
+        if (double.IsNaN(endsAtSeconds) || endsAtSeconds < offsetSeconds)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(endsAtSeconds), endsAtSeconds, "a leg ends at or after it starts");
+        }
+
         _inner = inner;
         _offsetSeconds = offsetSeconds;
+        _endsAtSeconds = endsAtSeconds;
     }
+
+    /// <summary>A window of a leg's switches, in order, and the instants it answers for.</summary>
+    /// <param name="Reported">Each switch as the leg reports it, distinct and increasing.</param>
+    /// <param name="First">The first instrument boundary reported at that instant: what is before it.</param>
+    /// <param name="Last">The last instrument boundary reported at that instant: what starts there.</param>
+    /// <param name="From">The leg instant the window was read from; it answers for none earlier.</param>
+    /// <param name="Complete">Whether the instrument has no switch past the window, which then answers for every later instant.</param>
+    /// <remarks>
+    /// Where <paramref name="First"/> and <paramref name="Last"/> differ at an instant, two switches
+    /// the leg can meet fell on it and the phase between them is skipped. A switch past the leg's
+    /// end is never made the last: it is not one the leg meets.
+    /// </remarks>
+    private sealed record Window(double[] Reported, double[] First, double[] Last, double From, bool Complete)
+    {
+        /// <summary>No switch from the leg's start onward: shared, so a leg that meets none allocates nothing.</summary>
+        public static readonly Window None = new([], [], [], 0.0, true);
+
+        /// <summary>Whether this window answers for a leg instant.</summary>
+        /// <remarks>
+        /// Short of the last switch held where more may follow: the next instrument boundary can
+        /// report at that same leg instant, and only a window read from there holds them both.
+        /// </remarks>
+        public bool Answers(double timeSeconds) =>
+            timeSeconds >= From && (Complete || timeSeconds < Reported[^1]);
+    }
+
+    /// <summary>The window that answers for a leg instant, read where none held does.</summary>
+    /// <remarks>
+    /// Thread-safe without a lock: a window is immutable, the field holding it is replaced whole,
+    /// and two threads reading one each publish a window that answers for what they asked.
+    /// </remarks>
+    private Window WindowFor(double timeSeconds)
+    {
+        var held = Volatile.Read(ref _window);
+
+        if (held is not null && held.Answers(timeSeconds))
+        {
+            return held;
+        }
+
+        // The first window is read from the leg's start, which answers for every instant up to its
+        // last switch. One that does not reach the instant asked - a first query past a window's
+        // worth of switches - is read again from the instant itself, which always answers for it:
+        // a read does not stop before a switch past the instant it was read from.
+        var read = Read(_inner, _offsetSeconds, _endsAtSeconds, held is null ? Math.Min(0.0, timeSeconds) : timeSeconds);
+
+        if (!read.Answers(timeSeconds))
+        {
+            read = Read(_inner, _offsetSeconds, _endsAtSeconds, timeSeconds);
+        }
+
+        Volatile.Write(ref _window, read);
+        return read;
+    }
+
+    /// <summary>Whether this leg was asked about an instant at which it skipped a phase.</summary>
+    /// <remarks>
+    /// Two instrument boundaries closer together than the leg's own clock can tell apart report at
+    /// one leg instant. The leg cannot stop between them, so at that instant it is given the state
+    /// before the first and after the last: the phase between them lasts less than one tick of the
+    /// leg's clock. Said when a flight reaches that instant - the field asked there - and not when
+    /// the switches are merely read, so a leg whose ions all stop short of it says nothing.
+    /// </remarks>
+    public bool HasCollapsedSwitches => Volatile.Read(ref _collapsed);
+
+    // Set when the field is asked at an instant that skips a phase, and never cleared.
+    private bool _collapsed;
+
+    /// <summary>Reads a window of switches from a leg instant onward.</summary>
+    /// <param name="inner">The field as the instrument declares it.</param>
+    /// <param name="offsetSeconds">Where the leg starts on the instrument's timeline.</param>
+    /// <param name="endsAtSeconds">Where it ends there; reading stops at the first switch past it.</param>
+    /// <param name="fromSeconds">The leg instant to read from.</param>
+    /// <returns>The window.</returns>
+    /// <remarks>
+    /// From the first boundary after a few ulps before the instant, which is as far as a
+    /// subtraction and an addition can move a reported switch from the boundary it means.
+    /// </remarks>
+    private static Window Read(ITimeVaryingField inner, double offsetSeconds, double endsAtSeconds, double fromSeconds)
+    {
+        var boundary = inner.NextSwitchAfter(Before(fromSeconds + offsetSeconds));
+
+        if (!double.IsFinite(boundary))
+        {
+            return fromSeconds <= 0.0 ? Window.None : new Window([], [], [], fromSeconds, true);
+        }
+
+        var reported = new List<double>();
+        var first = new List<double>();
+        var last = new List<double>();
+        var complete = false;
+
+        while (true)
+        {
+            var at = boundary - offsetSeconds;
+            var merged = reported.Count > 0 && at == reported[^1];
+
+            // Merged only among the switches the leg can meet: one past its end that shares the
+            // leg's last instant with one before it is not a phase the leg skips, nor a state it
+            // enters.
+            if (merged)
+            {
+                if (boundary <= endsAtSeconds)
+                {
+                    last[^1] = boundary;
+                }
+            }
+            else
+            {
+                reported.Add(at);
+                first.Add(boundary);
+                last.Add(boundary);
+            }
+
+            // The first switch past the leg's end is the last it can be asked about; a window is
+            // no more than a window, and the next is read when an instant passes it. Either way
+            // not before a switch past the instant read from, so the window answers for it - and
+            // only on a switch that began a new leg instant, so the last one held is a whole group.
+            if ((boundary > endsAtSeconds || reported.Count >= WindowSize) && at > fromSeconds && !merged)
+            {
+                break;
+            }
+
+            var next = inner.NextSwitchAfter(boundary);
+
+            if (!double.IsFinite(next) || !(next > boundary))
+            {
+                complete = true;
+                break;
+            }
+
+            boundary = next;
+        }
+
+        return new Window(reported.ToArray(), first.ToArray(), last.ToArray(), fromSeconds, complete);
+    }
+
+    /// <summary>The most switches a window holds.</summary>
+    private const int WindowSize = 4096;
 
     /// <summary>Where this leg starts on the instrument's timeline, in seconds.</summary>
     public double OffsetSeconds => _offsetSeconds;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// On a switch this leg reported, the instrument's own boundary - the starting phase - and
+    /// otherwise the leg's instant plus the offset, bit-identical to what it always was.
+    /// </remarks>
     public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) =>
-        _inner.ElectricFieldAt(position, timeSeconds + _offsetSeconds);
+        _inner.ElectricFieldAt(position, OnTheInstrument(timeSeconds, before: false));
 
     /// <inheritdoc/>
     public double PotentialAt(in Vec3 position, double timeSeconds) =>
-        _inner.PotentialAt(position, timeSeconds + _offsetSeconds);
+        _inner.PotentialAt(position, OnTheInstrument(timeSeconds, before: false));
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The switch is handed on as the instrument's own boundary, so the inner field compares it
+    /// by identity rather than receiving a sum that may round to either side of it.
+    /// </remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) =>
+        _inner.ElectricFieldBefore(position, OnTheInstrument(switchSeconds, before: true));
+
+    /// <inheritdoc/>
+    public double PotentialBefore(in Vec3 position, double switchSeconds) =>
+        _inner.PotentialBefore(position, OnTheInstrument(switchSeconds, before: true));
+
+    /// <summary>
+    /// A leg's instant on the instrument's clock: the instrument's boundary itself where the
+    /// instant is a switch this leg reported, the instant plus the offset anywhere else.
+    /// </summary>
+    /// <param name="timeSeconds">The instant on this leg's clock.</param>
+    /// <param name="before">
+    /// Whether the phase ending there is wanted: where several instrument boundaries report at the
+    /// instant, the first of them, and the last for the phase starting.
+    /// </param>
+    /// <returns>The instant on the instrument's.</returns>
+    /// <remarks>
+    /// <b>By identity, not by distance.</b> This leg reports a switch as <c>boundary - offset</c>,
+    /// so a leg's instant is a switch exactly when it equals that expression for some boundary -
+    /// an equality, which picks the right one of two boundaries however close together they lie.
+    /// Adding the offset back instead lands an ulp past the boundary for some pairs (a leg from
+    /// 1.40141743e-6 to 3.00152224e-5 s), which the inner field reads as the next phase.
+    /// </remarks>
+    private double OnTheInstrument(double timeSeconds, bool before)
+    {
+        var window = WindowFor(timeSeconds);
+        var at = SortedInstants.FirstAtOrAfter(window.Reported, timeSeconds);
+
+        if (at < window.Reported.Length && window.Reported[at] == timeSeconds)
+        {
+            if (window.First[at] != window.Last[at])
+            {
+                Volatile.Write(ref _collapsed, true);
+            }
+
+            return before ? window.First[at] : window.Last[at];
+        }
+
+        return timeSeconds + _offsetSeconds;
+    }
+
+    /// <summary>A few ulps before an instant: as far as a leg's instant can sit from the boundary it means.</summary>
+    /// <param name="instant">The instant on the instrument's clock.</param>
+    /// <returns>The instant moved back that far.</returns>
+    private static double Before(double instant)
+    {
+        for (var k = 0; k < Ulps; k++)
+        {
+            instant = Math.BitDecrement(instant);
+        }
+
+        return instant;
+    }
+
+    /// <summary>How many ulps before an instant the boundaries are looked for.</summary>
+    private const int Ulps = 16;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -134,7 +376,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     {
         var held = _inner.AtOperatingPoint(timeSeconds);
 
-        return ReferenceEquals(held, _inner) ? this : new TimeShiftedField(held, _offsetSeconds);
+        return ReferenceEquals(held, _inner) ? this : new TimeShiftedField(held, _offsetSeconds, _endsAtSeconds);
     }
 
     /// <inheritdoc/>
@@ -142,12 +384,16 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// Shifted back into this leg's own clock, and never negative: a switch already
     /// behind the offset is not a switch this leg will meet. The integrator refuses to
     /// step past what this returns, so reporting a past instant would stall it.
+    /// <para>
+    /// Strictly after the leg's instant on the leg's own clock, the same arithmetic it is reported
+    /// in: a boundary whose reported value is not past the instant - the one just landed on,
+    /// whatever adding the offset back makes of it - is not the next one, so landing on a switch
+    /// moves the leg on to the one after rather than stalling at the one it is on.
+    /// </para>
     /// </remarks>
     public double NextSwitchAfter(double timeSeconds)
     {
-        var next = _inner.NextSwitchAfter(timeSeconds + _offsetSeconds);
-
-        return double.IsPositiveInfinity(next) ? next : next - _offsetSeconds;
+        return SortedInstants.NextAfter(WindowFor(timeSeconds).Reported, timeSeconds);
     }
 
     /// <inheritdoc/>

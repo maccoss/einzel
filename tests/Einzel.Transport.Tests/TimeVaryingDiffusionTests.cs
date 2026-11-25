@@ -201,6 +201,10 @@ public sealed class TimeVaryingDiffusionTests(ITestOutputHelper output)
         public double PotentialAt(in Vec3 position, double timeSeconds) =>
             -100.0 * (1.0 + timeSeconds) * position.X;
 
+        public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => ElectricFieldAt(in position, switchSeconds);
+
+        public double PotentialBefore(in Vec3 position, double switchSeconds) => PotentialAt(in position, switchSeconds);
+
         // No oscillation anywhere in it, so no shortest period.
         public double ShortestPeriodSeconds => double.PositiveInfinity;
     }

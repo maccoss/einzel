@@ -1412,7 +1412,7 @@ public static class Program
         if (options.Positional.Count == 0)
         {
             Console.Error.WriteLine(
-                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--snapshots <instants>] [--json]");
+                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--snapshots <instants>] [--project <dir>] [--json]");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -1463,6 +1463,18 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
+        // --project names the project a study runs in, where an extension objective is found; a
+        // model's estimate has no study and no objective, so the flag would be read by nothing.
+        if (!isStudy && options.Has("project"))
+        {
+            Refuse(
+                options,
+                "project",
+                "--project names the project a study runs in, for its extension objective, and a model's estimate has no study",
+                "leave out --project, or estimate the study that names this model");
+            return (int)ExitCode.ValidationFailure;
+        }
+
         if (options.Has("snapshots"))
         {
             // A bare --snapshots never reaches here: the command line's reader refuses a value flag
@@ -1492,7 +1504,9 @@ public static class Program
         try
         {
             outcome = isStudy
-                ? EstimateCommand.ForStudy(path, calibrate, threshold)
+                ? EstimateCommand.ForStudy(
+                    path, calibrate, threshold,
+                    projectRoot: options.PathValue(PathOption.Project) ?? InferProjectRoot(path))
                 : EstimateCommand.Execute(path, calibrate, threshold, snapshots: snapshots);
         }
         catch (EinzelException refused) when (json)

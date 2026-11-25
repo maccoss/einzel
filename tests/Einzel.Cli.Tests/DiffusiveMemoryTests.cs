@@ -292,6 +292,80 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
         Assert.Equal([0, 1], declarations);
     }
 
+    /// <summary>
+    /// Every 2-D electrode shape the format has is given a bounding box or declared to hold no
+    /// node, and a shape the scan does not know is refused rather than scanned without one.
+    /// </summary>
+    [Fact]
+    public void EveryElectrodeShapeHasABoxOrNone()
+    {
+        foreach (var shape in Enum.GetValues<Core.Model.ElectrodeShape>())
+        {
+            var electrode = new Core.Model.CompiledElectrode
+            {
+                Name = shape.ToString(),
+                Shape = shape,
+                MaxX = 1.0,
+                MaxY = 1.0,
+                Radius = 1.0,
+                Vertices = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
+            };
+
+            var box = DiffusionRun.Box(electrode);
+
+            output.WriteLine($"{shape}: {box}");
+
+            Assert.Equal(shape == Core.Model.ElectrodeShape.EdgeProfile, box is null);
+        }
+
+        var unknown = new Core.Model.CompiledElectrode { Name = "new", Shape = (Core.Model.ElectrodeShape)99 };
+
+        Assert.Throws<InvalidOperationException>(() => DiffusionRun.Box(unknown));
+    }
+
+    /// <summary>
+    /// The figures a study counts as walking the sequence are exactly those whose evaluation
+    /// reads the sequenced run, as the source says: a figure that starts reading it must be listed.
+    /// </summary>
+    [Fact]
+    public void TheFiguresThatWalkTheSequenceAreThoseThatReadIt()
+    {
+        var root = AppContext.BaseDirectory;
+
+        while (!File.Exists(Path.Combine(root, "SPEC.md")))
+        {
+            root = Path.GetDirectoryName(root) ?? throw new FileNotFoundException("SPEC.md is not above the test binary");
+        }
+
+        var source = File.ReadAllText(Path.Combine(root, "src", "Einzel.Commands", "FiguresOfMerit.cs"));
+
+        // Every method whose body reads the run, by name - less those that refuse a sequenced
+        // model before reading it, which read a plain run and never walk a sequence.
+        var readers = System.Text.RegularExpressions.Regex
+            .Matches(source, @"private static [^\(]+ (\w+)\((?:(?!\n    private static )[\s\S])*?DiffusiveRun\(model")
+            .Where(match => !System.Text.RegularExpressions.Regex.IsMatch(
+                match.Value, @"if \(model\.Phases\.Count > 0\)\s*\{[\s\S]*?throw new EinzelException"))
+            .Select(match => match.Groups[1].Value)
+            .Where(name => name != "DiffusiveRun")
+            .ToHashSet();
+
+        // And the figures whose evaluator calls one of them.
+        var figures = System.Text.RegularExpressions.Regex
+            .Matches(source, "\"(\\w+)\" => model => (\\w+)\\(")
+            .Where(match => readers.Contains(match.Groups[2].Value))
+            .Select(match => match.Groups[1].Value)
+            .ToList();
+
+        output.WriteLine($"readers: {string.Join(", ", readers)}; figures: {string.Join(", ", figures)}");
+
+        Assert.NotEmpty(figures);
+
+        foreach (var info in FiguresOfMerit.All)
+        {
+            Assert.Equal(figures.Contains(info.Name), FiguresOfMerit.ReadsTheSequencedRun(info.Name));
+        }
+    }
+
     /// <summary>What the estimate says a run holds, in bytes: every term, the solved field's included.</summary>
     private static double Stated(string kind, int intervals)
     {

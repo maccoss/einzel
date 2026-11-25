@@ -43,6 +43,48 @@ public interface ITimeVaryingField : IElectrostaticField
     double PotentialAt(in Vec3 position, double timeSeconds);
 
     /// <summary>
+    /// The electric field at a point as a switch is approached from before it: the state that
+    /// is ending there, not the one starting.
+    /// </summary>
+    /// <param name="position">The point, in metres.</param>
+    /// <param name="switchSeconds">
+    /// A switch, exactly as <see cref="NextSwitchAfter"/> returned it - not an instant computed to
+    /// land on one. At any other instant it is the field there.
+    /// </param>
+    /// <returns>The field vector, in volts per metre.</returns>
+    /// <remarks>
+    /// <para>
+    /// What a step that ends on a switch samples at its end. The integrator cuts a step to end on
+    /// the switch, and a time on a boundary belongs to the phase that is starting - so the stages
+    /// of that step, which belong wholly to the phase ending, sampled the next one at its end. The
+    /// error estimate read the jump as error, refused the step, and approached the switch in ever
+    /// shorter steps until one underflowed an attosecond short of it.
+    /// </para>
+    /// <para>
+    /// <b>By the switch's identity, never by arithmetic.</b> The step's end time is a sum, and
+    /// <c>x + (b - x)</c> misses <c>b</c> in about one draw in twenty, so a field asked at a
+    /// computed time cannot tell which side of its boundary it is on. Asked with the value it
+    /// reported, it compares that against its own boundaries by equality. And it has no default:
+    /// a field wrapping another that forgot to forward it would answer for the wrong side
+    /// silently, so every implementation states it - continuous ones as the field at the instant.
+    /// </para>
+    /// </remarks>
+    Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds);
+
+    /// <summary>The potential at a point as a switch is approached from before it.</summary>
+    /// <param name="position">The point, in metres.</param>
+    /// <param name="switchSeconds">A switch, exactly as <see cref="NextSwitchAfter"/> returned it.</param>
+    /// <returns>The potential, in volts.</returns>
+    /// <remarks>
+    /// As <see cref="ElectricFieldBefore"/>, for a field whose E is built from its potential: a
+    /// bounded region's fringe is the one reader, scaling the potential's gradient into the field.
+    /// The integrator never asks it. So unlike the field it has a default - the potential at the
+    /// instant, right for anything continuous in time - and a field that switches overrides it, as
+    /// the sequenced field, the staged solve and every wrapper here do.
+    /// </remarks>
+    double PotentialBefore(in Vec3 position, double switchSeconds) => PotentialAt(in position, switchSeconds);
+
+    /// <summary>
     /// The shortest period in the drive, in seconds.
     /// </summary>
     /// <remarks>

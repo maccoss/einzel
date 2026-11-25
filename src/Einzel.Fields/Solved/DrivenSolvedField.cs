@@ -335,31 +335,35 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// the end of the declared sequence would make every ion still in flight
     /// suddenly coast, which is a physics change disguised as a bookkeeping one.
     /// </remarks>
-    private int StageAt(double timeSeconds)
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">
+    /// Whether a time on a boundary is given the stage ending there rather than the one starting.
+    /// Asked with the switch itself - the value <see cref="NextSwitchAfter"/> returned - so on a
+    /// boundary the equality is identity, not arithmetic landing on it.
+    /// </param>
+    /// <returns>The stage index.</returns>
+    private int StageAt(double timeSeconds, bool before = false)
     {
-        for (var k = 0; k < _boundaries.Length; k++)
-        {
-            if (timeSeconds < _boundaries[k])
-            {
-                return k;
-            }
-        }
+        var index = before
+            ? SortedInstants.FirstAtOrAfter(_boundaries, timeSeconds)
+            : SortedInstants.FirstAfter(_boundaries, timeSeconds);
 
-        return _boundaries.Length - 1;
+        return index < _boundaries.Length ? index : _boundaries.Length - 1;
     }
 
     /// <inheritdoc/>
     public double NextSwitchAfter(double timeSeconds)
     {
-        foreach (var boundary in _boundaries)
+        // Held at an operating point it is one stage at every instant, and has no switch.
+        if (_operatingPoint is not null)
         {
-            if (boundary > timeSeconds)
-            {
-                return boundary;
-            }
+            return double.PositiveInfinity;
         }
 
-        return double.PositiveInfinity;
+        // The boundaries are in order, so the first past the instant is found by halving: a leg
+        // of a long staircase reads its switches a window at a time, and a scan from the start for
+        // each made reading a window cost the whole timeline.
+        return SortedInstants.NextAfter(_boundaries, timeSeconds);
     }
 
     /// <summary>
@@ -442,7 +446,14 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
         return Weight(channel, timeSeconds);
     }
 
-    private double Weight(int channel, double timeSeconds)
+    private double Weight(int channel, double timeSeconds) => Weight(channel, timeSeconds, before: false);
+
+    /// <summary>A channel's weight at an instant, or as the instant is approached from before.</summary>
+    /// <param name="channel">The channel.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a time on a stage boundary is given the stage ending there.</param>
+    /// <returns>The weight.</returns>
+    private double Weight(int channel, double timeSeconds, bool before)
     {
         // WHICH state the geometry is in, as against WHERE IN THE CYCLE the drive is.
         // Those are the same instant for an integrator and must not be for a cycle
@@ -450,7 +461,10 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
         // on `timeSeconds`.
         var setting = _operatingPoint ?? timeSeconds;
 
-        var stage = _boundaries.Length == 0 ? -1 : StageAt(setting);
+        // A HELD FIELD IS ONE STATE AT EVERY INSTANT, so there is no switch for it to be before:
+        // the stage is the one the operating point selects whichever side it is asked from. Only
+        // the drive's own phase, which is not held, still takes its left limit.
+        var stage = _boundaries.Length == 0 ? -1 : StageAt(setting, before && _operatingPoint is null);
 
         var direct = stage < 0 ? _direct[channel] : _stageDirect[stage][channel];
         var harmonics = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];
@@ -475,7 +489,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
                 }
 
                 var amplitude = term.Amplitude + ((endHarmonics[k].Amplitude - term.Amplitude) * fraction);
-                ramped += amplitude * _waveforms[drive].At((_frequencies[drive] * timeSeconds) + term.Phase);
+                ramped += amplitude * Level(_waveforms[drive], (_frequencies[drive] * timeSeconds) + term.Phase, before);
             }
 
             return ramped;
@@ -497,20 +511,40 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
                 continue;
             }
 
-            total += term.Amplitude * _waveforms[drive].At((_frequencies[drive] * timeSeconds) + term.Phase);
+            total += term.Amplitude * Level(_waveforms[drive], (_frequencies[drive] * timeSeconds) + term.Phase, before);
         }
 
         return total;
     }
 
+    /// <summary>A drive's level at a phase, or its left limit there.</summary>
+    /// <remarks>
+    /// The left limit matters only for a rectangular wave whose edge lies on the switch a step
+    /// ends on: that step belongs to the level ending there, as it belongs to the stage ending
+    /// there. Everywhere else the two are the same number.
+    /// </remarks>
+    private static double Level(RfWaveform waveform, double phase, bool before) =>
+        before ? waveform.Before(phase) : waveform.At(phase);
+
     /// <inheritdoc/>
-    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
+    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => Field(in position, timeSeconds, before: false);
+
+    /// <inheritdoc/>
+    /// <remarks>On a stage boundary, the stage that is ending: a ramp at its end, a hold as held.</remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => Field(in position, switchSeconds, before: true);
+
+    /// <summary>The field at an instant, or at a switch from before it.</summary>
+    /// <param name="position">The point.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a switch is approached from before.</param>
+    /// <returns>The field.</returns>
+    private Vec3 Field(in Vec3 position, double timeSeconds, bool before)
     {
         var total = Vec3.Zero;
 
         for (var k = 0; k < _channels.Length; k++)
         {
-            var weight = Weight(k, timeSeconds);
+            var weight = Weight(k, timeSeconds, before);
 
             if (weight != 0.0)
             {
@@ -626,13 +660,23 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     }
 
     /// <inheritdoc/>
-    public double PotentialAt(in Vec3 position, double timeSeconds)
+    public double PotentialAt(in Vec3 position, double timeSeconds) => Potential(in position, timeSeconds, before: false);
+
+    /// <inheritdoc/>
+    public double PotentialBefore(in Vec3 position, double switchSeconds) => Potential(in position, switchSeconds, before: true);
+
+    /// <summary>The potential at an instant, or at a switch from before it.</summary>
+    /// <param name="position">The point.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <param name="before">Whether a switch is approached from before.</param>
+    /// <returns>The potential.</returns>
+    private double Potential(in Vec3 position, double timeSeconds, bool before)
     {
         var total = 0.0;
 
         for (var k = 0; k < _channels.Length; k++)
         {
-            var weight = Weight(k, timeSeconds);
+            var weight = Weight(k, timeSeconds, before);
 
             if (weight != 0.0)
             {
