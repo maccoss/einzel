@@ -88,6 +88,69 @@ public interface IElectrostaticField
     /// </remarks>
     double SignedDistanceToDiscontinuity(in Vec3 position) => double.PositiveInfinity;
 
+    /// <summary>How many discontinuity measures this field tracks separately.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A crossing is any member changing sign</b>, and the integrator lands on the earliest. One
+    /// measure for a field that is not composed of others; the members of each part for a sum,
+    /// and through a wrapper the members of what it wraps. <see cref="SignedDistanceToDiscontinuity"/>
+    /// stays the members combined (<see cref="DiscontinuityDistance.Combine"/>): its magnitude is the
+    /// distance to the nearest surface of any member, which is what a step cap wants.
+    /// </para>
+    /// <para>
+    /// <b>Why separately.</b> Combined, the members' signs multiply, so two surfaces at one place -
+    /// two abutting solve domains, two halves of a reflection meeting at their plane - cancel, and a
+    /// real surface is crossed with no landing: Stage 4's rule 1. Tracked separately, two surfaces
+    /// at one place are one landing, and a member's own forced change of sign costs at most a
+    /// landing more, never one less.
+    /// </para>
+    /// <para>
+    /// <b>A member's measure is a function of position alone within a step.</b> The integrator
+    /// reads every member at a step's end and uses those readings as the next step's start without
+    /// asking again. It reads afresh after anything other than its own advance - a landed sequencer
+    /// switch, a collision, an analytic drift - and a new leg of a sequenced run is a new
+    /// integration; between those, a measure that changed while the ion stood still would be read
+    /// stale. An infinity is a sign: plus infinity on one side of a step and a finite negative
+    /// measure on the other is a crossing. Not a number is no measure, and is never a crossing.
+    /// </para>
+    /// </remarks>
+    int DiscontinuityMembers => 1;
+
+    /// <summary>One member's discontinuity measure (<see cref="DiscontinuityMembers"/>).</summary>
+    /// <param name="member">Which, from zero.</param>
+    /// <param name="position">The point, in metres.</param>
+    /// <returns>Its signed distance, in metres, or positive infinity.</returns>
+    double MemberDistanceToDiscontinuity(int member, in Vec3 position) => SignedDistanceToDiscontinuity(in position);
+
+    /// <summary>Every member's discontinuity measure at once, in member order.</summary>
+    /// <param name="position">The point, in metres.</param>
+    /// <param name="distances">Filled with one measure per member; as long as <see cref="DiscontinuityMembers"/>.</param>
+    /// <remarks>
+    /// One pass: a sum fills each part's members in its slice, so asking for all of them costs one
+    /// query of each part rather than a scan per member. What the integrator asks at every step.
+    /// </remarks>
+    void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        for (var k = 0; k < distances.Length; k++)
+        {
+            distances[k] = MemberDistanceToDiscontinuity(k, in position);
+        }
+    }
+
+    /// <summary>
+    /// For each member, the member whose surface bounds where it is finite, or -1 for none.
+    /// </summary>
+    /// <param name="gates">Filled with one entry per member; as long as <see cref="DiscontinuityMembers"/>.</param>
+    /// <remarks>
+    /// A bounded element's inner members are finite inside its box and plus infinity outside, so
+    /// the box member gates them: a gated member changes between finite and infinite only on its
+    /// gate's surface, and a step that starts on that surface - having just landed there - has
+    /// already landed on that change. Asked once, when a flight starts: it is a property of how the
+    /// field is composed, not of where the ion is. The integrator reads it instead of probing a
+    /// hair along the step.
+    /// </remarks>
+    void DiscontinuityMemberGates(Span<int> gates) => gates.Fill(-1);
+
     /// <summary>
     /// The length scale on which this field is resolved. Infinite for a field
     /// given in closed form.

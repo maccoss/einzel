@@ -99,7 +99,13 @@ public sealed class WatchedRunTests(ITestOutputHelper output) : IDisposable
                     centers.Add(frame.Density.Max(d => Reach(d.VerticesMm)));
                 }
             },
-            TimeSpan.FromMilliseconds(20));
+
+            // Every step, not a wall-clock interval. This run finishes in tens of
+            // milliseconds on a fast runner, so a 20 ms interval delivered one frame on
+            // Windows CI (21 Nov) and the test measured the machine's speed rather than the
+            // watch. The interval is the Watcher's own concern and WatcherTests covers it;
+            // what this test asks is that frames of a moving run reach the viewport.
+            TimeSpan.Zero);
 
         var final = ViewportCommand.Watch(_model, watcher);
 

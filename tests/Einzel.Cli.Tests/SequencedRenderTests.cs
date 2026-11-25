@@ -339,9 +339,16 @@ public sealed class SequencedRenderTests : IDisposable
         var path = Path.Combine(_root, "models", "hold-then-push.json");
         File.WriteAllText(path, HoldThenPush);
 
-        var (exit, _, stderr) = Cli("render", "section", path, "--progress", "soon");
+        var (exit, _, stderr) = Cli("render", "section", path, "--progress=soon");
 
         Assert.NotEqual(0, exit);
         Assert.Contains("--progress takes an interval in seconds", stderr, StringComparison.Ordinal);
+
+        // Written bare after the model, 'soon' is no number: --progress is bare and 'soon' a stray
+        // argument, refused as one.
+        var (bare, _, bareError) = Cli("render", "section", path, "--progress", "soon");
+
+        Assert.NotEqual(0, bare);
+        Assert.Contains("'soon', which it does not take", bareError, StringComparison.Ordinal);
     }
 }

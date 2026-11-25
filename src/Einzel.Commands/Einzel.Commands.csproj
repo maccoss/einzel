@@ -18,6 +18,12 @@
     <EmbeddedResource Include="Examples\**\*.vti" />
   </ItemGroup>
 
+  <!-- For ArtifactFiles' failure hook alone: a write that fails part way for a reason that is not
+       the file system's cannot be produced from outside without it. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Einzel.Cli.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Its tests, for the few rules that cannot be reached through a command: how a
          refusal from a general conversion is located in a sequence, which needs a density

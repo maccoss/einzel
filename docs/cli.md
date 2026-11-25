@@ -68,6 +68,7 @@ to describe itself, which is what these three are for.
 | Command | Does |
 | --- | --- |
 | `einzel schema [--study]` | The model format as JSON Schema, **generated from the document types**; `--study` gives the study-file format instead |
+| `einzel schema --units` | Every unit symbol a document may use, with its dimension in SI base units and what one of it is in SI - printed from the registry that reads them (`--json` for the same as data) |
 | `einzel templates [name]` | List device templates, or print one |
 | `einzel examples [name]` | List the reference corpus, or print one |
 | `einzel doctor [dir]` | Check the installation, and a project if given |
@@ -107,6 +108,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView; `--composite` writes the summed field and E at one instant on a grid |
 | `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
 | `einzel render still <model.json>` | Draw the viewport's shaded 3D picture to a PNG, headlessly - the same composition and camera the window uses |
+| `einzel render surface <model.json>` | Draw the potential on a plane as height above it - SIMION's potential-energy view - to a PNG, with conductors as flat plateaus at their own potential and the height scale on the picture |
 | `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
 | `einzel ext list \| test \| register` | The extension authoring loop: list what is installed with each licence and what the sandbox does not enforce, run an extension's tests, or scaffold a new one that runs immediately |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
@@ -118,12 +120,15 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--json` | Machine-readable output, including the full result envelope |
 | `--dry-run` | Say what would be written, and write nothing |
 | `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model - including a sequenced run that ends in the diffusive description |
-| `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
+| `--at-us <t>` | `render section` and `render surface`: the instant to draw a driven field (or, for a section, a diffusive density) at |
+| `--cycle-mean` | `render surface` only: draw the potential averaged over one drive cycle - for a sinusoidal drive, the DC part - instead of an instant. Refused for a field with no drive (static, or a sequence of static states) |
+| `--plane xy\|xz\|yz`, `--offset-mm d`, `--box-mm a0,b0,a1,b1` | `render surface` only: the plane, its offset along the normal, and the rectangle sampled in the plane's own axis order |
+| `--height potential\|energy` | `render surface` only: volts, or q·phi for the model's ion in electronvolts |
 | `--view iso\|side\|top\|front` | `render still` only: the named view, the same names as the window's buttons |
 | `--width-px N`, `--height-px N` | `render still` only: the picture's size, 16 to 8192 pixels; the unit is in the name, as `--width-mm` does it |
 | `--see-through` | `render still` only: draw the conductors translucent, as the window's toggle does |
 | `--no-scale` | `render still` only: leave out the ruler, which is drawn by default in the corner the instrument covers least (and left out anyway when the picture is too small to hold it) |
-| `--progress <seconds>` | `run` and both render verbs: how often to say where the transport has got to, on stderr. Thirty seconds by default, `0` for silence |
+| `--progress [<seconds>]` | `run` and both render verbs: how often to say where the transport has got to, on stderr. Thirty seconds by default and when given bare, `0` for silence |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
 Not yet built: `self-update`, which needs `Einzel.Update`. Of the render verbs
@@ -817,7 +822,18 @@ tilts and the axisymmetric mapping are all honoured and the assembly's warnings 
   point, for example the quadro-logarithmic field's singular axis). A refused point is a row with a note,
   never a failure of the profile; only that refusal is caught, so any other error in the field stack is
   one error, not a column of refused rows. Warnings summarise the counts (`probe.inside-conductor`,
-  `probe.outside-domain`, `probe.refused`).
+  `probe.outside-domain`, `probe.refused`). **A conductor counts only where its own element was
+  solved**: where any element was solved at the point, `conductor` and `conductorDistanceMm` describe
+  the nearest conductor among those elements', so a negative distance always comes with
+  `inside-conductor`. **A point inside a declared shape that runs past its own solve is
+  `outside-domain`**, with a `note` saying whose shape it is in, even where another element's
+  domain covers it: what the solves hold there is not that metal, and it is never `ok`. (A shape
+  declared past a mirror plane, in its own element's image half, is that solve's vacuum and stays
+  `ok`.) That is a
+  change of status for such points (they were `ok` beside a covering element, and `inside-conductor`
+  before conductors were tied to their solves), and it reaches every caller of the probe:
+  `export --composite` counts them under `probe.outside-domain`, and `render surface` draws no
+  plateau there. Outside every domain the row names the nearest declared conductor, as before.
 - **A point on a domain face is in the domain.** A face node holds a solved value, so the declared faces
   are inside, and the solved fields agree: a grid's last node is `min + (max - min)` in floating point and
   can land an ulp short of the declared face, so a grid built over a box counts as reaching the declared
@@ -831,6 +847,247 @@ tilts and the axisymmetric mapping are all honoured and the assembly's warnings 
   (`evidence`): an analytic element is exact to arithmetic, a solved element's error is its discretisation,
   stated by each element's `cellMm` and by the warnings. An interval invented here would claim a precision
   nothing measured.
+
+### `einzel render surface`: the potential as height
+
+```
+einzel render surface <model.json> [--plane xy|xz|yz] [--offset-mm d] [--box-mm a0,b0,a1,b1]
+       [--height potential|energy] [--at-us <t> | --cycle-mean] [--relief F | --height-mm-per-v X]
+       [--samples N] [--mesh-lines N] [--view iso|side|front|top] [--csv <file>] [--out <file.png>] [--json]
+```
+
+The view SIMION calls a PE surface: one plane, the potential drawn as height in a wire mesh, each
+conductor the plane cuts a flat plateau at its own potential. Every height is sampled through the
+probe (`FieldProbe`), so it is the composite field a run flies through and the probe's warnings come
+with it; the outcome lists each plateau with its potential and the spread of values inside it, and
+states the scale - `heightMmPerUnit`, `unitsPerMm`, `lowest`, `highest` - which is also in the PNG's
+text and on the picture as a labelled bar. `--cycle-mean` draws the part of a driven field that does
+not oscillate (exactly the DC for a sinusoid; `render.cycle-mean` says what was averaged); with no
+instant and no cycle mean, a driven field is drawn at t = 0 and `render.field-at-instant` says so.
+Under `--cycle-mean`, `--at-us` picks only the operating point (which phase of a sequence, how far
+along a ramp): no instant of the drive is drawn, so an instant too late to place in the cycle is not
+refused there, and the mean's window opens at zero where it cannot be opened at the instant itself.
+**A field with no drive has no cycle to average**, so `--cycle-mean` on a static model, or on a
+sequence whose states are all static, is refused at `/args/--cycle-mean` (exit 1) rather than
+drawn as an instant under the mean's name; `--at-us` on a static model is drawn, with
+`render.instant-ignored` saying it changed nothing. A *negative* `--at-us` is refused on a static
+model as on any other, before the model is opened, and so is a render spec's negative `atSeconds`:
+a run's clock starts at zero, so a negative instant names no state of any instrument, and whether
+it is refused does not depend on what the model holds - otherwise a spec written against a static
+model would start being refused the day a phase was added to it, for the instant it always gave.
+A non-finite instant is refused everywhere. With no `--offset-mm` the plane passes through
+the middle of the domain along its normal (z = 0 for a 2-D model's own `xy` plane). Two elements
+that each have a conductor of one name are two plateaus, labelled `name (element N)`.
+`scaleDrawn` is false, and the bar absent, in `--view top` (the height points at the viewer) and
+in a picture too small for the bar's labels. The model is read once: `modelHash` is the hash of
+the text the field was built from. The picture is a rotation of the model (from the top, `xy` has
+x right and y up, as `render section` does). A range on the plane below 1e-9 of the model's own
+potentials is rounding and is drawn flat (`render.surface-flat`). `--csv`'s file is reported as
+`csv` in `--json` and on the terminal, and by `--dry-run`.
+
+**A switch never takes the argument after it as its value.** The parser cannot tell `--json` from
+`--out` by looking, and read "the next argument that is not itself an option" as any flag's value,
+so `render surface --cycle-mean models/q.json` took the model as the switch's value and printed the
+usage, and `--no-scale out.png` dropped the file name. `CommandLine.Switches` names every switch any
+verb reads - `composite`, `cycle-mean`, `dry-run`, `json`, `mesh`, `no-calibrate`, `no-scale`,
+`no-trajectory`, `see-through`, `study`, `vtu` - and a test reads the verbs' source and fails when a
+switch is added without it. That changes every verb: `einzel run --json models/x.json` used to fail
+the same way. `render surface` and `render still` also refuse a second argument, naming it.
+
+**`render surface`'s plateaus are what each conductor holds** (see Rendering), `--samples` takes
+`N` or `NxM`, `stepsMm` reports the spacing on both axes, `--out` and `--csv` may not be one file,
+and `--at-us` is refused below zero and where the drive's phase cannot be placed. `render section
+--at-us`, `--width-mm` and `--equipotentials` are read without `Parse`, so a typo is exit 1 rather
+than exit 6, and a negative instant is refused at `/args/--at-us`.
+
+**Every flag error is located at `/args/--flag`, by every verb** (`Einzel.Core.Errors.FlagPath`).
+The command layer had pointers of its own - `/surface/at-us`, `/probe/at-us`, `/render/at-us` -
+and the CLI translated only the surface's, so `--at-us -1` was located three ways by three verbs,
+and an export's `--at-us` at the probe's flag because it borrowed the probe's check. The command
+layer now raises flag errors at the flag, and nothing translates. A value read from a document - a
+render spec's `atSeconds` - is located in the document.
+
+**Every verb refuses a malformed command line, before it does anything** (`Program.Malformed`),
+against its own flags (`VerbFlags.ByVerb`): a flag the verb does not read (`unknown flag --no-scales
+for render surface`), a flag it reads as a value given none - or given an empty one, `--out=` or
+`--out ""`, which reached `Path.GetFullPath("")` and exited 6 - and more positional arguments than it
+takes. A value of spaces is a value (a caption may be one); a path given as spaces is refused at its
+flag, and a reader that cannot take spaces - a number, a choice - refuses them by name. **An
+implicit section** (`render --dry-run m.json`, the model after the flags) is held to the section's
+flags and its one model: it had no registry entry, so `render --dry-run m.json --widht-mm 80` drew the
+default width with exit 0. **A sub-verb a verb does not have** (`ext bogus`, `agents bogus`, `render
+bogus` with the word first) is refused at `/args/0` naming the ones it has. Under `--json` the refusal is also on stdout as JSON - `{"ran": false, "errors": [...]}`, each
+error with its code, the flag or argument as its `path` (`/args/--out`), and a suggestion - so an
+agent never gets an empty stdout and a bare exit 1. `--json` and `--help` are accepted by every verb,
+and a command line asking for `--help`, or naming no verb this knows, is left to the verb exactly as
+before. A flag a verb did not read used to be accepted and ignored, which is how a mistyped
+`--no-scales` drew the scale anyway. `VerbFlagsTests` reads each verb's handler, through every helper
+it calls, and fails when the registry and the handler disagree. The parser asks the same registry,
+of the verb the command line names, which flags are switches - so the argument after a verb's
+switch is never read as its value, and nothing requires a name to mean the same in every verb.
+
+**A flag's value is read by one of four readers, and refused one way.** A number (`TryNumberFlag`)
+is finite and in the invariant culture. A whole number (`TryWholeFlag`) is **digits alone** - no
+sign, no space, no exponent - within the flag's own range. A word (`TryChoiceFlag`) is one of the
+flag's documented words. Anything else is free text. Every refusal is exit 1, located at
+`/args/--flag`, quotes what was typed, and under `--json` is on stdout as JSON as well.
+`CommandLineMatrixTests` holds the CLI's source to that: no throwing `Parse` or `Convert` on text
+anywhere, and `TryParse` in the two readers alone.
+
+| Flag | Takes |
+| --- | --- |
+| `--width-px`, `--height-px` | 16 to 8192 |
+| `--samples` (`probe`) | 2 to 1,000,000 |
+| `--samples` (`render surface`) | 3 to 1001, or `NxM` with M from 2 |
+| `--mesh-lines` | 1 or more (`SurfaceCommand.MinimumMeshLines`) |
+| `--equipotentials` | 0 to 1000 |
+| `--fps` | 1 to 1000 |
+| `--ions` | 1 to 1,000,000 |
+| `--format` | `svg`, `pdf`, in any case |
+| `--kind` | `objective`, `analysis`, `geometry`, `sequence`, `interchange`, in any case |
+| `--vcs` | `git`, `none` |
+| `--height` | `potential`, `energy` |
+| `--plane` | `xy`, `xz`, `yz` |
+| `--view` | the verb's named views |
+
+**An argument a verb does not take is refused with that verb's own flags in the suggestion**: its
+switches, its flags that take a value, and where it has one the flag a file to write goes after
+(`run m.json --vtu out.vtu` is told `--vtu` is a switch, not sent to an `--out` that `run` does
+not have). **Every `einzel ...` command line written in the source and in these pages names flags
+its verb reads** - `WrittenCommandLinesTests` reads them all - because an unknown unit's error
+said "see 'einzel schema --units'" for as long as it has existed and nothing read that flag. It
+now lists the unit registry. **A file a command is told to write is written whole or not at
+all**, and one that cannot be written is refused at its flag, exit 1 (`ArtifactFiles`, used by
+`render surface`, `render still`, `render section`, `render animation`, `probe --csv`, `report
+--out` and `export`). A file the user named no flag for - a default figure, the report page with
+no `--out`, an export in the project's `.einzel/` folder - is refused at `/` with the file in the
+message, not at a flag that did not name it. **An animation's frames and `frames.json` are written all together or not at all.** **A destination is compared with the inputs, and
+with the other destinations, where its bytes would go** - through a symbolic link to the file it
+names - so `--out link.png` naming the model is refused as the model. **Each file is replaced in one rename**, so a
+process killed mid-write leaves the old file or the new one, never neither; a destination that is
+a symbolic link is written through to the file it names, and a read-only one is refused. Several
+files are put in place one after another with the replaced ones kept as backups until the last is
+in, and put back if one fails; a kill between the first rename and the last is the one window
+left, and then each replaced file is beside its destination under a `.bak` name. **Every
+destination is checked before the work**: a directory, a folder that is a file, or one of the
+files the command reads - the model, and the render spec when one was given - is refused before
+anything is solved, with or without `--dry-run`. An animation's folder is checked for the spec or
+the model under a name a frame or `frames.json` would take.
+
+**Under `--json` every refusal is JSON on stdout**, `{"ran": false, "errors": [...]}`, whichever
+layer raised it: the command line's own, one thrown from a command (a relief of zero, a box
+written backwards, a destination that cannot be written), a file that is not there, and an
+internal error (`INTERNAL_ERROR`, with the trace still on stderr). `--json=true` is `--json` here
+as on every verb. A verb that has already written its own
+answer is left with that one document. **A sub-verb is the first word that is not a flag or a
+flag's value**, wherever the flags stand: `einzel ext --json list`, `einzel ext --project p list` and
+`einzel agents --json tasks` are `ext list` and `agents tasks`, as they were before the registry.
+**A sub-verb's flags are its own**: `ext list`, `ext test`
+and `ext register`, and `agents tasks`, `agents setup` and `agents score`, are keyed separately
+in the registry as `render`'s kinds are, so `ext list --kind y` is an unknown flag and not a flag
+nothing read. **No destination may be a file the command reads, or another destination**:
+`--out model.json` used to replace the model with its own picture. **And a write that fails part
+way puts back what was there**, where it used to delete it.
+
+**Open: `run` has no `--dry-run` - a known, recorded gap against CLI-4.** CLI-4 ("every mutating
+command supports `--dry-run`") is the requirement; CLI-6 is startup and the network, and is not
+this. `run` writes `results/` and a manifest. Before the flag registry `einzel run
+m.json --dry-run` was accepted and ignored - the model ran and wrote its results - so the gap is
+older than the registry; the registry now refuses the flag, saying `run` has no dry run and naming
+`einzel preview` (evaluates without writing) and `einzel estimate` (states the cost). Building a
+dry run of `run` is left for its own change.
+
+**`--progress` is the one flag whose value may be left off** (`VerbFlags.Optional`): reporting is on
+unless turned off, so the flag alone is the default interval, as it always was. **`--progress 0` is
+off, and the only spelling of it**: a negative interval is refused at `--progress` (it used to mean
+off too, silently, so `--progress -5` ran a long job with no checkpoint). **A bare
+`--progress` before a positional is still bare**: the next word is its value only if **the whole
+word parses as a number** (`CommandNumber.Parses`, invariant culture - an overflow such as `1e400`,
+and `NaN`, included, so the reader refuses them as intervals rather than a model called 1e400 being
+opened), and otherwise it is an ordinary positional. Where such a word then makes the line fail,
+the refusal mentions it - conditionally, "if '5s' was meant as --progress's value", with how to
+write one - but only where that can be right: on too many arguments, when the word is itself one of
+the surplus or could be a mistyped number (a digit first, or a sign or point and then one, and
+not the name of anything on disk - `1.ps` beside a file called 1.ps is that file; a unit after a
+point marks a typo only after a number and in any case - `2.ms`, `2.MS`, `5.MM` - while `trap.ps`
+and `fit.m` are files); on a
+model that is not there (`run --progress 5s`), only for such a word. `run --progress modls/r.json`
+is a missing model and nothing more. That is a message, not a reassignment. So
+`--progress 5` is a five-second interval, as the shell's journal spells it, while `einzel run
+--progress models/reflectron.json`, `--progress 2026-lens.json`, `--progress 3d-trap.json` and
+`--progress ./models/r.json` are the default interval and a model, and `einzel run m.json --progress
+often` is the default interval, a model and a stray 'often', refused as an argument run does not take.
+A value that is not a number is given as `--progress=often` and refused by the flag's reader by name.
+One function decides what parses as a number, for the parser, `VerbFlags.SubVerb` and the reader,
+which then asks for finite. No word is ever both, so nothing is ambiguous: the first-character guess this replaced read
+`2026-lens.json` as an interval, and three rounds of machinery - words held, settled, then lines
+refused as ambiguous - existed to recover from it for one flag. `VerbFlags.SubVerb` finds the
+sub-verb by the same rule. A command line naming no
+sub-verb (`einzel render --dry-run m.json`, an implicit section) is read with the switches of all
+its verb's sub-verbs, so a switch does not take the model as its value. A flag that takes a value
+is refused bare at any occurrence, not only its last. Every other flag that takes a value is
+refused bare; before this they were read as though absent.
+
+**The whole surface is run as one table on every change.** `CommandLineMatrixTests` drives every
+verb in the registry through its help, each flag with a value it takes, each value flag bare, each
+with a value that is none, a flag it does not read and one positional argument too many, with and
+without `--json`: 632 command lines. Nothing may exit 6, every refusal is located, and a form the
+verb documents is never refused. A verb or flag added to the registry fails it until it has a
+command line and a sample.
+
+| Verb | Switches | Flags that take a value | Positional arguments (a sub-verb counts) |
+| --- | --- | --- | --- |
+| `init` | `--dry-run` | `--vcs` | 1 |
+| `new` | `--dry-run` | `--from-example`, `--from-template` | 1 |
+| `validate` | - | - | 1 |
+| `outline` | `--dry-run` | `--set` | 1 |
+| `project` | - | `--project` | 1 |
+| `estimate` | `--no-calibrate` | `--threshold` | 1 |
+| `solve` | - | - | 1 |
+| `probe` | `--dry-run` | `--at-mm`, `--line-mm`, `--to-mm`, `--samples`, `--at-us`, `--csv` | 1 |
+| `run` | `--vtu` | `--progress` (value optional), `--project` | 1 |
+| `sweep` | `--dry-run` | `--project` | 1 |
+| `optimise` | `--dry-run` | `--project` | 1 |
+| `optimize` | `--dry-run` | `--project` | 1 |
+| `scan` | `--dry-run` | `--project` | 1 |
+| `boundary` | `--dry-run` | `--project` | 1 |
+| `preview` | - | - | 1 |
+| `test` | - | `--project` | 1 |
+| `verify` | - | `--project` | 1 |
+| `report` | `--dry-run` | `--out`, `--project` | 1 |
+| `export` | `--composite`, `--dry-run`, `--mesh` | `--at-us`, `--box-mm`, `--project`, `--step-mm` | 1 |
+| `compare` | - | `--ions` | 1 |
+| `schema` | `--study`, `--units` | - | 0 |
+| `templates` | - | - | 1 |
+| `examples` | - | - | 1 |
+| `agents-md` | `--dry-run` | `--project` | 1 |
+| `agents`, `agents tasks` | - | - | 0, 2 |
+| `agents setup` | `--dry-run` | - | 3 |
+| `agents score` | - | - | 3 |
+| `doctor` | - | `--project` | 1 |
+| `ext`, `ext list` | - | `--project` | 0, 1 |
+| `ext test` | - | `--input`, `--project` | 2 |
+| `ext register` | `--dry-run` | `--kind`, `--project` | 2 |
+| `render section` | `--dry-run`, `--no-trajectory` | `--at-us`, `--caption`, `--equipotentials`, `--format`, `--out`, `--progress` (value optional), `--project`, `--width-mm` | 2 |
+| `render still` | `--dry-run`, `--no-scale`, `--see-through` | `--height-px`, `--out`, `--project`, `--view`, `--width-px` | 2 |
+| `render surface` | `--cycle-mean`, `--dry-run`, `--no-scale` | `--at-us`, `--box-mm`, `--csv`, `--height`, `--height-mm-per-ev`, `--height-mm-per-v`, `--height-px`, `--mesh-lines`, `--offset-mm`, `--out`, `--plane`, `--project`, `--relief`, `--samples`, `--view`, `--width-px` | 2 |
+| `render animation` | `--dry-run` | `--caption`, `--format`, `--fps`, `--out`, `--progress` (value optional), `--project`, `--width-mm` | 2 |
+
+`--json` and `--help` are accepted everywhere besides. `probe` also knows the bare `--at`, `--line` and
+`--to`, and `render surface` the bare `--offset`, `--box`, `--at` and `--height-mm`, only to refuse them
+with the spelling that carries a unit.
+
+**A flag that takes a value and is given none is a validation failure naming the flag** - `--at-us
+--cycle-mean`, `--csv --json`. This is in the shared flag readers, so it also holds for `render
+still` (`--width-px`, `--height-px`, `--view`, `--out`), `probe` (`--at-us`, `--samples`, `--csv`)
+and `export` (`--step-mm`, `--at-us`, `--box-mm`, `--out`); all of these used to drop the flag and
+exit 0.
+`--csv` writes the sampled grid, quoted per RFC 4180; a text cell beginning with `=`, `+`, `-`, `@`,
+a tab or a carriage return is written with a single quote before it, inside quotes, so a spreadsheet
+shows it as text rather than running it (OWASP's guidance on CSV injection). Numbers are never
+altered, and the `--json` form carries every name exactly. A warning running over several
+lines is written as several comment lines, in this table and in `probe --csv`. Units are in the flag names, as for the probe; a bare `--offset`,
+`--box` or `--at` is refused. See [Rendering](rendering.md) for the figures and what they show.
 
 ### `einzel export --composite`
 

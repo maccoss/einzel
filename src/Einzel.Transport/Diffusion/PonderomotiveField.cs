@@ -294,6 +294,20 @@ public sealed class PonderomotiveField : IElectrostaticField
     public double SignedDistanceToDiscontinuity(in Vec3 position) =>
         _driven.SignedDistanceToDiscontinuity(in position);
 
+    /// <inheritdoc/>
+    public int DiscontinuityMembers => _driven.DiscontinuityMembers;
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        _driven.MemberDistanceToDiscontinuity(member, in position);
+
+    /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances) =>
+        _driven.MemberDistancesToDiscontinuity(in position, distances);
+
+    /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates) => _driven.DiscontinuityMemberGates(gates);
+
     /// <summary>The effective potential: the DC part plus the ponderomotive well.</summary>
     /// <param name="position">Where to evaluate.</param>
     /// <returns>The potential, in volts.</returns>

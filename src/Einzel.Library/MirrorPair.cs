@@ -70,9 +70,21 @@ public sealed class MirrorPair
         CapToCap = capToCap;
 
         var first = mirror.Field();
-        var second = new ReflectedField(first, capToCap / 2.0);
+        var plane = capToCap / 2.0;
 
-        _field = new Einzel.Fields.SuperposedField([first, second]);
+        // The mirror is entered from positive x, so the declared half is below the mid-plane. Two
+        // cases, and they need different sums. Where its solve ends at or before the plane, the
+        // pair is a union: the plane and below are the declared half's and the image answers
+        // strictly above, judged on the point, so a point one ulp below a power-of-two plane
+        // whose reflection rounds onto it is not counted twice. Where the solve runs past the
+        // plane - its printed field-free run longer than half the separation, as the
+        // single-stage pair at focus is (domain to 150 mm, plane at 145.2 mm) - the two tails
+        // genuinely overlap and the pair is their sum everywhere, the plane included. A side
+        // given there would drop the image's tail below the plane and keep the declared one's
+        // above it, and the pair would stop being symmetric about its own mid-plane.
+        // The mirror's edge on the plane is Neumann (PlanarMirror's mask), so the plane is
+        // continuous by construction and no surface.
+        _field = Reflection.Of(plane, mirror.Potential.Grid.OriginX, mirror.Potential.Grid.MaxX, edgeIsContinuous: true)!.Sum(first);
     }
 
     /// <summary>The mirror both halves are built from.</summary>

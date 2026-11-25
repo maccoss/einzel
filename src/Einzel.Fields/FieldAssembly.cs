@@ -24,6 +24,7 @@ namespace Einzel.Fields;
 public sealed class SuperposedField : IElectrostaticField, IConductorBounded
 {
     private readonly IElectrostaticField[] _elements;
+    private readonly int[] _members;
 
     /// <summary>Creates a superposition.</summary>
     /// <param name="elements">The elements to sum.</param>
@@ -32,10 +33,27 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded
     {
         ArgumentNullException.ThrowIfNull(elements);
         _elements = [.. elements];
+        _members = DiscontinuityDistance.MemberOffsets(_elements);
     }
 
     /// <summary>The elements being summed.</summary>
     public IReadOnlyList<IElectrostaticField> Elements => _elements;
+
+    /// <inheritdoc/>
+    /// <remarks>Every element's members, each tracked on its own, so two surfaces at one place do not cancel.</remarks>
+    public int DiscontinuityMembers => _members[^1];
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        DiscontinuityDistance.Member(_elements, _members, member, in position);
+
+    /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances) =>
+        DiscontinuityDistance.Members(_elements, _members, in position, distances);
+
+    /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates) =>
+        DiscontinuityDistance.Gates(_elements, _members, gates);
 
     /// <inheritdoc/>
     /// <remarks>
@@ -161,18 +179,14 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded
     /// <inheritdoc/>
     /// <remarks>
     /// <para>
-    /// The magnitude is the distance to the nearest declared discontinuity; the
-    /// sign is the product of the element signs, so crossing any single boundary
-    /// flips it and the integrator localises the crossing by bisection.
+    /// The elements' measures combined (<see cref="DiscontinuityDistance.Combine"/>): the magnitude
+    /// is the distance to the nearest declared discontinuity, which is what a step cap reads.
     /// </para>
     /// <para>
-    /// The known limit: a step crossing two boundaries at once returns the sign to
-    /// where it started and the crossing is missed. That is benign rather than
-    /// silent — the step-size controller sees the resulting error and refines
-    /// until the crossings separate — but it means the exact-landing guarantee
-    /// holds for one boundary per step, not two. Nothing in schema v0.1 can build
-    /// such a geometry; a stacked-ring mirror could, and the fix then is to track
-    /// element regions rather than to sum signs.
+    /// Landing is not decided by it. The integrator tracks every element's members separately
+    /// (<see cref="DiscontinuityMembers"/>), so a step crossing two boundaries at once - which
+    /// returned this sign to where it started and was missed - lands on the earlier, and two
+    /// boundaries at one place are one landing.
     /// </para>
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
@@ -262,9 +276,48 @@ public static class FieldAssembly
     public static (IElectrostaticField Field, IReadOnlyList<Core.Results.ValidityWarning> Warnings)
         BuildReported(CompiledModel model)
     {
+        var (field, warnings, _) = BuildMapped(model);
+
+        return (field, warnings);
+    }
+
+    /// <summary>
+    /// Builds the field as <see cref="BuildReported"/> does, and hands out its conductor-bearing
+    /// leaves: for every solved element, where its metal is, the solve that says what the metal
+    /// holds, and which half of a reflected solve each piece is.
+    /// </summary>
+    /// <param name="model">The validated model.</param>
+    /// <returns>The assembled field, its warnings, and its leaves in element order.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// Only the loop that builds the field knows what each piece is: which element it came from
+    /// (a magnet joins a list of its own and a field-free element adds nothing, so a member's
+    /// position is not its element's index), that a reflected solve is one solved half and its
+    /// image, that a tilted cross-section is seen through a rotation. A caller that took the
+    /// assembled field apart afterwards had to recognise each wrapper type, and got it wrong
+    /// three ways in turn: elements miscounted after a field-free one, the image half of every
+    /// reflected solve read as free space, and the declared half's shape counted as metal in
+    /// the image's half.
+    /// </para>
+    /// <para>
+    /// So the leaves are made here, by the builders, as the field is. Whatever wraps the sum
+    /// afterwards - a magnet's field around it - changes nothing about them.
+    /// </para>
+    /// <para>
+    /// <b>The leaves are metadata, and nothing here checks them.</b> <see cref="BuildReported"/>
+    /// goes through this method, so a check here would be one every run, sweep and test could
+    /// fail on for something only a probe or a drawing reads. Whoever consumes the leaves checks
+    /// that every solved element has them (<c>FieldProbe</c> does, as it opens).
+    /// </para>
+    /// </remarks>
+    public static (IElectrostaticField Field, IReadOnlyList<Core.Results.ValidityWarning> Warnings, IReadOnlyList<FieldLeaf> Leaves)
+        BuildMapped(CompiledModel model)
+    {
         ArgumentNullException.ThrowIfNull(model);
 
         var elements = new List<IElectrostaticField>(model.Fields.Count);
+        var leaves = new List<FieldLeaf>();
         var magnets = new List<Magnetic.IMagneticField>();
         var warnings = new List<Core.Results.ValidityWarning>();
 
@@ -357,8 +410,9 @@ public static class FieldAssembly
                         ReflectAboutX = solve.ReflectAboutX,
                     };
 
-                    var (built, report3d) = Solved.GeometryBuilder3D.BuildField(geometry);
+                    var (built, report3d, volumeLeaves) = Solved.GeometryBuilder3D.BuildLeaved(geometry);
                     elements.Add(built);
+                    leaves.AddRange(volumeLeaves.Select(l => new FieldLeaf(l.Shape, l.Held, index, l.Image)));
                     Note(warnings, report3d, index, "solved3d");
                     break;
                 }
@@ -367,19 +421,31 @@ public static class FieldAssembly
                 {
                     // The solve happens here, once per build. Nothing about what
                     // the electrodes add up to is known at this level.
-                    var (plane, report2d) = Solved.GeometryBuilder.Build(element.Solve!);
+                    var (plane, report2d, planeLeaves) = Solved.GeometryBuilder.BuildLeaved(element.Solve!);
 
                     // A tilted extrusion axis is applied here rather than baked into the
                     // geometry, because a rotation of a solved field is exact while a
                     // solve of a rotated geometry is not: the anisotropy the tilt exists
                     // to create is far below the field error of any affordable mesh.
-                    elements.Add(element.Solve!.TiltHalfTurns == 0.0
-                        ? plane
+                    var tilt = element.Solve!.TiltHalfTurns == 0.0
+                        ? null
                         : new RotatedField(
                             plane,
                             element.Solve!.TiltHalfTurns,
                             element.Solve!.TiltCentreX,
-                            element.Solve!.TiltCentreZ));
+                            element.Solve!.TiltCentreZ);
+
+                    elements.Add(tilt ?? plane);
+
+                    // A leaf's shape stands where the element does: through the same rotation,
+                    // the one built above, and the leaf carries it for whoever asks where in the
+                    // unrotated solve a point is.
+                    leaves.AddRange(planeLeaves.Select(l => new FieldLeaf(
+                        tilt is null ? l.Shape : tilt.Around(l.Shape),
+                        l.Held,
+                        index,
+                        l.Image,
+                        tilt)));
                     Note(warnings, report2d, index, "solved2d");
                     break;
                 }
@@ -388,6 +454,7 @@ public static class FieldAssembly
                     throw new ArgumentOutOfRangeException(
                         nameof(model), element.Kind, "unhandled field element kind");
             }
+
         }
 
         // Chosen by what the sum contains, not by what the caller asks for. A
@@ -417,7 +484,7 @@ public static class FieldAssembly
                 magnets.Count == 1 ? magnets[0] : new Magnetic.SuperposedMagneticField(magnets));
         }
 
-        return (field, warnings);
+        return (field, warnings, leaves);
     }
 
     /// <summary>Records a solve that missed its tolerance, per GRD-2.</summary>

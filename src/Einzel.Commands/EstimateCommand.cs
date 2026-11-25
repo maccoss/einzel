@@ -851,7 +851,7 @@ public static class EstimateCommand
             throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
             {
                 Code = Core.Errors.ErrorCodes.SchemaInvalid,
-                Path = "/args/--snapshots",
+                Path = Einzel.Core.Errors.FlagPath.Of("snapshots"),
                 Constraint = string.Create(
                     Inv,
                     $"recorded instants are copies of a diffusive run's density, and this run uses no diffusive mode ({string.Join(", ", model.Modes.Order(StringComparer.Ordinal))}), so {snapshots} of them cannot apply"),
@@ -866,7 +866,7 @@ public static class EstimateCommand
             throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
             {
                 Code = Core.Errors.ErrorCodes.SchemaInvalid,
-                Path = "/args/--snapshots",
+                Path = Einzel.Core.Errors.FlagPath.Of("snapshots"),
                 Constraint = string.Create(
                     Inv,
                     $"a run of {model.Species.Count} species records its densities at no instant, so {snapshots} recorded instant(s) cannot apply"),

@@ -115,25 +115,84 @@ public class BoundedField : IElectrostaticField
 
     /// <inheritdoc />
     /// <remarks>
-    /// The box surface, so the integrator brackets its zero and lands exactly on it — the
-    /// same first-class event a declared field discontinuity already is (spec section 11).
-    /// The inner field's own discontinuity, if it has one, is reported only inside: outside
-    /// the box this element is not there, so it has no surfaces out there either.
+    /// The box and the inner field's measure inside it, combined
+    /// (<see cref="DiscontinuityDistance.Combine"/>): the distance to the nearer, for a step cap.
+    /// Landing is by member (<see cref="DiscontinuityMembers"/>).
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
+        // The one predicate the members use: the box member's own sign.
         var toBoundary = Region.SignedDistance(in position);
+        return toBoundary <= 0.0
+            ? DiscontinuityDistance.Combine(toBoundary, _inner.SignedDistanceToDiscontinuity(in position))
+            : toBoundary;
+    }
 
-        if (!Region.Contains(in position))
+    /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// The box surface, so the integrator lands exactly on it - the same first-class event a
+    /// declared field discontinuity already is (spec section 11) - and the inner field's own
+    /// members inside the box, positive infinity outside it: outside the box this element is not
+    /// there, so it has no surfaces there either, and the continuation of an inner plane outside
+    /// the box is never landed on. The integrator reads an infinity by its sign, so a step that
+    /// crosses an inner plane and leaves the box together - finite and negative at one end, plus
+    /// infinity at the other - is a sign change and is landed on, at the plane, where the member is
+    /// finite. <see cref="SignedDistanceToDiscontinuity"/> is gated the same way.
+    /// </para>
+    /// <para>
+    /// Combined into one measure by the nearer surface's sign, as it was, a half-space plane inside
+    /// the box went undeclared wherever a box face was nearer than the plane: its sign was the
+    /// box's on both sides.
+    /// </para>
+    /// </remarks>
+    public int DiscontinuityMembers => 1 + Math.Max(1, _inner.DiscontinuityMembers);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The inner members are gated by the box member's own sign: inside, and on the face, where the
+    /// box member is zero, they are the inner field's; only strictly outside are they infinite. So the
+    /// member set at a point is one reading, and a face is closed for the inner members as it is for
+    /// the box.
+    /// </remarks>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        var box = Region.SignedDistance(in position);
+        return member == 0 ? box
+            : box <= 0.0 ? _inner.MemberDistanceToDiscontinuity(member - 1, in position)
+            : double.PositiveInfinity;
+    }
+
+    /// <inheritdoc />
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        var box = Region.SignedDistance(in position);
+        distances[0] = box;
+
+        if (box <= 0.0)
         {
-            return toBoundary;
+            _inner.MemberDistancesToDiscontinuity(in position, distances[1..]);
         }
+        else
+        {
+            distances[1..].Fill(double.PositiveInfinity);
+        }
+    }
 
-        var inner = _inner.SignedDistanceToDiscontinuity(in position);
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The box member gates every inner member, except one the inner field already gates by a
+    /// surface of its own, which is nearer to it.
+    /// </remarks>
+    public void DiscontinuityMemberGates(Span<int> gates)
+    {
+        gates[0] = -1;
+        _inner.DiscontinuityMemberGates(gates[1..]);
 
-        return double.IsPositiveInfinity(inner)
-            ? toBoundary
-            : Math.Abs(inner) < Math.Abs(toBoundary) ? inner : toBoundary;
+        for (var k = 1; k < gates.Length; k++)
+        {
+            gates[k] = gates[k] >= 0 ? gates[k] + 1 : 0;
+        }
     }
 
     /// <inheritdoc />

@@ -79,6 +79,125 @@ public sealed class MagneticEdgeTests(ITestOutputHelper output)
         Assert.NotEqual(Math.Sign(before), Math.Sign(after));
     }
 
+    /// <summary>
+    /// Two hard-edge magnets abutting at one face: the face is a member's surface on each side, and
+    /// a step crossing it lands on it.
+    /// </summary>
+    /// <remarks>
+    /// Folded into one magnetic sign, the two boxes' faces at the shared plane changed sign together,
+    /// the product did not, and the step from one magnet into the other crossed a jump in B - one
+    /// tenth of a tesla to three - with no landing.
+    /// </remarks>
+    [Fact]
+    public void TheSharedFaceOfTwoAbuttingMagnetsIsLandedOn()
+    {
+        var magnets = new SuperposedMagneticField(
+        [
+            new BoundedMagneticField(new UniformMagneticField(new Vec3(1e-3, 0.0, 0.0)), Box(0.0, 0.010)),
+            new BoundedMagneticField(new UniformMagneticField(new Vec3(3e-3, 0.0, 0.0)), Box(0.010, 0.020)),
+        ]);
+
+        // The folded sign does not change across the shared face: the cancellation itself.
+        Assert.Equal(
+            Math.Sign(magnets.SignedDistanceToMagneticDiscontinuity(new Vec3(0.0099, 0.0, 0.0))),
+            Math.Sign(magnets.SignedDistanceToMagneticDiscontinuity(new Vec3(0.0101, 0.0, 0.0))));
+
+        // B along the flight, so v x B is zero and the ion flies straight: the landing is the only
+        // thing in the flight that the face can change.
+        var field = MagnetizedField.Around(FieldFreeSpace.Instance, magnets);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var recorder = new TrajectoryRecorder(1e9);
+        var settings = new IntegrationSettings
+        {
+            MaximumFlightTime = 1.0, InitialStep = 7e-7, MaximumStep = 7e-7, UseAnalyticDrift = false,
+        };
+        TrajectoryStopFunction detector = (in PhaseState s) => 0.015 - s.Position.X;
+
+        var result = TrajectoryIntegrator.Integrate(
+            new PhaseState(new Vec3(0.0095, 0.0, 0.0), new Vec3(1000.0, 0.0, 0.0)), species, field, settings, detector, recorder);
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
+        var landed = recorder.Samples.Select(sample => sample.Position.X).ToList();
+        output.WriteLine($"samples at {string.Join(", ", landed.Select(x => (x * 1e3).ToString("F6", System.Globalization.CultureInfo.InvariantCulture)))} mm");
+        Assert.Contains(landed, x => Math.Abs(x - 0.010) < 1e-12);
+    }
+
+    /// <summary>
+    /// A step that starts outside an inner magnet, enters it, and leaves the outer magnet's box in one
+    /// step lands on the inner magnet's face first.
+    /// </summary>
+    /// <remarks>
+    /// The inner box's member is plus infinity outside the outer box, so the step read positive at
+    /// both ends - via negative between - and only the outer face was landed on.
+    /// </remarks>
+    [Fact]
+    public void AnInnerMagnetEnteredOnTheWayOutOfItsBoxIsLandedOn()
+    {
+        var inner = new BoundedMagneticField(new UniformMagneticField(new Vec3(3e-3, 0.0, 0.0)), Box(0.010, 0.050));
+        var magnets = new BoundedMagneticField(inner, Box(0.0, 0.0105));
+
+        Assert.Equal(2, magnets.MagneticDiscontinuityMembers);
+        Assert.True(magnets.MagneticMemberDistanceToDiscontinuity(1, new Vec3(0.0099, 0.0, 0.0)) > 0.0);
+        Assert.True(magnets.MagneticMemberDistanceToDiscontinuity(1, new Vec3(0.0102, 0.0, 0.0)) < 0.0);
+        Assert.Equal(double.PositiveInfinity, magnets.MagneticMemberDistanceToDiscontinuity(1, new Vec3(0.0106, 0.0, 0.0)));
+
+        var landed = Landings(MagnetizedField.Around(FieldFreeSpace.Instance, magnets), 0.0099, 0.015);
+
+        Assert.Contains(landed, x => Math.Abs(x - 0.010) < 1e-12);
+    }
+
+    /// <summary>A uniform magnet declares no surface, and a field carrying one pays no member for it.</summary>
+    /// <remarks>
+    /// Counted as one member infinite everywhere, an unbounded uniform magnet beside one electric
+    /// measure made two members and a member pass every step for a measure that never changes.
+    /// </remarks>
+    [Fact]
+    public void AUniformMagnetDeclaresNoSurface()
+    {
+        var uniform = new UniformMagneticField(new Vec3(0.0, 0.0, 0.1));
+
+        Assert.Equal(0, ((IMagneticField)uniform).MagneticDiscontinuityMembers);
+        Assert.Equal(1, MagnetizedField.Around(FieldFreeSpace.Instance, uniform).DiscontinuityMembers);
+        Assert.Equal(1, new BoundedMagneticField(uniform, Box(0.0, 0.01)).MagneticDiscontinuityMembers);
+    }
+
+    /// <summary>A magnetic sum asked for a member it has not got says so, as an electric sum does.</summary>
+    [Fact]
+    public void AMagneticSumOutOfRangeIsRefusedByName()
+    {
+        var magnets = new SuperposedMagneticField(
+        [
+            new BoundedMagneticField(new UniformMagneticField(new Vec3(0.0, 0.0, 0.1)), Box(0.0, 0.010)),
+            new BoundedMagneticField(new UniformMagneticField(new Vec3(0.0, 0.0, 0.1)), Box(0.010, 0.020)),
+        ]);
+
+        var refused = Assert.Throws<ArgumentOutOfRangeException>(
+            () => magnets.MagneticMemberDistanceToDiscontinuity(2, new Vec3(0.005, 0.0, 0.0)));
+
+        Assert.Contains("a sum of 2 members has no member 2", refused.Message, StringComparison.Ordinal);
+    }
+
+    // Where a straight flight along x through a force-free field is landed: B along x, so v x B is
+    // zero and the landings are the only thing the field's surfaces change.
+    private List<double> Landings(IElectrostaticField field, double startX, double detectorX)
+    {
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var recorder = new TrajectoryRecorder(1e9);
+        var settings = new IntegrationSettings
+        {
+            MaximumFlightTime = 1.0, InitialStep = 7e-7, MaximumStep = 7e-7, UseAnalyticDrift = false,
+        };
+        TrajectoryStopFunction detector = (in PhaseState s) => detectorX - s.Position.X;
+
+        var result = TrajectoryIntegrator.Integrate(
+            new PhaseState(new Vec3(startX, 0.0, 0.0), new Vec3(1000.0, 0.0, 0.0)), species, field, settings, detector, recorder);
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, result.Outcome);
+        var landed = recorder.Samples.Select(sample => sample.Position.X).ToList();
+        output.WriteLine($"samples at {string.Join(", ", landed.Select(x => (x * 1e3).ToString("F6", System.Globalization.CultureInfo.InvariantCulture)))} mm");
+        return landed;
+    }
+
     [Theory]
     [InlineData(-0.006, 0.060)]
     public void AForceFreeMagnetAcrossTheMirrorPlaneLeavesTheClosedFormFlightTime(double entryFace, double exitFace)

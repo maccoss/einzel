@@ -417,10 +417,19 @@ public sealed class GridArraysTests(ITestOutputHelper output)
     /// what they allocate after it is.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A finalizer that allocates runs while the baseline waits for pending finalizers. What it
     /// allocates is in the baseline or dead by the baseline's last collection, so it can be in no
-    /// reading; counted from before the first collection, it was 256 kB of other threads' memory
+    /// reading; counted from before the first collection, it was the finalizer's whole allocation
     /// charged to a build that held a few kilobytes.
+    /// </para>
+    /// <para>
+    /// The finalizer allocates 4 MiB and the bound is 1 MiB, so the defect and the noise are far
+    /// apart. With 256 kB against a 64 kB bound, Linux CI (25 Nov) charged 132 kB that was not the
+    /// finalizer's - runtime and runner threads allocate during any measurement - and failed a
+    /// correct build. A bound has to sit between the noise and the signal, not just under the
+    /// signal.
+    /// </para>
     /// </remarks>
     [Fact]
     public void AFinalizerRunWhileTheBaselineSettlesIsNotChargedToTheBuild()
@@ -432,7 +441,7 @@ public sealed class GridArraysTests(ITestOutputHelper output)
         output.WriteLine($"{AllocatesWhenFinalized.Finalized} finalized: {SolveMemoryTests.Describe(peak, 1)}");
 
         Assert.Equal(1, AllocatesWhenFinalized.Finalized);
-        Assert.True(peak.Foreign < 64 * 1024, $"{peak.Foreign:N0} bytes of other threads were charged to the build");
+        Assert.True(peak.Foreign < 1024 * 1024, $"{peak.Foreign:N0} bytes of other threads were charged to the build");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static void Abandon() => _ = new AllocatesWhenFinalized();
@@ -540,7 +549,7 @@ public sealed class GridArraysTests(ITestOutputHelper output)
 
         ~AllocatesWhenFinalized()
         {
-            GC.KeepAlive(new byte[256 * 1024]);
+            GC.KeepAlive(new byte[4 * 1024 * 1024]);
             Interlocked.Increment(ref finalized);
         }
     }

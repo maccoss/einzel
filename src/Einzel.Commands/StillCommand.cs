@@ -134,6 +134,15 @@ public static class StillCommand
         }
 
         var absolute = Path.GetFullPath(modelPath);
+        var path = outputPath is { } named
+            ? Path.GetFullPath(named)
+            : Path.Combine(project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".still.png");
+        var outFlag = outputPath is null ? null : "out";
+
+        // Before the model is drawn: a destination that is a directory, or the model itself, is
+        // known without rasterizing anything.
+        ArtifactFiles.CheckAll([(outFlag, path)], absolute);
+
         var hash = ContentHash.OfText(File.ReadAllText(absolute));
 
         var outcome = ViewportCommand.Execute(absolute);
@@ -170,15 +179,10 @@ public static class StillCommand
             Rasterizer.Hatch(rgb, width, height);
         }
 
-        var path = outputPath is { } named
-            ? Path.GetFullPath(named)
-            : Path.Combine(project.Figures, Path.GetFileNameWithoutExtension(absolute) + ".still.png");
-
         if (!dryRun)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllBytes(path, PngWriter.Write(rgb, width, height, Provenance(
-                absolute, hash, view, angles, width, height, seeThrough, outcome, ruler)));
+            ArtifactFiles.Write(outFlag, path, PngWriter.Write(rgb, width, height, Provenance(
+                absolute, hash, view, angles, width, height, seeThrough, outcome, ruler)), absolute);
         }
 
         return new StillOutcome
@@ -215,12 +219,14 @@ public static class StillCommand
     /// two record types exist separately only because <c>Einzel.Render</c> may not reference
     /// the command layer.
     /// </remarks>
-    private static RasterLayer Raster(PictureLayer layer) =>
+    internal static RasterLayer Raster(PictureLayer layer) =>
         new(
-            [.. layer.Meshes.Select(m => new RasterMesh(m.VerticesMm, m.Normals, m.Triangles, m.R, m.G, m.B))],
-            [.. layer.Lines.Select(l => new RasterLine(l.PointsMm, l.R, l.G, l.B))],
+            [.. layer.Meshes.Select(m => new RasterMesh(m.VerticesMm, m.Normals, m.Triangles, m.R, m.G, m.B, m.Colors))],
+            [.. layer.Lines.Select(l => new RasterLine(l.PointsMm, l.R, l.G, l.B, l.SegmentColors))],
             layer.Alpha,
-            layer.WritesDepth);
+            layer.WritesDepth,
+            layer.DepthBias,
+            layer.Name);
 
     /// <summary>A scale indicator, as the rasterizer draws it: strokes in pixels.</summary>
     /// <remarks>

@@ -34,32 +34,59 @@ namespace Einzel.Fields;
 /// <c>phi = sum_k V_k psi_k</c> and therefore exact, not an approximation.
 /// </para>
 /// </remarks>
-/// <param name="inner">The field of the unrotated geometry.</param>
-/// <param name="halfTurns">
-/// The rotation, in half turns, so that 1.0 is 180 degrees. Positive rotates the +x
-/// direction toward -z, matching <c>Electrode3D</c>'s tilt convention about y.
-/// </param>
-/// <param name="centreX">The x coordinate of the rotation axis, in metres.</param>
-/// <param name="centreZ">The z coordinate of the rotation axis, in metres.</param>
-public sealed class RotatedField(
-    IElectrostaticField inner,
-    double halfTurns,
-    double centreX,
-    double centreZ)
-    : IElectrostaticField, IConductorBounded
+public sealed class RotatedField : IElectrostaticField, IConductorBounded
 {
-    private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-    private readonly double _cos = double.CosPi(halfTurns);
-    private readonly double _sin = double.SinPi(halfTurns);
+    private readonly IElectrostaticField _inner;
+    private readonly double _cos;
+    private readonly double _sin;
+    private readonly double centreX;
+    private readonly double centreZ;
 
     // A zero rotation must be exactly a no-op, not merely a small one. Without this,
     // centreX + (x - centreX) does not round-trip to x in floating point, so wrapping an
     // untilted element would move every number this engine has validated in its last
     // bits. Asserted by ZeroRotationIsTheIdentity rather than assumed.
-    private readonly bool _rotates = halfTurns != 0.0;
+    private readonly bool _rotates;
+
+    private readonly RotatedConductors? _conductors;
+
+    /// <summary>Rotates a field.</summary>
+    /// <param name="inner">The field of the unrotated geometry.</param>
+    /// <param name="halfTurns">
+    /// The rotation, in half turns, so that 1.0 is 180 degrees. Positive rotates the +x
+    /// direction toward -z, matching <c>Electrode3D</c>'s tilt convention about y.
+    /// </param>
+    /// <param name="centreX">The x coordinate of the rotation axis, in metres.</param>
+    /// <param name="centreZ">The z coordinate of the rotation axis, in metres.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="inner"/> is null.</exception>
+    public RotatedField(IElectrostaticField inner, double halfTurns, double centreX, double centreZ)
+    {
+        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _cos = double.CosPi(halfTurns);
+        _sin = double.SinPi(halfTurns);
+        this.centreX = centreX;
+        this.centreZ = centreZ;
+        _rotates = halfTurns != 0.0;
+        HalfTurns = halfTurns;
+
+        // The conductor queries are the conductors' own, through this rotation: one statement of
+        // how a rotated conductor answers, shared with a tilted element's leaves (Around).
+        _conductors = inner is IConductorBounded bounded ? new RotatedConductors(bounded, this) : null;
+    }
+
+    /// <summary>Conductors through this field's rotation: the same axis, angle, sine and cosine.</summary>
+    /// <param name="other">The conductors to rotate.</param>
+    /// <returns>They, rotated exactly as this field is.</returns>
+    /// <remarks>
+    /// So a tilted element's conductor leaves stand where its field does by construction, not
+    /// because a second rotation was built from the same arguments and happened to agree. Typed
+    /// as conductors, not as a field: a leaf is only conductors - a reflected solve's declared
+    /// half is gated metal with no field of its own - and a cast to a field threw on it.
+    /// </remarks>
+    public IConductorBounded Around(IConductorBounded other) => new RotatedConductors(other, this);
 
     /// <summary>The rotation this field applies, in half turns.</summary>
-    public double HalfTurns { get; } = halfTurns;
+    public double HalfTurns { get; }
 
     /// <summary>
     /// The tangent of the rotation angle: the field anisotropy the rotation introduces,
@@ -151,6 +178,26 @@ public sealed class RotatedField(
     }
 
     /// <inheritdoc/>
+    public int DiscontinuityMembers => _inner.DiscontinuityMembers;
+
+    /// <inheritdoc/>
+    public double MemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        var local = ToLocal(in position);
+        return _inner.MemberDistanceToDiscontinuity(member, in local);
+    }
+
+    /// <inheritdoc/>
+    public void MemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        var local = ToLocal(in position);
+        _inner.MemberDistancesToDiscontinuity(in local, distances);
+    }
+
+    /// <inheritdoc/>
+    public void DiscontinuityMemberGates(Span<int> gates) => _inner.DiscontinuityMemberGates(gates);
+
+    /// <inheritdoc/>
     public double ResolutionLength => _inner.ResolutionLength;
 
     /// <inheritdoc/>
@@ -160,11 +207,35 @@ public sealed class RotatedField(
     /// rotated electrode at the right place.
     /// </remarks>
     public double SignedDistanceToConductor(in Vec3 position) =>
-        _inner is IConductorBounded bounded
-            ? bounded.SignedDistanceToConductor(ToLocal(in position))
-            : double.PositiveInfinity;
+        _conductors?.SignedDistanceToConductor(in position) ?? double.PositiveInfinity;
 
     /// <inheritdoc/>
-    public string? ConductorAt(in Vec3 position) =>
-        _inner is IConductorBounded bounded ? bounded.ConductorAt(ToLocal(in position)) : null;
+    public string? ConductorAt(in Vec3 position) => _conductors?.ConductorAt(in position);
+
+    /// <inheritdoc/>
+    public double NearestConductor(in Vec3 position, out string? name)
+    {
+        name = null;
+        return _conductors?.NearestConductor(in position, out name) ?? double.PositiveInfinity;
+    }
+}
+
+/// <summary>Conductors seen through a field's rotation, with nothing else of a field about them.</summary>
+/// <param name="inner">The conductors, in the unrotated frame.</param>
+/// <param name="rotation">The rotation whose frame they stand in.</param>
+public sealed class RotatedConductors(IConductorBounded inner, RotatedField rotation) : IConductorBounded
+{
+    private readonly IConductorBounded _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+
+    /// <summary>The rotation they stand through: the element's own, shared, not a copy of it.</summary>
+    public RotatedField Rotation { get; } = rotation ?? throw new ArgumentNullException(nameof(rotation));
+
+    /// <inheritdoc/>
+    public double SignedDistanceToConductor(in Vec3 position) => _inner.SignedDistanceToConductor(Rotation.ToLocal(in position));
+
+    /// <inheritdoc/>
+    public string? ConductorAt(in Vec3 position) => _inner.ConductorAt(Rotation.ToLocal(in position));
+
+    /// <inheritdoc/>
+    public double NearestConductor(in Vec3 position, out string? name) => _inner.NearestConductor(Rotation.ToLocal(in position), out name);
 }

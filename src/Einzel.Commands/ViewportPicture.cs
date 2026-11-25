@@ -1,3 +1,5 @@
+using Einzel.Render;
+
 namespace Einzel.Commands;
 
 /// <summary>One colored triangle mesh in a composed picture.</summary>
@@ -7,20 +9,31 @@ namespace Einzel.Commands;
 /// <param name="R">Red, zero to one.</param>
 /// <param name="G">Green, zero to one.</param>
 /// <param name="B">Blue, zero to one.</param>
+/// <param name="Colors">
+/// Per-vertex red, green and blue triples, interpolated across each triangle; null colors the
+/// whole mesh one color. A potential surface is colored by the potential at each node.
+/// </param>
 public sealed record PictureMesh(
     IReadOnlyList<double> VerticesMm,
     IReadOnlyList<double> Normals,
     IReadOnlyList<int> Triangles,
     double R,
     double G,
-    double B);
+    double B,
+    IReadOnlyList<double>? Colors = null);
 
 /// <summary>One colored polyline in a composed picture.</summary>
 /// <param name="PointsMm">Consecutive x, y, z triples, in millimetres.</param>
 /// <param name="R">Red, zero to one.</param>
 /// <param name="G">Green, zero to one.</param>
 /// <param name="B">Blue, zero to one.</param>
-public sealed record PictureLine(IReadOnlyList<double> PointsMm, double R, double G, double B);
+/// <param name="SegmentColors">
+/// A color for each segment, three numbers each, in place of <paramref name="R"/>,
+/// <paramref name="G"/> and <paramref name="B"/>; null for one color along the whole line.
+/// Drawn by the still's rasterizer; the window draws a line in its one color.
+/// </param>
+public sealed record PictureLine(
+    IReadOnlyList<double> PointsMm, double R, double G, double B, IReadOnlyList<double>? SegmentColors = null);
 
 /// <summary>One layer of a composed picture, drawn whole before the next.</summary>
 /// <param name="Name">What the layer is: field, paths, conductors or density.</param>
@@ -28,12 +41,17 @@ public sealed record PictureLine(IReadOnlyList<double> PointsMm, double R, doubl
 /// <param name="Lines">Its polylines.</param>
 /// <param name="Alpha">How opaque it is, from zero to one.</param>
 /// <param name="WritesDepth">Whether it occludes what is drawn after it.</param>
+/// <param name="DepthBias">
+/// How much nearer than its geometry the layer is depth-tested, in clip-space depth; a wire mesh
+/// lying on its own surface needs one so the lines are not lost to rounding.
+/// </param>
 public sealed record PictureLayer(
     string Name,
     IReadOnlyList<PictureMesh> Meshes,
     IReadOnlyList<PictureLine> Lines,
     double Alpha,
-    bool WritesDepth);
+    bool WritesDepth,
+    double DepthBias = 0.0);
 
 /// <summary>One color scale, as the picture actually draws it.</summary>
 /// <param name="Quantity">What the colors mean: <c>energy</c> or <c>potential</c>.</param>
@@ -211,14 +229,30 @@ public static class ViewportPicture
 
         var opacity = Math.Clamp(conductorOpacity, 0.0, 1.0);
 
-        return
+        // In the rasterizer's pass order, so the window - which draws its layers in list order -
+        // draws them as the still does: one rule, not two that happen to agree today.
+        return InDrawOrder(
         [
             new PictureLayer("field", [], Field(outcome), 1.0, WritesDepth: true),
             new PictureLayer("paths", [], Paths(outcome), 1.0, WritesDepth: true),
             new PictureLayer("conductors", Conductors(outcome), [], opacity, WritesDepth: opacity >= 1.0),
             new PictureLayer("density", Density(outcome), [], DensityOpacity, WritesDepth: false),
-        ];
+        ]);
     }
+
+    /// <summary>Layers in the order a still draws them (<see cref="Rasterizer.DrawOrder{T}"/>).</summary>
+    /// <param name="layers">The layers.</param>
+    /// <returns>Them, opaque first, then depth-biased, then translucent, list order kept within each.</returns>
+    /// <remarks>
+    /// The window draws in list order and does not read <see cref="PictureLayer.DepthBias"/>, so the
+    /// two agree because what the window draws carries no bias: the window draws only
+    /// <see cref="Compose"/> and <see cref="DensityLayer"/>, neither of which makes a biased layer,
+    /// and the one biased layer there is - <c>render surface</c>'s wire mesh - is drawn by stills
+    /// alone. Pinned by a test, so a biased layer reaching the window is caught rather than drawn
+    /// unbiased.
+    /// </remarks>
+    public static IReadOnlyList<PictureLayer> InDrawOrder(IEnumerable<PictureLayer> layers) =>
+        Rasterizer.DrawOrder(layers, l => l.Alpha, l => l.DepthBias);
 
     /// <summary>The density layer alone, for a frame of a run that is still going.</summary>
     /// <param name="outcome">The frame.</param>
