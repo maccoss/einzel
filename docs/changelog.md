@@ -4931,3 +4931,15 @@ Two findings from Stage 1 that bear on the spec:
   assemblies (`FieldAssembly.CountBuildsForTest`, per flow so parallel tests do not mix): one for
   three members and one for twenty-one, against three and twenty-one with the solve back in the
   loop. The timings are still printed, as information.
+
+  **The eighth review.** A collapse is said when a flight reaches the instant it skips, not when a
+  leg's switches are read, so a run whose ions all stop short of it says nothing. A study naming
+  an extension the project does not hold is refused with or without `--no-calibrate`. Space charge
+  no longer makes a figure walk the sequence in the estimate: flightTime on a pushed sequenced model
+  is billed its own flights, and a cloud figure one packet through the instrument and its self
+  field, neither the density the run steps. A zero duration advances the time by exactly zero,
+  which is known, so a later phase that vanishes is still refused in the same round. A bounded
+  sequenced field reports its switches; left to the interface's default it reported none, and a
+  flight stepped across them. `PotentialBefore` has a default (the potential at the instant), since
+  only a region's fringe reads it. Rectangular drives' edges as switches are left for their own
+  change, in SPEC.md's list: they move every digital-drive result.

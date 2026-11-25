@@ -259,6 +259,29 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
         Assert.Contains("assuming phase 0 lasts 1E-06 s", second["constraint"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A zero duration lasts exactly no time, which is known: a later phase that vanishes against
+    /// the time before it is still refused in the same round.
+    /// </summary>
+    [Fact]
+    public void AZeroDurationStillLetsALaterPhaseBeMeasured()
+    {
+        var path = Model("""
+            [ { "name": "a", "duration": { "value": 1, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "b", "duration": { "value": 0, "unit": "s" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "c", "duration": { "value": 1e-23, "unit": "s" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+            """);
+
+        var (exit, stdout, stderr) = Run("validate", path, "--json");
+
+        output.WriteLine($"exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+        var paths = JsonNode.Parse(stdout)!["errors"]!.AsArray().Select(e => e!["path"]!.GetValue<string>()).ToList();
+
+        Assert.Contains("/sequence/1/duration", paths);
+        Assert.Contains("/sequence/2/duration", paths);
+    }
+
     /// <summary>A refused duration and a mistake in the same phase's set are reported in one round.</summary>
     [Fact]
     public void ARefusedDurationStillHasItsSetChecked()

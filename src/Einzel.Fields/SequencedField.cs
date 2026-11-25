@@ -346,8 +346,7 @@ public sealed class SequencedField : ITimeVaryingField
         // The boundaries are in order, so the first past the instant is found by halving: a leg
         // of a long staircase reads its switches a window at a time, and a scan from the start for
         // each made reading a window cost the whole timeline.
-        var after = SortedInstants.FirstAfter(_boundaries, timeSeconds);
-        return after < _boundaries.Length ? _boundaries[after] : double.PositiveInfinity;
+        return SortedInstants.NextAfter(_boundaries, timeSeconds);
     }
 
     /// <inheritdoc/>

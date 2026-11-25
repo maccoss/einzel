@@ -170,6 +170,16 @@ public sealed record EstimateOutcome
     public double TrajectorySeconds { get; init; }
 
     /// <summary>
+    /// What advancing the packet against its own field costs, of <see cref="Seconds"/>; zero
+    /// where the model has no space charge.
+    /// </summary>
+    /// <remarks>
+    /// Split out for a study whose figure flies the cloud as one packet through the instrument
+    /// without walking its sequence: that evaluation pays the packet and not the run's density.
+    /// </remarks>
+    public double SelfFieldSeconds { get; init; }
+
+    /// <summary>
     /// Whether what the trajectories cost was measured. Where it was not - every pilot failed - the
     /// seconds leave the flights out, and <see cref="AboveThreshold"/> is set so the gate refuses
     /// rather than pass a figure that is missing a term.
@@ -493,10 +503,19 @@ public static class EstimateCommand
     /// from (<see cref="Plans"/>), which decomposes the drives and the stages once.
     /// </remarks>
     internal static double DeclaredSolveSeconds(
-        CompiledModel model, double planeSecondsPerMegaNode, double volumeSecondsPerMegaNode)
+        CompiledModel model, double planeSecondsPerMegaNode, double volumeSecondsPerMegaNode) =>
+        DeclaredSolveSeconds(model, Plans(model), planeSecondsPerMegaNode, volumeSecondsPerMegaNode);
+
+    /// <summary>What solving every element at the declared mesh is estimated to cost, from statements already made.</summary>
+    /// <param name="model">The validated model.</param>
+    /// <param name="plans">Each element's solve statement, as <see cref="Plans"/> gives them.</param>
+    /// <param name="planeSecondsPerMegaNode">The plane rate.</param>
+    /// <param name="volumeSecondsPerMegaNode">The volume rate.</param>
+    /// <returns>The sum over the solved elements of rate times nodes times basis channels.</returns>
+    private static double DeclaredSolveSeconds(
+        CompiledModel model, List<SolveMemory?> plans, double planeSecondsPerMegaNode, double volumeSecondsPerMegaNode)
     {
         var total = 0.0;
-        var plans = Plans(model);
 
         for (var index = 0; index < model.Fields.Count; index++)
         {
@@ -524,7 +543,9 @@ public static class EstimateCommand
     /// <remarks>
     /// An extension is handed every figure its manifest declares, each evaluated on the model - so
     /// one that declares a transit is handed a whole sequenced run per evaluation, and costs one.
-    /// An extension that cannot be found is answered no: the study itself refuses it.
+    /// An extension that cannot be found is refused, at <c>/figureOfMerit</c>, as the study itself
+    /// would refuse it - and asked whether or not the estimate calibrates, so the answer does not
+    /// depend on how it was asked.
     /// </remarks>
     internal static bool ReadsTheSequencedRun(string? figureOfMerit, string studyPath, string? projectRoot = null)
     {
@@ -1069,7 +1090,7 @@ public static class EstimateCommand
         // is, for the gate to refuse.
         if (!trajectory.Measured && calibrate && spans.TrajectorySeconds > 0.0)
         {
-            var declaredSolve = DeclaredSolveSeconds(model, planeRate.Item1, volumeRate.Item1);
+            var declaredSolve = DeclaredSolveSeconds(model, plans, planeRate.Item1, volumeRate.Item1);
 
             if (declaredSolve <= DeclaredPilotSolveBudgetSeconds)
             {
@@ -1308,10 +1329,13 @@ public static class EstimateCommand
             basis = basis + " " + fits;
         }
 
+        var selfFieldSeconds = 0.0;
+
         if (model.ModelsSpaceCharge)
         {
             var (chargeSeconds, chargeBasis) = SelfField(model);
 
+            selfFieldSeconds = chargeSeconds;
             seconds += chargeSeconds;
             basis = basis + " " + chargeBasis;
         }
@@ -1329,6 +1353,7 @@ public static class EstimateCommand
             ThresholdSeconds = threshold,
             Basis = basis,
             TrajectorySeconds = trajectory.Seconds,
+            SelfFieldSeconds = selfFieldSeconds,
             TrajectoryMeasured = trajectory.Measured,
             PilotSpread = Math.Max(planeRate.Item3, volumeRate.Item3),
             CycleAveraged = cycleAveraged,
@@ -1694,8 +1719,19 @@ public static class EstimateCommand
         // flies its own `members` through the instrument outside the sequence, as unsequenced; a
         // space-charge model's ensemble is a packet whatever asked for it, and is not
         // re-billed as independent flights.
-        var runsTheSequence = sequencedFlights
-            && (validation.Model!.ModelsSpaceCharge || ReadsTheSequencedRun(study.FigureOfMerit, absolute, projectRoot));
+        //
+        // Asked first, and whatever else is true, so a study naming an extension the project does
+        // not hold is refused with or without --no-calibrate.
+        var readsTheRun = ReadsTheSequencedRun(study.FigureOfMerit, absolute, projectRoot);
+        var runsTheSequence = sequencedFlights && readsTheRun;
+
+        // SPACE CHARGE DOES NOT MAKE A FIGURE WALK THE SEQUENCE. A figure that flies the cloud flies
+        // it as one packet through the whole instrument (FlyCloud advances it in lockstep) and
+        // steps no density; one that flies single ions - flightTime's ladder - flies them without
+        // the packet at all. It was billed the whole run, density included, because the model had
+        // space charge.
+        var packet = sequencedFlights && !runsTheSequence
+            && validation.Model!.ModelsSpaceCharge && FiguresOfMerit.FliesTheCloud(study.FigureOfMerit);
 
         // NOT "the model's pilot measured something": where it failed its trajectory figure is
         // zero, and gating the re-flight on that left a study billing no flights at all.
@@ -1713,7 +1749,7 @@ public static class EstimateCommand
                 wholeInstrument: sequencedFlights && !runsTheSequence);
 
         var flown = validation.Model is { } compiledModel ? Flown(compiledModel, Spans(compiledModel)) : 1;
-        var billed = runsTheSequence ? flown : members;
+        var billed = runsTheSequence ? flown : packet ? 1 : members;
 
         // A FIGURE THAT DOES NOT WALK THE SEQUENCE DOES NOT STEP ITS DENSITY. It solves the field
         // and flies its own ions through the instrument, so that is all it is billed: the solves,
@@ -1721,7 +1757,7 @@ public static class EstimateCommand
         var solves = model.Elements.Sum(element => element.Seconds);
 
         var perEvaluation = sequencedFlights && !runsTheSequence
-            ? compile + solves + (billed * flight)
+            ? compile + solves + (packet ? flight + model.SelfFieldSeconds : billed * flight)
             : sequencedFlights || !wholeRun
             ? compile + model.Seconds - (flown * model.TrajectorySeconds) + (billed * flight)
             : compile + model.Seconds;
@@ -1733,7 +1769,11 @@ public static class EstimateCommand
         // the cost leaves the flights out and says so, and the gate refuses it.
         var trajectoryMeasured = sampled;
 
-        var each = sequencedFlights && !runsTheSequence
+        var each = packet
+            ? $"solves the field ({solves:F2} s) and advances its cloud as one packet through the whole "
+            + "instrument, launch to ceiling, against its own field - it does not walk the sequence, "
+            + "so the density the run steps is not billed"
+            : sequencedFlights && !runsTheSequence
             ? $"solves the field ({solves:F2} s) and flies the {billed} trajector{(billed == 1 ? "y" : "ies")} "
             + "its figure of merit flies outside the sequence, each piloted through the whole "
             + "instrument from launch to the flight's ceiling where the study goes - it does not "

@@ -3730,6 +3730,19 @@ the UI and render threads.
    means deciding to publish. Until then the entry exists to stop a reader concluding from the
    phase table that the project is behind.
 
+13. **Rectangular drives as switches, and three smaller follow-ups from the sequence-boundary
+   reviews (PR #76).** A rectangular or digital drive jumps at every edge, and the trajectory
+   integrator steps across those edges as it used to step across a sequencer switch: the
+   step's error estimate reads the jump as error. Reporting a rectangular drive's edges through
+   `NextSwitchAfter`, so the integrator lands on them and asks the level ending there
+   (`RfWaveform.Before` already exists), is the fix - and it changes every digital-drive RF
+   result in the corpus, so it is its own change with its own re-measurement, not a review
+   fix. Also left from those reviews: the transmission and confinement figures (`Counted`,
+   `Confined` in `FiguresOfMerit`) still solve the field once per energy member, as the
+   resolving-power sweep did before it was hoisted; `QuantityValue.ToSi` checks a quantity is
+   finite before converting its unit, so a large finite value in a large unit (1e306 h) becomes
+   infinity everywhere a quantity is read, not only in a phase duration.
+
 
 ### Done, and what each taught
 

@@ -244,6 +244,21 @@ public static class FiguresOfMerit
         };
     }
 
+    /// <summary>Whether a figure flies the source's cloud, which under space charge is one packet.</summary>
+    /// <param name="figureOfMerit">The figure's name.</param>
+    /// <returns>
+    /// True for a figure flown over the cloud or an ensemble - which, with a cloud declared, is the
+    /// cloud - and for one nobody has classified; false for one flown as single ions.
+    /// </returns>
+    internal static bool FliesTheCloud(string? figureOfMerit)
+    {
+        var info = figureOfMerit is null
+            ? null
+            : Catalogue.FirstOrDefault(f => string.Equals(f.Name, figureOfMerit, StringComparison.Ordinal));
+
+        return (info?.Basis ?? FlightBasis.Ensemble) is FlightBasis.Cloud or FlightBasis.Ensemble;
+    }
+
     /// <summary>Looks one up.</summary>
     /// <param name="name">The name a study file used.</param>
     /// <returns>What it measures.</returns>

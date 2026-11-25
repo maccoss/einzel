@@ -33,6 +33,16 @@ internal static class SortedInstants
         return low;
     }
 
+    /// <summary>The first entry strictly after an instant, or infinity when there is none.</summary>
+    /// <param name="instants">Increasing instants.</param>
+    /// <param name="timeSeconds">The instant.</param>
+    /// <returns>The next instant.</returns>
+    public static double NextAfter(ReadOnlySpan<double> instants, double timeSeconds)
+    {
+        var after = FirstAfter(instants, timeSeconds);
+        return after < instants.Length ? instants[after] : double.PositiveInfinity;
+    }
+
     /// <summary>The index of the first entry at or after an instant, or the count when there is none.</summary>
     /// <param name="instants">Increasing instants.</param>
     /// <param name="timeSeconds">The instant.</param>

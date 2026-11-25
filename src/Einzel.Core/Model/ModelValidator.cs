@@ -1722,14 +1722,60 @@ public static class ModelValidator
                 NoParameters,
                 errors);
 
-            // A refused duration is reported and the rest of the phase - its set, its ramp, its mode
-            // - is still checked, so a document with both mistakes hears of both in one round. The
-            // phase is kept out of the schedule at the end, as one too short to resolve is.
-            var durationRefused = duration is null || !double.IsFinite(duration.Value.SiValue) || duration.Value.SiValue <= 0.0;
+            // The phase's length, where its duration is usable; null where it is refused.
+            double? usable = duration is { } declaredDuration
+                && double.IsFinite(declaredDuration.SiValue) && declaredDuration.SiValue > 0.0
+                ? declaredDuration.SiValue
+                : null;
             var tooShort = false;
 
-            if (durationRefused)
+            if (usable is { } seconds)
             {
+                // IT MUST END AFTER IT STARTS, measured by the arithmetic the run itself uses: the
+                // schedule and both sequenced fields add durations up from zero, and a leg is the
+                // difference of two of those sums. A phase short enough to vanish in the sum - a
+                // femtosecond after a microsecond - has an end equal to its start, which the field
+                // refused as two boundaries at one instant, an internal error, exit 6. That is
+                // refused here, at the duration. A phase that survives the sum however short is
+                // not: the integrator reaches a switch or a ceiling closer than its smallest step,
+                // and a density has no smallest step at all.
+                //
+                // THE TIME BEFORE THE NEXT PHASE IS THIS ONE'S END WHATEVER ELSE IS WRONG WITH IT:
+                // a phase refused below for a set, a ramp or a mode still lasts what it says, and
+                // the run the document is corrected into adds it up. Advanced here, before any of
+                // those refusals, so the next phase's length is measured against the time it
+                // really starts at.
+                var ends = elapsed + seconds;
+                var length = ends - elapsed;
+                var before = elapsed;
+                elapsed = ends;
+
+                // Refused, and the rest of the phase still checked: a document with a phase of no
+                // length and a mistake in its set, its ramp or its mode has two mistakes, and
+                // reporting one makes it take two rounds to fix. Kept out of the schedule below.
+                tooShort = !unknown && !(length > 0.0);
+
+                if (tooShort)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{stagePath}/duration",
+                        Constraint = string.Create(
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            $"a phase must end after it starts, and added up as the run adds it to the "
+                            + $"{before:G6} s before it, this one lasts no time at all - its end is its start{assumed}"),
+                        Observed = new ObservedValue(seconds, "s"),
+                        Suggestion = "make the phase long enough to be resolved against the time before "
+                            + "it, or remove it",
+                    });
+                }
+            }
+            else
+            {
+                // A REFUSED DURATION is reported and the rest of the phase - its set, its ramp, its
+                // mode - is still checked, so a document with both mistakes hears of both in one
+                // round. The phase is kept out of the schedule below.
                 if (duration is { } refused && double.IsFinite(refused.SiValue) && refused.SiValue < 0.0 && !unknown)
                 {
                     elapsed += -refused.SiValue;
@@ -1737,70 +1783,26 @@ public static class ModelValidator
                         System.Globalization.CultureInfo.InvariantCulture,
                         $" (assuming phase {k} lasts {-refused.SiValue:G6} s once its own duration is fixed)");
                 }
-                else
+                else if (duration is not { SiValue: 0.0 })
                 {
+                    // A zero duration advances the time by exactly zero, which is known; only one
+                    // with no number at all leaves where the next phase starts unknown.
                     unknown = true;
                 }
 
-                if (duration is not null)
+                if (duration is { } stated)
                 {
-                    var finite = double.IsFinite(duration.Value.SiValue);
-
                     errors.Add(new EinzelError
                     {
                         Code = ErrorCodes.ValueOutOfBounds,
                         Path = $"{stagePath}/duration",
-                        Constraint = finite
+                        Constraint = double.IsFinite(stated.SiValue)
                             ? "a stage must last a positive time"
                             : "a stage must last a finite time, and this duration is not a finite number",
-                        Observed = new ObservedValue(duration.Value.SiValue, "s"),
+                        Observed = new ObservedValue(stated.SiValue, "s"),
                         Suggestion = "give the stage a duration, for example {\"value\": 100, \"unit\": \"us\"}",
                     });
                 }
-            }
-            else
-            {
-
-            // IT MUST END AFTER IT STARTS, measured by the arithmetic the run itself uses: the
-            // schedule and both sequenced fields add durations up from zero, and a leg is the
-            // difference of two of those sums. A phase short enough to vanish in the sum - a
-            // femtosecond after a microsecond - has an end equal to its start, which the field
-            // refused as two boundaries at one instant, an internal error, exit 6. That is refused
-            // here, at the duration. A phase that survives the sum however short is not: the
-            // integrator reaches a switch or a ceiling closer than its smallest step, and a density
-            // has no smallest step at all.
-            //
-            // THE TIME BEFORE THE NEXT PHASE IS THIS ONE'S END WHATEVER ELSE IS WRONG WITH IT: a
-            // phase refused below for a set, a ramp or a mode still lasts what it says, and the run
-            // the document is corrected into adds it up. Advanced here, before any of those
-            // refusals, so the next phase's length is measured against the time it really starts
-            // at - and so a refusal elsewhere in a phase cannot hide that the next one is too short
-            // to resolve, or report one that is not.
-            var ends = elapsed + duration!.Value.SiValue;
-            var length = ends - elapsed;
-            var before = elapsed;
-            elapsed = ends;
-
-            // Refused, and the rest of the phase still checked: a document with a phase of no
-            // length and a mistake in its set, its ramp or its mode has two mistakes, and reporting
-            // one makes it take two rounds to fix. Kept out of the schedule at the end.
-            tooShort = !unknown && !(length > 0.0);
-
-            if (tooShort)
-            {
-                errors.Add(new EinzelError
-                {
-                    Code = ErrorCodes.ValueOutOfBounds,
-                    Path = $"{stagePath}/duration",
-                    Constraint = string.Create(
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        $"a phase must end after it starts, and added up as the run adds it to the "
-                        + $"{before:G6} s before it, this one lasts no time at all - its end is its start{assumed}"),
-                    Observed = new ObservedValue(duration.Value.SiValue, "s"),
-                    Suggestion = "make the phase long enough to be resolved against the time before "
-                        + "it, or remove it",
-                });
-            }
             }
 
             var set = new Dictionary<string, Quantity>(StringComparer.Ordinal);
@@ -1944,13 +1946,13 @@ public static class ModelValidator
                 continue;
             }
 
-            if (tooShort || durationRefused)
+            if (tooShort || usable is not { } lasting)
             {
                 continue;
             }
 
             phases.Add(new PhaseSurface(
-                name, duration!.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface, ramps));
+                name, lasting, surface, stagePath, stage.Mode, endSurface, midSurface, ramps));
         }
 
         return phases;

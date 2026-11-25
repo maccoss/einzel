@@ -513,7 +513,10 @@ become a feature release without being renamed twice.
   runs. Only a phase that lasts no time at all is refused, and one mistake met by several phases
   is reported once.
 - **Two sequence switches closer together than a leg's clock can tell apart** are no longer lost:
-  the leg holds the state before the first and after the last, and says so.
+  the leg holds the state before the first and after the last, and says so when a flight reaches
+  that instant.
+- **A sequenced analytic element bounded to a region lands on its switches**, where a flight used
+  to step across them.
 - **`einzel estimate` takes `--project` for a study**, refuses it for a model, refuses a study
   whose extension the project does not hold, and bills a figure that does not walk the sequence
   its solves and its flights through the whole instrument.

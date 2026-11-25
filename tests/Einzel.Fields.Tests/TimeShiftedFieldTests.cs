@@ -421,6 +421,34 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A collapse is said only when the leg is asked about its instant: a flight that stops short of
+    /// it reads the switches and never reaches them, and says nothing.
+    /// </summary>
+    [Fact]
+    public void ACollapseIsSaidOnlyWhereTheFlightReachesIt()
+    {
+        const double first = 6.897330734315204e-07;
+        const double offset = 1.0822964451916893e-07;
+        var second = Math.BitIncrement(first);
+        var inner = new SequencedField(
+            [UniformField.Create(new Vec3(1.0, 0.0, 0.0)), UniformField.Create(new Vec3(2.0, 0.0, 0.0)), UniformField.Create(new Vec3(3.0, 0.0, 0.0))],
+            [first, second, 2e-6]);
+        var leg = new TimeShiftedField(inner, offset);
+        var at = first - offset;
+
+        // Everything a flight that stops early asks: the next switch, and the field short of it.
+        Assert.Equal(at, leg.NextSwitchAfter(0.0));
+        _ = leg.ElectricFieldAt(Vec3.Zero, 0.5 * at);
+
+        Assert.False(leg.HasCollapsedSwitches);
+
+        // Reaching it is what says it.
+        _ = leg.ElectricFieldAt(Vec3.Zero, at);
+
+        Assert.True(leg.HasCollapsedSwitches);
+    }
+
+    /// <summary>
     /// A switch past the leg's end that shares the leg's last instant with one before it is not a
     /// collapse the leg meets, and is not said to be.
     /// </summary>

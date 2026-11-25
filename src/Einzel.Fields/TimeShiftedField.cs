@@ -99,11 +99,15 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// <param name="Last">The last instrument boundary reported at that instant: what starts there.</param>
     /// <param name="From">The leg instant the window was read from; it answers for none earlier.</param>
     /// <param name="Complete">Whether the instrument has no switch past the window, which then answers for every later instant.</param>
-    /// <param name="Collapsed">How many instrument switches fell on the same leg instant as the one before.</param>
-    private sealed record Window(double[] Reported, double[] First, double[] Last, double From, bool Complete, int Collapsed)
+    /// <remarks>
+    /// Where <paramref name="First"/> and <paramref name="Last"/> differ at an instant, two switches
+    /// the leg can meet fell on it and the phase between them is skipped. A switch past the leg's
+    /// end is never made the last: it is not one the leg meets.
+    /// </remarks>
+    private sealed record Window(double[] Reported, double[] First, double[] Last, double From, bool Complete)
     {
         /// <summary>No switch from the leg's start onward: shared, so a leg that meets none allocates nothing.</summary>
-        public static readonly Window None = new([], [], [], 0.0, true, 0);
+        public static readonly Window None = new([], [], [], 0.0, true);
 
         /// <summary>Whether this window answers for a leg instant.</summary>
         /// <remarks>
@@ -140,25 +144,20 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
         }
 
         Volatile.Write(ref _window, read);
-
-        if (read.Collapsed > 0)
-        {
-            Volatile.Write(ref _collapsed, true);
-        }
-
         return read;
     }
 
-    /// <summary>Whether any window this leg read held two instrument switches at one leg instant.</summary>
+    /// <summary>Whether this leg was asked about an instant at which it skipped a phase.</summary>
     /// <remarks>
     /// Two instrument boundaries closer together than the leg's own clock can tell apart report at
     /// one leg instant. The leg cannot stop between them, so at that instant it is given the state
     /// before the first and after the last: the phase between them lasts less than one tick of the
-    /// leg's clock, and is said here rather than skipped without a word.
+    /// leg's clock. Said when a flight reaches that instant - the field asked there - and not when
+    /// the switches are merely read, so a leg whose ions all stop short of it says nothing.
     /// </remarks>
     public bool HasCollapsedSwitches => Volatile.Read(ref _collapsed);
 
-    // Set when a window read holds a collapsed switch, and never cleared.
+    // Set when the field is asked at an instant that skips a phase, and never cleared.
     private bool _collapsed;
 
     /// <summary>Reads a window of switches from a leg instant onward.</summary>
@@ -177,13 +176,12 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
 
         if (!double.IsFinite(boundary))
         {
-            return fromSeconds <= 0.0 ? Window.None : new Window([], [], [], fromSeconds, true, 0);
+            return fromSeconds <= 0.0 ? Window.None : new Window([], [], [], fromSeconds, true);
         }
 
         var reported = new List<double>();
         var first = new List<double>();
         var last = new List<double>();
-        var collapsed = 0;
         var complete = false;
 
         while (true)
@@ -191,15 +189,14 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
             var at = boundary - offsetSeconds;
             var merged = reported.Count > 0 && at == reported[^1];
 
+            // Merged only among the switches the leg can meet: one past its end that shares the
+            // leg's last instant with one before it is not a phase the leg skips, nor a state it
+            // enters.
             if (merged)
             {
-                last[^1] = boundary;
-
-                // Counted only among the switches the leg can meet: one past its end that shares
-                // the leg's last instant with one before it is not a phase the leg skips.
                 if (boundary <= endsAtSeconds)
                 {
-                    collapsed++;
+                    last[^1] = boundary;
                 }
             }
             else
@@ -229,7 +226,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
             boundary = next;
         }
 
-        return new Window(reported.ToArray(), first.ToArray(), last.ToArray(), fromSeconds, complete, collapsed);
+        return new Window(reported.ToArray(), first.ToArray(), last.ToArray(), fromSeconds, complete);
     }
 
     /// <summary>The most switches a window holds.</summary>
@@ -284,9 +281,17 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
         var window = WindowFor(timeSeconds);
         var at = SortedInstants.FirstAtOrAfter(window.Reported, timeSeconds);
 
-        return at < window.Reported.Length && window.Reported[at] == timeSeconds
-            ? (before ? window.First[at] : window.Last[at])
-            : timeSeconds + _offsetSeconds;
+        if (at < window.Reported.Length && window.Reported[at] == timeSeconds)
+        {
+            if (window.First[at] != window.Last[at])
+            {
+                Volatile.Write(ref _collapsed, true);
+            }
+
+            return before ? window.First[at] : window.Last[at];
+        }
+
+        return timeSeconds + _offsetSeconds;
     }
 
     /// <summary>A few ulps before an instant: as far as a leg's instant can sit from the boundary it means.</summary>
@@ -388,10 +393,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// </remarks>
     public double NextSwitchAfter(double timeSeconds)
     {
-        var window = WindowFor(timeSeconds);
-        var after = SortedInstants.FirstAfter(window.Reported, timeSeconds);
-
-        return after < window.Reported.Length ? window.Reported[after] : double.PositiveInfinity;
+        return SortedInstants.NextAfter(WindowFor(timeSeconds).Reported, timeSeconds);
     }
 
     /// <inheritdoc/>

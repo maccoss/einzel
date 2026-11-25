@@ -640,6 +640,67 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A study naming an extension the project does not hold is refused whether or not the
+    /// estimate calibrates.
+    /// </summary>
+    [Fact]
+    public void AMissingExtensionIsRefusedWithoutCalibrating()
+    {
+        var model = Model("tube-entered", document =>
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }"""));
+        var study = Write("study-uncalibrated", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "ext:nowhere", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+        var empty = Path.Combine(_root, "empty-uncalibrated");
+        Directory.CreateDirectory(empty);
+
+        var refused = Assert.Throws<Core.Errors.EinzelException>(
+            () => EstimateCommand.ForStudy(study, calibrate: false, threshold: 1e12, projectRoot: empty));
+
+        output.WriteLine(refused.Error.Constraint);
+
+        Assert.Equal("/figureOfMerit", refused.Error.Path);
+    }
+
+    /// <summary>
+    /// Space charge does not make a figure walk the sequence: flightTime on a pushed sequenced model
+    /// is billed its flights, not the density the run steps.
+    /// </summary>
+    [Fact]
+    public void SpaceChargeDoesNotBillAFigureTheDensity()
+    {
+        double PerEvaluation(double driftFactor)
+        {
+            var model = Model("tube-entered", document =>
+            {
+                document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+                document["transport"]!["spaceCharge"] = "direct";
+                var drift = document["sequence"]![1]!["duration"]!["value"]!.GetValue<double>();
+                document["sequence"]![1]!["duration"]!["value"] = drift * driftFactor;
+            });
+            var study = Write($"study-pushed-{driftFactor}", $$"""
+                { "schemaVersion": "0.1", "name": "pushed", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "flightTime", "ions": 9,
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                return EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12).Study!.SecondsPerEvaluation;
+            }
+        }
+
+        var shorter = PerEvaluation(1.0);
+        var longer = PerEvaluation(100.0);
+
+        output.WriteLine($"flightTime under space charge: {shorter:F3} -> {longer:F3} s an evaluation");
+
+        Assert.True(Math.Abs(longer - shorter) < 0.25, $"{longer - shorter:F3} s for a drift the figure never steps");
+    }
+
+    /// <summary>
     /// A figure that does not walk the sequence flies each ion through the whole instrument, launch
     /// to ceiling, and is billed that flight - not the sequence's short trajectory phase.
     /// </summary>

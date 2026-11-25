@@ -75,8 +75,14 @@ public interface ITimeVaryingField : IElectrostaticField
     /// <param name="position">The point, in metres.</param>
     /// <param name="switchSeconds">A switch, exactly as <see cref="NextSwitchAfter"/> returned it.</param>
     /// <returns>The potential, in volts.</returns>
-    /// <remarks>As <see cref="ElectricFieldBefore"/>, for a field whose E is built from its potential.</remarks>
-    double PotentialBefore(in Vec3 position, double switchSeconds);
+    /// <remarks>
+    /// As <see cref="ElectricFieldBefore"/>, for a field whose E is built from its potential: a
+    /// bounded region's fringe is the one reader, scaling the potential's gradient into the field.
+    /// The integrator never asks it. So unlike the field it has a default - the potential at the
+    /// instant, right for anything continuous in time - and a field that switches overrides it, as
+    /// the sequenced field, the staged solve and every wrapper here do.
+    /// </remarks>
+    double PotentialBefore(in Vec3 position, double switchSeconds) => PotentialAt(in position, switchSeconds);
 
     /// <summary>
     /// The shortest period in the drive, in seconds.

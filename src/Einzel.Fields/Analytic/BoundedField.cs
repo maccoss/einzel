@@ -229,6 +229,14 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The inner field's switches: a region is a shape in space and changes nothing about when the
+    /// field switches. Left to the interface's default, a bounded sequenced element reported none,
+    /// and a flight stepped straight across every switch in it.
+    /// </remarks>
+    public double NextSwitchAfter(double timeSeconds) => _driven.NextSwitchAfter(timeSeconds);
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// The region scales a potential by a factor of position alone, so it commutes with an
     /// average over time and can be applied to the mean rather than to every sample.
     /// </remarks>

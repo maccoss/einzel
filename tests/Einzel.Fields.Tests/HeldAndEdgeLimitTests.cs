@@ -79,6 +79,18 @@ public sealed class HeldAndEdgeLimitTests(ITestOutputHelper output)
         Assert.Equal(1e-6, field.NextSwitchAfter(0.0));
     }
 
+    /// <summary>A sequenced field bounded to a region reports its switches through the region.</summary>
+    [Fact]
+    public void ABoundedSequenceReportsItsSwitches()
+    {
+        var sequence = new SequencedField([Uniform(1.0), Uniform(2.0)], [1e-6, 2e-6]);
+        var bounded = (ITimeVaryingField)BoundedField.Around(sequence, new FieldRegion(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0));
+
+        Assert.Equal(1e-6, bounded.NextSwitchAfter(0.0));
+        Assert.Equal(2e-6, bounded.NextSwitchAfter(1e-6));
+        Assert.Equal(double.PositiveInfinity, bounded.NextSwitchAfter(2e-6));
+    }
+
     /// <summary>A rectangular wave's left limit is the level ending at an edge.</summary>
     [Fact]
     public void ARectangularWavesLeftLimitIsTheLevelEnding()
