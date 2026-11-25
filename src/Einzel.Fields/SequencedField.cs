@@ -347,15 +347,27 @@ public sealed class SequencedField : ITimeVaryingField
             return double.PositiveInfinity;
         }
 
-        foreach (var boundary in _boundaries)
+        // The boundaries are in order, so the first past the instant is found by halving: a leg
+        // of a long staircase reads its switches a window at a time, and a scan from the start for
+        // each made reading a window cost the whole timeline.
+        var low = 0;
+        var high = _boundaries.Count;
+
+        while (low < high)
         {
-            if (boundary > timeSeconds)
+            var middle = (low + high) >>> 1;
+
+            if (_boundaries[middle] > timeSeconds)
             {
-                return boundary;
+                high = middle;
+            }
+            else
+            {
+                low = middle + 1;
             }
         }
 
-        return double.PositiveInfinity;
+        return low < _boundaries.Count ? _boundaries[low] : double.PositiveInfinity;
     }
 
     /// <inheritdoc/>

@@ -1412,7 +1412,7 @@ public static class Program
         if (options.Positional.Count == 0)
         {
             Console.Error.WriteLine(
-                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--snapshots <instants>] [--json]");
+                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--snapshots <instants>] [--project <dir>] [--json]");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -1492,7 +1492,9 @@ public static class Program
         try
         {
             outcome = isStudy
-                ? EstimateCommand.ForStudy(path, calibrate, threshold)
+                ? EstimateCommand.ForStudy(
+                    path, calibrate, threshold,
+                    projectRoot: options.PathValue(PathOption.Project) ?? InferProjectRoot(path))
                 : EstimateCommand.Execute(path, calibrate, threshold, snapshots: snapshots);
         }
         catch (EinzelException refused) when (json)

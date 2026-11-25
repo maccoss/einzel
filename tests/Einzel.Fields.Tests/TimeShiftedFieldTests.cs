@@ -210,19 +210,37 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
         total += shifted.NextSwitchAfter(0.0) + shifted.ElectricFieldAt(Vec3.Zero, 1e-6).X;
         var asked = inner.Asked;
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-
-        for (var k = 0; k < 10_000; k++)
+        double Queries()
         {
-            var t = k * 3.3e-9;
-            total += shifted.NextSwitchAfter(t);
-            total += shifted.ElectricFieldAt(Vec3.Zero, t).X;
-            total += shifted.ElectricFieldBefore(Vec3.Zero, shifted.NextSwitchAfter(t)).X;
+            var sum = 0.0;
+
+            for (var k = 0; k < 10_000; k++)
+            {
+                var t = k * 3.3e-9;
+                sum += shifted.NextSwitchAfter(t);
+                sum += shifted.ElectricFieldAt(Vec3.Zero, t).X;
+                sum += shifted.ElectricFieldBefore(Vec3.Zero, shifted.NextSwitchAfter(t)).X;
+            }
+
+            return sum;
         }
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // CHEAPEST OF FIVE, after a warm pass. The property is a floor: the runtime charges one-off
+        // work - a method promoted to its next tier, an on-stack replacement of this very loop - to
+        // whichever window it fires in, and a Windows CI run once read 4,160 bytes over 30,000
+        // queries that way, once, with every query allocating nothing. A query that allocated
+        // would allocate in every window, thirty thousand times.
+        total += Queries();
+        var allocated = long.MaxValue;
 
-        output.WriteLine($"{inner.Asked - asked} inner switch queries and {allocated} bytes over 30,000 queries ({total:G3})");
+        for (var window = 0; window < 5; window++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            total += Queries();
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        output.WriteLine($"{inner.Asked - asked} inner switch queries and {allocated} bytes over 30,000 queries, cheapest of five ({total:G3})");
 
         Assert.Equal(asked, inner.Asked);
         Assert.Equal(0, allocated);
@@ -270,9 +288,9 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
 
         output.WriteLine($"{made:F0} bytes a leg made, {asked:F0} bytes a switchless leg asked ({total:G3})");
 
-        // The leg itself: a header, two references and an offset.
-        Assert.True(made <= 48, $"{made:F0} bytes to make a leg");
-        Assert.True(asked <= 48, $"{asked:F0} bytes to make a switchless leg and ask it");
+        // The leg itself: a header, its field and window references, its offset and end, and a flag.
+        Assert.True(made <= 56, $"{made:F0} bytes to make a leg");
+        Assert.True(asked <= 56, $"{asked:F0} bytes to make a switchless leg and ask it");
     }
 
     /// <summary>
@@ -320,6 +338,98 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
         output.WriteLine($"{asked} inner switch queries over 1,200 leg queries");
 
         Assert.Equal(0, asked);
+    }
+
+    /// <summary>
+    /// A leg with no end over a timeline of more switches than a window holds asks the instrument
+    /// about a switch about once per switch it passes, not once or twice per evaluation.
+    /// </summary>
+    /// <remarks>
+    /// Past what it held, a leg used to scan the instrument on every evaluation - two queries or
+    /// so each, and each of those a scan of the whole staircase from its start.
+    /// </remarks>
+    [Fact]
+    public void ALongTimelineIsReadAWindowAtATime()
+    {
+        const int phases = 70_000;
+        const double phase = 1e-6;
+        var ends = Enumerable.Range(1, phases).Select(k => k * phase).ToArray();
+        var level = UniformField.Create(new Vec3(1.0, 0.0, 0.0));
+        var inner = new CountingSwitches(new SequencedField(ends.Select(_ => level).ToArray(), ends));
+        var leg = new TimeShiftedField(inner, 1000 * phase);
+
+        const int evaluations = 50_000;
+        var span = 8000 * phase;
+        var before = inner.Asked;
+
+        for (var k = 0; k < evaluations; k++)
+        {
+            var t = span * k / evaluations;
+            _ = leg.NextSwitchAfter(t);
+            _ = leg.ElectricFieldAt(Vec3.Zero, t);
+        }
+
+        var asked = inner.Asked - before;
+
+        output.WriteLine($"{asked} inner switch queries over {2 * evaluations} evaluations across 8,000 switches");
+
+        Assert.True(asked < 20_000, $"{asked} inner switch queries for {2 * evaluations} evaluations");
+
+        // And the answers are the scan's.
+        for (var k = 0; k < 2000; k++)
+        {
+            var t = 69_000 * phase * k / 2000;
+            Assert.Equal(ScannedNextSwitchAfter(inner, 1000 * phase, t), leg.NextSwitchAfter(t));
+        }
+    }
+
+    /// <summary>
+    /// Two instrument switches that report at one leg instant are not lost: before it the leg is
+    /// in the state before both, at it the state after both, and it says so.
+    /// </summary>
+    /// <remarks>
+    /// One ulp apart on the instrument's clock, and 1.08e-7 s of offset makes them equal on the
+    /// leg's. The leg used to hand the inner field the first boundary at that instant - the
+    /// one-ulp phase between them - and report no switch after it, so it flew that phase for
+    /// the rest of the leg and the instrument's real next state never came.
+    /// </remarks>
+    [Fact]
+    public void SwitchesThatCollapseOnTheLegsClockAreNotLost()
+    {
+        const double first = 6.897330734315204e-07;
+        const double offset = 1.0822964451916893e-07;
+        var second = Math.BitIncrement(first);
+
+        Assert.Equal(first - offset, second - offset);
+
+        var inner = new SequencedField(
+            [UniformField.Create(new Vec3(1.0, 0.0, 0.0)), UniformField.Create(new Vec3(2.0, 0.0, 0.0)), UniformField.Create(new Vec3(3.0, 0.0, 0.0))],
+            [first, second, 2e-6]);
+        var leg = new TimeShiftedField(inner, offset);
+        var at = first - offset;
+
+        Assert.Equal(at, leg.NextSwitchAfter(0.0));
+        Assert.Equal(1.0, leg.ElectricFieldBefore(Vec3.Zero, at).X);
+        Assert.Equal(3.0, leg.ElectricFieldAt(Vec3.Zero, at).X);
+        Assert.Equal(2e-6 - offset, leg.NextSwitchAfter(at));
+        Assert.True(leg.HasCollapsedSwitches);
+
+        // The control: a leg whose switches stay apart says nothing.
+        var apart = new TimeShiftedField(inner, 0.0, double.PositiveInfinity);
+        _ = apart.NextSwitchAfter(0.0);
+        Assert.False(apart.HasCollapsedSwitches);
+    }
+
+    /// <summary>A leg refuses an end before its start, and a missing field before anything else.</summary>
+    [Fact]
+    public void ALegsEndAndFieldAreChecked()
+    {
+        var two = Two();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TimeShiftedField(two, 2e-6, 1e-6));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TimeShiftedField(two, 1e-6, double.NaN));
+        Assert.Throws<ArgumentNullException>(() => new TimeShiftedField(null!, double.NaN, double.NaN));
+        _ = new TimeShiftedField(two, 1e-6, 1e-6);
     }
 
     private static double Step(double value, int ulps)

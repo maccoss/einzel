@@ -540,6 +540,95 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A study kept outside its project is estimated against the project <c>--project</c> names,
+    /// as the study verbs run it, so its extension objective is found there.
+    /// </summary>
+    [Fact]
+    public void AStudyOutsideItsProjectFindsItsExtensionThroughProject()
+    {
+        var project = Path.Combine(_root, "project");
+        Directory.CreateDirectory(Path.Combine(project, "models"));
+        Assert.Equal(0, Program.Main(["ext", "register", "transitwatch", "--project", project]));
+
+        var manifestPath = Path.Combine(project, "extensions", "transitwatch", "extension.json");
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["figures"] = new JsonArray("transitTime");
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+
+        var model = Model("tube-entered", document =>
+        {
+            document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+            document["source"]!["cloud"]!["ions"] = 2000;
+        });
+        var study = Write("study", $$"""
+            { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+              "figureOfMerit": "ext:transitwatch", "ions": 9,
+              "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+            """);
+
+        var stdout = new StringWriter();
+        var previous = Console.Out;
+        int exit;
+
+        using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+        {
+            try
+            {
+                Console.SetOut(stdout);
+                exit = Program.Main(["estimate", study, "--project", project, "--threshold", "1e12", "--json"]);
+            }
+            finally
+            {
+                Console.SetOut(previous);
+            }
+        }
+
+        output.WriteLine($"exit {exit}");
+
+        Assert.Equal(0, exit);
+        Assert.Equal(2000, JsonNode.Parse(stdout.ToString())!["study"]!["members"]!.GetValue<int>());
+    }
+
+    /// <summary>
+    /// A figure that does not walk the sequence is not billed the density the sequence steps: a
+    /// drift phase a hundred times longer leaves its evaluation where it was, and moves a transit's.
+    /// </summary>
+    [Fact]
+    public void AFigureOutsideTheSequenceIsNotBilledItsDensity()
+    {
+        double PerEvaluation(string figure, double driftFactor)
+        {
+            var model = Model("tube-entered", document =>
+            {
+                document["parameters"] = JsonNode.Parse("""{ "spare": { "value": 1.0, "unit": "mm" } }""");
+                var drift = document["sequence"]![1]!["duration"]!["value"]!.GetValue<double>();
+                document["sequence"]![1]!["duration"]!["value"] = drift * driftFactor;
+            });
+            var study = Write($"study-{figure}-{driftFactor}", $$"""
+                { "schemaVersion": "0.1", "name": "entered", "model": "{{Path.GetFileName(model)}}",
+                  "figureOfMerit": "{{figure}}", "ions": 9,
+                  "scan": { "parameter": "spare", "from": 1.0, "to": 2.0, "unit": "mm", "points": 3 } }
+                """);
+
+            using (EstimateCommand.PilotsForTest(new(1.0, "a second, for a test", true, 1.0)))
+            {
+                return EstimateCommand.ForStudy(study, calibrate: true, threshold: 1e12).Study!.SecondsPerEvaluation;
+            }
+        }
+
+        var shortFlight = PerEvaluation("flightTime", 1.0);
+        var longFlight = PerEvaluation("flightTime", 100.0);
+        var shortTransit = PerEvaluation("transitTime", 1.0);
+        var longTransit = PerEvaluation("transitTime", 100.0);
+
+        output.WriteLine($"flightTime {shortFlight:F3} -> {longFlight:F3} s; transitTime {shortTransit:F3} -> {longTransit:F3} s");
+
+        // The transit is the run, and pays for a longer drift; the flight time is not, and does not.
+        Assert.True(longTransit - shortTransit > 1.0, "the drift's density must cost enough to see");
+        Assert.True(Math.Abs(longFlight - shortFlight) < 0.25, $"{longFlight - shortFlight:F3} s for a longer drift the figure never steps");
+    }
+
+    /// <summary>
     /// An extension objective is billed by what its manifest declares: one handed a transit is
     /// handed a whole sequenced run per evaluation, and flies the sequence's cloud.
     /// </summary>

@@ -4816,11 +4816,10 @@ Two findings from Stage 1 that bear on the spec:
   identical to the commit before.
 
   `ElectricFieldBefore` and `PotentialBefore` have no default now, so a wrapper cannot forget them:
-  the compiler named the four test wrappers that had. A phase shorter than the integrator's
-  smallest step (`IntegrationLimits.MinimumStepSeconds`, 1e-18 s, now one constant for both) is
-  refused at its duration as well as one that rounds to nothing - a 1e-19 s phase after a
-  microsecond - where the phase is flown as trajectories; a density phase has no smallest step
-  and is refused only where it rounds to nothing. The extra field evaluation a landing step makes, and the one a magnetic step always
+  the compiler named the four test wrappers that had. A phase is refused at its duration only
+  where it rounds to nothing against the time before it; a phase shorter than the integrator's
+  smallest step runs, flown as a separate leg or within one staged flight, because the integrator
+  reaches a switch or a ceiling closer than that step. The extra field evaluation a landing step makes, and the one a magnetic step always
   made, are counted (`DormandPrince54.Evaluations`), checked against a field that counts what it
   is asked. The diffusive leg takes the caller's packet by reference again, with no second variable.
 
@@ -4837,8 +4836,9 @@ Two findings from Stage 1 that bear on the spec:
   a switch at all: a sequenced packet crossing one into a field two thousand times stronger took
   **58 to 103 refused steps** at it and then crossed it on the smallest step. It now cuts, asks the
   phase ending, and sets its clock as the single-ion path does - **0 refused**. A leg's switches are
-  read once - the first time a query needs them, up to the first switch past the leg's end - so a
-  query is a binary search, allocation-free, rather than sixteen decrements and a scan per stage; 35,610 instants on and around every switch of sixty
+  read a window at a time - the first time a query needs them, up to the first switch past the
+  leg's end or a window's worth, and again from where a query passes them - so a query is a
+  binary search, allocation-free, rather than sixteen decrements and a scan per stage; 35,610 instants on and around every switch of sixty
   random legs answer exactly as the scan did. Validation counts a phase's duration toward the next
   one's start even when it refuses that phase for something else, and refuses a duration that
   converts to infinity (1e306 hours) as not finite, which passed both checks before. The estimate's
@@ -4879,12 +4879,29 @@ Two findings from Stage 1 that bear on the spec:
   wall with **7,063 m/s** from a field-free phase that left it at 3,000. The landing is now the
   step, asked of the phase ending, with the clock set onto the switch. A leg's switches stop at
   the first one past the leg's end, so a five-phase leg of a 200,000-phase staircase reads its own
-  seven or so where it used to give up holding and scan the instrument on every query; an instant
-  past them is still answered, by scanning. An `ext:` objective is billed as the sequenced run when
-  its manifest declares a figure that reads it. The trajectory integrator's smallest step bounds
-  only a phase flown as trajectories: a density phase is refused only where it lasts no time at
-  all. **Not changed, deliberately**: ordinary field evaluations on a leg still go through the
+  seven or so where it used to give up holding and scan the instrument on every query. An `ext:`
+  objective is billed as the sequenced run when its manifest declares a figure that reads it. **Not changed, deliberately**: ordinary field evaluations on a leg still go through the
   switch lookup rather than adding the offset, because the derivative handed on at a switch is
   asked through that same evaluation, and where `(boundary - offset) + offset` rounds below the
   boundary it would be the phase that has ended; the lookup is one binary search over the leg's
   few switches and allocates nothing.
+
+  **The fifth review.** A leg reads its switches a window at a time - up to 4,096, or to the first
+  past its end - and reads the next window when an instant passes the last; nothing scans the
+  instrument per evaluation any more, and an unbounded leg over a 70,000-switch staircase asks it
+  **8,192** times over 100,000 evaluations where it asked two or so per evaluation. The sequenced
+  field and the staged solve find their next switch by halving. Two instrument switches closer
+  than the leg's clock can tell apart (one ulp apart, offset 1.08e-7 s) report at one leg instant:
+  the leg used to hand the inner field the first of them and report no switch after it, flying
+  the one-ulp phase between them for the rest of the leg; it now takes the state before the first
+  and after the last there, and the run says so (`sequence.switches-collapsed`). Validation no
+  longer refuses a phase shorter than the integrator's smallest step - measured to run, as a leg
+  and as one staged flight - and refuses only a phase of no time at all; one mistake on the
+  parameter surface met by five phases is one error. A study figure that does not walk the
+  sequence is billed its solves and its flights, not the density the run steps (3.00 s an
+  evaluation whether the drift is 1 or 100 times longer, where a transit goes from 79 to 1,532 s).
+  `einzel estimate` takes `--project` for a study, as the study verbs do. And a Windows CI failure
+  of `AQueryNeitherScansNorAllocates` (4,160 bytes once, over 30,000 queries) was one-off runtime
+  work landing in the measured window, not a query allocating: the measurement now warms the
+  path and takes the cheapest of five windows, and a per-query allocation would still be thirty
+  thousand of them.

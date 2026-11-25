@@ -79,7 +79,6 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
     [Theory]
     [InlineData("3", "1e-30", "its end is its start", "diffusion")]
     [InlineData("3", "1e-30", "its end is its start", "trajectory")]
-    [InlineData("0.5", "1e-13", "smallest step", "trajectory")]
     [InlineData("3", "0", "positive time", "diffusion")]
     public void APhaseThatEndsWhereItBeginsIsRefusedAtItsDuration(string before, string duration, string says, string mode)
     {
@@ -135,26 +134,80 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>
-    /// A density phase shorter than the trajectory integrator's smallest step is not refused for
-    /// it: a density has no smallest step. The same phase flown as trajectories is.
+    /// One mistake on the parameter surface is one error, however many phases meet it; a ramp's two
+    /// ends failing at different values are two.
     /// </summary>
-    [Fact]
-    public void TheSmallestStepBoundsOnlyAPhaseFlownAsTrajectories()
+    /// <param name="ramped">Whether one phase ramps the parameter rather than five setting it.</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ASurfaceMistakeIsReportedOnce(bool ramped)
     {
-        string Phases(string mode) => $$"""
-            [ { "name": "hold", "duration": { "value": 0.5, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
-              { "name": "blip", "duration": { "value": 1e-13, "unit": "us" }, "mode": "{{mode}}", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
-              { "name": "after", "duration": { "value": 0.5, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
-            """;
+        // A length handed to a field: every phase that resolves the surface with it meets the
+        // same mismatch at the parameter. And a ramp that takes a parameter where a derived one
+        // cannot follow meets that at its end and again at its middle, at different values.
+        var sequence = ramped
+            ? """
+              [ { "name": "ramp", "duration": { "value": 1, "unit": "us" }, "mode": "diffusion", "ramp": { "share": { "value": -3, "unit": "1" } } } ]
+              """
+            : "[ " + string.Join(", ", Enumerable.Range(0, 5).Select(k =>
+                $$"""{ "name": "p{{k}}", "duration": { "value": 1, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 1, "unit": "mm" } } }""")) + " ]";
 
-        var (densityExit, densityOut, densityErr) = Run("validate", Model(Phases("diffusion")), "--json");
-        var (flownExit, flownOut, _) = Run("validate", Model(Phases("trajectory")), "--json");
+        var path = Model(sequence);
+        var document = JsonNode.Parse(File.ReadAllText(path))!;
+        document["parameters"]!["share"] = JsonNode.Parse("""{ "value": 0.5, "unit": "1" }""");
+        document["parameters"]!["root"] = JsonNode.Parse("""{ "expression": "asinPi(share)", "unit": "1" }""");
+        File.WriteAllText(path, document.ToJsonString());
 
-        output.WriteLine($"diffusion: exit {densityExit}: {densityOut.Trim()} {densityErr.Trim()}");
+        var (exit, stdout, stderr) = Run("validate", path, "--json");
 
-        Assert.DoesNotContain("smallest step", densityOut, StringComparison.Ordinal);
-        Assert.Equal(1, flownExit);
-        Assert.Contains("smallest step", flownOut, StringComparison.Ordinal);
+        output.WriteLine($"exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+
+        var atParameter = JsonNode.Parse(stdout)!["errors"]!.AsArray()
+            .Where(e => e!["path"]!.GetValue<string>() == (ramped ? "/parameters/root" : "/parameters/pushField"))
+            .Select(e => e!["constraint"]!.GetValue<string>())
+            .ToList();
+
+        // Five phases meeting one mismatch are one error. A ramp's end and middle meeting the same
+        // derived parameter at two different values are two different failures, each said once:
+        // what is merged is the same error, not the same place.
+        Assert.Equal(ramped ? 2 : 1, atParameter.Count);
+        Assert.Equal(atParameter.Count, atParameter.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    /// <summary>
+    /// A phase shorter than the trajectory integrator's smallest step validates and runs, flown as
+    /// a separate trajectory leg between density phases and as one staged flight alike.
+    /// </summary>
+    /// <remarks>
+    /// It used to be refused at its duration, because a leg that short underflowed at once. The
+    /// integrator now reaches a ceiling or a switch closer than its smallest step, so what was a
+    /// refusal of a working document is gone; what is still refused is a phase of no time at all.
+    /// </remarks>
+    /// <param name="separateLeg">Whether the short phase is a trajectory leg between density phases.</param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void APhaseShorterThanTheSmallestStepRuns(bool separateLeg)
+    {
+        var around = separateLeg ? "diffusion" : "trajectory";
+        var path = Model($$"""
+            [ { "name": "hold", "duration": { "value": 0.5, "unit": "us" }, "mode": "{{around}}", "set": { "pushField": { "value": 1000, "unit": "V/m" } } },
+              { "name": "blip", "duration": { "value": 1e-13, "unit": "us" }, "mode": "trajectory", "set": { "pushField": { "value": 2000000, "unit": "V/m" } } },
+              { "name": "after", "duration": { "value": 0.5, "unit": "us" }, "mode": "{{around}}", "set": { "pushField": { "value": 1000, "unit": "V/m" } } } ]
+            """);
+
+        var (validateExit, validateOut, _) = Run("validate", path, "--json");
+        var (runExit, runOut, runErr) = Run("run", path, "--json");
+
+        output.WriteLine($"validate: exit {validateExit}; run: exit {runExit}: {runErr.Trim()}");
+
+        Assert.DoesNotContain("smallest step", validateOut, StringComparison.Ordinal);
+        Assert.Equal(0, validateExit);
+        Assert.Equal(0, runExit);
+        Assert.DoesNotContain("StepSizeUnderflow", runOut, StringComparison.Ordinal);
     }
 
     /// <summary>

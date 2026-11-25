@@ -1660,12 +1660,21 @@ public static class ModelValidator
         // resolve into a list that already holds an error - any error, from anywhere - so a phase
         // after one mistake, or a phase whose own duration was just refused, resolved to nothing
         // and was skipped with its set, its ramp and its mode unchecked. Its own failures still
-        // join the document's.
+        // join the document's - once each: a mistake on the parameter surface itself is met by
+        // every phase that resolves it, and by a ramp's two ends again, and one mistake is one error.
         IReadOnlyDictionary<string, Quantity>? Resolved(IReadOnlyDictionary<string, Quantity> set)
         {
             var own = new List<EinzelError>();
             var surface = restage(set, own);
-            errors.AddRange(own);
+
+            foreach (var error in own)
+            {
+                if (!errors.Exists(e => e.Code == error.Code && e.Path == error.Path && e.Constraint == error.Constraint))
+                {
+                    errors.Add(error);
+                }
+            }
+
             return surface;
         }
 
@@ -1708,14 +1717,14 @@ public static class ModelValidator
                 continue;
             }
 
-            // ITS LENGTH MUST BE ONE THE RUN CAN RESOLVE, measured by the arithmetic the run itself
-            // uses: the schedule and both sequenced fields add durations up from zero, and the
-            // integrator's leg is the difference of two of those sums. A phase short enough to
-            // vanish in the sum - a femtosecond after a microsecond - has an end equal to its
-            // start, which the field refused as two boundaries at one instant, an internal error,
-            // exit 6. And one that survives the sum but is shorter than the integrator's smallest
-            // step reaches the run as a leg that underflows at once. Both are the document's
-            // mistake, so both are refused here, at the duration.
+            // IT MUST END AFTER IT STARTS, measured by the arithmetic the run itself uses: the
+            // schedule and both sequenced fields add durations up from zero, and a leg is the
+            // difference of two of those sums. A phase short enough to vanish in the sum - a
+            // femtosecond after a microsecond - has an end equal to its start, which the field
+            // refused as two boundaries at one instant, an internal error, exit 6. That is refused
+            // here, at the duration. A phase that survives the sum however short is not: the
+            // integrator reaches a switch or a ceiling closer than its smallest step, and a density
+            // has no smallest step at all.
             //
             // THE TIME BEFORE THE NEXT PHASE IS THIS ONE'S END WHATEVER ELSE IS WRONG WITH IT: a
             // phase refused below for a set, a ramp or a mode still lasts what it says, and the run
@@ -1728,18 +1737,10 @@ public static class ModelValidator
             var before = elapsed;
             elapsed = ends;
 
-            // Refused, and the rest of the phase still checked: a document with a phase too short
-            // and a mistake in its set, its ramp or its mode has two mistakes, and reporting one
-            // makes it take two rounds to fix. Kept out of the schedule at the end.
-            //
-            // THE SMALLEST STEP IS THE TRAJECTORY INTEGRATOR'S, so it bounds only a phase that
-            // integrator flies. A density is stepped by its own stability limit and has no smallest
-            // step to underflow; what fails for it is a phase of no time at all, whose end is its
-            // start - two boundaries at one instant, which the sequenced field refuses.
-            var flown = (stage.Mode ?? document.Transport?.Mode ?? "trajectory") != "diffusion";
-            var tooShort = flown
-                ? !(length >= Core.Numerics.IntegrationLimits.MinimumStepSeconds)
-                : !(length > 0.0);
+            // Refused, and the rest of the phase still checked: a document with a phase of no
+            // length and a mistake in its set, its ramp or its mode has two mistakes, and reporting
+            // one makes it take two rounds to fix. Kept out of the schedule at the end.
+            var tooShort = !(length > 0.0);
 
             if (tooShort)
             {
@@ -1747,17 +1748,10 @@ public static class ModelValidator
                 {
                     Code = ErrorCodes.ValueOutOfBounds,
                     Path = $"{stagePath}/duration",
-                    Constraint = flown
-                        ? string.Create(
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            $"a phase flown as trajectories must last at least the integrator's smallest step, "
-                            + $"{Core.Numerics.IntegrationLimits.MinimumStepSeconds:G3} s, after the "
-                            + $"{before:G6} s before it; added up as the run adds it, this one lasts "
-                            + $"{length:G3} s{(length == 0.0 ? " - its end is its start" : string.Empty)}")
-                        : string.Create(
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            $"a phase must end after it starts, and added up as the run adds it to the "
-                            + $"{before:G6} s before it, this one lasts no time at all - its end is its start"),
+                    Constraint = string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $"a phase must end after it starts, and added up as the run adds it to the "
+                        + $"{before:G6} s before it, this one lasts no time at all - its end is its start"),
                     Observed = new ObservedValue(duration.Value.SiValue, "s"),
                     Suggestion = "make the phase long enough to be resolved against the time before "
                         + "it, or remove it",

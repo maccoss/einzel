@@ -509,8 +509,13 @@ become a feature release without being renamed twice.
 - **A detector, electrode or field discontinuity reached exactly at a sequence switch** is met
   by the step that reached it, in the phase ending there, where it used to be re-integrated with
   the next phase's field at its end.
-- **A density phase shorter than the trajectory integrator's smallest step is no longer refused**
-  for it; only a phase that lasts no time at all is.
+- **A phase shorter than the trajectory integrator's smallest step is no longer refused**: it
+  runs. Only a phase that lasts no time at all is refused, and one mistake met by several phases
+  is reported once.
+- **Two sequence switches closer together than a leg's clock can tell apart** are no longer lost:
+  the leg holds the state before the first and after the last, and says so.
+- **`einzel estimate` takes `--project` for a study**, and bills a figure that does not walk the
+  sequence its solves and flights alone.
 - **`einzel estimate` bills an extension objective as the sequenced run** when its manifest
   declares a figure that reads it.
 - **A phase duration that converts to infinity is refused as not finite**, and a phase refused

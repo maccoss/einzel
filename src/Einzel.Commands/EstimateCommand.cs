@@ -515,7 +515,8 @@ public static class EstimateCommand
 
     /// <summary>Whether one evaluation of a study's figure is a whole sequenced run.</summary>
     /// <param name="figureOfMerit">The study's figure, or an extension objective's name.</param>
-    /// <param name="studyPath">The study file, whose project holds the extension.</param>
+    /// <param name="studyPath">The study file, whose project holds the extension when none is given.</param>
+    /// <param name="projectRoot">The project the study runs in, as the study verbs are given it, or null.</param>
     /// <returns>
     /// The registry's answer for a built-in figure; for an extension objective, whether any figure
     /// its manifest declares reads the sequenced run.
@@ -525,15 +526,17 @@ public static class EstimateCommand
     /// one that declares a transit is handed a whole sequenced run per evaluation, and costs one.
     /// An extension that cannot be found is answered no: the study itself refuses it.
     /// </remarks>
-    internal static bool ReadsTheSequencedRun(string? figureOfMerit, string studyPath)
+    internal static bool ReadsTheSequencedRun(string? figureOfMerit, string studyPath, string? projectRoot = null)
     {
         if (!ExtensionObjective.Names(figureOfMerit))
         {
             return FiguresOfMerit.ReadsTheSequencedRun(figureOfMerit);
         }
 
-        var project = Project.ProjectLayout.Find(studyPath)
-            ?? new Project.ProjectLayout(Path.GetDirectoryName(Path.GetFullPath(studyPath))!);
+        var project = projectRoot is not null
+            ? new Project.ProjectLayout(projectRoot)
+            : Project.ProjectLayout.Find(studyPath)
+                ?? new Project.ProjectLayout(Path.GetDirectoryName(Path.GetFullPath(studyPath))!);
 
         return ExtensionObjective.DeclaredFigures(figureOfMerit!, project.Extensions)
             .Any(FiguresOfMerit.ReadsTheSequencedRun);
@@ -615,8 +618,8 @@ public static class EstimateCommand
 
             var (coarse, solved) = built ?? Coarsened(model, coarsening);
 
-            // The run's own shift, so the pilot and the leg see one instrument.
-            var field = SequencedRun.Instant(solved, startsAt);
+            // The run's own shift and the run's own leg, so the pilot and the leg see one instrument.
+            var field = SequencedRun.Instant(solved, startsAt, phase?.EndsAtSeconds ?? double.PositiveInfinity);
 
             var species = Transport.IonSpecies.FromModel(coarse);
 
@@ -1530,6 +1533,11 @@ public static class EstimateCommand
     /// What the process may use, for the comparison with the study's peak; this machine's when
     /// omitted. As on <see cref="Execute"/>, so the comparison can be checked anywhere.
     /// </param>
+    /// <param name="projectRoot">
+    /// The project the study runs in, whose extensions an <c>ext:</c> objective is found among -
+    /// the root the study verbs are given, <c>--project</c> or the one around the study. Null
+    /// for the one around the study.
+    /// </param>
     /// <returns>The estimate, carrying the model's own breakdown and the study multiplier.</returns>
     /// <exception cref="ArgumentException"><paramref name="studyPath"/> is null or blank.</exception>
     /// <exception cref="Core.Errors.EinzelException">The study or its model is invalid.</exception>
@@ -1559,7 +1567,8 @@ public static class EstimateCommand
         string studyPath,
         bool calibrate = true,
         double threshold = ThresholdSeconds,
-        long? availableMemoryBytes = null)
+        long? availableMemoryBytes = null,
+        string? projectRoot = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(studyPath);
 
@@ -1666,10 +1675,17 @@ public static class EstimateCommand
         // space-charge model's ensemble is a packet whatever asked for it, and is not
         // re-billed as independent flights.
         var runsTheSequence = sequencedFlights
-            && (validation.Model!.ModelsSpaceCharge || ReadsTheSequencedRun(study.FigureOfMerit, absolute));
+            && (validation.Model!.ModelsSpaceCharge || ReadsTheSequencedRun(study.FigureOfMerit, absolute, projectRoot));
         var billed = runsTheSequence ? flown : members;
 
-        var perEvaluation = sequencedFlights || !wholeRun
+        // A FIGURE THAT DOES NOT WALK THE SEQUENCE DOES NOT STEP ITS DENSITY. It solves the field
+        // and flies its own ions through the instrument, so that is all it is billed: the solves,
+        // and its flights. It was billed the whole run's density stepping on top.
+        var solves = model.Elements.Sum(element => element.Seconds);
+
+        var perEvaluation = sequencedFlights && !runsTheSequence
+            ? compile + solves + (billed * flight)
+            : sequencedFlights || !wholeRun
             ? compile + model.Seconds - (flown * model.TrajectorySeconds) + (billed * flight)
             : compile + model.Seconds;
 
@@ -1680,7 +1696,11 @@ public static class EstimateCommand
         // the cost leaves the flights out and says so, and the gate refuses it.
         var trajectoryMeasured = sampled;
 
-        var each = sequencedFlights
+        var each = sequencedFlights && !runsTheSequence
+            ? $"solves the field ({solves:F2} s) and flies the {billed} trajector{(billed == 1 ? "y" : "ies")} "
+            + "its figure of merit flies outside the sequence, piloted where the study goes - it "
+            + "does not walk the sequence, so the density the run steps is not billed"
+            : sequencedFlights
             ? "is one whole run of the model, its trajectory phases piloted phase by phase over "
             + "their own durations where the study goes rather than at the declared values alone, "
             + (runsTheSequence
@@ -2776,6 +2796,7 @@ public static class EstimateCommand
             // answers its time-free questions at zero, so without the shift every instant read
             // the first phase's field - and only a driven field, through the cycle average,
             // ever saw the instant at all.
+            // Unbounded and safe: asked only time-free questions and its cycle average, never a switch.
             var field = SequencedRun.Instant(built, atSeconds);
             averaged |= DiffusionRun.Effective(ref field, species, declaredMobility, gas, atSeconds) is not null;
 
