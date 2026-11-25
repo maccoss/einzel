@@ -282,9 +282,16 @@ public sealed class CostAndProvenanceTests : IDisposable
         }
         """);
 
-        var (_, stdout, _) = Run("optimise", study, "--project", _root, "--json");
+        var (code, stdout, stderr) = Run("optimise", study, "--project", _root, "--json");
 
-        var artifacts = JsonDocument.Parse(stdout).RootElement
+        // Said whole when it is not the outcome: a KeyNotFoundException on "artifacts" was all a
+        // Windows CI failure left, where the document was a refusal whose errors say why.
+        using var document = JsonDocument.Parse(stdout);
+        Assert.True(
+            document.RootElement.TryGetProperty("artifacts", out _),
+            $"optimise exited {code} with no artifacts in its result: {stdout} stderr: {stderr}");
+
+        var artifacts = document.RootElement
             .GetProperty("artifacts")
             .EnumerateArray()
             .Select(a => a.GetString()!)

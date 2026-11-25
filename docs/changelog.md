@@ -3347,6 +3347,753 @@ Two findings from Stage 1 that bear on the spec:
   sourced: the hole size and the stretch, so nothing here predicts a named instrument. Details
   in `docs/device-templates.md`, `docs/literature-targets.md` section 9, `docs/lessons.md`.
 
+- **`einzel render surface`: the potential drawn as height, and a gallery page that found a
+  defect by drawing it.** SIMION's potential-energy view: one coordinate plane through the model,
+  the potential on it as a wire mesh over a shaded surface, each conductor the plane cuts a flat
+  plateau at its own potential, written as a PNG with the scale on the picture (SPEC.md R4, RND-4).
+  **Every height is `FieldProbe.At`**, so the surface is the composite field a run flies through
+  and the assembly's warnings come with it; points the field refuses are holes counted by
+  `probe.refused`. Composed in `SurfaceCommand` in the command layer and rasterized by
+  `Einzel.Render`, the split `render still` makes; the rasterizer gained a color per vertex and a
+  per-layer depth bias, both general, and the stroke font the letters the scale needs.
+
+  **A height with no scale is a shape**, so the scale is stated three ways: `heightMmPerUnit`,
+  `unitsPerMm`, `lowest` and `highest` in `--json`, a text chunk in the PNG, and a labelled bar on
+  the picture. Earth is drawn at the plane itself. `--height energy` draws q·phi for the model's
+  ion in electronvolts; `--csv` writes the sampled grid with the conductor named on each row.
+
+  **`--cycle-mean` draws the part of a driven field that does not oscillate**, taken in closed
+  form where the field is linear in its channel weights (`ITimeVaryingField.CycleMeanPotentialAt`,
+  which the diffusive pseudopotential already used). On `linear-ion-trap-3d` that is the picture
+  an instant cannot give - the RF is 257 V and the axial DC three - and the well reads off the
+  data at about **3.85 V deep** at the end sections' middles where the end rods hold 3 V, because
+  the 20 V end lenses reach in through their apertures. `render.cycle-mean` says what was
+  averaged on every such picture: a rectangular wave's mean is not zero and is included, and with
+  two frequencies the window is the faster one's period.
+
+  **Three things drawing it found.** The plateau was first drawn at the single deepest sample
+  inside a conductor, which put an end rod written as two halves at 2.89 V; it is the median of
+  the deeper half of the samples now. A plane lying exactly on the seam of such a rod shows
+  stripes, not plateaus, so where the plane goes is a modelling decision (`docs/rendering.md`).
+  And the shared `Framing` with a positive elevation looks from *below* the plane, invisible for
+  closed conductors and fatal for a height field; the surface has its own views, and whether the
+  viewport's iso is meant to look from below is not settled.
+
+  Tests are closed forms the surface has no part in (`PotentialSurfaceTests`, nine): a uniform
+  field is a plane of the right tilt, an ideal quadrupole a saddle with its symmetries, a
+  conductor a plateau at its declared volts, a negative ion's energy surface the mirror image,
+  the cycle mean of a driven geometry its DC, and pixels read out of the file where the test
+  projects them for itself. **The tests were first written over `RenderSurfaceTests.cs`, which
+  already held seven tests of `render section`** - "surface" there meaning the CLI's surface -
+  and replaced them; they are in their own file here and the seven are kept.
+
+  **The gallery** (`docs/gallery-einzel-lens.md`) reproduces the behaviour of a public teaching
+  page's einzel lens: a center-voltage series at 0 to +42 V on a 50 eV beam with a 20 degree
+  cone, and the +42 V case in nitrogen at 5e-4 to 2e-3 Torr. Qualitative: the source gives no
+  dimensions, mass or gas, every one is a stated choice, and none of its images is used. The
+  voltage series reproduces the published sequence (diverging, collimated near +30 V, a crossing
+  that moves in from 14.1 to 7.0 mm). **The pressure figures show vacuum rays**: the viewport and
+  `render still` hand the integrator no collision sampler, so a model in gas is drawn in vacuum
+  while `einzel run` collides - the figure-of-merit path's old defect in a third consumer. Not
+  fixed here; the page says so beside the figures and its tables are from `einzel run`. The same
+  page found that the detector plane has no aperture (ions scattered out through a gap count as
+  arrived at tens of millimeters) and reproduced `ENERGY_DRIFT_EXCEEDS_BUDGET` firing in gas. All
+  three are in SPEC.md's review list, and the gas statistics carry the correlated-streams caveat
+  already recorded there.
+
+  **A review found ten things, and seven were the picture or the outcome saying something untrue.**
+  `--cycle-mean` on a sequence whose states are all static (`sequenced-extraction`,
+  `sequenced-uniform`) dereferenced an absent drive period and exited 6, after the probe had
+  sampled the instantaneous field under the mean's name; on a static model the flag was accepted and
+  ignored. **A field with no drive has no cycle mean**, so both are refused at
+  `/surface/cycle-mean`, and `FieldProbe.At` throws rather than hand back an instant; `--at-us` on
+  a static model, which is harmless, is drawn with `render.instant-ignored`. `Execute` hashed its
+  own read of the model and the probe read again (PRJ-3): one read now, the hash the probe's. In
+  `--view top` the vertical bar projected to a point with its labels overprinted and `scaleDrawn`
+  true; it is left out and reported absent, the still's rule for an arm pointing at the viewer - a
+  flat color key would be the better answer from above and is not built. Label room was reserved
+  once in millimetres at a scale the refit then shrank; it is fitted to a fixed point in pixels,
+  and a picture where the labels would take over half the surface's size or still not fit is
+  drawn without the scale and says so. **Plateaus were keyed by conductor name alone**, and a name
+  is unique only within one solve, so two elements' `plate`s were one plateau at one median; keyed
+  by element and name now, labelled `name (element N)` where a name repeats
+  (`ConductorElementAt` on the two composites and the probe). A 2-D model's default offset was 0
+  for every plane where the request's own doc said the domain's middle: it is the middle, and z = 0
+  only on the model's own `xy`. The CSV wrote names and multi-line warnings unescaped (RFC 4180
+  now). The probe recomputed the shortest drive period at every sample point (once, at open). And
+  the verb had its own number, box and size parsers beside `still`'s and `probe`'s and a third
+  private elementary charge; one of each now. Nine regression tests, each failing under the
+  mutation that restores its defect and no other.
+
+  **A second review found the picture was the model's mirror image.** The frame mapped (across,
+  height, deep) onto the camera's (x, y, z), left-handed for `xy`: from the top y ran down the
+  screen, and every view showed an asymmetric instrument with the opposite chirality. Depth now
+  runs along or against the deep axis, whichever makes the frame right-handed with the plane's
+  normal up (`PotentialSurface.DeepSign`); the test finds three conductors by their plateaus'
+  colors and asks which way round they go, sharing no arithmetic with the camera. **Nothing had
+  caught it because every earlier pixel test used a model with a mirror symmetry** - a quadrupole,
+  a lens - which is its own mirror image. The einzel lens and quadrupole gallery figures were
+  redrawn; the linear ion trap's plane was already the right way round.
+
+  Nine more from the same review. A conductor's name was a PNG keyword, so `électrode` or a long
+  name was an internal error with no picture (numbered keywords now, the name in the text).
+  **A plateau's element was counted from the members of the assembled sum**, and a field-free
+  element is an element and not a member, so `[fieldFree, A, B]` labelled A and B as 0 and 1; the
+  assembly now reports each member's element (`FieldAssembly.BuildMapped`) and nothing recounts.
+  The cycle-mean window and "one frequency" were read from the unheld field while the mean was
+  taken on the held one, so every sequenced model driven at one frequency was told it carried
+  several. A value-taking flag given no value was read as absent - `--at-us --cycle-mean` exited
+  0 having ignored `--at-us` - in the shared readers, so `still`, `probe` and `export` had it too;
+  refused by name everywhere. The CSV was written and reported nowhere. The mesh's depth bias was
+  a fixed fraction of the scene's depth, six pixels in iso and hundreds along a long box; it is
+  two pixels' worth. Several strings were formatted in the current culture beside invariant ones
+  (tested under de-DE in `Einzel.Shell.Tests`, the one project with globalization on). The
+  surface's sampler allocated a row per node and resolved each conductor twice
+  (`FieldProbe.SamplePotential`, held to `At` by a test). And **a plane whose range is rounding
+  was stretched to the relief** - 7.9e-15 V at 1.3e15 mm per volt on the mirror pair's drift -
+  where it is now drawn flat below 1e-9 of the model's own potentials, with
+  `render.surface-flat`.
+
+  **A third review found the plateaus were readings, not potentials.** A plateau was the median
+  of the summed field over the samples inside a conductor, and inside metal the sum carries every
+  element: on `tims-analyzer` the analytic RF quadrupole put `ring-0`, which holds 0.018 V, at
+  657 V in the picture, the outcome, the PNG and the CSV, and an interpolant put
+  `linear-ion-trap-3d`'s 20 V lenses at 20.13 V. **A plateau is now what the conductor holds**,
+  from the solve's own coefficients (`IHeldConductors` on the solved fields and every wrapper,
+  `DrivenSolvedField.ConductorCoefficients`, `FieldProbe.HeldPotentialAt`): a static solve's
+  declared potential, a driven or staged one's sum of channel weights times its pattern
+  coefficients at the instant, over every tap, stage and ramp, and its cycle mean under
+  `--cycle-mean`. Where the sum strays from it, `render.plateau-disagrees` says so. An
+  edge-profiled board has no one potential and is not a plateau. **The sweep of every shipped
+  template and example is the control**: the TIMS templates warn on every ring, as expected; the
+  two Astral templates warn on their end walls, which hold 0 V while the summed field there reads
+  about 5930 V because the two mirror solves' domains overlap - a property of those templates
+  this surfaced; everywhere else the held value differs from the old median by the interpolant's
+  overshoot alone and nothing warns.
+
+  Nine more. The noise floor's reference read each electrode's DC alone, so an RF-only model at
+  rest had none: it is the peak any electrode reaches over every state and tap. A long thin box
+  got square cells, nine rows across the mirror pair's 30 mm at the default: the shorter side now
+  gets at least 61 samples, `--samples NxM` sets both, and `stepsMm` reports both spacings.
+  **Every switch swallowed the next argument** - `render surface --cycle-mean model.json` printed
+  the usage, `--no-scale out.png` dropped the name, and `einzel run --json model.json` failed the
+  same way: `CommandLine.Switches` names every switch, a test holds the list to the verbs'
+  source, and `render surface` and `render still` refuse a second argument. `--out a.png --csv
+  a.png` wrote the table over the picture; refused before work. A negative `--at-us` drew a
+  sequence's first stage at "t = -1 us", and 1e300 us drew a rounding-chosen phase under a
+  300-digit caption: refused below zero (now in `render section` too, whose `--at-us`,
+  `--width-mm` and `--equipotentials` also stop throwing exit 6 on a typo), refused where the
+  drive's phase cannot be placed (`FieldProbe.CheckInstantResolution`, in `probe` too), and the
+  caption is compact. The probe's held-field cache was a nullable tuple written from any thread;
+  it is one immutable object swapped by reference. The wire mesh is one polyline per mesh line
+  with a color per segment, pixel-identical to a line per segment and tested so. And the
+  surface's sampler, the row sampler and the grid sampler share one core that counts the
+  domains a point is outside.
+
+  **A fourth review, smaller.** A plateau was drawn where a declared shape ran past its solve:
+  the held value is now asked of the conductor's element by name, after the probe's own domain
+  test has said the point is where that element was solved. The static and driven sums credited
+  overlapping conductors by different rules; they share one (a fifth review undid that - see
+  below). `render section` checked only its
+  flag's instant; it checks the one it draws at, from the flag or the spec, against both the
+  clock's start and the drive's resolution (`FieldInstants.CheckResolution`, now shared by all
+  three verbs). A bad `--height-mm-per-ev` was reported at `-per-v`. The noise floor's reference
+  counts analytic elements' declared potentials, so an ideal RF quadrupole at its zero is drawn
+  flat. And the surface's sampler walks the conductor list once a sample, not three times - the
+  pictures and `--json` of three templates are identical before and after.
+
+  **A fifth review found the fourth's refactor had lost every reflected solve's mirror half.** The
+  probe took every sum apart and mapped the pieces by position against the assembly's
+  one-entry-per-element list, and a reflected solve is one element whose field is two pieces - so
+  points in the mirror image read as free space and drew no plateau, where `einzel probe` on main
+  called them inside. Reproduced on a reflected slit before fixing: `ok` at the mirrored jaw, and
+  26 plateau samples where there are 52. The sum is now taken apart in one function that records
+  each piece's element, checked on a reflected cross-section and a reflected volume. With it: the
+  nearest-conductor search only lets solved elements compete, so a shape declared past its solve
+  cannot hide another solve's conductor; **the sums' `ConductorAt` is back to exactly what it is on
+  main**, since it names the surface an ion strikes and the fourth review's unification would have
+  changed driven models' loss tallies under a drawing; sampling runs a row per processor, byte
+  for byte what a serial pass gives; `HasOperatingPoints` no longer copies a sequenced field on
+  every read; the wrappers share one forwarding helper; and `TimeShiftedField` forwards what its
+  conductors hold, on the instrument's clock, with a reflection test holding every
+  conductor-bounded field in the assembly to the same.
+
+  **A sixth review.** `ConductorElementAt` answered for a point near a conductor, not only in
+  one. A field sum answered "what does `plate` hold" with its first member's `plate`, though two
+  elements may each have one: it now answers only where its members agree, which is what a
+  reflected solve's two halves do and two elements' plates do not. A probe row could report `ok`
+  beside a negative distance to a conductor it was "in", where the point was inside a shape
+  declared past its solve: the row's conductor and distance are now among the elements solved at
+  the point, with a note naming the shape it is in. Above 256 elements the domain rule silently
+  stopped applying (the flags lived on the stack); they are borrowed from a pool past that. And
+  three per-sample costs went: each element's domain is tested once, the held field's pieces are
+  found once per operating point rather than per sample, and a static solve answers a cycle mean
+  without sampling 64 instants.
+
+  **A seventh review.** The sixth's probe-row rule asked "is the point outside every element",
+  which a model summing an unbounded analytic field never lets it be - so outside the solve the row
+  lost the nearest conductor and its distance that main reports. It now asks whether an element
+  with conductors was solved at the point, and otherwise names the nearest declared one, as main
+  does (checked against main's build: `slitUpper` at 29 mm, both). A sweep of every shipped
+  model, as shipped and with an unbounded analytic field added, on a line running half the box
+  past each end, against main's build: status and distance identical on every row, and the only
+  difference is a conductor name where main gave none - in a driven sum, whose own `ConductorAt`
+  names a conductor only for a point inside one, while main's static sums named the nearest. The
+  row now names the nearest whatever the sum, as main does for a static model. The held field at an operating
+  point is built piece by piece from the pieces as built, not trusted to keep the composite's
+  order. **The refusals of a valueless flag and of a stray argument moved into one check for every
+  verb**; they had been per-verb, so `render section m.json --out --json` still dropped `--out`.
+  A dry run no longer rasterizes a picture it will not write, and reports exactly what a run does.
+  Points in metal no longer look up a conductor name for callers that never read it.
+  `ConductorElementAt` is gone; the element comes from the sampler. The mesh-line counts reported
+  are the drawn ones. The instant check looks through a magnet's wrapper for a drive. And a value
+  that is not finite has no label rather than the label 0.
+
+  **An eighth review found the seventh's central check refusing `--help`** - "takes a value",
+  exit 1, after every verb - and calling any typo "takes a value" and an unknown verb's flag the
+  same. A check that knows only which flags are switches cannot tell a value flag from a typo.
+  So each verb's flags are now one registry (`VerbFlags.ByVerb`), held to the handlers by a test
+  that reads each handler's source through the helpers it calls; a flag a verb does not read is
+  refused by name, `--help` and an unknown verb are left to the verb exactly as on main (checked
+  verb by verb against main's build), and under `--json` the refusal is the error as JSON on
+  stdout. Also: each plateau is drawn over its own vertices, not the whole grid's; a render
+  spec's own `atSeconds` is refused at `/atSeconds` and named as the spec's, not as `--at-us`; a
+  sum answers for a name only if no member has it without a single value (an edge-profiled
+  `plate`); a node beside a hole keeps the slope on its finite side; segment colours that do not
+  fit a line are refused where the layer is made; and the probe's leftover field and its copies
+  of the instant check are gone.
+
+  **A ninth review found the same gap at two more flags, and the answer was to stop finding them
+  one at a time.** `render animation --fps 30fps` and `compare --ions many` were still
+  `int.Parse`, exit 6, three rounds after `--width-px 1600px` stopped being; a bare `--progress`,
+  which had always meant the default interval, was refused by the round that began refusing bare
+  flags; and the shared whole-number reader had quietly widened the still's rule, so ` 1600` and
+  `+241` were accepted. Every flag value now goes through one of four readers and one refusal
+  (exit 1, `/args/--flag`, the typed text quoted, JSON under `--json`); a whole number is digits
+  alone within the flag's range; a flag naming one of a few words refuses any other (`--format
+  pfd` drew an SVG, `--kind objectiv` registered an objective, `--vcs hg` made no repository, and
+  none said so); the registry has a third kind, a value that may be left off, with `--progress`
+  its one member; the parser's switches are derived from the registry; `--height` takes its two
+  documented words through `SurfaceHeight.Parse`; and the segment-colour rule is one function
+  asked once, by the rasterizer, of every line it is handed - a constructor check is skipped by a
+  `with` copy. **`CommandLineMatrixTests` runs the whole surface as a table**: every verb in the
+  registry through its help, each flag valid, bare and with garbage, an unknown flag and an extra
+  positional, with and without `--json` - 632 command lines, none of which may exit 6. Run against
+  main's build as well, every documented form gives main's exit code and output shape. It found
+  two things beyond the review: `render animation` read its flags after opening its file, so a
+  typo was reported as the file's fault, and `ext test --input` with a file that is not JSON was
+  exit 6. A source scan fails if a throwing `Parse` returns to the CLI or a `TryParse` appears
+  outside the two readers.
+
+  **A tenth review found the probe still taking the assembled field apart after the fact, and the
+  third defect of that kind.** A reflected solve is one element with two halves, and the probe
+  gated a conductor on whether its *element* was solved at a point - so the declared half's shape
+  counted as metal throughout the image's half: a conductor declared from 18 to 40 mm against a
+  mirror at 20 is metal from 18 to 22, and was a plateau out to 40. The fix is at the depth the
+  two before it should have been: **the assembly hands out the leaves as it builds the field**
+  (`FieldAssembly.BuildMapped` returns a `FieldLeaf` per conductor-bearing piece - its shape, the
+  solve that holds it, its element, which half it is), made by the builders, which are the only
+  place that knows a reflected solve is a half and its image. The probe's unwrapping of sums and
+  its special case for a magnet are deleted, and so are the forwarders: seven wrapper and sum
+  types each carried three members passing "what does this conductor hold" inward, and a sum
+  answered for a name by asking whether its members agreed. Only the three solves implement
+  `IHeldConductors` now. `BuildMapped` refuses an element that adds conductors and no leaf, and a
+  test lists every field type that wraps another with how the leaves follow it, so a new wrapper
+  fails until somebody says. Also: the caption on a driven field is written to a thousandth of
+  the drive period, so two instants a quarter cycle apart are not both `t=100 µs`; the scale is
+  set out along the base axis that shows on screen and its corner is chosen with a tolerance,
+  where from the front it stood on the surface's edge at a corner decided by cos 90 = 6e-17; the
+  label fit measures the drawn vertices once and extends that, not twelve walks over a million
+  vertices; the parser asks the verb named which flags are switches, which removes the rule that
+  a name mean the same in every verb instead of policing it; a driven solve's cycle mean and a
+  conductor's held mean share one per-channel mean weight and one decision about when it has no
+  closed form; and a driven field made with no channel answers without an index out of range (the
+  builders always make one, which a test now states).
+
+  **An eleventh review measured the surface's stated range moving with `--samples`.** The
+  shipped einzel lens holds 0 and 500 V and reported -25 to 500 V at 61 samples, -32 to 500 at
+  241 and -14.8 to 537 at 1001: the range, the relief and the scale bar were the raw extremes of
+  a cubic interpolant, which overshoots beside a step. A solve has no charge in it, so the
+  maximum principle bounds it by what its conductors hold, and that is now what is stated
+  (`FieldProbe.AppliedRange`): `lowest`, `highest`, the scale and the bar are the sampled range
+  held to the conductors', the raw extremes are kept beside them, and
+  `render.interpolant-overshoot` says how far past and where. **Nothing is clamped in the
+  drawing**, which would be the silent version of the same fix. A sample on the face of a
+  conductor carried to its solve's edge is the conductor's - at distance zero it was "not
+  inside", which was the 537 V. Where an element is analytic there is no bound to state. Also:
+  earth is always labelled on the bar; `--out` and `--csv` naming a directory were exit 6 and
+  the picture was written before the table was tried - one helper checks destinations before any
+  work, writes all or none, and refuses at the flag; `--relief 1e308` drew a picture from
+  heights that were not numbers and called it written; `--relief` with an explicit scale was
+  silently ignored; the stray-argument suggestion named `--out` and `--no-scale` to verbs that
+  have neither; a repeated conductor name built its label per sample; and the leaf check inside
+  `BuildMapped` could have failed every run for metadata only the probe reads, so it moved to
+  the probe. **And an error's suggestion named a flag that did not exist**: "see the unit list
+  from 'einzel schema --units'" has been in `UnitRegistry` from the start, `schema` never read
+  it, and refusing unknown flags turned it into a second error. `schema --units` now lists the
+  registry, and a test reads every `einzel ...` command line in the source and the docs against
+  the verbs' registry - 529 of them.
+
+  **A twelfth review found a reflected solve doubled on its own mirror plane**, which is a
+  defect in the field and older than the surface: a point on the plane is its own image, the
+  declared half's domain includes its edge, and `SuperposedField([half, ReflectedField(half)])`
+  summed both - 999.5 V on the plane of a 500 V half lens, in `probe`, on the surface, and for any
+  ion whose step landed there. The plane belongs to the declared half: on it the image is nothing,
+  so the sum is continuous across it, in the plane and in a volume. The same review reversed a
+  decision of the round before: the surface's range, ramp and bar were held to the conductors'
+  range and its vertices were not, so the mesh stood past its own scale - **the drawing is
+  clamped too**, and the raw samples stay in the CSV. Also: a failed write deleted a file that
+  was there before the call, where undoing means putting it back; a refusal thrown from the
+  command layer left stdout empty under `--json`, so the top-level handler writes the same
+  `{"ran": false, "errors": [...]}` the command line does, once; `--out` naming the model
+  overwrote it; `ext` and `agents` shared one flag set across their sub-verbs, so `ext list
+  --kind y` was read by nothing; a failure inside the parallel sampling loop came out as an
+  aggregate and exit 6; a conductor's name was looked up by a second walk of the conductors per
+  sample; the surface's limits were stated in the CLI and again in `SurfaceCommand.Check`, with
+  different paths - `Check` owns them and the CLI maps `/surface/x` to `/args/--x`.
+
+  **A thirteenth review found the twelfth's mirror fix judged on the wrong coordinate.** It gave
+  the image nothing where `x == planeX`, on the argument that a point one rounding off the plane
+  has its image outside the declared half. One ulp below a power-of-two plane, `2p - x` is half an
+  ulp above it and rounds back onto it, so both halves answered and the sum doubled there - 9 of 24
+  ulp-neighbour cases at planes of 0.125, 0.25 and 0.5 m, every one with the declared half below, and
+  six nodes of the shipped planar mirror pair's composite export, whose grid lands an ulp off its plane.
+  **The side of the plane a point is on is exact; its reflection is a rounded sum**, so the image
+  now answers strictly on its own side, judged on the point, and the declared half on its side and
+  the plane. Also: **a point in a conductor's declared shape past its solve was `ok` wherever
+  another element covered it** - it is `outside-domain` now, with its note in every resolve mode,
+  not only on a probe row; `ArtifactFiles` moved a file aside and then moved the new one in, so a
+  kill between the two left no file, a symbolic link became an ordinary file, and a read-only file
+  was replaced - it renames once, writes through a link and refuses a read-only file, and a file no
+  flag named is refused at its own path, not at `--project`; `render section` checked only the
+  model against `--out`, so a spec given as the positional was written over by its own figure, and
+  every destination is now checked before the work, `--dry-run` included; a flag before a sub-verb
+  (`ext --json list`) made the bare parent's registry entry refuse the sub-verb as a stray argument;
+  `--cycle-mean` refused an instant too late to place in the cycle, though it draws none; the
+  surface evaluated the field vector at every node to drop it, and asked each solve's domain twice;
+  and `SolvedField2D`/`3D` walked their conductors three times over in three copies of one loop.
+
+  **A fourteenth review.** A bare `--progress` before a positional took the positional as its
+  value (`einzel run --progress models/r.json` refused "models/r.json" as an interval): the word
+  after a flag whose value may be left off is its value only if it begins as a number does, or if
+  the verb has no room for it otherwise. A destination was compared with the inputs by name while
+  the write went through a link to its target, so a link to the model passed the check and the
+  model was replaced; both now compare where the bytes go. **The mirror pair's own sum is now
+  chosen by how its halves meet**: a union with the plane given to the declared half where the
+  solved mirror ends before the plane, and a genuine overlap of two tails, image included on the
+  plane, where it runs past it - the single-stage pair at focus ends at 150 mm against a plane at
+  145.2 mm, and the old rule (the image everywhere but on the plane) dropped a 1.1e-4 V tail at the
+  plane, where the ion is launched every period. That moves the single-stage study's printout:
+  c1 1.382e-7 to 3.843e-7 (the focus is bisected to 1e-6 in separation, so c1 is zero to the
+  search), c3 -0.1330 to -0.1331, energy drift 5.23e-8 to 6.88e-8, R at ±3% 8,347 to 8,346; the
+  two-stage pair, whose mirror ends well before its plane, is unchanged. What a static solve's
+  conductors hold is a source the leaf is built with (`StaticHeldConductors`, a name-to-potential
+  map) rather than a role the solved field played behind an init flag a builder had to remember,
+  and a driven solve's coefficients are `required`. The surface's plane point allocates nothing,
+  and `--mesh-lines` takes its minimum from `SurfaceCommand.MinimumMeshLines`, so it no longer
+  advertises 0. The review's first finding - an edge-profiled board held at 0 V on a static
+  solve - did not reproduce: the static solved field leaves edge profiles out of its conductors,
+  so the arm removed in the thirteenth round was unreachable; the held source now leaves them out
+  itself, tested.
+
+  **A fifteenth review found the reflected-solve side applied to every solve**, including one
+  whose plane lies strictly inside its own box - legal, since the plane is bounded only to the
+  box - so below the plane one half answered and above it both. `ReflectedField.ImageSide` is
+  now the one rule for every reflected sum, the solve builders and `MirrorPair` alike: a union
+  where the half meets the plane at its edge, a sum of two overlapping halves where the plane is
+  inside. Refusing a plane inside the box was considered and not done: it is the same overlap the
+  shipped single-stage mirror pair has (its fringe run past its mid-plane), the sum is the
+  superposition each half's own boundary implies, and refusing it would break documents that
+  are valid today. `AppliedRange` states twice the element's range for such a sum. The image's
+  conductors now answer only where its field does, so an image of metal carried past the plane
+  cannot stop an ion on the declared side. An animation's frames and manifest are one
+  all-or-none write; a mesh with the wrong number of vertex colors is refused by name; plateaus
+  are grouped by element and name and labelled uniquely after, so a conductor literally named
+  `plate (element 1)` is no longer merged with element 1's `plate`, in one bucketing pass; and
+  `NoCommentHasTwoSummaries` reads every source file for a doubled `<summary>`, which found 21
+  older ones, listed in the test and left for their own change.
+
+  **A sixteenth review.** `Main` swapped the console's writer for a counting one and put the
+  captured writer back on the way out, so two in-process calls overlapping (parallel tests, the
+  corpus gate) restored out of order and one call's output could suppress another's JSON
+  refusal; `StdoutTally` now keeps the flag per call (`AsyncLocal`) and shares one installed
+  counter, taken down by the last call to leave. A reflection is now one value, `Reflection`
+  (plane and side, decided once by `ReflectedField.ImageSide`), made by the builder and carried
+  to the field's sum, the image's conductor leaf - which had been built with no side and named
+  image metal where the field's image answered nothing - and through `FieldLeaf` to the probe,
+  which reads the plane and the overlap off its leaves instead of out of the model per sample.
+  A driven conductor's held cycle mean takes the closed form or samples by the same test over
+  every channel as the potential's mean, so the plateau and the field beside it are averaged
+  alike. `--box-mm` with finite corners and an infinite extent is refused. A reflected solve's
+  two leaves share one held source, now held once per instant.
+
+  **A seventeenth review.** Under `--json` a missing file, an I/O failure and an internal error
+  wrote stderr and nothing on stdout; every failure now ends in the JSON document, and the check
+  asks the parsed command line, so `--json=true` is `--json` there too. A word held after a bare
+  `--progress` was given back to the flag whenever there was one positional too many, so `run
+  --progress m.json extra.json` ran extra.json; it is given back only where it falls past the
+  verb's positionals, and every held word is kept rather than the last. A cycle mean whose window
+  had to open at zero says so (`render.cycle-mean-window-moved`). `ArtifactFiles.WriteAll` rolled
+  back only on file-system exceptions and then deleted the backups: it restores on any failure
+  and rethrows. The image of a reflected solve neither caps a field-free run nor declares a
+  surface where it answers nothing - only the plane, where the inner field has a face there. A
+  tilted cross-section's leaves and the probe use the element's own rotation, one built and
+  shared. `AppliedRange` sums only elements whose domains meet, so two stages side by side state
+  the wider range, not the sum. And the stdout counter writes the wrapped writer's line ending and
+  format, byte for byte.
+
+  **An eighteenth review, two findings of which pulled against earlier ones.** The declared half's
+  conductors are now gated at the plane as the image's are (`DeclaredHalf`), so an electrode
+  declared past the mirror no longer stops ions, or names itself on a probe row, in the image's
+  vacuum. Where the image answers nothing its discontinuity measure is now its own value at the
+  plane, held constant, unless the inner field has a face on the plane: infinity there made a
+  change of sign at a plane where nothing jumps when the declared box stops short of it. The
+  surface's bound is per node (`FieldProbe.AppliedRangeAt`): an overlapping reflected solve is
+  twice its range only where both halves answer - a global doubling, which the sixteenth round's
+  fix applied everywhere, hid real overshoot beside a face - and `AppliedRange` stays the bound
+  for anywhere. A word held after a bare `--progress` is the flag's whenever the verb has more
+  positionals than it takes, in either order, and so is refused by name: the seventeenth round
+  kept one inside the count, so `run --progress soon m.json` made 'soon' the model. An implicit
+  `render` section is parsed with its family's switches; a value flag is checked at every
+  occurrence. An animation streams each frame to a short-named staging file beside it and commits
+  by rename, holding one frame in memory; a failed set removes the folders it made.
+
+  **A nineteenth review.** A leading point counted as a number, so `run --progress ./models/r.json`
+  took the path as the interval; a point now counts only before a digit. An export's channel files
+  are one all-or-none set rather than a write each. `run --dry-run` was accepted and ignored on
+  main - the model ran - and is now refused naming `einzel preview` and `einzel estimate`, the
+  missing dry run recorded as an open item in `docs/cli.md`. A nested `StdoutTally` scope's writes
+  mark every enclosing call. A held word settled onto its flag no longer overwrites a later
+  explicit value. The mirror's face test and the point past the plane where its sign is read scale
+  with the inner field's resolution, as the shared-face check does. And a doubled `<inheritdoc/>`
+  is now caught by `NoCommentHasTwoSummaries`.
+
+  **A twentieth review.** A reflected solve's image gave a run of zero to a ray standing on the
+  mirror plane and heading across, so the sum's run was zero and the analytic drift stopped at
+  every mid-plane crossing - one integrated step through a field-free gap per pass; the image now
+  answers with the distance to the plane plus its own run from the crossing. The export's
+  all-or-none set had been held as closures until the last element was solved, so every element's
+  solves stayed alive together; files are now staged on disk as each element is solved
+  (`ArtifactFiles.Begin`/`Staged`) and renamed into place at the end - measured on two
+  half-millimetre plate solves, 16.54 MiB held at the files before and 8.29 after, against 9.59 for
+  one element alone. Flag errors are located at `/args/--flag` by every verb (`FlagPath`), where the
+  command layer had `/probe/at-us` and `/render/at-us` and only the surface's was translated. The
+  probe's CSV quotes conductor names as the surface's does (`Csv.Field`). A negative instant stays
+  refused on a static model, by section, spec and surface alike - the reviewer's premise that the
+  surface made it advisory was not so. Main parses the command line once, inside its catch-all. And
+  a bare optional flag followed by more words than the verb takes is refused naming every candidate
+  word, instead of guessing which was meant.
+
+  **A twenty-first review**, and the last item above did not last a round. The guess it recovered
+  from was the first-character rule, which read `2026-lens.json` and `3d-trap.json` as intervals;
+  a word is now `--progress`'s value only if the whole word is a finite number, so no word is ever
+  both and the held words, the settlement and the ambiguity refusal are gone. A `File.Replace` that
+  fails after moving the original to its backup name now puts it back. `WriteAll` checks and
+  resolves each destination once. `ReflectedField` holds its `Reflection` and asks it where the
+  image answers. A conductor's held cycle mean asks each channel's mean once. Every refusal
+  document is written by one helper that asks the call's tally, where the flag readers' copy did
+  not. And `FieldInstants` tests the spacing its refusal quotes.
+
+  **A twenty-second review.** An empty value after `=` (`--out=`) passed the check for a value
+  and exited 6 from `Path.GetFullPath("")`; it is refused at the flag, and the matrix tries `--flag=`
+  for every flag that takes a value. An implicit `render` section read no flag table, so a typo or a
+  second model went unchecked; it reads the section's, and an unknown `ext`, `agents` or `render`
+  sub-verb is refused naming the known ones. The declared half of a reflected union is gated on the
+  image's side for its potential and field, as it already was for its metal, so a solve with a
+  non-zero outside potential sums symmetrically about its mirror. A biased raster layer that writes
+  depth stores its true depth and biases only the test. And `run`'s missing `--dry-run` is now
+  marked Partial against CLI-4 in `SPEC.md`, where the register still said Met.
+
+  **A twenty-third review.** The whole-word rule asked for a finite number, so `--progress 1e400`
+  opened a model called 1e400; one function now decides what parses as a number (`CommandNumber`),
+  overflow and NaN included, for the parser, the sub-verb search and the reader, and the reader
+  alone asks for finite. A word that did not parse and was read as an argument after a bare
+  `--progress` is named when the line then fails - `run --progress 5s m.json` and `run --progress
+  5s` both say '5s' followed a bare --progress and how to write the value. A replace is registered
+  with its backup the moment it returns, and an original that cannot be put back is named in the
+  refusal with where it now is. `ReflectedField` has no public constructor taking a side; main's
+  two-argument one stays, obsolete. The declared metal is gated through a typed overload, with no
+  cast. The duplicate-destination check runs once per path, and why links are followed when a set
+  is checked rather than when each file is staged is written down.
+
+  **A twenty-fourth review.** A surface label was held to six decimals, so a nonzero value under a
+  thousandth of a unit read "0", and a whole scale of labels on a span that small did too; a value
+  read at its own size is now written with an exponent (3e-8), the caption likewise, and only what
+  is under a shared scale's own resolution reads 0. A negative `--progress` interval meant off
+  without saying so; zero is the one spelling of off and a negative interval is refused. And the
+  sub-verb search skips a flag as a switch only where no sub-verb of the family reads its value,
+  with a registry test that fails if a flag is ever a switch in one sub-verb and takes a value in
+  another - no such flag exists today.
+
+  **And a test that failed on Windows CI for the wrong reason.** `ExportMemoryTests` compared an
+  export of two elements with a separate export of one, each above a baseline taken before its own
+  run; on CI the one-element reference read 4.2 MiB against 8.2 MiB at the pair's *first* file,
+  where no second element had been solved and nothing could be held twice. The reference read low:
+  a baseline taken before a run includes what an earlier test in the process left and the run then
+  releases. It now measures one export against itself - a large element then a small one, so the
+  second file holds a fraction of what the first did (9.59 and 1.48 MiB) where a queued export held
+  both at both (9.73 and 9.73). Two readings of one run share a baseline, so it cancels.
+
+  **A twenty-fifth review.** A biased layer that writes depth stored its depth even where it was
+  behind what was there, so a later hidden surface drew over a nearer one; it stores the nearer of
+  the two. A narrow shared scale offset from zero sent every label to exponent form ("1.23e+3"); only
+  a small value is written that way now. The note about a word after a bare `--progress` fired for a
+  mistyped model path and for the word that was the model; it is conditional, and only where it can
+  be right. An empty value is refused for both spellings, a value of spaces is a value except as a
+  path, and an unknown template or example is located at its flag. A failed replace that leaves the
+  target and a backup both deletes a backup that copies the intact target and names one that does
+  not. The conductor gate is `DeclaredMetal`, so a solved field is not an ambiguous argument.
+
+  **A twenty-sixth review.** A failed replace leaving a differing backup now puts it back over the
+  target, naming both where it cannot. Labels on one scale share one notation and one precision,
+  chosen from the span and the largest value; fixed decimals stop at what a double holds there, and
+  a span below that resolution is a flat scale written once. An empty or blank argument is refused
+  at its place instead of exiting 6. Path flags are declared once (`VerbFlags.Paths`) and read
+  through `PathValue`, which refuses an unmarked one. `new` takes the location of an unknown name
+  from its caller, so the shell is not told about a flag it has none of. The backup comparison
+  reads in chunks and cannot throw out of a rollback. A model name that begins with a digit is not
+  taken for a mistyped interval. And of two biased layers the nearer one's colour lands, whatever
+  their order - which moves pixels of a `render surface` picture where its mesh lines, the one
+  biased layer, overlap on screen: 611 to 12,960 of 312,260 bytes on four templates compared
+  against the previous build, where the later line had won.
+
+  **A twenty-seventh review.** The biased-layer bookkeeping is gone: opaque layers are drawn first,
+  biased layers are resolved together against the opaque depth (the nearest passing fragment of a
+  sample composited) and translucent layers come last, so every order of a layer list gives one
+  picture - the four surface pictures are identical to the previous build's, and translucent layers
+  listed before opaque ones now blend over them. A rollback that cannot read a backup to compare it
+  keeps both files and says it could not tell, instead of restoring over a file that may be the
+  untouched original. Bar labels take their precision from the span the bar draws, from earth, and
+  a repeated label is merged with every requested tick kept. Only named file extensions make a
+  word a path for the note after `--progress`. The declared half declares no surface on the
+  image's side, through the same rule as the image (`Reflection.WhereAbsent`). Path flags are read
+  by a typed key (`PathOption`), so an unmarked one cannot be read as a path at all.
+
+  **A twenty-eighth review, and a paired surface this PR had made.** Where a reflected union's
+  field jumps at its plane - the declared half's box ending on it with the field not zero there -
+  both halves declared a change of sign at the plane, and the sum multiplies its members' signs,
+  so the two cancelled and the composite reported no surface: Stage 4's rule 1, at the one plane
+  every reflected solve has. Measured on a uniform field reflected at its box's edge, at a
+  relative tolerance of 1e-13: 1.79e-10 against the closed form where the same field written whole
+  gives 8.88e-11, energy drift 1.9e-9 against 9.7e-10. The declared half owns the plane now
+  (`PlaneFace`), and the union flies the whole field's flight to the last digit; the four reference
+  flights do not move. A depth-biased raster layer must be opaque, refused by name otherwise. A
+  rollback that cannot tell whether one file was replaced puts back none of the set and says each
+  file's state, with advice per state. And an extension of two letters or more makes a word a file
+  name, so `3cases.txt` and `2026-mesh.msh` are not taken for mistyped intervals.
+
+  **A twenty-ninth review.** The plane is a surface only where the union's field jumps there - the
+  half's normal field at the plane not zero - so a Neumann mirror declared discontinuous gets none
+  from the declared half alone, where round 28 had given it a phantom. The sign beyond the face is
+  read at each point's own place, with no state a query writes, so a packet's members sharing the
+  field cannot see one another's answers. A field-free run toward a plane the half declares a
+  surface ends there. None of this reaches a shipped model: the two reflected templates declare
+  `boundaryIsDiscontinuous: false` with a Neumann mirror, and the volume solves declare no
+  surfaces, so the four reference flights and every sweep are unchanged. Also: a unit after a
+  point (`2.ms`, `1.kV`) still reads as a possible mistyped number; a rollback that cannot tell
+  whether a file was replaced keeps the new versions of it and of every file not yet placed, as
+  `<name>.new`, so the set can be completed by hand; a raster layer's bias and opacity are checked;
+  and a word with leading or trailing white space is not a typed number.
+
+  **A thirtieth review, and the plane decided by its edge.** Whether the plane is a surface is now
+  read from the boundary condition once, when the solve is built (`Reflection.EdgeIsContinuous`,
+  from `GeometryBuilder.ReflectionOf`): a Neumann edge, or a solve declaring no edge surfaces, is no
+  surface; any other edge is one wherever the half has a face on the plane. Deciding it from the
+  normal field at each point read a driven solve's first channel rather than its sum, flipped where
+  that field crossed zero along the plane, and was left to round-off. A surface where the field
+  happens to be continuous costs a landing; a missed jump costs accuracy. It is not a speed-up: on a
+  reflected solve, Neumann and Dirichlet, a query near the plane costs 186-221 ns before and 189-224
+  after, idle, within run-to-run noise, with the same answers summed over 4,096 points - a first
+  reading under a loaded machine said 0.6 to 0.9 and was the load. The four reference flights and
+  the sweep do not move. A surface-sampling allocation test that read 7,568 bytes once on Linux CI
+  now takes the cheapest of five windows after a warm-up, the floor being the property: 0 in each,
+  and 480,000 in each with a per-point array put back. A new version that cannot be kept aside, for any
+  reason, is said in the refusal with where its bytes are, rather than escaping and taking the
+  report of every file with it. A unit after a point marks a mistyped number only after a number,
+  in any case (`2.MS`, `5.MM`), and never for a word naming something on disk, so `trap.ps` and a
+  `1.ps` standing beside the command are files.
+
+  **A thirty-first review, and the plane needed no face of its own.** The plane was declared only
+  where the half's own measure had a face there, so a volume solve - which declares no surfaces -
+  and a cross-section with `boundaryIsDiscontinuous: false` never declared it, whatever their edge.
+  The reflection now declares it itself wherever the edge on the plane is not a mirror: added to the
+  half's own surfaces on its side, and on the image's side the distance from the plane signed to
+  change exactly there; a box stopping short of the plane is continuous, since nothing is on either
+  side. A half declaring no surfaces of its own flies its union exactly as the same field written
+  whole with the plane landed on. Both shipped reflected templates have a Neumann edge, so the four
+  reference flights and the sweep do not move. Also: a cross-section both tilted and reflected ran
+  into an invalid cast turning its declared half's metal, which has no field, and now runs; a name
+  taken between the look and the move is passed over when a new version is kept aside, and one left
+  at its staging name is said to be there; a CSV text cell beginning like a formula is written as
+  text; and an overlapping reflection builds no plane face.
+
+  **A thirty-second review, and the plane bounded by the box.** Declared at every y and z, the plane
+  gave an ion crossing it far outside the solve's box a landing and a cut drift on every crossing,
+  where neither half has field. It is a surface now only over the part of the plane the box covers
+  (`PlaneRegion`, a disc for an axisymmetric solve), still decided from geometry and the boundary
+  condition and from no field value: a crossing outside is one analytic advance, the same to the
+  bit as through the union with no plane surface. A cross-section declaring
+  `boundaryIsDiscontinuous: false` gets no plane surface again, whatever its edge - that flag is
+  the author's statement that the field has decayed at the edges - while a volume solve keeps the
+  face rule. An edge short of the plane by no more than a billionth of the cell counts as on it.
+  Also: the pass order of a picture's layers is one rule (`Rasterizer.PassOf`) that the composition
+  the window draws in list order is put in, so a still and the window agree; a leading `+` or `-` in
+  a CSV text cell is guarded only where the cell reads as an expression, so `-xRod` is written
+  exactly; a probe CSV's multi-line warning stays all comments; and a rotated field's conductor
+  queries are its rotated conductors'.
+
+  **A thirty-third review, and a rim no two members change sign on.** The plane is decided by the
+  plane edge's own condition: `boundaryIsDiscontinuous` speaks for a solve's far edges and cannot
+  vouch for the edge on the mirror, which is interior to the union, and is no longer read for it.
+  Working out what the region-bounded plane did at its rim found more than the review did: the
+  member answering nothing on a side held its own measure at the plane, which changes sign along
+  the rim exactly where the answering half's box edge does, so the two cancelled and a reflected
+  cross-section declaring its edges lost both top edges - on a mirror edge as on a grounded one.
+  That member's sign is now read just inside the box's part of the plane, constant across the rim.
+  Where the half has a face of its own on a grounded plane the declared box, the image's box and
+  the outside meet at the rim, a sign cannot change across all three boundaries there, and the one
+  unavoidable change is put on the plane beyond the box, made by one member, with the drift cut
+  there; a volume solve, which declares no surfaces of its own, has its plane patch closed by the
+  image box's faces, where the field does drop to nothing, so nothing is left without a surface.
+  Also: every CSV text cell beginning with `= + - @`, a tab or a carriage return is guarded again,
+  as OWASP has it; one `Csv.Comment` spelling for a warning; a destination reached through a
+  linked folder is resolved like one that is a link; a radial plane region is built from the solve's
+  real radial extent; and the window's composition is pinned to carry no depth bias, which it does
+  not read.
+
+  **A thirty-fourth review, and the rule the plane was missing.** Apart from the plane, a union now
+  declares exactly the mirror image of what its declared side declares - stated in `Reflection`'s
+  remarks and tested along random segments for cross-sections declaring their edges or not, on
+  mirror and grounded edges, and for a volume. The image box's faces, which had closed the plane
+  for a half declaring no surfaces of its own, are gone: they made a union declare what its mirror
+  did not, and on an axisymmetric solve the axis read as an inner edge, a zero distance under every
+  on-axis beam. Each half now carries one sign over the whole side it answers nothing on, read once
+  at the middle of the box's face on the plane, so it changes nowhere there: a grounded plane is
+  then a change of sign at every point of it, real over the box and the one a sign function cannot
+  avoid beyond it, with the drift cut there and nowhere else; a mirror is none. Also: a destination
+  reached through a loop of links, or below a folder that cannot be read, is refused at its flag; one
+  call's destinations and inputs share their resolved folders, so a film of 300 frames six folders
+  deep asks 315 link questions rather than one walk per frame; a plane region of negative radius
+  cannot be made by a `with` either; and a surface's mesh stride is a whole number of samples from one
+  to as many as there are, where an axis with one sample or no extent gave the largest int there is.
+
+  **A thirty-fifth review, and the representation rather than another patch.** Five rounds had
+  traded one phantom or cancellation for another at the mirror plane, and the cause was not the
+  reflection: a composite's discontinuity was one sign, the product of its members', so two members
+  changing sign at one place cancelled (Stage 4's rule 1), and one sign function cannot bound a
+  patch of a plane. A field now reports its discontinuity members (`DiscontinuityMembers`,
+  `MemberDistanceToDiscontinuity`), sums and wrappers pass them through, and the integrator lands
+  on the earliest member to change sign. Measured before anything else moved: the four reference
+  flights and every shipped model's run are bit-identical, since a bisection reads only the sign of
+  the surface it is given and a member changes sign exactly where the product does for one crossing
+  a step. Then the reflection could be simple: each half's own measure on both sides (the image's
+  the declared half's mirrored), and on a grounded edge the plane as a member of the declared half,
+  everywhere on it - beyond the box it costs a landing and, tracked apart, can never cancel a
+  neighbouring element's surface there. `PlaneFace` and `PlaneRegion` are gone, and with them the
+  representative sign that missed the plane wherever the half's own sign differed from it. Also: a
+  destination named like an input that cannot be followed is refused; the path comparison answers
+  for any string; a staged set resolves its paths per call and again at commit, so a link pointed
+  elsewhere mid-film places nothing; and the link-query probe is passed to the resolver rather than
+  held in a global. The link tests' first run on Linux failed in their own cleanup: `Directory.Delete`
+  follows a link to check it is a folder, so the second link of a loop, dangling once the first was
+  gone, threw. Links are now unlinked as files there, and every link test was run on Linux before
+  this change was committed - with the old cleanup the same exception, with the new one 28 of 28. A
+  link leading to no folder on the way to a destination is said to be one, not "a file".
+
+  **A thirty-sixth review, and members through every wrapper.** Three wrappers still combined
+  their inner field's members into one sign: a driven solve's field over its reflected channel
+  sums, a bounded analytic element, and the ponderomotive well. All pass them through now, with a
+  guard that scans every einzel assembly for a field holding a field and fails if one leaves the
+  member count at the interface's default - the first version of the scan loaded assemblies by
+  naming a type in each, which loads nothing in Release, and so reached four assemblies of eleven
+  and never saw the ponderomotive well. A bounded element is two members, its box and its inner
+  field (infinite outside the box): combined by the nearer surface's sign, a half-space plane inside
+  the region went undeclared wherever a face was nearer than it. The integrator lands with one
+  bisection whose test is whether any member that changed sign over the step has done so yet - the
+  earliest crossing directly - where one bisection per member, then the earliest, cost three times
+  the landing work at a grounded plane (302 evaluations more on the reference test, against 2).
+  Every member is read in one pass, each part filling its own slice, and each pass counts as one
+  evaluation. The staged set resolves its inputs once and each frame's destination afresh, and
+  names every input of a name that could not be followed.
+
+  **A thirty-seventh review, and the integrator's own cases.** A member infinite outside a bounded
+  element's box left the step's test wherever the step ended outside, so a step crossing the
+  element's own plane and leaving its box together (9.9 to 10.6 mm, the plane at 10, the face at
+  10.5) landed on the face and crossed the plane with no landing; and a bisection probe bowing
+  outside read the infinity as a crossing. The inner member is now the inner field's own value
+  everywhere - a landing more where its surface continues outside the box, never one less - and the
+  integrator reads an infinity by its sign rather than leaving the member out. A probe exactly on a
+  later member's surface no longer counts as on it when an earlier member is already past, which
+  landed on the later surface and straddled the earlier. A step's start is read from the last
+  step's end where nothing moved it: 467 evaluations fewer on the grounded-plane reference flight,
+  the same flight to the last digit. Each tested with a flight, and each test checked by putting the
+  fault back. Also: a staged frame resolves the files the command reads in the same call as its
+  destination, sharing their folders, so a frame that has become an input is refused at its stage;
+  one predicate for what following a path may fail with; and a comment ends with its text.
+
+  **A thirty-eighth review, and the magnetic side.** A bounded element's inner members are plus
+  infinity outside its box again - the continuation of an inner plane outside the box is no surface
+  and is not landed on - and the 9.9-to-10.6 mm step still lands on the plane, because the integrator
+  reads an infinity by its sign. That rule now holds in the test made before the second pass too: a
+  step starting with every member infinite and ending with one finite and negative was taken to
+  cross nothing. **Magnets were folded through the sign product** - the shared face of two abutting
+  hard-edge magnets cancelled, and a magnet's box hid an inner surface wherever its own face was
+  nearer - and are tracked by member now, as electric fields are: `IMagneticField` carries the same
+  three member methods, the bounded magnet and the magnetic sum pass them through, and a magnetized
+  field's members are the electric ones then the magnetic ones. Two abutting magnets, 1 mT and 3 mT,
+  now land on their shared face. A step's end is reused as the next start only when nothing but the
+  step happened between them; a landed sequencer switch, a collision and an analytic drift each read
+  the start afresh, and the interface states that a member's measure is a function of position
+  within a step. Each tested, and each test checked by putting the fault back. Also: a CSV comment
+  trims every line break `ReplaceLineEndings` recognises, a layer's name in a refusal is built only
+  when one is raised, and a duplicated comment is gone.
+
+  **A thirty-ninth review, and the crossing behind a box face.** An ion starting on an inner
+  surface's positive side, crossing it and leaving the box in one step read positive at both ends -
+  negative between, plus infinity outside - so only the box face was landed on and the inner jump was
+  straddled, for an electric region and a magnet alike. Fixed in the integrator and for any member:
+  after the bisection lands, the members read at the inner side of its bracket are asked again, and
+  any that is finite there and of the other sign from the start joins the marked set and the
+  bisection is repeated as far as that landing. No member is read for it but the bisection's own
+  probes. A step that starts exactly on a box face no longer bisects onto a second landing 10^-24 of
+  a step past it: a member that is finite at one end and infinite at the other, and already what it
+  is at the end a hair along the step, changed at the face the step starts on. The inner members of a
+  bounded element or magnet are gated by the box member's own sign, so a face is closed for them as
+  for the box. A test walks every shipped cross-section and analytic field - 59, 27 of them
+  time-varying - and checks that asking it anything at any instant leaves every member at a fixed
+  point unchanged, the invariant the start-of-step reuse rests on; a volume solve is left out for
+  its cost. A uniform magnet declares no surface, so an unbounded one costs no member pass a step;
+  the magnetic sum uses the electric sum's numbering, one generic copy. A bare `--snapshots` on a
+  study is told to leave it out again, where the command line's reader had told it to give a value;
+  and a CSV field holding NEL, LS, PS or FF is quoted.
+
+  **A fortieth review, and a member's domain made a property of the field.** A field now says which
+  member's surface bounds where each of its members is finite (`DiscontinuityMemberGates`, on the
+  electric and the magnetic side, passed through every wrapper and sum, held so by the wrapper guard):
+  a bounded element's box gates its inner members. The integrator reads it once per flight and drops
+  a gated member's change between finite and infinite when the step starts on its gate - the face it
+  just landed on - instead of probing 10^-9 along the step; a step grazing along a face makes no
+  landing. Where the bisection's first probe falls exactly on a surface there is no start-side probe
+  to re-check, so the members are read just short of the landing: an inner surface before such a
+  face is landed on first. The start-side readings are kept by swapping buffers, not copying. **A
+  reflected solve's halves now declare surfaces only where they answer**: the image read the declared
+  field through the mirror on both sides of the plane, and the declared half read its own on both
+  sides, so an ion in either half landed on the mirror of a surface that half does not have. Where a
+  half answers nothing each member is an infinity with the sign its measure has on the plane
+  straight across - plus infinity alone changed sign at a mirror edge wherever the declared measure
+  is negative there, a landing on a plane where nothing jumps - and the plane stays the declared
+  half's member. The mirror-plane tests now count what the integrator lands on rather than the sign of
+  the combined measure, which is a step cap's distance. **A stage may change what an analytic element
+  holds, not where it is**: a phase moving a region's bounds or a half-space's plane is refused,
+  naming the element and the phase, since a region is compiled once and the members are read off
+  the first state. No shipped model does it. A bounded field's combined measure gates on the box
+  member's sign as its members do. And the flag reader asks whether a file is a study only of an
+  argument that can name one, total over what a path can spell: `estimate "" --snapshots` is refused
+  as the empty argument, exit 1, where it was an internal error.
+
+  Not built: the surface in the interactive window, arbitrary planes, free camera angles, a color
+  key for the top view.
+
 - **The solve memory tests read the live set from inside the build, and stopped racing it.**
   `ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays` read 1.028 of its statement once on
   the Linux CI runner: a slope of 45.11 bytes a node from builds printed at 42.64 and 43.88

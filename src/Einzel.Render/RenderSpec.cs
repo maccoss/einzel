@@ -148,6 +148,13 @@ public sealed record RenderSpec
     /// </remarks>
     public double AtSeconds { get; init; }
 
+    /// <summary>
+    /// Whether <see cref="AtSeconds"/> came from <c>--at-us</c> rather than from the spec itself,
+    /// so a refusal of it names and locates the one the caller wrote. Not part of the document.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool InstantFromFlag { get; init; }
+
     /// <summary>The time mapping, when this spec is for an animation.</summary>
     /// <remarks>
     /// Null for a section, which is a single instant and has no timeline. Required for

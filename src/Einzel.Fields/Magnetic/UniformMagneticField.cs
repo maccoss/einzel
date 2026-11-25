@@ -36,6 +36,10 @@ public sealed class UniformMagneticField : IMagneticField
     public Vec3 MagneticFieldAt(in Vec3 position) => _fluxDensity;
 
     /// <inheritdoc />
+    /// <remarks>None: a uniform field jumps nowhere, so a field carrying one pays no member pass for it.</remarks>
+    public int MagneticDiscontinuityMembers => 0;
+
+    /// <inheritdoc />
     public double MaximumFluxDensity => _fluxDensity.Length;
 
     /// <inheritdoc />
@@ -167,15 +171,80 @@ public sealed class BoundedMagneticField : IMagneticField
             return double.PositiveInfinity;
         }
 
+        // The one predicate the members use: the box member's own sign.
         var toBoundary = Region.SignedDistance(in position);
 
-        if (!Region.Contains(in position))
+        if (toBoundary > 0.0)
         {
             return toBoundary;
         }
 
         return DiscontinuityDistance.Combine(
             toBoundary, _inner.SignedDistanceToMagneticDiscontinuity(in position));
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The box surface and the inner field's own members inside the box, positive infinity outside
+    /// it, as <see cref="Analytic.BoundedField"/> tracks an electric region: combined into one sign,
+    /// an inner surface inside the box went undeclared wherever the box face was nearer. All
+    /// infinite where the inner field is zero, which jumps nowhere.
+    /// </remarks>
+    public int MagneticDiscontinuityMembers => 1 + _inner.MagneticDiscontinuityMembers;
+
+    /// <inheritdoc />
+    public double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position)
+    {
+        if (_inner.MaximumFluxDensity == 0.0)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var box = Region.SignedDistance(in position);
+        return member == 0 ? box
+            : box <= 0.0 ? _inner.MagneticMemberDistanceToDiscontinuity(member - 1, in position)
+            : double.PositiveInfinity;
+    }
+
+    /// <inheritdoc />
+    public void MagneticMemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances)
+    {
+        if (_inner.MaximumFluxDensity == 0.0)
+        {
+            distances.Fill(double.PositiveInfinity);
+            return;
+        }
+
+        var box = Region.SignedDistance(in position);
+        distances[0] = box;
+
+        // Gated by the box member's own sign, so the face is closed for the inner members too.
+        if (box <= 0.0)
+        {
+            _inner.MagneticMemberDistancesToDiscontinuity(in position, distances[1..]);
+        }
+        else
+        {
+            distances[1..].Fill(double.PositiveInfinity);
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The box gates every inner member, except one the inner field already gates itself.</remarks>
+    public void MagneticDiscontinuityMemberGates(Span<int> gates)
+    {
+        if (gates.Length == 0)
+        {
+            return;
+        }
+
+        gates[0] = -1;
+        _inner.MagneticDiscontinuityMemberGates(gates[1..]);
+
+        for (var k = 1; k < gates.Length; k++)
+        {
+            gates[k] = gates[k] >= 0 ? gates[k] + 1 : 0;
+        }
     }
 
     private static bool Slab(
@@ -205,6 +274,9 @@ public sealed class SuperposedMagneticField : IMagneticField
 {
     private readonly IMagneticField[] _elements;
 
+    // Where each element's magnetic members start, and how many there are in all.
+    private readonly int[] _offsets;
+
     /// <summary>Superposes magnetic elements.</summary>
     /// <param name="elements">The elements; at least one.</param>
     /// <exception cref="ArgumentNullException"><paramref name="elements"/> is null.</exception>
@@ -218,6 +290,8 @@ public sealed class SuperposedMagneticField : IMagneticField
         {
             throw new ArgumentException("a superposition needs at least one element", nameof(elements));
         }
+
+        _offsets = DiscontinuityDistance.MemberOffsets(_elements, static e => e.MagneticDiscontinuityMembers);
     }
 
     /// <inheritdoc />
@@ -288,4 +362,25 @@ public sealed class SuperposedMagneticField : IMagneticField
 
         return composed;
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Each element's members, in order: two abutting magnets are two members whose surfaces
+    /// coincide at the shared face, so the face is landed on where the combined sign cancelled.
+    /// </remarks>
+    public int MagneticDiscontinuityMembers => _offsets[^1];
+
+    /// <inheritdoc />
+    public double MagneticMemberDistanceToDiscontinuity(int member, in Vec3 position) =>
+        DiscontinuityDistance.Member(
+            _elements, _offsets, member, in position, static (e, m, in p) => e.MagneticMemberDistanceToDiscontinuity(m, in p));
+
+    /// <inheritdoc />
+    public void MagneticMemberDistancesToDiscontinuity(in Vec3 position, Span<double> distances) =>
+        DiscontinuityDistance.Members(
+            _elements, _offsets, in position, distances, static (e, in p, d) => e.MagneticMemberDistancesToDiscontinuity(in p, d));
+
+    /// <inheritdoc />
+    public void MagneticDiscontinuityMemberGates(Span<int> gates) =>
+        DiscontinuityDistance.Gates(_elements, _offsets, gates, static (e, g) => e.MagneticDiscontinuityMemberGates(g));
 }

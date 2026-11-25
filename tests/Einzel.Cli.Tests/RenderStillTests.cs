@@ -204,6 +204,42 @@ public sealed class RenderStillTests(ITestOutputHelper output) : IDisposable
     /// dark pixel there for some other reason, would pass the first half alone.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The window draws a composition's layers in list order, and the still draws them by pass:
+    /// for the shipped compositions, at full and partial conductor opacity, the two orders are the
+    /// same - and a list given out of order is put in the still's order by the one rule both use.
+    /// </summary>
+    /// <remarks>
+    /// The rasterizer had come to draw opaque, biased and translucent layers in fixed passes while
+    /// the window kept drawing in list order, so the two agreed only while every composition
+    /// happened to list its opaque layers first.
+    /// </remarks>
+    [Fact]
+    public void TheWindowDrawsLayersInTheStillsOrder()
+    {
+        foreach (var name in new[] { "einzel-lens", "planar-mirror-pair" })
+        {
+            var scene = ViewportCommand.Execute(Template(name));
+
+            foreach (var opacity in new[] { 1.0, 0.4 })
+            {
+                var window = ViewportPicture.Compose(scene, opacity);
+                var still = Einzel.Render.Rasterizer.DrawOrder(window.Select(StillCommand.Raster), l => l.Alpha, l => l.DepthBias);
+
+                Assert.Equal(still.Select(l => l.Name), window.Select(l => l.Name));
+
+                // The window does not read a depth bias, so nothing it draws may carry one.
+                Assert.All(window, l => Assert.Equal(0.0, l.DepthBias));
+                Assert.Equal(0.0, ViewportPicture.DensityLayer(scene).DepthBias);
+            }
+        }
+
+        PictureLayer Layer(string n, double alpha, double bias) => new(n, [], [], alpha, alpha >= 1.0, bias);
+        var mixed = ViewportPicture.InDrawOrder([Layer("veil", 0.5, 0.0), Layer("mesh", 1.0, 0.01), Layer("metal", 1.0, 0.0), Layer("haze", 0.3, 0.0)]);
+
+        Assert.Equal(["metal", "mesh", "veil", "haze"], mixed.Select(l => l.Name));
+    }
+
     [Fact]
     public void AStillCarriesARulerWhereTheLayoutPutsItAndOmitsItWhenAsked()
     {

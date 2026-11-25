@@ -101,6 +101,8 @@ public sealed partial class GridArraySourceTests(ITestOutputHelper output)
         // density's grid, it is made after the run it draws and is no part of what a run holds,
         // and it is a two-dimensional array, which GridArrays does not make.
         ("Einzel.Commands/ViewportCommand.cs", "ViewportCommand.Shells", "new double[columns, rows]", 1, "a raster for a picture, made after the run"),
+        ("Einzel.Transport/Integration/TrajectoryIntegrator.cs", "TrajectoryIntegrator.MemberScratch..ctor", "new double[count]", 5, "one measure a discontinuity member of the field - its parts' surfaces, a handful - not a node"),
+        ("Einzel.Transport/Integration/TrajectoryIntegrator.cs", "TrajectoryIntegrator.MemberScratch..ctor", "new int[count]", 1, "one gate a discontinuity member of the field, not a node"),
     ];
 
     [Fact]

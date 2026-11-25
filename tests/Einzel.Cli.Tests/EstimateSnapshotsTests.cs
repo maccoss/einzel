@@ -127,8 +127,11 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
 
         output.WriteLine($"exit {exit}: {said.Trim()}");
 
+        // The command line's own reader refuses a value flag given no value, at the flag, before
+        // the estimate reads it.
         Assert.Equal(1, exit);
-        Assert.Contains("--snapshots takes a whole number", said, StringComparison.Ordinal);
+        Assert.Contains("--snapshots takes a value, and none was given", said, StringComparison.Ordinal);
+        Assert.Contains("/args/--snapshots", said, StringComparison.Ordinal);
     }
 
     /// <summary>A mixture's run records no instants, so recorded instants are refused for it.</summary>
@@ -172,6 +175,65 @@ public sealed class EstimateSnapshotsTests(ITestOutputHelper output) : IDisposab
         Assert.Equal(1, exit);
         Assert.Contains(says, stderr, StringComparison.Ordinal);
         Assert.Contains("leave out --snapshots", stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A bare <c>--snapshots</c> on a study is told to leave the flag out, as every other refusal of
+    /// it on a study is - not to give it a value, which would only be refused next.
+    /// </summary>
+    /// <remarks>
+    /// After the command line's own reader took the case, a bare flag on a study was told to give it
+    /// a value, and the study's sentence lived in a branch nothing reached. The reader now asks, but
+    /// only of an argument that can name a file, and the asking cannot throw.
+    /// </remarks>
+    /// <param name="followedByAnotherFlag">Whether another flag follows it.</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ABareSnapshotsOnAStudyIsToldToLeaveItOut(bool followedByAnotherFlag)
+    {
+        Directory.CreateDirectory(_root);
+
+        var study = Path.Combine(_root, "study.json");
+
+        File.WriteAllText(study, """{ "schemaVersion": "0.1", "model": "model.json", "figureOfMerit": "transitTime" }""");
+
+        var (exit, _, stderr) = followedByAnotherFlag
+            ? Run("estimate", study, "--snapshots", "--no-calibrate")
+            : Run("estimate", study, "--snapshots");
+
+        output.WriteLine($"exit {exit}: {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+        Assert.Contains("/args/--snapshots", stderr, StringComparison.Ordinal);
+        Assert.Contains("leave out --snapshots: a study records no instants", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("give --snapshots its value", stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A model argument that names no file - empty, spaces, a NUL - is refused as that argument,
+    /// exit 1, whatever else the command line says: the flags are read without opening it.
+    /// </summary>
+    /// <remarks>
+    /// Telling a study from a model inside the flag reader parsed the file there, and an empty or NUL
+    /// path threw out of it as an internal error, exit 6. A blank argument is now the refusal, and a
+    /// NUL in a path makes it no study rather than a throw.
+    /// </remarks>
+    /// <param name="argument">The model argument.</param>
+    /// <param name="refusedAt">Where the refusal is located.</param>
+    [Theory]
+    [InlineData("", "/args/0")]
+    [InlineData("   ", "/args/0")]
+    [InlineData("a\0b.json", "/args/--snapshots")]
+    public void AnArgumentThatNamesNoFileIsRefusedAsTheArgument(string argument, string refusedAt)
+    {
+        var (exit, _, stderr) = Run("estimate", argument, "--snapshots");
+
+        output.WriteLine($"exit {exit}: {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+        Assert.Contains($"at {refusedAt}:", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("INTERNAL", stderr, StringComparison.Ordinal);
     }
 
     /// <summary>

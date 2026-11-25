@@ -83,12 +83,22 @@ public static class CatalogCommand
             .Select(n => new CatalogEntry(n, DescriptionOf(ExampleModels.Read(n))))],
     };
 
+    /// <summary>
+    /// Where an unknown name is located when the caller gives no place of its own: the argument a
+    /// tool or a dialog names it by.
+    /// </summary>
+    public const string NamePath = "/name";
+
     /// <summary>The text of one template or example.</summary>
     /// <param name="kind">Either <c>template</c> or <c>example</c>.</param>
     /// <param name="name">Which one.</param>
     /// <returns>The model JSON.</returns>
     /// <exception cref="EinzelException">No such kind, or no such name.</exception>
-    public static string Read(string kind, string name)
+    /// <param name="namePath">
+    /// Where an unknown name is located: the argument that carried it - <c>/name</c> for a tool's
+    /// argument, the flag or positional for a command line.
+    /// </param>
+    public static string Read(string kind, string name, string namePath = NamePath)
     {
         var available = kind switch
         {
@@ -108,7 +118,7 @@ public static class CatalogCommand
             throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
-                Path = "/name",
+                Path = namePath,
                 Constraint = $"there is no {kind} called '{name}'",
                 Suggestion = $"available: {string.Join(", ", available.OrderBy(n => n, StringComparer.Ordinal))}",
             });

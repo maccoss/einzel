@@ -58,6 +58,43 @@ public sealed class RampedStageTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A window that straddles a stage boundary has no closed-form mean while the sequence is
+    /// not held at an operating point: the potential's cycle mean and a conductor's held mean
+    /// both average the instants, and both take the closed form once it is held.
+    /// </summary>
+    /// <remarks>
+    /// One decision for both, in one place. They were two copies with two conditions, and a
+    /// closed form taken at the window's first instant would report the first stage's value for
+    /// a window half in the second.
+    /// </remarks>
+    [Fact]
+    public void AMeanAcrossAStageBoundaryIsSampledUntilTheSequenceIsHeld()
+    {
+        var first = new CompiledStage("first", 10.0e-6, [Plate(0.0)]);
+        var second = new CompiledStage("second", 10.0e-6, [Plate(100.0)]);
+
+        var (field, _) = GeometryBuilder.Build(Sequenced([first, second]));
+        var driven = Assert.IsType<DrivenSolvedField>(field);
+        var point = new Vec3(0.0, 3.0e-3, 0.0);
+        var whole = driven.PotentialAt(in point, 15.0e-6);
+
+        // From 5 us for 10 us: half in each stage.
+        var heldMean = driven.HeldCycleMeanOf("plate", 5.0e-6, 10.0e-6, 8)!.Value;
+        var fieldMean = driven.CycleMeanPotentialAt(in point, 5.0e-6, 10.0e-6, 8);
+
+        output.WriteLine($"held mean {heldMean:F3} V of 100; field mean {fieldMean:F6} V of {whole:F6}");
+
+        Assert.InRange(heldMean, 35.0, 65.0);
+        Assert.InRange(fieldMean / whole, 0.35, 0.65);
+
+        // The control: held at an operating point in the first stage, the mean is that stage's.
+        var held = Assert.IsType<DrivenSolvedField>(driven.AtOperatingPoint(5.0e-6));
+
+        Assert.Equal(0.0, held.HeldCycleMeanOf("plate", 5.0e-6, 10.0e-6, 8));
+        Assert.Equal(0.0, held.CycleMeanPotentialAt(in point, 5.0e-6, 10.0e-6, 8));
+    }
+
+    /// <summary>
     /// A drive amplitude ramped from 100 to 300 V: at whole microseconds the 1 MHz
     /// sinusoid is at its peak, so the potential midway is that of 200 V applied.
     /// </summary>

@@ -112,11 +112,13 @@ public sealed class RasterTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>A translucent layer blends over what is behind it and hides nothing drawn later.</summary>
+    /// <summary>A translucent layer blends over what is behind it, in whichever order the two are listed.</summary>
     /// <remarks>
     /// The rule the viewport's "see through the metal" depends on: a translucent surface that
-    /// writes depth would reject whatever is drawn behind it afterwards. So a far opaque square
-    /// drawn after a near translucent one must still show through it.
+    /// writes depth would reject whatever is drawn behind it afterwards. Translucent layers are
+    /// drawn after every opaque one, so a far opaque square listed after a near translucent one
+    /// still shows through it, blended - the picture the viewport, which lists its opaque layers
+    /// first, draws too.
     /// </remarks>
     [Fact]
     public void ATranslucentLayerHidesNothingDrawnAfterIt()
@@ -130,11 +132,10 @@ public sealed class RasterTests(ITestOutputHelper output)
 
         output.WriteLine($"through the glass: {r}, {g}, {b}");
 
-        // The opaque square overwrote the blend, which is what a GPU does too with depth
-        // writes off - what matters is that it was not rejected.
-        Assert.Equal((255, 0, 0), (r, g, b));
+        // Not rejected, and blended under the glass rather than painted over it.
+        Assert.Equal((128, 0, 128), (r, g, b));
 
-        // And with it written first, the glass blends over it half and half.
+        // And listed first, the same.
         var blended = Rasterizer.Draw([behind, glass], Scale(10.0), Flat, White, 10, 10, supersample: 1);
 
         Assert.Equal((128, 0, 128), At(blended, 10, 5, 5));
@@ -239,6 +240,114 @@ public sealed class RasterTests(ITestOutputHelper output)
 
         Assert.Equal(3 * Side * Side, rgb.Length);
         Assert.True(allocated < bound, $"drawing allocated {allocated / 1e6:F1} MB against {bound / 1e6:F1} MB");
+    }
+
+    /// <summary>
+    /// A bias reaches through a surface up to the bias and no further, and a biased layer that
+    /// writes depth stores its true depth: a translucent layer just in front of its geometry, though
+    /// within the bias, is still drawn over it.
+    /// </summary>
+    /// <remarks>
+    /// The bias was subtracted before the depth was stored, so the layer hid everything within the
+    /// bias in front of it as well as behind it. Checked for a mesh and for a line, which share the
+    /// rule.
+    /// </remarks>
+    [Fact]
+    public void ABiasMovesTheDepthTestAndNotTheStoredDepth()
+    {
+        const double Bias = 0.2; // two millimetres, at a tenth of the clip box per millimetre
+
+        var mesh = new RasterLayer([Square(z: 0.0, 1.0, 0.0, 0.0)], [], 1.0, WritesDepth: true, DepthBias: Bias);
+        var line = new RasterLayer([], [new RasterLine([-10, 0, 0, 10, 0, 0], 1.0, 0.0, 0.0)], 1.0, WritesDepth: true, DepthBias: Bias);
+        var within = Layer(Square(z: 1.0, 0.0, 1.0, 0.0));
+        var beyond = Layer(Square(z: 3.0, 0.0, 0.0, 1.0));
+        var veil = new RasterLayer([Square(z: 1.0, 0.0, 0.0, 1.0)], [], 0.5, WritesDepth: false);
+
+        foreach (var marked in new[] { mesh, line })
+        {
+            // A surface 1 mm in front, inside the 2 mm bias: the mark shows through it.
+            Assert.Equal((255, 0, 0), At(Rasterizer.Draw([within, marked], Scale(10.0), Flat, White, 21, 21), 21, 10, 10));
+
+            // One 3 mm in front, past the bias: it hides the mark.
+            Assert.Equal((0, 0, 255), At(Rasterizer.Draw([beyond, marked], Scale(10.0), Flat, White, 21, 21), 21, 10, 10));
+
+            // A translucent layer 1 mm in front: tested against the mark's true depth, it veils
+            // it; against the biased depth it would have been hidden behind the mark.
+            Assert.Equal((128, 0, 128), At(Rasterizer.Draw([marked, veil], Scale(10.0), Flat, White, 21, 21), 21, 15, 10));
+        }
+    }
+
+    /// <summary>
+    /// The picture does not depend on the order the layers are listed in: every permutation of a
+    /// surface, two biased layers and a translucent one gives the same pixels.
+    /// </summary>
+    /// <remarks>
+    /// Opaque layers are drawn first, the biased ones are resolved together against the opaque
+    /// depth, and translucent layers come last. Resolved per layer as it came, a translucent layer
+    /// reset which biased layer owned a sample, and a bias reached only a surface drawn before it.
+    /// </remarks>
+    [Fact]
+    public void EveryOrderOfTheLayersGivesOnePicture()
+    {
+        const double Bias = 0.2;
+
+        RasterLayer[] layers =
+        [
+            Layer(Square(z: 0.0, 0.5, 0.5, 0.5)),
+            new RasterLayer([Square(z: 0.0, 1.0, 0.0, 0.0)], [], 1.0, WritesDepth: false, DepthBias: Bias),
+            new RasterLayer([], [new RasterLine([-10, 0, 0.5, 10, 0, 0.5], 0.0, 1.0, 0.0)], 1.0, WritesDepth: true, DepthBias: Bias),
+            new RasterLayer([Square(z: 1.0, 0.0, 0.0, 1.0)], [], 0.5, WritesDepth: false),
+        ];
+
+        static IEnumerable<RasterLayer[]> Orders(RasterLayer[] items) =>
+            items.Length <= 1
+                ? [items]
+                : items.SelectMany((item, i) => Orders([.. items.Where((_, j) => j != i)]).Select(rest => (RasterLayer[])[item, .. rest]));
+
+        var orders = Orders(layers).ToList();
+        var pictures = orders.Select(order => Rasterizer.Draw(order, Scale(10.0), Flat, White, 21, 21)).ToList();
+
+        Assert.Equal(24, orders.Count);
+        Assert.All(pictures, picture => Assert.Equal(pictures[0], picture));
+
+        // The line, nearest of the biased marks, under the translucent veil; elsewhere the red
+        // mark. Read off the squares' diagonal, where their two triangles meet.
+        Assert.Equal((0, 128, 128), At(pictures[0], 21, 15, 10));
+        Assert.Equal((128, 0, 128), At(pictures[0], 21, 15, 3));
+    }
+
+    /// <summary>
+    /// A translucent biased layer is refused by name: biased layers are resolved one fragment a
+    /// sample, which is right for an opaque mark on a surface and would let a translucent one hide
+    /// another biased layer behind it completely.
+    /// </summary>
+    [Fact]
+    public void ATranslucentBiasedLayerIsRefused()
+    {
+        var glassMesh = new RasterLayer([Square(z: 0.0, 1.0, 0.0, 0.0)], [], 0.5, WritesDepth: false, DepthBias: 0.2, Name: "glass mesh");
+
+        var refused = Assert.Throws<ArgumentException>(() => Rasterizer.Draw([glassMesh], Scale(10.0), Flat, White, 21, 21));
+
+        Assert.Contains("'glass mesh'", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("must be opaque", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A bias that is not a finite non-negative depth, or an opacity outside 0 to 1, is refused by layer name.</summary>
+    [Theory]
+    [InlineData(double.NaN, 1.0, "depth bias")]
+    [InlineData(-0.1, 1.0, "depth bias")]
+    [InlineData(double.PositiveInfinity, 1.0, "depth bias")]
+    [InlineData(0.0, double.NaN, "opacity")]
+    [InlineData(0.0, 1.5, "opacity")]
+    [InlineData(0.0, -0.1, "opacity")]
+    public void ABadBiasOrOpacityIsRefusedByName(double bias, double alpha, string what)
+    {
+        var layer = new RasterLayer([Square(z: 0.0, 1.0, 0.0, 0.0)], [], alpha, WritesDepth: true, DepthBias: bias, Name: "odd");
+
+        var refused = Assert.Throws<ArgumentException>(() => Rasterizer.Draw([layer], Scale(10.0), Flat, White, 21, 21));
+
+        Assert.Contains("'odd'", refused.Message, StringComparison.Ordinal);
+        Assert.Contains(what, refused.Message, StringComparison.Ordinal);
     }
 
     private static RasterLayer Layer(RasterMesh mesh) => new([mesh], [], 1.0, WritesDepth: true);

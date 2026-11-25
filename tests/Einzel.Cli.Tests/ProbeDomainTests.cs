@@ -67,11 +67,16 @@ public sealed class ProbeDomainTests : IDisposable
     /// the declared face. A 100 V plate inside makes the field at every face non-zero; a 50 V plate
     /// runs out through the top face, past the domain.
     /// </summary>
-    private string FaceModel(string name = "faces", double tiltHalfTurns = 0.0)
+    private string FaceModel(string name = "faces", double tiltHalfTurns = 0.0, bool everywhere = false, bool reflected = false)
     {
         Directory.CreateDirectory(_root);
         var path = Path.Combine(_root, $"{name}.json");
         var tilt = tiltHalfTurns != 0.0 ? $"\"tiltHalfTurns\": {Q(tiltHalfTurns, "1")}," : string.Empty;
+
+        // A field-free element that fills all space, so no point is outside every element.
+        var free = everywhere
+            ? ", { \"type\": \"uniform\", \"field\": { \"value\": [0, 0, 0], \"unit\": \"V/m\" } }"
+            : string.Empty;
 
         File.WriteAllText(path, $$"""
         {
@@ -88,6 +93,7 @@ public sealed class ProbeDomainTests : IDisposable
               "type": "solved2d",
               "solve": {
                 {{tilt}}
+                {{(reflected ? $"\"reflectAboutX\": {Q(0.3, "mm")}," : string.Empty)}}
                 "minX": {{Q(-12.7, "mm")}},
                 "maxX": {{Q(0.3, "mm")}},
                 "minY": {{Q(0, "mm")}},
@@ -108,7 +114,7 @@ public sealed class ProbeDomainTests : IDisposable
                   }
                 ]
               }
-            }
+            }{{free}}
           ],
           "detector": {
             "planePoint": { "value": [0.2, 0, 0], "unit": "mm" },
@@ -289,6 +295,40 @@ public sealed class ProbeDomainTests : IDisposable
         Assert.Contains("probe.outside-domain", Codes(document));
     }
 
+    /// <summary>
+    /// A cross-section both tilted and reflected runs, probes and draws: its conductor leaves
+    /// stand through the tilt, and the reflected one's mirrored plate is where the mirror puts it.
+    /// </summary>
+    /// <remarks>
+    /// A reflected solve's declared half is gated metal, conductors with no field of their own,
+    /// and the tilt cast every leaf to a field to rotate it: every command reading such a model
+    /// exited 6 with an invalid cast.
+    /// </remarks>
+    [Fact]
+    public void ATiltedReflectedCrossSectionRunsProbesAndDraws()
+    {
+        var model = FaceModel("tilted-reflected", tiltHalfTurns: 0.05, reflected: true);
+
+        var (run, _, runErr) = Run("run", model, "--json", "--progress", "0", "--project", Path.Combine(_root, "run"));
+        Assert.True(run == 0, runErr);
+
+        // The plate's middle in the unrotated frame and its mirror image about x = 0.3 mm, both
+        // turned into the world: each inside its conductor, the same potential.
+        var cos = Math.Cos(0.05 * Math.PI);
+        var sin = Math.Sin(0.05 * Math.PI);
+        Vec3 World(double x, double y) => new(x * cos, y, -x * sin);
+
+        var probe = FieldProbe.Open(model);
+        var plate = probe.At(0, World(-6.0, 4.5), 0.0);
+        var image = probe.At(1, World(6.6, 4.5), 0.0);
+        Assert.Equal(plate.Conductor, image.Conductor);
+        Assert.NotNull(plate.Conductor);
+        Assert.Equal(plate.PotentialV!.Value, image.PotentialV!.Value, 9);
+
+        var (draw, _, drawErr) = Run("render", "surface", model, "--samples", "41", "--dry-run", "--json");
+        Assert.True(draw == 0, drawErr);
+    }
+
     [Fact]
     public void ATiltedCrossSectionIsCheckedInItsOwnFrameAndBoxedByItsRotatedExtent()
     {
@@ -310,6 +350,39 @@ public sealed class ProbeDomainTests : IDisposable
         Assert.Equal("ok", inside.Status);
     }
 
+    /// <summary>
+    /// A tilted cross-section's conductors are where the tilt puts them: a point in the turned
+    /// plate is inside it, though the plate as declared, unturned, does not reach it.
+    /// </summary>
+    /// <remarks>
+    /// The assembly hands out each conductor's shape with the solve that holds it, and a shape
+    /// has to stand where its element does - through the same rotation the field is seen through.
+    /// </remarks>
+    [Fact]
+    public void ATiltedCrossSectionsConductorsAreWhereTheTiltPutsThem()
+    {
+        // Forty-five degrees about the model's own tilt axis, asked of the model.
+        var probe = FieldProbe.Open(FaceModel("turned", tiltHalfTurns: 0.25));
+        var solve = probe.Model.Fields[0].Solve!;
+        var tilt = new Einzel.Fields.RotatedField(
+            Einzel.Fields.FieldFreeSpace.Instance, solve.TiltHalfTurns, solve.TiltCentreX, solve.TiltCentreZ);
+
+        static Vec3 Mm(Vec3 metres) => new(metres.X * 1e3, metres.Y * 1e3, metres.Z * 1e3);
+
+        // The plate spans x from -8 to -4 mm and y from 3 to 6 mm in its own frame, and runs
+        // along that frame's z. A point on its mid-line, turned into the world, where the plate
+        // as declared - a slab along the world's z - does not reach.
+        var middle = Enumerable.Range(-20, 41)
+            .Select(k => Mm(tilt.FromLocal(new Vec3(-6.0e-3, 4.5e-3, k * 1.0e-3))))
+            .First(world => world.X is < -9.0 or > -3.0);
+
+        var turned = probe.At(0, middle, 0.0);
+
+        Assert.Equal(ProbeStatus.InsideConductor, turned.Status);
+        Assert.Equal("plate", turned.Conductor);
+        Assert.Equal(-1.5, turned.ConductorDistanceMm!.Value, 9);
+    }
+
     [Fact]
     public void OutsideEveryDomainWinsOverInsideADeclaredConductor()
     {
@@ -326,6 +399,139 @@ public sealed class ProbeDomainTests : IDisposable
             .Single(w => w.GetProperty("code").GetString() == "probe.outside-domain")
             .GetProperty("message").GetString()!;
         Assert.Contains("not necessarily zero", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A point in a conductor's declared shape past the edge of its solve is outside the domain
+    /// even where another element fills all space - never ok - and says which shape it is in,
+    /// through the probe, a surface and the composite export alike.
+    /// </summary>
+    /// <remarks>
+    /// The post runs out through the solve's grounded top face. With an unbounded element beside
+    /// the solve, no point is outside every element, so the rule that a conductor counts only
+    /// where its solve holds it made the point inside the post's declared shape plain "ok", with
+    /// the note only on a probe row: a surface or the export counted metal as free space.
+    /// </remarks>
+    [Fact]
+    public void ADeclaredConductorPastItsSolveIsOutsideTheDomainWhateverElseCoversIt()
+    {
+        var model = FaceModel("past", everywhere: true);
+
+        using var document = Probe(model, "--at-mm", "-1.5,11,0");
+        var row = Row(document);
+
+        Assert.Equal("outside-domain", row.GetProperty("status").GetString());
+        Assert.Contains("runs past the edge of its solve", row.GetProperty("note").GetString(), StringComparison.Ordinal);
+
+        // Free space beside it, in the same unbounded element and past the same face, is ok.
+        using var beside = Probe(model, "--at-mm", "-6,11,0");
+        Assert.Equal("ok", Row(beside).GetProperty("status").GetString());
+
+        // A surface's path, which asks for no name.
+        var probe = FieldProbe.Open(model);
+        var point = FieldProbe.MillimetresToMetres(new Vec3(-1.5, 11.0, 0.0));
+        Assert.Equal(ProbeStatus.OutsideDomain, probe.SamplePotential(in point, 0.0, false, out _, out _, out _, out _, out _));
+        Assert.Equal(ProbeStatus.OutsideDomain, probe.Sample(in point, 0.0, out _, out _));
+
+        // The export over a box reaching past the face counts those nodes as outside.
+        var vti = Export(model, "--box-mm", "-3,8,0,0,12,0", "--step-mm", "0.5");
+        Assert.Contains("probe.outside-domain", vti, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A reflected solve whose plane lies inside its own box overlaps its image, and the range the
+    /// potential can take is the sum of the two halves', not one half's.
+    /// </summary>
+    [Fact]
+    public void AnOverlappingReflectedSolveStatesTheRangeOfTheSum()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Template("example", "slit-transmission")))!;
+        var solve = node["fields"]![0]!["solve"]!;
+        solve["electrodes"]![0]!["potential"]!["value"] = 40.0;
+        solve["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("{ \"value\": 15, \"unit\": \"mm\" }");
+
+        var path = Path.Combine(_root, "overlap.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        var probe = FieldProbe.Open(path);
+
+        Assert.Equal((0.0, 80.0), probe.AppliedRange(0.0, cycleMean: false));
+
+        // Per point, doubled only where both halves answer: the declared box is -20 to 20 mm and
+        // its image 10 to 50 mm, so they overlap from 10 to 20 mm. Doubled everywhere, an
+        // overshoot past 40 V beside the jaw at x = 0 went unflagged under a bound of 80 V.
+        Assert.Equal((0.0, 40.0), probe.AppliedRangeAt(FieldProbe.MillimetresToMetres(new Vec3(-15.0, 5.0, 0.0)), 0.0, cycleMean: false));
+        Assert.Equal((0.0, 80.0), probe.AppliedRangeAt(FieldProbe.MillimetresToMetres(new Vec3(12.0, 5.0, 0.0)), 0.0, cycleMean: false));
+        Assert.Equal((0.0, 40.0), probe.AppliedRangeAt(FieldProbe.MillimetresToMetres(new Vec3(40.0, 5.0, 0.0)), 0.0, cycleMean: false));
+        Assert.Equal((0.0, 0.0), probe.AppliedRangeAt(FieldProbe.MillimetresToMetres(new Vec3(70.0, 5.0, 0.0)), 0.0, cycleMean: false));
+
+        // And the surface holds each node to its own bound.
+        var (surface, _, _) = SurfaceCommand.Sample(path, new SurfaceRequest(Plane: "xy", BoxMm: [-19, -9, 49, 9], Samples: 69));
+        Assert.Equal(surface.Values.Count, surface.NodeHighest!.Count);
+        Assert.Contains(40.0, surface.NodeHighest);
+        Assert.Contains(80.0, surface.NodeHighest);
+
+        // The control: the plane on the box's face is a union, and the range is one half's.
+        solve["reflectAboutX"] = System.Text.Json.Nodes.JsonNode.Parse("{ \"value\": 20, \"unit\": \"mm\" }");
+        File.WriteAllText(path, node.ToJsonString());
+        Assert.Equal((0.0, 40.0), FieldProbe.Open(path).AppliedRange(0.0, cycleMean: false));
+    }
+
+    /// <summary>
+    /// Two solves side by side are never both answering at one point, so the range is the wider of
+    /// the two, not their sum; two that overlap are summed.
+    /// </summary>
+    [Fact]
+    public void DisjointElementsTakeTheUnionOfTheirRanges()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Template("example", "slit-transmission")))!;
+        var fields = node["fields"]!.AsArray();
+        var template = fields[0]!.DeepClone();
+        fields.Clear();
+
+        foreach (var offset in new[] { 0.0, 50.0 })
+        {
+            var solve = template.DeepClone();
+            solve["solve"]!["minX"]!["value"] = -20.0 + offset;
+            solve["solve"]!["maxX"]!["value"] = 20.0 + offset;
+            foreach (var plate in solve["solve"]!["electrodes"]!.AsArray())
+            {
+                plate!["potential"]!["value"] = 1000.0;
+                plate["minX"]!["value"] = offset;
+                plate["maxX"]!["value"] = 1.0 + offset;
+            }
+
+            fields.Add(solve);
+        }
+
+        node["detector"]!["planePoint"]!["value"] = System.Text.Json.Nodes.JsonNode.Parse("[69, 0, 0]");
+        var path = Path.Combine(_root, "stages.json");
+        File.WriteAllText(path, node.ToJsonString());
+
+        Assert.Equal((0.0, 1000.0), FieldProbe.Open(path).AppliedRange(0.0, cycleMean: false));
+
+        // The control: moved to overlap, they are summed.
+        fields[1]!["solve"]!["minX"]!["value"] = 10.0;
+        fields[1]!["solve"]!["maxX"]!["value"] = 70.0;
+        File.WriteAllText(path, node.ToJsonString());
+        Assert.Equal((0.0, 2000.0), FieldProbe.Open(path).AppliedRange(0.0, cycleMean: false));
+    }
+
+    /// <summary>
+    /// A tilted cross-section's leaves stand through the element's own rotation - one built, and
+    /// shared - rather than through further rotations built from the same arguments.
+    /// </summary>
+    [Fact]
+    public void ATiltedElementsLeavesShareItsRotation()
+    {
+        var model = FieldProbe.Open(FaceModel("tilted-share", tiltHalfTurns: 0.01)).Model;
+        var (_, _, leaves) = Einzel.Fields.FieldAssembly.BuildMapped(model);
+
+        Assert.NotEmpty(leaves);
+        Assert.All(leaves, l => Assert.NotNull(l.Tilt));
+        Assert.All(leaves, l => Assert.Same(l.Tilt, ((Einzel.Fields.RotatedConductors)l.Shape).Rotation));
+        Assert.All(leaves, l => Assert.Equal(0.01, l.Tilt!.HalfTurns));
+        Assert.All(leaves, l => Assert.Same(leaves[0].Tilt, l.Tilt));
     }
 
     [Fact]
