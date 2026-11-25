@@ -1656,6 +1656,19 @@ public static class ModelValidator
         var elapsed = 0.0;
         var declared = Declared(document, errors, out path);
 
+        // EACH PHASE'S SURFACE RESOLVED AGAINST ITS OWN ERRORS. The parameter surface refuses to
+        // resolve into a list that already holds an error - any error, from anywhere - so a phase
+        // after one mistake, or a phase whose own duration was just refused, resolved to nothing
+        // and was skipped with its set, its ramp and its mode unchecked. Its own failures still
+        // join the document's.
+        IReadOnlyDictionary<string, Quantity>? Resolved(IReadOnlyDictionary<string, Quantity> set)
+        {
+            var own = new List<EinzelError>();
+            var surface = restage(set, own);
+            errors.AddRange(own);
+            return surface;
+        }
+
         if (declared is null)
         {
             return phases;
@@ -1715,7 +1728,12 @@ public static class ModelValidator
             var before = elapsed;
             elapsed = ends;
 
-            if (!(length >= Core.Numerics.IntegrationLimits.MinimumStepSeconds))
+            // Refused, and the rest of the phase still checked: a document with a phase too short
+            // and a mistake in its set, its ramp or its mode has two mistakes, and reporting one
+            // makes it take two rounds to fix. Kept out of the schedule at the end.
+            var tooShort = !(length >= Core.Numerics.IntegrationLimits.MinimumStepSeconds);
+
+            if (tooShort)
             {
                 errors.Add(new EinzelError
                 {
@@ -1731,8 +1749,6 @@ public static class ModelValidator
                     Suggestion = "make the phase long enough to be resolved against the time before "
                         + "it, or remove it",
                 });
-
-                continue;
             }
 
             var set = new Dictionary<string, Quantity>(StringComparer.Ordinal);
@@ -1773,7 +1789,7 @@ public static class ModelValidator
                 }
             }
 
-            var surface = restage(set, errors);
+            var surface = Resolved(set);
 
             if (surface is null)
             {
@@ -1853,8 +1869,8 @@ public static class ModelValidator
                 {
                     continue;
                 }
-                endSurface = restage(endSet, errors);
-                midSurface = restage(midSet, errors);
+                endSurface = Resolved(endSet);
+                midSurface = Resolved(midSet);
                 if (endSurface is null || midSurface is null)
                 {
                     continue;
@@ -1873,6 +1889,11 @@ public static class ModelValidator
                         + "what a phase does with anything it does not name",
                 });
 
+                continue;
+            }
+
+            if (tooShort)
+            {
                 continue;
             }
 

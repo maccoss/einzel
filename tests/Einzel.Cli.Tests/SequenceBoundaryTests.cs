@@ -132,6 +132,30 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
         Assert.Contains("/sequence/1/duration", paths);
     }
 
+    /// <summary>
+    /// A phase refused as too short to resolve still has the rest of it checked, so a mistake in
+    /// its mode is reported in the same round.
+    /// </summary>
+    [Fact]
+    public void APhaseTooShortStillHasItsModeChecked()
+    {
+        var path = Model("""
+            [ { "name": "hold", "duration": { "value": 3, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 0, "unit": "V/m" } } },
+              { "name": "blip", "duration": { "value": 1e-30, "unit": "us" }, "mode": "hover", "set": { "pushField": { "value": 0, "unit": "V/m" } } } ]
+            """);
+
+        var (exit, stdout, stderr) = Run("validate", path, "--json");
+
+        output.WriteLine($"exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+        Assert.Equal(1, exit);
+
+        var paths = JsonNode.Parse(stdout)!["errors"]!.AsArray().Select(e => e!["path"]!.GetValue<string>()).ToList();
+
+        Assert.Contains("/sequence/1/duration", paths);
+        Assert.Contains("/sequence/1/mode", paths);
+    }
+
     /// <summary>A duration that is not a finite number is refused as not finite, at the duration.</summary>
     /// <remarks>
     /// 1e306 hours is a finite number of hours and infinitely many seconds: the document's value is

@@ -501,6 +501,11 @@ become a feature release without being renamed twice.
   smallest step is reached rather than ending the flight.
 - **A space-charge packet lands on a sequence switch** as a single ion does, where it took
   dozens of refused steps at each switch and crossed it on the smallest step.
+- **A rectangular drive whose edge lies on a sequence switch is landed on** without a run of
+  refused steps, and a field held at an operating point is one state on both sides of every
+  boundary.
+- **Validation reports every mistake in a sequence's phases in one round**, where a phase after
+  the first mistake had its set, ramp and mode left unchecked.
 - **A phase duration that converts to infinity is refused as not finite**, and a phase refused
   for another reason still counts toward the next phase's start.
 - **`einzel estimate` does not solve a dear model at its declared resolution to cost a pilot**,

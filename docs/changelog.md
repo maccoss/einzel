@@ -4735,8 +4735,9 @@ Two findings from Stage 1 that bear on the spec:
   windows, as the allocation tests here already do, and still requires zero.
 
   **An eighteenth review, landed after the merge.** A study over a sequenced model now bills what one evaluation flies.
-  A figure read off the sequenced run (`transitTime`, `mobilityResolvingPower`, `radialSpread`,
-  `FiguresOfMerit.ReadsTheSequencedRun`, held to the source by a test) is a whole sequenced run
+  A figure read off the sequenced run (`transitTime`, `mobilityResolvingPower`,
+  `FiguresOfMerit.ReadsTheSequencedRun`, held to the source by a test; `radialSpread` refuses a
+  sequenced model) is a whole sequenced run
   and flies the sequence's cloud; under space charge that is one packet, billed as the model's
   lockstep cost and not as a thousand independent flights. Any other figure flies its own ions
   outside the sequence - `flightTime` on a 2,000-ion sequenced cloud flies its three-rung ladder,
@@ -4848,3 +4849,21 @@ Two findings from Stage 1 that bear on the spec:
   machine's while its solve came out a third. They are now taken interleaved, round by round,
   cheapest of seven: **0.18 solves** as the code stands, **1.27** with the solve put back in the
   member loop.
+
+  **The third review: a held field had two states, and a rectangular edge had one side.** A field
+  held at an operating point is one state at every instant - that is what holding it is for - but
+  asked from before a switch, the sequenced and the staged solved field gave the state ending
+  there, so a field held on a boundary answered with two states; and a held field still reported
+  the switches it no longer has. Both now ignore "before" and report no switch when held. And every
+  waveform's "from before" was the value at the instant, which for a rectangular wave on its edge
+  is the level after it: a 1 MHz square wave whose edge lies on a stage switch took **27 refused
+  steps** there and takes **0**. `RfWaveform.Before` is the left limit, and the oscillating uniform
+  field, the ideal quadrupole and the staged solve's drive terms ask it. A leg's switches are read
+  the first time they are asked for rather than when the leg is made - the ramped diffusive path
+  makes a leg every density step and asks it nothing, and making one went from **3,216 bytes to
+  40**, the leg itself. `radialSpread` is no longer counted as reading the sequenced run: it
+  refuses a sequenced model. The estimate's declared-solve budget charges one solve per basis
+  channel. And a phase refused as too short still has its set, ramp and mode checked - which
+  needed each phase's parameters resolved against its own errors, since the parameter surface
+  refuses to resolve into a list that already holds any error at all, so every phase after a first
+  mistake was silently skipped.

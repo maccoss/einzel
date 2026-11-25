@@ -204,10 +204,11 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
         var inner = new CountingSwitches(new SequencedField(
             ends.Select(_ => UniformField.Create(new Vec3(1.0, 0.0, 0.0))).ToArray(), ends));
         var shifted = new TimeShiftedField(inner, 3.5e-6);
-        var asked = inner.Asked;
 
+        // The first query reads the leg's switches; every one after it reads them from the leg.
         var total = 0.0;
         total += shifted.NextSwitchAfter(0.0) + shifted.ElectricFieldAt(Vec3.Zero, 1e-6).X;
+        var asked = inner.Asked;
 
         var before = GC.GetAllocatedBytesForCurrentThread();
 
@@ -225,6 +226,53 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
 
         Assert.Equal(asked, inner.Asked);
         Assert.Equal(0, allocated);
+    }
+
+    /// <summary>
+    /// Making a leg allocates the leg and nothing else, and a leg whose field reports no switch
+    /// allocates nothing to answer that it has none.
+    /// </summary>
+    /// <remarks>
+    /// The ramped diffusive path makes a leg at every density step and at once holds it at its
+    /// operating point, which makes another; the first is never asked anything, and the held one's
+    /// field has no switch. Reading the switches when the leg was made scanned the instrument
+    /// and allocated two arrays per leg, per step.
+    /// </remarks>
+    [Fact]
+    public void MakingALegAllocatesOnlyTheLeg()
+    {
+        var ends = Enumerable.Range(1, 40).Select(k => k * 1e-6).ToArray();
+        var sequenced = new SequencedField(
+            ends.Select(_ => UniformField.Create(new Vec3(1.0, 0.0, 0.0))).ToArray(), ends);
+        var oscillating = OscillatingUniformField.Create(new Vec3(1.0, 0.0, 0.0), Core.Units.Quantity.From(1.0, "MHz"));
+
+        _ = new TimeShiftedField(sequenced, 1e-6);
+        _ = new TimeShiftedField(oscillating, 1e-6).NextSwitchAfter(0.0);
+
+        const int legs = 1000;
+        var total = 0.0;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var k = 0; k < legs; k++)
+        {
+            total += new TimeShiftedField(sequenced, (k + 1) * 1e-9).OffsetSeconds;
+        }
+
+        var made = (GC.GetAllocatedBytesForCurrentThread() - before) / (double)legs;
+        before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var k = 0; k < legs; k++)
+        {
+            total += new TimeShiftedField(oscillating, (k + 1) * 1e-9).NextSwitchAfter(0.0);
+        }
+
+        var asked = (GC.GetAllocatedBytesForCurrentThread() - before) / (double)legs;
+
+        output.WriteLine($"{made:F0} bytes a leg made, {asked:F0} bytes a switchless leg asked ({total:G3})");
+
+        // The leg itself: a header, two references and an offset.
+        Assert.True(made <= 48, $"{made:F0} bytes to make a leg");
+        Assert.True(asked <= 48, $"{asked:F0} bytes to make a switchless leg and ask it");
     }
 
     private static double Step(double value, int ulps)

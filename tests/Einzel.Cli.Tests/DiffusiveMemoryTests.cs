@@ -339,9 +339,12 @@ public sealed class DiffusiveMemoryTests(MeasuredRuns runs, ITestOutputHelper ou
 
         var source = File.ReadAllText(Path.Combine(root, "src", "Einzel.Commands", "FiguresOfMerit.cs"));
 
-        // Every method whose body reads the run, by name.
+        // Every method whose body reads the run, by name - less those that refuse a sequenced
+        // model before reading it, which read a plain run and never walk a sequence.
         var readers = System.Text.RegularExpressions.Regex
             .Matches(source, @"private static [^\(]+ (\w+)\((?:(?!\n    private static )[\s\S])*?DiffusiveRun\(model")
+            .Where(match => !System.Text.RegularExpressions.Regex.IsMatch(
+                match.Value, @"if \(model\.Phases\.Count > 0\)\s*\{[\s\S]*?throw new EinzelException"))
             .Select(match => match.Groups[1].Value)
             .Where(name => name != "DiffusiveRun")
             .ToHashSet();

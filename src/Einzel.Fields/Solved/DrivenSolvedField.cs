@@ -371,6 +371,12 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
     /// <inheritdoc/>
     public double NextSwitchAfter(double timeSeconds)
     {
+        // Held at an operating point it is one stage at every instant, and has no switch.
+        if (_operatingPoint is not null)
+        {
+            return double.PositiveInfinity;
+        }
+
         foreach (var boundary in _boundaries)
         {
             if (boundary > timeSeconds)
@@ -477,7 +483,11 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
         // on `timeSeconds`.
         var setting = _operatingPoint ?? timeSeconds;
 
-        var stage = _boundaries.Length == 0 ? -1 : before ? StageBefore(setting) : StageAt(setting);
+        // A HELD FIELD IS ONE STATE AT EVERY INSTANT, so there is no switch for it to be before:
+        // the stage is the one the operating point selects whichever side it is asked from. Only
+        // the drive's own phase, which is not held, still takes its left limit.
+        var stage = _boundaries.Length == 0 ? -1
+            : before && _operatingPoint is null ? StageBefore(setting) : StageAt(setting);
 
         var direct = stage < 0 ? _direct[channel] : _stageDirect[stage][channel];
         var harmonics = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];
@@ -502,7 +512,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
                 }
 
                 var amplitude = term.Amplitude + ((endHarmonics[k].Amplitude - term.Amplitude) * fraction);
-                ramped += amplitude * _waveforms[drive].At((_frequencies[drive] * timeSeconds) + term.Phase);
+                ramped += amplitude * Level(_waveforms[drive], (_frequencies[drive] * timeSeconds) + term.Phase, before);
             }
 
             return ramped;
@@ -524,11 +534,20 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded, IH
                 continue;
             }
 
-            total += term.Amplitude * _waveforms[drive].At((_frequencies[drive] * timeSeconds) + term.Phase);
+            total += term.Amplitude * Level(_waveforms[drive], (_frequencies[drive] * timeSeconds) + term.Phase, before);
         }
 
         return total;
     }
+
+    /// <summary>A drive's level at a phase, or its left limit there.</summary>
+    /// <remarks>
+    /// The left limit matters only for a rectangular wave whose edge lies on the switch a step
+    /// ends on: that step belongs to the level ending there, as it belongs to the stage ending
+    /// there. Everywhere else the two are the same number.
+    /// </remarks>
+    private static double Level(RfWaveform waveform, double phase, bool before) =>
+        before ? waveform.Before(phase) : waveform.At(phase);
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) => Field(in position, timeSeconds, before: false);

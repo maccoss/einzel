@@ -139,6 +139,9 @@ public sealed class SequencedField : ITimeVaryingField
     /// <returns>The state.</returns>
     private IElectrostaticField At(double timeSeconds, bool before)
     {
+        // A held field is one state at every instant: the operating point selects it, and there
+        // is no switch to be before.
+        before &= _operatingPoint is null;
         timeSeconds = _operatingPoint ?? timeSeconds;
 
         for (var i = 0; i < _boundaries.Count; i++)
@@ -338,6 +341,12 @@ public sealed class SequencedField : ITimeVaryingField
     /// </remarks>
     public double NextSwitchAfter(double timeSeconds)
     {
+        // Held at an operating point it is one state at every instant, and has no switch.
+        if (_operatingPoint is not null)
+        {
+            return double.PositiveInfinity;
+        }
+
         foreach (var boundary in _boundaries)
         {
             if (boundary > timeSeconds)

@@ -244,12 +244,28 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     }
 
     /// <inheritdoc/>
-    /// <remarks>Continuous in time, so the same from either side of any instant.</remarks>
-    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds) => ElectricFieldAt(in position, switchSeconds);
+    /// <remarks>
+    /// The drive's left limit: the field at the instant for a sinusoid, and the level ending
+    /// there where a rectangular wave's edge lies on the switch.
+    /// </remarks>
+    public Vec3 ElectricFieldBefore(in Vec3 position, double switchSeconds)
+    {
+        var (u, v) = Transverse(in position);
+        var scale = 2.0 * DriveBefore(switchSeconds) / _inscribedRadiusSquared;
+        return FromTransverse(-scale * u, scale * v);
+    }
 
     /// <inheritdoc/>
-    /// <remarks>Continuous in time, so the same from either side of any instant.</remarks>
-    public double PotentialBefore(in Vec3 position, double switchSeconds) => PotentialAt(in position, switchSeconds);
+    /// <remarks>The drive's left limit, as for the field.</remarks>
+    public double PotentialBefore(in Vec3 position, double switchSeconds)
+    {
+        var (u, v) = Transverse(in position);
+        return DriveBefore(switchSeconds) * ((u * u) - (v * v)) / _inscribedRadiusSquared;
+    }
+
+    // The potential on the x pair as an instant is approached from before.
+    private double DriveBefore(double timeSeconds) =>
+        DirectVolts + (AmplitudeVolts * Waveform.Before(AngularFrequency * timeSeconds / (2.0 * Math.PI)));
 
     /// <inheritdoc/>
     public double PotentialAt(in Vec3 position, double timeSeconds)

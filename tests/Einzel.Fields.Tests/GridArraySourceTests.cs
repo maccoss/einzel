@@ -94,8 +94,8 @@ public sealed partial class GridArraySourceTests(ITestOutputHelper output)
         // the size of the grid divided by 512, which is the size of a grid, and are left as they
         // are: read at, they would be a reading a block for storage that is in the bound already.
         ("Einzel.Fields/Solved/GeometryBuilder3D.cs", "GeometryBuilder3D.Candidates", "new List<int>?[blocksX * blocksY * blocksZ]", 1, "one reference a block of 512 nodes"),
-        ("Einzel.Fields/TimeShiftedField.cs", "TimeShiftedField.Switches", "boundaries.ToArray()", 1, "one entry a sequencer switch, at most MaximumHeldSwitches"),
-        ("Einzel.Fields/TimeShiftedField.cs", "TimeShiftedField.Switches", "new double[held.Length]", 1, "one entry a sequencer switch, at most MaximumHeldSwitches"),
+        ("Einzel.Fields/TimeShiftedField.cs", "TimeShiftedField.Read", "boundaries.ToArray()", 1, "one entry a sequencer switch, at most MaximumHeldSwitches"),
+        ("Einzel.Fields/TimeShiftedField.cs", "TimeShiftedField.Read", "new double[held.Length]", 1, "one entry a sequencer switch, at most MaximumHeldSwitches"),
         ("Einzel.Fields/Solved/GeometryBuilder3D.cs", "GeometryBuilder3D.Candidates", "new int[lists.Length][]", 1, "one reference a block of 512 nodes"),
         ("Einzel.Fields/Solved/GeometryBuilder3D.cs", "GeometryBuilder3D.Candidates", "[.. list]", 1, "one index an electrode near the block: the loops round its Add choose the block, they do not fill one list"),
 

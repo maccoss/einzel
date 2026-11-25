@@ -685,6 +685,32 @@ public sealed class EstimateSpansTests(ITestOutputHelper output) : IDisposable
         Assert.DoesNotContain("FLOOR", DeclaredPart(outcome.Basis), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// What a declared-resolution solve is estimated to cost counts one solve per basis channel,
+    /// which a driven geometry has more than one of.
+    /// </summary>
+    /// <remarks>
+    /// The funnel's RF and its DC chain put the rings up and down in different proportions, so
+    /// they are two patterns and two solves over the same mesh; one solve per element billed half
+    /// of it.
+    /// </remarks>
+    [Fact]
+    public void ADeclaredSolveIsChargedPerBasisChannel()
+    {
+        var document = Einzel.Library.DeviceTemplates.Read("ion-funnel");
+        var model = Core.Model.ModelValidator.Validate(Io.ModelJson.Parse(document)).Model!;
+        var plane = model.Fields.Single(f => f.Solve is not null).Solve!;
+        var channels = Fields.Solved.GeometryBuilder.SolveChannels(plane).Count;
+        var nodes = Fields.Solved.GeometryBuilder.BuildGrid(plane).NodeCount;
+
+        var seconds = EstimateCommand.DeclaredSolveSeconds(model, 1e6, 1e6);
+
+        output.WriteLine($"{nodes:N0} nodes, {channels} channels: {seconds:G6} s at a second a node");
+
+        Assert.True(channels > 1, "the geometry must solve more than one channel for this to discriminate");
+        Assert.Equal((double)nodes * channels, seconds, 1e-9 * nodes * channels);
+    }
+
     // The basis from where it says the pilot was flown as declared.
     private static string DeclaredPart(string basis)
     {

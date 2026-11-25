@@ -483,23 +483,31 @@ public static class EstimateCommand
     /// <param name="model">The validated model.</param>
     /// <param name="planeSecondsPerMegaNode">The plane rate measured or documented above.</param>
     /// <param name="volumeSecondsPerMegaNode">The volume rate.</param>
-    /// <returns>The sum over the solved elements of rate times nodes; arithmetic on the boxes, nothing solved.</returns>
+    /// <returns>
+    /// The sum over the solved elements of rate times nodes times basis channels; arithmetic on
+    /// the boxes and the drives, nothing solved.
+    /// </returns>
+    /// <remarks>
+    /// A driven or staged geometry is one solve per basis channel, each over the whole mesh, so the
+    /// channel count multiplies the cost - taken from the same statement the memory figure is built
+    /// from (<see cref="Plans"/>), which decomposes the drives and the stages once.
+    /// </remarks>
     internal static double DeclaredSolveSeconds(
         CompiledModel model, double planeSecondsPerMegaNode, double volumeSecondsPerMegaNode)
     {
         var total = 0.0;
+        var plans = Plans(model);
 
-        foreach (var element in model.Fields)
+        for (var index = 0; index < model.Fields.Count; index++)
         {
-            if (element.Solve3D is { } volume)
+            if (plans[index] is not { } plan)
             {
-                total += volumeSecondsPerMegaNode
-                    * Fields.Solved.GeometryBuilder3D.BuildGrid(Declared(volume)).NodeCount / 1e6;
+                continue;
             }
-            else if (element.Solve is { } plane)
-            {
-                total += planeSecondsPerMegaNode * GeometryBuilder.BuildGrid(plane).NodeCount / 1e6;
-            }
+
+            var rate = model.Fields[index].Solve3D is not null ? volumeSecondsPerMegaNode : planeSecondsPerMegaNode;
+
+            total += rate * plan.Nodes * Math.Max(1, plan.Channels) / 1e6;
         }
 
         return total;

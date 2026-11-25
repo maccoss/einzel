@@ -32,11 +32,12 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     private readonly double _offsetSeconds;
 
     // The switches this leg can meet, on the instrument's clock and on the leg's, in order: read
-    // once here so a query is a binary search rather than sixteen decrements and a scan of the
-    // inner field's boundaries per stage. Null where the inner field reports more than this
-    // holds, and then a query scans as it always did.
-    private readonly double[]? _boundaries;
-    private readonly double[]? _reported;
+    // the first time a query needs them, so a query is a binary search rather than sixteen
+    // decrements and a scan of the inner field's boundaries per stage. Read lazily because the
+    // ramped diffusive path builds a leg at every density step and holds it at once, and the leg
+    // it builds is never asked; a held leg's inner field reports no switch, and reading none
+    // allocates nothing. Null until read.
+    private Switches? _switches;
 
     /// <summary>Wraps a field so t = 0 here is <paramref name="offsetSeconds"/> there.</summary>
     /// <param name="inner">The field as the instrument declares it.</param>
@@ -62,7 +63,31 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
 
         _inner = inner;
         _offsetSeconds = offsetSeconds;
-        (_boundaries, _reported) = Switches(inner, offsetSeconds);
+    }
+
+    /// <summary>A leg's switches on both clocks, in order, or neither where there are too many to hold.</summary>
+    /// <param name="Boundaries">Each switch on the instrument's clock, or null to scan.</param>
+    /// <param name="Reported">Each switch as the leg reports it, or null to scan.</param>
+    private sealed record Switches(double[]? Boundaries, double[]? Reported)
+    {
+        /// <summary>No switch at all: shared, so a leg that meets none allocates nothing.</summary>
+        public static readonly Switches None = new([], []);
+
+        /// <summary>More than are held: every query scans the inner field.</summary>
+        public static readonly Switches TooMany = new(null, null);
+    }
+
+    /// <summary>The leg's switches, read the first time they are asked for.</summary>
+    /// <remarks>
+    /// Thread-safe without a lock: two threads may both read them, and whichever publishes first
+    /// is kept - both read the same values from the same inner field.
+    /// </remarks>
+    private Switches Held => Volatile.Read(ref _switches) ?? Publish();
+
+    private Switches Publish()
+    {
+        Interlocked.CompareExchange(ref _switches, Read(_inner, _offsetSeconds), null);
+        return _switches!;
     }
 
     /// <summary>The switches a leg from an offset can meet, or null where there are too many to hold.</summary>
@@ -73,16 +98,22 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// From the first boundary after a few ulps before the offset, which is the earliest any
     /// query starts from, since a leg's instants are never negative.
     /// </remarks>
-    private static (double[]? Boundaries, double[]? Reported) Switches(ITimeVaryingField inner, double offsetSeconds)
+    private static Switches Read(ITimeVaryingField inner, double offsetSeconds)
     {
-        var boundaries = new List<double>();
         var boundary = inner.NextSwitchAfter(Before(offsetSeconds));
+
+        if (!double.IsFinite(boundary))
+        {
+            return Switches.None;
+        }
+
+        var boundaries = new List<double>();
 
         while (double.IsFinite(boundary))
         {
             if (boundaries.Count == MaximumHeldSwitches)
             {
-                return (null, null);
+                return Switches.TooMany;
             }
 
             boundaries.Add(boundary);
@@ -104,7 +135,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
             reported[k] = held[k] - offsetSeconds;
         }
 
-        return (held, reported);
+        return new Switches(held, reported);
     }
 
     /// <summary>The most switches a leg holds; past this a query scans the inner field instead.</summary>
@@ -205,14 +236,16 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// </remarks>
     private double OnTheInstrument(double timeSeconds)
     {
-        if (_reported is { } held)
+        var switches = Held;
+
+        if (switches.Reported is { } held)
         {
             // The held switches in order: the first not below the instant is the only one that
             // can equal it, and a switch a few ulps or more before the instant is never equal.
             var at = FirstNotBelow(held, timeSeconds);
 
             return at < held.Length && held[at] == timeSeconds
-                ? _boundaries![at]
+                ? switches.Boundaries![at]
                 : timeSeconds + _offsetSeconds;
         }
 
@@ -338,7 +371,7 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
     /// </remarks>
     public double NextSwitchAfter(double timeSeconds)
     {
-        if (_reported is { } reported)
+        if (Held.Reported is { } reported)
         {
             var after = FirstAbove(reported, timeSeconds);
 

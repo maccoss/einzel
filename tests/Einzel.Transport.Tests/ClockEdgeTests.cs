@@ -106,6 +106,37 @@ public sealed class ClockEdgeTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A rectangular drive whose edge lies on a switch is landed on without a cascade: the step
+    /// ending there is asked the level it held, not the level after the edge.
+    /// </summary>
+    /// <remarks>
+    /// One megahertz at a half duty is high for the first half microsecond and the switch is at
+    /// 0.5 us, on the edge (1e6 times 5e-7 is 0.5 exactly). Asked the level after it, the last
+    /// stages saw the field reversed, the error estimate refused the step, and the next and the
+    /// next toward the switch.
+    /// </remarks>
+    [Fact]
+    public void ARectangularEdgeOnASwitchIsLandedOnWithoutACascade()
+    {
+        const double edge = 5e-7;
+        var drive = OscillatingUniformField.Create(
+            new Vec3(1e3, 0.0, 0.0), Core.Units.Quantity.From(1.0, "MHz"), new RfWaveform.Rectangular(0.5));
+        var field = new SequencedField([drive, Uniform(0.0)], [edge, 2 * edge]);
+
+        var flight = TrajectoryIntegrator.Integrate(
+            new PhaseState(Vec3.Zero, Vec3.Zero), Ion, field, new IntegrationSettings { MaximumFlightTime = 1.6 * edge });
+
+        var expected = Ion.ChargeSi / Ion.MassSi * 1e3 * edge;
+
+        output.WriteLine(
+            $"{flight.Outcome}: {flight.AcceptedSteps} accepted, {flight.RejectedSteps} refused, {flight.FinalState.Velocity.X:R} m/s against {expected:R}");
+
+        Assert.Equal(TrajectoryOutcome.MaximumFlightTimeReached, flight.Outcome);
+        Assert.True(flight.RejectedSteps <= 4, $"{flight.RejectedSteps} steps refused: a cascade at the edge");
+        Assert.Equal(expected, flight.FinalState.Velocity.X, 1e-9 * expected);
+    }
+
+    /// <summary>
     /// A step cut to a switch and then cut again by a collision ends where nothing changed, so the
     /// discontinuity measures read at its end are the next step's start.
     /// </summary>
