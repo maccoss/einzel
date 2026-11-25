@@ -767,12 +767,7 @@ public static class EstimateCommand
     /// </summary>
     /// <param name="pilot">What a pilot at a coarsening reports, or null to fly it.</param>
     /// <returns>What restores the pilots that were in force before, when disposed.</returns>
-    internal static IDisposable PilotsForTestBy(Func<double, Pilot?> pilot)
-    {
-        var before = ForcedPilot.Value;
-        ForcedPilot.Value = pilot;
-        return new Restore(before);
-    }
+    internal static IDisposable PilotsForTestBy(Func<double, Pilot?> pilot) => Override(ForcedPilot, pilot);
 
     /// <summary>
     /// Set within a test, through <see cref="PilotsForTestOverSpan"/>, to what a pilot over a span of
@@ -787,25 +782,30 @@ public static class EstimateCommand
     /// </summary>
     /// <param name="pilot">What a pilot over a span reports, or null to fly it.</param>
     /// <returns>What restores the pilots that were in force before, when disposed.</returns>
-    internal static IDisposable PilotsForTestOverSpan(Func<double, Pilot?> pilot)
+    internal static IDisposable PilotsForTestOverSpan(Func<double, Pilot?> pilot) => Override(ForcedPilotOverSpan, pilot);
+
+    /// <summary>Sets a test seam in the calling flow until disposed.</summary>
+    /// <typeparam name="T">What the seam holds.</typeparam>
+    /// <param name="slot">The seam.</param>
+    /// <param name="value">What to put in it.</param>
+    /// <returns>What puts back the value that was in force when it was set, nested or not.</returns>
+    private static Restoring<T> Override<T>(AsyncLocal<T?> slot, T? value)
+        where T : class
     {
-        var before = ForcedPilotOverSpan.Value;
-        ForcedPilotOverSpan.Value = pilot;
-        return new RestoreOverSpan(before);
+        var before = slot.Value;
+        slot.Value = value;
+        return new Restoring<T>(slot, before);
     }
 
-    private sealed class RestoreOverSpan(Func<double, Pilot?>? before) : IDisposable
-    {
-        /// <inheritdoc/>
-        public void Dispose() => ForcedPilotOverSpan.Value = before;
-    }
-
-    /// <summary>Puts back the pilots that were in force when the override was taken, nested or not.</summary>
+    /// <summary>Puts back what a test seam held when an override was taken.</summary>
+    /// <typeparam name="T">What the seam holds.</typeparam>
+    /// <param name="slot">The seam.</param>
     /// <param name="before">What was in force.</param>
-    private sealed class Restore(Func<double, Pilot?>? before) : IDisposable
+    private sealed class Restoring<T>(AsyncLocal<T?> slot, T? before) : IDisposable
+        where T : class
     {
         /// <inheritdoc/>
-        public void Dispose() => ForcedPilot.Value = before;
+        public void Dispose() => slot.Value = before;
     }
 
     /// <summary>The model with every solve coarsened, and its field solved once.</summary>

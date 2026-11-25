@@ -41,9 +41,10 @@ public sealed record IntegrationSettings
 
     /// <summary>
     /// Smallest permitted step, in seconds. Reaching it ends the run with
-    /// <see cref="TrajectoryOutcome.StepSizeUnderflow"/> rather than grinding.
+    /// <see cref="TrajectoryOutcome.StepSizeUnderflow"/> rather than grinding - except where what
+    /// is left is the flight's ceiling or a sequencer switch, which is then reached without a step.
     /// </summary>
-    public double MinimumStep { get; init; } = Core.Numerics.IntegrationLimits.MinimumStepSeconds;
+    public double MinimumStep { get; init; } = 1e-18;
 
     /// <summary>
     /// Step cap near a turning point, as a fraction of the time needed to change

@@ -349,6 +349,7 @@ public static class PacketIntegrator
 
             time = stepEnd;
             steps++;
+            var taken = step;
 
             if (collisions is not null)
             {
@@ -367,6 +368,16 @@ public static class PacketIntegrator
             Derivatives(
                 state, active, field, chargeToMass, interaction, time, scratch, work.Positions,
                 derivative, work.Parallel, ref imbalance);
+
+            // A step cut to a switch closer than the smallest step says nothing about the scale of
+            // the phase starting there, and growing from it - five-fold a step - would take dozens
+            // of steps to reach that scale again. The new phase starts from a proposal of its own,
+            // as a flight does and as the single-ion path does at such a switch.
+            if (endsOnSwitch && taken < settings.MinimumStep)
+            {
+                step = Math.Min(
+                    Math.Min(InitialStep(settings, derivative, state), resolutionCap), settings.MaximumStep);
+            }
         }
 
         var members = new PacketMember[count];

@@ -281,6 +281,38 @@ public static class FieldAssembly
         return (field, warnings);
     }
 
+    /// <summary>How many fields a flow of work has assembled, counted while a test asks.</summary>
+    internal sealed class Counter
+    {
+        /// <summary>The assemblies counted so far.</summary>
+        public int Builds;
+    }
+
+    // Set within a test, through CountBuildsForTest, and per flow so tests running in parallel each
+    // count only their own.
+    private static readonly AsyncLocal<Counter?> BuildCount = new();
+
+    /// <summary>Counts every field assembled in the calling flow, until disposed.</summary>
+    /// <param name="counter">The count, read after the work.</param>
+    /// <returns>What stops counting, and restores any count in force before.</returns>
+    /// <remarks>
+    /// What a cost test can assert that a stopwatch cannot: whether a sweep solves once or once per
+    /// member is a count, and a count does not depend on what else the machine is doing.
+    /// </remarks>
+    internal static IDisposable CountBuildsForTest(out Counter counter)
+    {
+        var before = BuildCount.Value;
+        counter = new Counter();
+        BuildCount.Value = counter;
+        return new RestoreCount(before);
+    }
+
+    private sealed class RestoreCount(Counter? before) : IDisposable
+    {
+        /// <inheritdoc/>
+        public void Dispose() => BuildCount.Value = before;
+    }
+
     /// <summary>
     /// Builds the field as <see cref="BuildReported"/> does, and hands out its conductor-bearing
     /// leaves: for every solved element, where its metal is, the solve that says what the metal
@@ -315,6 +347,11 @@ public static class FieldAssembly
         BuildMapped(CompiledModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
+
+        if (BuildCount.Value is { } counted)
+        {
+            Interlocked.Increment(ref counted.Builds);
+        }
 
         var elements = new List<IElectrostaticField>(model.Fields.Count);
         var leaves = new List<FieldLeaf>();

@@ -544,19 +544,11 @@ public static class TrajectoryIntegrator
             // reported, so the next switch asked for is the one after.
             //
             // Only where the sum missed: where it landed, the running sum is left exactly as it
-            // was, so every flight that never needed this is bit-identical.
-            if (endsOnSwitch && time.Total != switchAt)
-            {
-                time.Restart(switchAt);
-            }
-
-            // And onto the ceiling, whether or not the step also ended on a switch: a switch and
-            // the ceiling can be equal by difference from where the step started and still differ
-            // by an ulp, and a clock left on the switch is a flight that has not reached its time.
-            if (endsOnCeiling && time.Total < settings.MaximumFlightTime)
-            {
-                time.Restart(settings.MaximumFlightTime);
-            }
+            // was, so every flight that never needed this is bit-identical. And onto the ceiling,
+            // whether or not the step also ended on a switch: a switch and the ceiling can be equal
+            // by difference from where the step started and still differ by an ulp, and a clock
+            // left on the switch is a flight that has not reached its time.
+            Land(ref time, endsOnSwitch, switchAt, endsOnCeiling, settings);
 
             state = candidate;
             derivative = candidateDerivative;

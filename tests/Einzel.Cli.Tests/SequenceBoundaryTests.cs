@@ -259,6 +259,46 @@ public sealed class SequenceBoundaryTests(ITestOutputHelper output) : IDisposabl
         Assert.Contains("assuming phase 0 lasts 1E-06 s", second["constraint"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 
+    /// <summary>A refused duration and a mistake in the same phase's set are reported in one round.</summary>
+    [Fact]
+    public void ARefusedDurationStillHasItsSetChecked()
+    {
+        var path = Model("""
+            [ { "name": "hold", "duration": { "value": -5, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "expression": "1" } } } ]
+            """);
+
+        var (exit, stdout, stderr) = Run("validate", path, "--json");
+
+        output.WriteLine($"exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+        var paths = JsonNode.Parse(stdout)!["errors"]!.AsArray().Select(e => e!["path"]!.GetValue<string>()).ToList();
+
+        Assert.Contains("/sequence/0/duration", paths);
+        Assert.Contains("/sequence/0/set/pushField", paths);
+    }
+
+    /// <summary>
+    /// One mistake on the parameter surface met by two phases is one error, and it names both.
+    /// </summary>
+    [Fact]
+    public void AMergedSurfaceMistakeNamesEveryPhaseThatMetIt()
+    {
+        var path = Model("""
+            [ { "name": "a", "duration": { "value": 1, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 1, "unit": "mm" } } },
+              { "name": "b", "duration": { "value": 1, "unit": "us" }, "mode": "diffusion", "set": { "pushField": { "value": 2, "unit": "mm" } } } ]
+            """);
+
+        var (exit, stdout, stderr) = Run("validate", path, "--json");
+
+        output.WriteLine($"exit {exit}: {stdout.Trim()} {stderr.Trim()}");
+
+        var merged = JsonNode.Parse(stdout)!["errors"]!.AsArray()
+            .Single(e => e!["path"]!.GetValue<string>() == "/parameters/pushField")!["constraint"]!.GetValue<string>();
+
+        Assert.Contains("/sequence/0", merged, StringComparison.Ordinal);
+        Assert.Contains("/sequence/1", merged, StringComparison.Ordinal);
+    }
+
     /// <summary>A duration that is not a finite number is refused as not finite, at the duration.</summary>
     /// <remarks>
     /// 1e306 hours is a finite number of hours and infinitely many seconds: the document's value is

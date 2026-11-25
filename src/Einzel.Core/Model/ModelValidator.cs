@@ -1662,17 +1662,35 @@ public static class ModelValidator
         // and was skipped with its set, its ramp and its mode unchecked. Its own failures still
         // join the document's - once each: a mistake on the parameter surface itself is met by
         // every phase that resolves it, and by a ramp's two ends again, and one mistake is one error.
-        IReadOnlyDictionary<string, Quantity>? Resolved(IReadOnlyDictionary<string, Quantity> set)
+        // But that error is at the parameter, so it names the phases that met it: which of them
+        // supplied the value is the thing to fix.
+        var surfaceErrors = new Dictionary<(string Code, string Path, string Constraint), (int Index, List<string> Phases)>();
+
+        IReadOnlyDictionary<string, Quantity>? Resolved(IReadOnlyDictionary<string, Quantity> set, string stagePath)
         {
             var own = new List<EinzelError>();
             var surface = restage(set, own);
 
             foreach (var error in own)
             {
-                if (!errors.Exists(e => e.Code == error.Code && e.Path == error.Path && e.Constraint == error.Constraint))
+                var key = (error.Code, error.Path ?? string.Empty, error.Constraint ?? string.Empty);
+
+                if (!surfaceErrors.TryGetValue(key, out var met))
                 {
+                    met = (errors.Count, new List<string>());
+                    surfaceErrors[key] = met;
                     errors.Add(error);
                 }
+
+                if (!met.Phases.Contains(stagePath))
+                {
+                    met.Phases.Add(stagePath);
+                }
+
+                errors[met.Index] = error with
+                {
+                    Constraint = $"{error.Constraint} - met by the phase{(met.Phases.Count == 1 ? string.Empty : "s")} at {string.Join(", ", met.Phases)}",
+                };
             }
 
             return surface;
@@ -1704,7 +1722,13 @@ public static class ModelValidator
                 NoParameters,
                 errors);
 
-            if (duration is null || !double.IsFinite(duration.Value.SiValue) || duration.Value.SiValue <= 0.0)
+            // A refused duration is reported and the rest of the phase - its set, its ramp, its mode
+            // - is still checked, so a document with both mistakes hears of both in one round. The
+            // phase is kept out of the schedule at the end, as one too short to resolve is.
+            var durationRefused = duration is null || !double.IsFinite(duration.Value.SiValue) || duration.Value.SiValue <= 0.0;
+            var tooShort = false;
+
+            if (durationRefused)
             {
                 if (duration is { } refused && double.IsFinite(refused.SiValue) && refused.SiValue < 0.0 && !unknown)
                 {
@@ -1733,9 +1757,9 @@ public static class ModelValidator
                         Suggestion = "give the stage a duration, for example {\"value\": 100, \"unit\": \"us\"}",
                     });
                 }
-
-                continue;
             }
+            else
+            {
 
             // IT MUST END AFTER IT STARTS, measured by the arithmetic the run itself uses: the
             // schedule and both sequenced fields add durations up from zero, and a leg is the
@@ -1752,7 +1776,7 @@ public static class ModelValidator
             // refusals, so the next phase's length is measured against the time it really starts
             // at - and so a refusal elsewhere in a phase cannot hide that the next one is too short
             // to resolve, or report one that is not.
-            var ends = elapsed + duration.Value.SiValue;
+            var ends = elapsed + duration!.Value.SiValue;
             var length = ends - elapsed;
             var before = elapsed;
             elapsed = ends;
@@ -1760,7 +1784,7 @@ public static class ModelValidator
             // Refused, and the rest of the phase still checked: a document with a phase of no
             // length and a mistake in its set, its ramp or its mode has two mistakes, and reporting
             // one makes it take two rounds to fix. Kept out of the schedule at the end.
-            var tooShort = !unknown && !(length > 0.0);
+            tooShort = !unknown && !(length > 0.0);
 
             if (tooShort)
             {
@@ -1776,6 +1800,7 @@ public static class ModelValidator
                     Suggestion = "make the phase long enough to be resolved against the time before "
                         + "it, or remove it",
                 });
+            }
             }
 
             var set = new Dictionary<string, Quantity>(StringComparer.Ordinal);
@@ -1816,7 +1841,7 @@ public static class ModelValidator
                 }
             }
 
-            var surface = Resolved(set);
+            var surface = Resolved(set, stagePath);
 
             if (surface is null)
             {
@@ -1896,8 +1921,8 @@ public static class ModelValidator
                 {
                     continue;
                 }
-                endSurface = Resolved(endSet);
-                midSurface = Resolved(midSet);
+                endSurface = Resolved(endSet, stagePath);
+                midSurface = Resolved(midSet, stagePath);
                 if (endSurface is null || midSurface is null)
                 {
                     continue;
@@ -1919,13 +1944,13 @@ public static class ModelValidator
                 continue;
             }
 
-            if (tooShort)
+            if (tooShort || durationRefused)
             {
                 continue;
             }
 
             phases.Add(new PhaseSurface(
-                name, duration.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface, ramps));
+                name, duration!.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface, ramps));
         }
 
         return phases;

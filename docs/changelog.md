@@ -4915,3 +4915,19 @@ Two findings from Stage 1 that bear on the spec:
   assumed. Every switch lookup shares one bisection (`SortedInstants`), held to the scans it
   replaced on boundaries, ulps either side and NaN. A trajectory leg is bounded at its phase's own
   end; `start + (end - start)` equals `end` for these, so that is clarity rather than a fix.
+
+  **The seventh review.** A phase whose duration is refused still has its set, ramp and mode
+  checked. A mistake on the parameter surface met by several phases is one error that names every
+  phase that met it. A switch past a leg's end that shares the leg's last instant with one before
+  it is no longer counted as a collapse the leg meets, and a first query past a window's worth of
+  switches reads from the instant itself, where it used to find no switch at all. A packet that
+  crosses a switch closer than the smallest step starts the next phase from a proposal of its own,
+  as a single ion does, rather than growing back from a tenth of an attosecond. The minimum step's
+  default lives in `IntegrationSettings` again; nothing else read the constant.
+
+  **And the sweep-cost test stopped timing.** It failed on Windows CI a second time, after the
+  round-two hardening, reading one more member at 15.5 ms against a 21.1 ms solve on a build that
+  solves once. Whether a sweep solves once or once per member is a count, so it now counts field
+  assemblies (`FieldAssembly.CountBuildsForTest`, per flow so parallel tests do not mix): one for
+  three members and one for twenty-one, against three and twenty-one with the solve back in the
+  loop. The timings are still printed, as information.

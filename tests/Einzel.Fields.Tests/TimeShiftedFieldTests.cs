@@ -420,6 +420,47 @@ public sealed class TimeShiftedFieldTests(ITestOutputHelper output)
         Assert.False(apart.HasCollapsedSwitches);
     }
 
+    /// <summary>
+    /// A switch past the leg's end that shares the leg's last instant with one before it is not a
+    /// collapse the leg meets, and is not said to be.
+    /// </summary>
+    [Fact]
+    public void ASwitchPastTheLegsEndIsNotACollapse()
+    {
+        const double first = 6.897330734315204e-07;
+        const double offset = 1.0822964451916893e-07;
+        var second = Math.BitIncrement(first);
+        var inner = new SequencedField(
+            [UniformField.Create(new Vec3(1.0, 0.0, 0.0)), UniformField.Create(new Vec3(2.0, 0.0, 0.0)), UniformField.Create(new Vec3(3.0, 0.0, 0.0))],
+            [first, second, 2e-6]);
+
+        // The leg ends at the first of the two: the second, an ulp later, is past it.
+        var leg = new TimeShiftedField(inner, offset, first);
+
+        _ = leg.NextSwitchAfter(0.0);
+
+        Assert.False(leg.HasCollapsedSwitches);
+    }
+
+    /// <summary>
+    /// A first query past a window's worth of switches is answered with the next switch, not
+    /// with no switch at all.
+    /// </summary>
+    [Fact]
+    public void AFirstQueryPastAWindowFindsTheNextSwitch()
+    {
+        const int phases = 10_000;
+        const double phase = 1e-6;
+        var ends = Enumerable.Range(1, phases).Select(k => k * phase).ToArray();
+        var level = UniformField.Create(new Vec3(1.0, 0.0, 0.0));
+        var inner = new SequencedField(ends.Select(_ => level).ToArray(), ends);
+        var leg = new TimeShiftedField(inner, 0.5 * phase);
+        var late = 6000.25 * phase;
+
+        Assert.Equal(ScannedNextSwitchAfter(inner, 0.5 * phase, late), leg.NextSwitchAfter(late));
+        Assert.True(double.IsFinite(leg.NextSwitchAfter(late)));
+    }
+
     /// <summary>A leg refuses an end before its start, and a missing field before anything else.</summary>
     [Fact]
     public void ALegsEndAndFieldAreChecked()

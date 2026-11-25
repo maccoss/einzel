@@ -181,6 +181,26 @@ public sealed class PacketSwitchLandingTests(ITestOutputHelper output)
         public double NextSwitchAfter(double timeSeconds) => inner.NextSwitchAfter(timeSeconds);
     }
 
+    /// <summary>
+    /// A switch closer than the smallest step does not leave the packet growing its step back from
+    /// a tenth of an attosecond: the phase starting there begins from a proposal of its own.
+    /// </summary>
+    [Fact]
+    public void ASubStepSwitchDoesNotStrandTheStep()
+    {
+        var launch = new[] { new PhaseState(Vec3.Zero, Vec3.Zero), new PhaseState(new Vec3(0.0, 1e-3, 0.0), new Vec3(5.0, 0.0, 0.0)) };
+        var settings = new IntegrationSettings { MaximumFlightTime = 5e-7 };
+
+        var switched = PacketIntegrator.Fly(
+            launch, Ion, new SequencedField([Uniform(1e3), Uniform(2e6)], [1e-19, 1e-6]), interaction: null, settings, Never);
+        var steady = PacketIntegrator.Fly(
+            launch, Ion, new SequencedField([Uniform(2e6)], [double.MaxValue]), interaction: null, settings, Never);
+
+        output.WriteLine($"{switched.Steps} steps across a 1e-19 s switch, {steady.Steps} without it");
+
+        Assert.True(switched.Steps - steady.Steps <= 3, $"{switched.Steps - steady.Steps} extra steps regaining the step's scale");
+    }
+
     // Counts the ordinary evaluations made within a femtosecond short of a declared switch.
     private sealed class Recording(ITimeVaryingField inner, double[] switches) : ITimeVaryingField
     {

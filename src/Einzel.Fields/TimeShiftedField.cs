@@ -128,8 +128,17 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
             return held;
         }
 
-        // The first window is read from the leg's start, which answers for every instant a leg has.
+        // The first window is read from the leg's start, which answers for every instant up to its
+        // last switch. One that does not reach the instant asked - a first query past a window's
+        // worth of switches - is read again from the instant itself, which always answers for it:
+        // a read does not stop before a switch past the instant it was read from.
         var read = Read(_inner, _offsetSeconds, _endsAtSeconds, held is null ? Math.Min(0.0, timeSeconds) : timeSeconds);
+
+        if (!read.Answers(timeSeconds))
+        {
+            read = Read(_inner, _offsetSeconds, _endsAtSeconds, timeSeconds);
+        }
+
         Volatile.Write(ref _window, read);
 
         if (read.Collapsed > 0)
@@ -180,11 +189,18 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
         while (true)
         {
             var at = boundary - offsetSeconds;
+            var merged = reported.Count > 0 && at == reported[^1];
 
-            if (reported.Count > 0 && at == reported[^1])
+            if (merged)
             {
                 last[^1] = boundary;
-                collapsed++;
+
+                // Counted only among the switches the leg can meet: one past its end that shares
+                // the leg's last instant with one before it is not a phase the leg skips.
+                if (boundary <= endsAtSeconds)
+                {
+                    collapsed++;
+                }
             }
             else
             {
@@ -195,8 +211,9 @@ public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
 
             // The first switch past the leg's end is the last it can be asked about; a window is
             // no more than a window, and the next is read when an instant passes it. Either way
-            // not before a switch past the instant read from, so the window answers for it.
-            if ((boundary > endsAtSeconds || reported.Count >= WindowSize) && at > fromSeconds)
+            // not before a switch past the instant read from, so the window answers for it - and
+            // only on a switch that began a new leg instant, so the last one held is a whole group.
+            if ((boundary > endsAtSeconds || reported.Count >= WindowSize) && at > fromSeconds && !merged)
             {
                 break;
             }

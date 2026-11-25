@@ -57,7 +57,9 @@ public sealed class SweepSolveCostTests(ITestOutputHelper output)
     /// 627.9 ms, seven times this workstation's 30 and 77 against a third of its 68 ms solve
     /// - so the marginal member read 0.98 solves against 0.04 here, on a build that does not
     /// solve per member (the same 0.04 on <c>main</c>). Taken round by round, a load that
-    /// lasts long enough to slow one piece slows its neighbours in the same round too.
+    /// lasts long enough to slow one piece slows its neighbours in the same round too. Even so
+    /// it failed again on Windows CI, so no assertion rests on it now: the timings are printed
+    /// for information, and the test counts field assemblies instead.
     /// </para>
     /// </remarks>
     private static double[] CheapestInterleaved(int rounds, params Action[] work)
@@ -80,15 +82,16 @@ public sealed class SweepSolveCostTests(ITestOutputHelper output)
     /// <summary>Adding an energy member must not cost a field solve.</summary>
     /// <remarks>
     /// <para>
-    /// <b>Self-calibrating, which is what makes it a test rather than a threshold.</b> A
-    /// bare wall-clock bound is a statement about a machine (SPEC.md Amendment 27); this
-    /// compares two things measured on the same machine in the same run — the marginal
-    /// cost of one more energy member, against one whole solve of the same model.
+    /// <b>Counted, not timed.</b> Whether the sweep solves once or once per member is a number of
+    /// field assemblies, and that number does not depend on what else the machine is doing. The
+    /// test this replaces compared the marginal member's wall-clock cost against a whole solve's,
+    /// and on a shared Windows runner it read the solve three times faster and the member six
+    /// times slower than a workstation does - failing on a build that solves once, twice, and
+    /// passing in between. The timings are still printed, as information.
     /// </para>
     /// <para>
-    /// If the sweep solves per member the marginal member costs a solve <i>plus</i> a
-    /// flight and cannot pass at any margin. If it solves once the marginal member is a
-    /// flight alone, which here is about a fifth of a solve.
+    /// Three members and twenty-one assemble the same number of fields; putting the solve back
+    /// inside the member loop makes the second seven times the first.
     /// </para>
     /// </remarks>
     [Fact]
@@ -96,42 +99,31 @@ public sealed class SweepSolveCostTests(ITestOutputHelper output)
     {
         var model = Model("planar-mirror-pair");
 
-        // A ratio of two timings, so taken while no memory test's measuring child is running:
-        // one loads the machine for seconds to minutes, and a ratio whose two halves were timed
-        // under different loads measures the load (Einzel.Testing.QuietMachine).
-        using var turn = Einzel.Testing.QuietMachine.Hold();
+        int Builds(int members)
+        {
+            using (FieldAssembly.CountBuildsForTest(out var counter))
+            {
+                FiguresOfMerit.Evaluator("resolvingPower", energySpread: 0.03, ions: members)(model);
+                return counter.Builds;
+            }
+        }
 
-        Assert.True(turn.Quiet, turn.NotQuietBecause);
-
-        // Warm the path so the first timed window is not paying for jitting it.
-        FiguresOfMerit.Evaluator("resolvingPower", energySpread: 0.03, ions: 3)(model);
+        var few = Builds(3);
+        var many = Builds(21);
 
         var timed = CheapestInterleaved(
-            7,
+            3,
             () => FieldAssembly.Build(model),
             () => FiguresOfMerit.Evaluator("resolvingPower", 0.03, 3)(model),
             () => FiguresOfMerit.Evaluator("resolvingPower", 0.03, 21)(model));
 
-        var (solve, few, many) = (timed[0], timed[1], timed[2]);
+        output.WriteLine($"fields assembled: {few} for 3 members, {many} for 21");
+        output.WriteLine(
+            $"for information: one solve {timed[0] * 1000:F1} ms, 3 members {timed[1] * 1000:F1} ms, "
+            + $"21 members {timed[2] * 1000:F1} ms");
 
-        var marginal = (many - few) / (21 - 3);
-
-        output.WriteLine($"one solve            {solve * 1000,8:F1} ms");
-        output.WriteLine($"resolvingPower,  3   {few * 1000,8:F1} ms");
-        output.WriteLine($"resolvingPower, 21   {many * 1000,8:F1} ms");
-        output.WriteLine($"marginal per member  {marginal * 1000,8:F1} ms "
-            + $"({marginal / solve:F2} solves)");
-
-        // Half a solve, which sits between the two states rather than hard against one:
-        // measured at 0.18 solves hoisted and 1.27 with the solve put back in the loop, so
-        // a factor of about six separates them. Solving per member costs a whole solve per
-        // member by construction, so any bound under one catches it.
-        Assert.True(
-            marginal < 0.5 * solve,
-            $"one more energy member cost {marginal * 1000:F1} ms against {solve * 1000:F1} ms "
-            + "for a whole solve of the same model, so the sweep is solving per member. An "
-            + "energy offset changes the launch speed and nothing about the field: solve "
-            + "once, outside the loop");
+        Assert.True(few > 0, "the sweep must assemble its field for the count to mean anything");
+        Assert.Equal(few, many);
     }
 
     /// <summary>Hoisting the solve did not move the answer.</summary>
